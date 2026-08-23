@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+
+# Build artifacts
+build/
+dist/
+*.spec
+
+# Runtime-generated files
+*.log
+_zapret_run.bat
+_zapret_service.bat
+data_version.txt
+tcp1620_test_body.bin
+zapret-auto.txt
+debug_winws2.log
+test_session.log
+
+# OS
+Thumbs.db
+Desktop.ini

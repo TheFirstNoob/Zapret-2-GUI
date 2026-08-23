@@ -1,0 +1,135 @@
+-- zapret-custom.lua
+-- Кастомные desync-функции для нестандартных стратегий обхода.
+-- Загружать: --lua-init=@lua/zapret-lib.lua --lua-init=@lua/zapret-antidpi.lua --lua-init=@lua/zapret-custom.lua
+--
+-- Содержит ТОЛЬКО то, что НЕЛЬЗЯ сделать встроенными функциями.
+-- См. docs/ZAPRET2_CUSTOM_LUA.md для полного анализа.
+--
+-- Функции:
+--   tls_fake_disorder  — фейки сначала + 3-сегментный disorder для TLS
+--   fake_disorder      — универсальный fake+disorder для любого TCP
+
+--[[
+tls_fake_disorder — fake flood + multidisorder для TLS.
+  fakes=N        — количество фейков (default 4)
+  pos=<markers>  — позиции для multidisorder (default "host,endhost")
+  nodrop
+]]
+function tls_fake_disorder(ctx, desync)
+	if not desync.dis.tcp then
+		if not desync.dis.icmp then instance_cutoff_shim(ctx, desync) end
+		return
+	end
+	direction_cutoff_opposite(ctx, desync)
+	local data = desync.reasm_data or desync.dis.payload
+	if #data > 0 and desync.l7payload == "tls_client_hello" and direction_check(desync) then
+		if replay_first(desync) then
+			local num_fakes = tonumber(desync.arg.fakes) or 4
+			if not desync.arg.blob then
+				error("tls_fake_disorder: 'blob' arg required")
+			end
+			local fake_payload = blob(desync, desync.arg.blob)
+			if desync.reasm_data and desync.arg.tls_mod then
+				local pl = tls_mod_shim(desync, fake_payload, desync.arg.tls_mod, desync.reasm_data)
+				if pl then fake_payload = pl end
+			end
+
+			local opts_fake = { rawsend = rawsend_opts(desync), reconstruct = reconstruct_opts(desync), ipfrag = {}, ipid = desync.arg, fooling = desync.arg }
+			local opts_orig = { rawsend = rawsend_opts_base(desync), reconstruct = {}, ipfrag = {}, ipid = desync.arg, fooling = { tcp_ts_up = desync.arg.tcp_ts_up } }
+
+			for i = 1, num_fakes do
+				local dis = deepcopy(desync.dis)
+				dis.payload = fake_payload
+				if dis.ip then dis.ip.ip_ttl = 2 end
+				if dis.ip6 then dis.ip6.ip6_hlim = 2 end
+				rawsend_dissect(dis, opts_fake.rawsend)
+			end
+
+			local pos1 = resolve_pos(data, desync.l7payload, "host")
+			local pos2 = resolve_pos(data, desync.l7payload, "endhost")
+			if pos1 and pos2 and pos1 > 1 and pos2 > pos1 and pos2 <= #data then
+				local part1 = string.sub(data, 1, pos1 - 1)
+				local part2 = string.sub(data, pos1, pos2 - 1)
+				local part3 = string.sub(data, pos2)
+				if not rawsend_payload_segmented(desync, part3, pos2 - 1, opts_orig) then return VERDICT_PASS end
+				if not rawsend_payload_segmented(desync, part2, pos1 - 1, opts_orig) then return VERDICT_PASS end
+				if not rawsend_payload_segmented(desync, part1, 0, opts_orig) then return VERDICT_PASS end
+			else
+				local part1 = string.sub(data, 1, 1)
+				local part2 = string.sub(data, 2)
+				if not rawsend_payload_segmented(desync, part2, 1, opts_orig) then return VERDICT_PASS end
+				if not rawsend_payload_segmented(desync, part1, 0, opts_orig) then return VERDICT_PASS end
+			end
+
+			replay_drop_set(desync)
+			return desync.arg.nodrop and VERDICT_PASS or VERDICT_DROP
+		end
+		if replay_drop(desync) then
+			return desync.arg.nodrop and VERDICT_PASS or VERDICT_DROP
+		end
+	end
+end
+
+--[[
+fake_disorder — универсальный fake+disorder для любого TCP payload.
+  fakes=N        — количество фейков (default 4)
+  pos1=<marker>  — первая позиция (default "host")
+  pos2=<marker>  — вторая позиция (default "endhost")
+  nodrop
+]]
+function fake_disorder(ctx, desync)
+	if not desync.dis.tcp then
+		if not desync.dis.icmp then instance_cutoff_shim(ctx, desync) end
+		return
+	end
+	direction_cutoff_opposite(ctx, desync)
+	local data = desync.reasm_data or desync.dis.payload
+	if #data > 0 and direction_check(desync) and payload_check(desync) then
+		if replay_first(desync) then
+			local num_fakes = tonumber(desync.arg.fakes) or 4
+			if not desync.arg.blob then
+				error("fake_disorder: 'blob' arg required")
+			end
+			local fake_payload = blob(desync, desync.arg.blob)
+			if desync.reasm_data and desync.arg.tls_mod then
+				local pl = tls_mod_shim(desync, fake_payload, desync.arg.tls_mod, desync.reasm_data)
+				if pl then fake_payload = pl end
+			end
+
+			local opts_fake = { rawsend = rawsend_opts(desync), reconstruct = reconstruct_opts(desync), ipfrag = {}, ipid = desync.arg, fooling = desync.arg }
+			local opts_orig = { rawsend = rawsend_opts_base(desync), reconstruct = {}, ipfrag = {}, ipid = desync.arg, fooling = { tcp_ts_up = desync.arg.tcp_ts_up } }
+
+			for i = 1, num_fakes do
+				local dis = deepcopy(desync.dis)
+				dis.payload = fake_payload
+				rawsend_dissect(dis, opts_fake.rawsend)
+			end
+
+			local spos1 = desync.arg.pos1 or "host"
+			local spos2 = desync.arg.pos2 or "endhost"
+			local pos1 = resolve_pos(data, desync.l7payload, spos1)
+			local pos2 = resolve_pos(data, desync.l7payload, spos2)
+			if pos1 and pos2 and pos1 > 1 and pos2 > pos1 and pos2 <= #data then
+				local part1 = string.sub(data, 1, pos1 - 1)
+				local part2 = string.sub(data, pos1, pos2 - 1)
+				local part3 = string.sub(data, pos2)
+				if not rawsend_payload_segmented(desync, part3, pos2 - 1, opts_orig) then return VERDICT_PASS end
+				if not rawsend_payload_segmented(desync, part2, pos1 - 1, opts_orig) then return VERDICT_PASS end
+				if not rawsend_payload_segmented(desync, part1, 0, opts_orig) then return VERDICT_PASS end
+			else
+				local part1 = string.sub(data, 1, 1)
+				local part2 = string.sub(data, 2)
+				if not rawsend_payload_segmented(desync, part2, 1, opts_orig) then return VERDICT_PASS end
+				if not rawsend_payload_segmented(desync, part1, 0, opts_orig) then return VERDICT_PASS end
+			end
+
+			replay_drop_set(desync)
+			return desync.arg.nodrop and VERDICT_PASS or VERDICT_DROP
+		end
+		if replay_drop(desync) then
+			return desync.arg.nodrop and VERDICT_PASS or VERDICT_DROP
+		end
+	end
+end
+
+DLOG("zapret-custom.lua loaded: tls_fake_disorder, fake_disorder")

@@ -1,0 +1,23 @@
+{
+  "root_dir": "",
+  "lua_dir": "lua",
+  "blobs_dir": "blobs",
+  "bin_dir": "bin",
+  "profiles_dir": "presets",
+  "lists_dir": "lists",
+  "auto_hostlist": "zapret-auto.txt",
+  "exclude_hostlist": "zapret-exclude.txt",
+  "theme": "dark",
+  "language": "ru",
+  "service_name": "zapret2",
+  "wf_tcp_out": "80,443",
+  "wf_udp_out": "443",
+  "last_profile": "default",
+  "tester_timeout": 8,
+  "zapret1_dir": "",
+  "zapret1_last_strategy": "",
+  "game_filter_mode": "off",
+  "discord_voice": false,
+  "winws2_debug": false,
+  "autohostlist": false
+}

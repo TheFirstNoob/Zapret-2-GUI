@@ -1,0 +1,250 @@
+from __future__ import annotations
+
+import subprocess
+import time
+from pathlib import Path
+from typing import Optional
+
+from core.admin import enable_privilege, get_enabled_privileges
+from core.utils import short_path
+
+_GAME_PORT = "1024-65535"
+
+# Error markers winws2 prints for invalid parameters (exit code is unreliable:
+# it returns 0 even on "unknown option", so output must be scanned).
+_DRY_RUN_ERROR_MARKERS = (
+    "unknown option",
+    "bad file",
+    "cannot access file",
+    "cannot create",
+    "cannot open",
+    "invalid autottl",
+    "lua error",
+    "error loading",
+)
+
+
+def validate_args(exe_path: Path, args: list[str], cwd: Optional[Path] = None, timeout: float = 10.0) -> tuple[bool, str]:
+    """Verify winws2 arguments via --dry-run before an actual launch.
+
+    Runs the real binary in verification mode (~0.1-0.3s) and scans its output
+    for known error markers.  Returns (True, "") when arguments are valid,
+    otherwise (False, first offending output line).  --dry-run does not load
+    WinDivert, so no driver state is touched.
+    """
+    try:
+        r = subprocess.run(
+            [str(exe_path), "--dry-run"] + args,
+            capture_output=True,
+            text=True,
+            encoding="oem",
+            errors="replace",
+            timeout=timeout,
+            cwd=str(cwd) if cwd else None,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+    except (subprocess.TimeoutExpired, OSError) as e:
+        return False, f"winws2 --dry-run не выполнился: {e}"
+    output = ((r.stdout or "") + "\n" + (r.stderr or "")).lower()
+    for line in output.splitlines():
+        stripped = line.strip()
+        if any(marker in stripped for marker in _DRY_RUN_ERROR_MARKERS):
+            return False, f"winws2 отклонил параметры: {stripped}"
+    return True, ""
+
+
+def build_args_from_preset(
+    root_dir: Path,
+    lua_dir: Path,
+    blobs_dir: Path,
+    preset_path: Path,
+    lists_dir: Optional[Path] = None,
+    windivert_dir: Optional[Path] = None,
+    debug: bool = False,
+    game_filter_mode: str = "off",
+    discord_voice: bool = False,
+    autohostlist: bool = False,
+) -> list[str]:
+    """Read a .txt preset and return a list of command-line tokens.
+
+    Resolves @lua/, @blobs/, @lists/, and @windivert/ prefixes to absolute
+    short paths.  @lua/ and @blobs/ get an @ prefix (for --lua-init, --blob
+    file refs).  @lists/ and @windivert/ resolve bare (for --hostlist,
+    --hostlist-exclude, --ipset file paths).
+
+    ``%GameFilter%`` placeholders in the preset are replaced with
+    ``1024-65535`` when *game_filter_mode* is not ``"off"``, or removed
+    (with trailing-comma cleanup) otherwise.
+
+    When *debug* is True, appends ``--debug=@debug_winws2.log`` so that
+    winws2 writes a diagnostic log into the root directory.  The caller's ZIP
+    collector (export_data_package) will pick that file up automatically.
+
+    The returned tokens are NOT quoted here; quoting happens in write_run_bat via
+    subprocess.list2cmdline so that paths with spaces are handled correctly.
+    """
+    if lists_dir is None:
+        lists_dir = root_dir / "lists"
+    if windivert_dir is None:
+        windivert_dir = root_dir / "windivert"
+    short_root = short_path(root_dir)
+    short_lua = short_path(lua_dir)
+    short_blobs = short_path(blobs_dir)
+    short_lists = short_path(lists_dir)
+    short_windivert = short_path(windivert_dir)
+    lines = preset_path.read_text(encoding="utf-8-sig").strip().splitlines()
+    game_on = game_filter_mode != "off"
+    tokens: list[str] = []
+
+    auto_file = lists_dir / "zapret-auto.txt"
+    if autohostlist:
+        if not auto_file.exists():
+            auto_file.write_text("", encoding="utf-8")
+        auto_path = short_path(auto_file)
+
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith("#") or line.startswith("--comment"):
+            continue
+        for prefix, spath in [("@lists/", short_lists)]:
+            if prefix in line:
+                line = line.replace(prefix, str(spath) + "\\")
+        for dir_name, dir_path in [("@lua/", lua_dir), ("@blobs/", blobs_dir), ("@windivert/", windivert_dir)]:
+            if dir_name in line:
+                line = line.replace(dir_name, "@" + str(dir_path) + "\\")
+        # Expand %GameFilter% placeholder
+        if "%GameFilter%" in line:
+            port = _GAME_PORT if game_on else ""
+            cleaned = line.replace("%GameFilter%", port).strip(",").strip()
+            if not cleaned:
+                continue
+            line = cleaned
+        tokens.append(line)
+        # Inject --autohostlist into list-general filter blocks
+        if autohostlist and "--hostlist=" in line and "list-general" in line:
+            tokens.append(f"--hostlist-auto={auto_path}")
+    # Auto-inject user lists if not empty
+    exclude_file = lists_dir / "list-exclude-user.txt"
+    if exclude_file.exists() and exclude_file.stat().st_size > 0:
+        exclude_path = short_path(exclude_file)
+        tokens.append(f"--hostlist-exclude={exclude_path}")
+    include_file = lists_dir / "list-include-user.txt"
+    if include_file.exists() and include_file.stat().st_size > 0:
+        include_path = short_path(include_file)
+        tokens.append(f"--hostlist={include_path}")
+    # ── GameFilter: high-port capture + catchall profiles ──
+    if game_filter_mode in ("udp", "both"):
+        # Raw parts don't cover 1024-65535 → add explicit --wf-udp-out
+        tokens.insert(0, "--wf-udp-out=1024-65535")
+    if game_filter_mode in ("tcp", "both"):
+        tokens.append("--new")
+        tokens.append("--filter-tcp=1024-65535")
+        tokens.append("--filter-l7=tls")
+        tokens.append("--out-range")
+        tokens.append("-d10")
+        tokens.append("--payload")
+        tokens.append("tls_client_hello")
+        tokens.append("--lua-desync=fake:blob=google_tls:repeats=6")
+    if game_filter_mode in ("udp", "both"):
+        tokens.append("--new")
+        tokens.append("--filter-udp=1024-65535")
+        tokens.append("--out-range")
+        tokens.append("-d10")
+        tokens.append("--lua-desync=fake:blob=quic_google:repeats=10")
+    # ── Discord Voice UDP fix ──
+    if discord_voice:
+        tokens.append("--new")
+        tokens.append("--filter-udp=19294-19344,50000-50100")
+        tokens.append("--filter-l7=discord,stun")
+        tokens.append("--payload=discord_ip_discovery")
+        tokens.append("--out-range=-d10")
+        tokens.append("--lua-desync=fake:blob=quic_google")
+    if debug:
+        debug_file = root_dir / "debug_winws2.log"
+        if not debug_file.exists():
+            debug_file.write_text("")
+        debug_path = short_path(debug_file)
+        tokens.append(f"--debug=@{debug_path}")
+    return tokens
+
+
+def write_run_bat(
+    root_dir: Path,
+    bat_path: Path,
+    exe_path: Path,
+    args: list[str],
+) -> None:
+    """Write a .bat that starts winws2 via `start /min`.
+
+    Uses subprocess.list2cmdline to quote tokens with spaces correctly and
+    short paths to avoid non-ASCII characters in the .bat file.
+    """
+    short_exe = short_path(exe_path)
+    short_root = short_path(root_dir)
+    cmd_line = subprocess.list2cmdline([str(short_exe)] + args)
+    bat_path.write_text(
+        f'@echo off\r\ncd /d "{short_root}"\r\nstart "zapret2" /min {cmd_line}',
+        encoding="ascii",
+        errors="replace",
+    )
+
+
+def launch_winws2_bat(
+    bat_path: Path,
+    root_dir: Path,
+    timeout: float = 5.0,
+) -> bool:
+    """Launch a winws2 .bat with SeLoadDriverPrivilege enabled.
+
+    Uses CreateProcess (subprocess.Popen) so the child inherits the current
+    token. We enable SeLoadDriverPrivilege first because UAC-elevated Python
+    processes often have it disabled, which prevents WinDivert from loading.
+    """
+    # Enable the privilege in our token; child processes will inherit it.
+    privileges_before = get_enabled_privileges()
+    se_load_enabled_before = "SeLoadDriverPrivilege" in privileges_before
+
+    if not se_load_enabled_before:
+        enable_privilege("SeLoadDriverPrivilege")
+        enable_privilege("SeDebugPrivilege")
+
+    privileges_after = get_enabled_privileges()
+    se_load_enabled_after = "SeLoadDriverPrivilege" in privileges_after
+
+    if not se_load_enabled_after:
+        print(
+            f"[zapret2] SeLoadDriverPrivilege still OFF — all privs: {privileges_after}"
+        )
+
+    # Give the OS a moment if this is a relaunch after taskkill.
+    time.sleep(0.5)
+
+    try:
+        subprocess.Popen(
+            ["cmd.exe", "/c", str(bat_path)],
+            cwd=str(root_dir),
+            creationflags=subprocess.CREATE_NO_WINDOW,
+            close_fds=True,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+    # Wait briefly and verify winws2 started.
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            r = subprocess.run(
+                ["tasklist", "/FI", "IMAGENAME eq winws2.exe", "/NH"],
+                capture_output=True,
+                text=True,
+                encoding="oem",
+                errors="replace",
+                timeout=3,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
+            if "winws2.exe" in r.stdout:
+                return True
+        except (subprocess.TimeoutExpired, OSError):
+            pass
+        time.sleep(0.2)
+    return False
