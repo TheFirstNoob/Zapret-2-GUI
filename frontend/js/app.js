@@ -168,7 +168,7 @@ const App = {
     const el = document.getElementById('page-' + page);
     if (el) el.classList.add('active');
 
-    const titles = { main: 'Главная', tester: 'Тестер DPI', exclude: 'Списки', diagnostics: 'Диагностика' };
+    const titles = { main: 'Главная', tester: 'Подбор стратегии', exclude: 'Списки', diagnostics: 'Проверка системы' };
     document.getElementById('pageTitle').textContent = titles[page] || 'Zapret2';
   },
 
@@ -1568,6 +1568,7 @@ const TesterPage = {
           ${keyHtml}
           <div class="verdict-actions" style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
             ${rec.best_profile ? `<button class="btn btn-primary" onclick="TesterPage.applyRecommended()">🚀 Запустить: ${escapeHtml(rec.best_profile)}</button>` : ''}
+            ${(rec.verdict === 'no_bypass' || rec.verdict === 'engine_broken') ? `<button class="btn btn-secondary" onclick="location.hash='#diagnostics'">🔍 Проверить систему</button>` : ''}
             ${rec.same_as_naked ? `<span style="font-size:12px;color:var(--warn);align-self:center">результат совпадает с голым тестом</span>` : ''}
           </div>
         </div>`;
@@ -1782,6 +1783,17 @@ const DiagnosticsPage = {
       `</div></div>`
     )).join('');
     document.getElementById('diagResults').innerHTML = rows || '<p>Нет результатов</p>';
+
+    // Cross-link: failures detected → offer the strategy picker
+    if ((s.fail || 0) > 0) {
+      document.getElementById('diagResults').innerHTML += `
+        <div class="card" style="margin-top:12px;padding:14px">
+          <p style="font-size:13px;color:var(--text-secondary);margin:0 0 10px">
+            Найдены проблемы. Если нужно подобрать стратегию, которая лучше всего работает на вашем интернете — запустите тест.
+          </p>
+          <button class="btn btn-primary" onclick="location.hash='#tester'">▶ Подбор стратегии</button>
+        </div>`;
+    }
 
     this.lastReportText = report.report_text || '';
     if (this.lastReportText) document.getElementById('diagCopyBtn').style.display = '';

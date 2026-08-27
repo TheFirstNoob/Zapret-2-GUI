@@ -29,11 +29,19 @@
             </a>
           </li>
           <li>
+            <a href="#diagnostics" data-page="diagnostics" class="nav-link">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20">
+                <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
+              </svg>
+              <span>Проверка системы</span>
+            </a>
+          </li>
+          <li>
             <a href="#tester" data-page="tester" class="nav-link">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20">
                 <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
               </svg>
-              <span>Тестер</span>
+              <span>Подбор стратегии</span>
             </a>
           </li>
           <li>
@@ -42,14 +50,6 @@
                 <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
               </svg>
               <span>Списки</span>
-            </a>
-          </li>
-          <li>
-            <a href="#diagnostics" data-page="diagnostics" class="nav-link">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20">
-                <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
-              </svg>
-              <span>Диагностика</span>
             </a>
           </li>
         </ul>
@@ -227,10 +227,31 @@
             <div class="tester-intro">
               <h2 style="margin-bottom:10px; display:flex; align-items:center; gap:8px;">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-                Тестер DPI стратегий
+                Подбор стратегии
               </h2>
-              <p style="color: var(--text-secondary);">Тестирование стратегий на основных доменах блокировок (3–5 мин).</p>
-              <div class="test-options" style="margin-top: 15px;">
+              <p style="color: var(--text-secondary);">Два шага: сначала проверьте систему, затем подберите стратегию.</p>
+              <div class="guide-steps" style="margin-top:16px;">
+                <div class="guide-step">
+                  <div class="guide-num">1</div>
+                  <div class="guide-step-body">
+                    <strong>Что-то не работает?</strong>
+                    <p>Проверка системы ответит почему: права, служба, конфликты, тип блокировки (DNS/IP/SNI).</p>
+                    <button class="btn btn-secondary" onclick="location.hash='#diagnostics'">🔍 Проверить систему</button>
+                  </div>
+                </div>
+                <div class="guide-step">
+                  <div class="guide-num">2</div>
+                  <div class="guide-step-body">
+                    <strong>Нужно выбрать лучшую стратегию</strong>
+                    <p>Тест проверит все стратегии (3–5 мин) и в конце покажет рекомендацию: Discord, YouTube и что делать дальше.</p>
+                    <button class="btn btn-primary" id="btnStartTest" onclick="TesterPage.startTest()">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="margin-right:6px"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                      Начать тест
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div class="test-options" style="margin-top:18px;">
                 <label class="checkbox-label">
                   <input type="checkbox" id="cdnCheck">
                   <span>CDN-хосты (+5–10 мин)</span>
@@ -244,10 +265,6 @@
                   <span>Собирать логи</span>
                 </label>
               </div>
-              <button class="btn btn-primary btn-lg" id="btnStartTest" onclick="TesterPage.startTest()" style="margin-top:15px">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="margin-right:6px"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-                Начать тест
-              </button>
             </div>
           </div>
 
@@ -309,11 +326,11 @@
               <div>
                 <h3 style="display:flex; align-items:center; gap:8px;">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>
-                  Самодиагностика
+                  Проверка системы
                 </h3>
                 <p style="color:var(--text-secondary); font-size:13px; margin:6px 0 0;">
-                  Проверяет права, путь установки, процесс, службу, пресет, конфликты и связь с заблокированными сайтами.
-                  Занимает до ~30 секунд.
+                  Права, путь установки, процесс, служба, пресет, конфликты, связь и тип блокировки (DNS/IP/SNI).
+                  Занимает ~30–45 секунд. Если нужна рекомендация по стратегии — перейдите к подбору.
                 </p>
               </div>
               <div style="display:flex; gap:8px;">
