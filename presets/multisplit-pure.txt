@@ -35,7 +35,7 @@ tls
 -d10
 --payload
 tls_client_hello
---lua-desync=multisplit:pos=2:seqovl=652:seqovl_pattern=google_tls:nodrop
+--lua-desync=multisplit:pos=2:seqovl=652:seqovl_pattern=google_tls
 --lua-desync=multisplit:pos=2,midsld:nodrop
 --new
 
@@ -62,7 +62,7 @@ tls
 -d10
 --payload
 tls_client_hello
---lua-desync=multisplit:pos=2:seqovl=652:seqovl_pattern=google_tls:nodrop
+--lua-desync=multisplit:pos=2:seqovl=652:seqovl_pattern=google_tls
 --new
 
 --comment=General TCP
@@ -76,7 +76,7 @@ tls,http
 -d10
 --payload
 tls_client_hello,http_req
---lua-desync=multisplit:pos=2:seqovl=652:seqovl_pattern=google_tls:nodrop
+--lua-desync=multisplit:pos=2:seqovl=652:seqovl_pattern=google_tls
 --new
 
 --comment=QUIC Google

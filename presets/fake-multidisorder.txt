@@ -63,7 +63,7 @@ tls
 -d10
 --payload
 tls_client_hello
---lua-desync=fake:blob=google_tls:tcp_ts=-1000
+--lua-desync=fake:blob=google_tls:tcp_ts=-1000:repeats=6
 --lua-desync=multidisorder:pos=1,midsld:nodrop
 --new
 

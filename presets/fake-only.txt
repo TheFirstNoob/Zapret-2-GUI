@@ -35,7 +35,7 @@ tls
 -d10
 --payload
 tls_client_hello
---lua-desync=fake:blob=google_tls:tcp_ts=-1000:nodrop
+--lua-desync=fake:blob=google_tls:tcp_ts=-1000:repeats=6
 --new
 
 --comment=Discord Media TCP
@@ -48,7 +48,7 @@ tls
 -d10
 --payload
 tls_client_hello
---lua-desync=fake:blob=google_tls:tcp_ts=-1000:nodrop
+--lua-desync=fake:blob=google_tls:tcp_ts=-1000:repeats=6
 --new
 
 --comment=Google TCP
@@ -61,7 +61,7 @@ tls
 -d10
 --payload
 tls_client_hello
---lua-desync=fake:blob=google_tls:tcp_ts=-1000:nodrop
+--lua-desync=fake:blob=google_tls:tcp_ts=-1000:repeats=6
 --new
 
 --comment=General TCP
@@ -75,7 +75,7 @@ tls,http
 -d10
 --payload
 tls_client_hello,http_req
---lua-desync=fake:blob=google_tls:tcp_ts=-1000:nodrop
+--lua-desync=fake:blob=google_tls:tcp_ts=-1000:repeats=6
 --new
 
 --comment=QUIC Google

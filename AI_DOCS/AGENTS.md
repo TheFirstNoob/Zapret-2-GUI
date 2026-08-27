@@ -295,6 +295,11 @@ fake — с tcp_ts (должен умереть по PAWS), multisplit — БЕ�
   hostfakesplit (exp-c) и pos=midsld (exp-d): 000.
 - Внесено в default.txt ТОЛЬКО в блок Google TCP tls (list-google). Discord и
   General TCP остались с nodrop (работают 200).
+- **Тот же фикс применён к google-блокам остальных пресетов (2026-08-27):**
+  fake-only (все блоки), fakedsplit (google), fake-multidisorder (google,
+  fake += repeats), hostfakesplit (google), multisplit-pure/seqovl (google,
+  nodrop снят). fake-disorder не тронут (механизм tls_fake_disorder иной).
+  БЕЗ замеров на Т2 — пресеты под другие DPI; валидация dry-run.
 - Следствие: известный «YouTube TCP-прикол» (§17) закрыт на Т2 — тестер теперь
   покажет 200, QUIC_OK-инференс станет редким.
 
