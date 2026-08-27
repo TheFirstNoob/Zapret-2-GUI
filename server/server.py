@@ -14,7 +14,7 @@ from urllib.parse import urlparse, parse_qs
 
 from core.config import ConfigManager, DEFAULT_PROFILE, VERSION
 from core.zapret_controller import ZapretController
-from core.tester import Zapret2Tester, CDN_PROVIDERS
+from core.tester import Zapret2Tester, CDN_PROVIDERS, NAKED_BASELINE_HOSTS
 from core.service_manager import SERVICE_NAME, is_installed as svc_installed, status as svc_status, install as svc_install, remove as svc_remove, start as svc_start, stop as svc_stop, build_service_bat
 from core.collector import collect_all, export_data_package
 from core.launcher import build_args_from_preset, validate_args
@@ -103,6 +103,9 @@ class TesterState:
 
 _tester_state = TesterState()
 
+# Update-check result cache: one check per application session.
+_update_check_cache: Optional[dict] = None
+
 
 # ── Helpers ──────────────────────────────────────────────────
 
@@ -149,6 +152,12 @@ def _serialize_result(res) -> dict:
         "ok_count": res.ok_count,
         "fail_count": res.fail_count,
         "success_rate": res.success_rate,
+        "net_ok_count": res.net_ok_count,
+        "net_fail_count": res.net_fail_count,
+        "net_total": res.net_total,
+        "network_rate": res.network_rate,
+        "ping_ok_count": res.ping_ok_count,
+        "ping_total": res.ping_total,
         "total_time_ms": res.total_time,
         "provider_hop": res.provider_hop,
         "provider_ip": res.provider_ip,
@@ -324,6 +333,107 @@ def _scan_winws_exe() -> dict:
 
 # ── Tester action runner (background thread) ─────────────────
 
+# Hosts the user cares about most — shown prominently in the final verdict.
+KEY_HOST_LABELS: list[tuple[str, str]] = [
+    ("discord.com", "Discord"),
+    ("gateway.discord.gg", "Discord (шлюз)"),
+    ("www.youtube.com", "YouTube"),
+    ("i.ytimg.com", "YouTube CDN"),
+]
+
+
+def _build_recommendation(all_results, naked, sanity: dict) -> dict:
+    """Build the final verdict: best strategy by network rate, key-host
+    status (Discord/YouTube), and diagnosis when nothing works."""
+    if not all_results:
+        return {"verdict": "no_data", "message": "Нет результатов тестов", "best_profile": ""}
+
+    best = max(all_results, key=lambda r: (r.network_rate, r.ok_count))
+    blocked = sorted({r.domain for res in all_results for r in res.results
+                      if r.test_type != "ping" and r.status != "OK"})
+    net_rate = best.network_rate
+    blocked_set = set(blocked)
+
+    same_as_naked = False
+    if naked is not None and naked.results:
+        naked_ok = {r.domain for r in naked.results if r.status == "OK"}
+        prof_ok = {r.domain for r in best.results
+                   if r.test_type != "ping" and r.status == "OK"
+                   and r.domain in NAKED_BASELINE_HOSTS}
+        same_as_naked = (naked_ok == prof_ok)
+
+    dry = sanity.get("dry_run", {})
+    profiles_loaded = dry.get("profiles_loaded")
+    engine_broken = (not dry.get("ok", True)
+                     or (profiles_loaded is not None and profiles_loaded <= 1))
+    misses = [c for c in sanity.get("list_coverage", []) if not c.get("covered")]
+
+    # YouTube over TCP fails on every tested setup due to a known TLS quirk
+    # (§17) — the browser reaches it via QUIC, so it is not a real outage.
+    youtube_tcp_quirk = blocked_set <= {"www.youtube.com", "redirector.googlevideo.com",
+                                        "i.ytimg.com", "youtu.be"}
+
+    if engine_broken:
+        verdict = "engine_broken"
+        if profiles_loaded is not None and profiles_loaded <= 1:
+            message = (f"⚠ winws2 загрузил только {profiles_loaded} профиль(-я) вместо ожидаемых 4-7 — "
+                       "сигнатура старого бага с короткими путями (@lua/@blobs). "
+                       "Результаты стратегий недостоверны. Обновите программу и повторите тест.")
+        else:
+            message = ("⚠ winws2 --dry-run отклонил аргументы: "
+                       + ("; ".join(dry.get("errors", [])) or "неизвестная ошибка")
+                       + ". Результаты стратегий недостоверны.")
+    elif misses:
+        verdict = "no_bypass"
+        doms = ", ".join(c["domain"] for c in misses)
+        message = (f"❌ Не пробито: {doms}. Эти домены отсутствуют в списках пресета — "
+                   "стратегия к ним не применяется (no_action). Добавьте домены в списки и повторите тест.")
+    elif same_as_naked and net_rate < 100:
+        verdict = "no_bypass"
+        message = ("❌ Все стратегии дали тот же результат, что и голый тест (без защиты). "
+                   "Обход не применяется: либо winws2 не перехватывает трафик "
+                   "(WinDivert/драйвер, антивирус, Killer NIC), либо DPI блокирует любые попытки. "
+                   "Запустите «Диагностику» и сохраните отчёт.")
+    elif net_rate >= 100 or (youtube_tcp_quirk and net_rate >= 60):
+        verdict = "ok"
+        extra = (" YouTube по TCP не доходит — известный TLS-прикол: в браузере "
+                 "YouTube работает через QUIC." if youtube_tcp_quirk else "")
+        message = f"✅ Лучшая стратегия: {best.profile_name} — {best.net_ok_count}/{best.net_total} доступно.{extra}"
+    elif net_rate > 0:
+        verdict = "partial"
+        message = (f"⚠ Лучшая стратегия: {best.profile_name} — {best.net_ok_count}/{best.net_total} "
+                   f"({net_rate:.0f}%). Не пробито: {', '.join(blocked) or '—'}")
+    else:
+        verdict = "no_bypass"
+        message = "❌ Ни одна стратегия не пробила блокировку."
+
+    key_hosts = []
+    for domain, label in KEY_HOST_LABELS:
+        trs = [r for r in best.results if r.test_type != "ping" and r.domain == domain]
+        if trs:
+            tr = min(trs, key=lambda r: r.time_ms or 0)
+            key_hosts.append({"domain": domain, "label": label,
+                              "status": tr.status, "time_ms": tr.time_ms})
+        else:
+            key_hosts.append({"domain": domain, "label": label,
+                              "status": "N/A", "time_ms": 0})
+
+    return {
+        "verdict": verdict,
+        "message": message,
+        "best_profile": best.profile_name,
+        "best_network_rate": net_rate,
+        "best_ok": best.net_ok_count,
+        "best_total": best.net_total,
+        "same_as_naked": same_as_naked,
+        "blocked_domains": blocked,
+        "key_hosts": key_hosts,
+        "naked_network_rate": naked.network_rate if naked else None,
+        "provider_hop": best.provider_hop,
+        "provider_ip": best.provider_ip,
+    }
+
+
 def _run_tester_action(data: dict) -> None:
     action = data.get("action", "")
     state = _tester_state
@@ -385,14 +495,23 @@ def _run_tester_action(data: dict) -> None:
                 total = len(profiles)
                 _tier = data.get("tier", "critical")
                 skip_cdn = data.get("skip_cdn", False)
+
+                # Naked baseline first: detects "strategies do nothing" cases.
+                naked_baseline = _run_tester(lambda: tester.run_naked_baseline(
+                    _make_progress_cb(state),
+                    result_cb=_make_result_cb(state, profile="__naked__"),
+                ))
+                if naked_baseline is not None:
+                    progress(5, f"Голый тест: {naked_baseline.net_ok_count}/{naked_baseline.net_total} доступно")
+
                 for idx, profile_name in enumerate(profiles):
                     if tester.shutdown_event.is_set():
                         break
-                    base_pct = int(idx / total * 100)
+                    base_pct = 6 + int(idx / total * 94)
                     progress(base_pct, f"Тестируем стратегию {profile_name} ({idx + 1}/{total})...")
 
                     def _inner_progress(pct: int, msg: str):
-                        overall = int((idx + pct / 100) / total * 100)
+                        overall = int(6 + (idx + pct / 100) / total * 94)
                         progress(overall, msg)
 
                     res = _run_tester(
@@ -401,14 +520,19 @@ def _run_tester_action(data: dict) -> None:
                             result_cb=result_cb, skip_cdn=skip_cdn)
                     )
                     all_results.append(res)
-                    progress(int((idx + 1) / total * 100),
+                    progress(int(6 + (idx + 1) / total * 94),
                              f"Стратегия {profile_name}: {res.success_rate:.0f}%")
                 if all_results:
-                    best = max(all_results, key=lambda r: (r.success_rate, r.ok_count))
-                    state.set_final(
-                        _serialize_result(best),
-                        [_serialize_result(r) for r in all_results],
-                    )
+                    best = max(all_results, key=lambda r: (r.network_rate, r.ok_count))
+                    blocked = sorted({r.domain for res in all_results for r in res.results
+                                      if r.test_type != "ping" and r.status != "OK"})
+                    sanity = tester.collect_sanity_info(best.profile_name, blocked)
+                    rec = _build_recommendation(all_results, naked_baseline, sanity)
+                    final = _serialize_result(best)
+                    final["recommendation"] = rec
+                    final["sanity"] = sanity
+                    final["naked"] = _serialize_result(naked_baseline) if naked_baseline else None
+                    state.set_final(final, [_serialize_result(r) for r in all_results])
                 else:
                     state.running = False
 
@@ -914,6 +1038,13 @@ class ZapretHandler(BaseHTTPRequestHandler):
         report["elapsed_sec"] = round(_time.time() - start, 1)
         report["report_text"] = format_report_text(report)
         self._send_json({"status": "ok", "report": report})
+
+    def _handle_update_check(self) -> None:
+        global _update_check_cache
+        if _update_check_cache is None:
+            from core.updates import check_for_updates
+            _update_check_cache = check_for_updates()
+        self._send_json({"status": "ok", **_update_check_cache})
 
     def _handle_export_report(self, data: dict) -> None:
         consent = data.get("consent", False)

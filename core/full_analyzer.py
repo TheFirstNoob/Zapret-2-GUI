@@ -69,7 +69,7 @@ def run_full_analysis(
         with lock:
             result = tester.test_profile(
                 profile_name, _cb, tier=tier,
-                result_cb=rcb, skip_aux=(tier != "full"),
+                result_cb=rcb, skip_cdn=(tier != "full"),
             )
         entry = {
             "profile": profile_name,
@@ -77,7 +77,9 @@ def run_full_analysis(
             "ok_count": result.ok_count,
             "fail_count": result.fail_count,
             "success_rate": result.success_rate,
-            "success_rate": result.success_rate,
+            "network_rate": result.network_rate,
+            "net_ok_count": result.net_ok_count,
+            "net_total": result.net_total,
             "provider_hop": result.provider_hop,
             "provider_ip": result.provider_ip or "",
             "results": [

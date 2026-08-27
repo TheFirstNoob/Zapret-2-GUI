@@ -175,6 +175,18 @@ def export_data_package(
                 for pf in presets_dir.glob("*.txt"):
                     zf.write(pf, f"presets/{pf.name}")
 
+            # Hostlists matter for diagnosis: a blocked domain missing from
+            # every list a preset references means its desync profile never
+            # fires (no_action) — strategies look identical and nothing works.
+            lists_dir = root_dir / "lists"
+            if lists_dir.is_dir():
+                for lf in sorted(lists_dir.glob("*.txt")):
+                    try:
+                        if lf.stat().st_size <= 300_000:
+                            zf.write(lf, f"lists/{lf.name}")
+                    except OSError:
+                        pass
+
             if bat_path and bat_path.exists():
                 zf.write(bat_path, bat_path.name)
 

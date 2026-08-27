@@ -1023,6 +1023,12 @@ const TesterPage = {
             }
             if (!fr) { return; } // race: thread hasn't set running=true yet, keep polling
             pollActive = false; clearInterval(pollId);
+            // Server sends per-profile results in a separate field; merge so
+            // finalizePipeline can render the comparison table (previously
+            // lost → the results screen was empty, only "return" was visible).
+            if (state.all_results && !fr.all_results) {
+              fr.all_results = state.all_results;
+            }
             if (fr.restored) {
               showToast(fr.restored, fr.restored.indexOf('Не удалось') === 0 || fr.restored.indexOf('не восстановлен') >= 0 ? 'warn' : 'ok');
             }
@@ -1294,14 +1300,18 @@ const TesterPage = {
     if (!results || !results.length) return '';
     const domainMap = {};
     for (const r of results) {
-      const key = r.domain;
-      if (!domainMap[key]) domainMap[key] = { domain: key, results: [], bestStatus: '', bestTime: Infinity, testTypes: new Set() };
-      domainMap[key].results.push(r);
-      domainMap[key].testTypes.add(r.test_type || '?');
-      if (r.time_ms != null && r.time_ms < domainMap[key].bestTime) domainMap[key].bestTime = r.time_ms;
-      const rank = { 'OK': 5, 'PARTIAL': 4, 'SSL_ERROR': 4, 'TCP16_20': 3, 'DPI_DROP': 3, 'TIMEOUT': 2, 'BLOCKED': 1, 'ERROR': 1, 'FAIL': 1 };
-      const cur = domainMap[key].bestStatus || '';
-      if (!cur || (rank[r.status] || 0) > (rank[cur] || 0)) domainMap[key].bestStatus = r.status;
+      if (!r.results) continue;
+      for (const rr of r.results) {
+        if (rr.test_type === 'ping') continue;
+        const key = rr.domain;
+        if (!domainMap[key]) domainMap[key] = { domain: key, results: [], bestStatus: '', bestTime: Infinity, testTypes: new Set() };
+        domainMap[key].results.push(rr);
+        domainMap[key].testTypes.add(rr.test_type || '?');
+        if (rr.time_ms != null && rr.time_ms < domainMap[key].bestTime) domainMap[key].bestTime = rr.time_ms;
+        const rank = { 'OK': 5, 'PARTIAL': 4, 'SSL_ERROR': 4, 'TCP16_20': 3, 'DPI_DROP': 3, 'TIMEOUT': 2, 'BLOCKED': 1, 'ERROR': 1, 'FAIL': 1 };
+        const cur = domainMap[key].bestStatus || '';
+        if (!cur || (rank[rr.status] || 0) > (rank[cur] || 0)) domainMap[key].bestStatus = rr.status;
+      }
     }
 
     const domainIcons = {
@@ -1357,12 +1367,13 @@ const TesterPage = {
 
     let zapret2Score = 0;
     let zapret2BestProfile = '';
+    const rateOf = r => (r.network_rate != null ? r.network_rate : (r.success_rate || 0));
     if (fullAnalysis && fullAnalysis.length > 0) {
-      const best = fullAnalysis.reduce((a, b) => (a.success_rate || 0) > (b.success_rate || 0) ? a : b);
-      zapret2Score = best.success_rate || 0;
+      const best = fullAnalysis.reduce((a, b) => rateOf(a) > rateOf(b) ? a : b);
+      zapret2Score = rateOf(best);
       zapret2BestProfile = best.profile || '';
-    } else if (this.state.phase2Results && this.state.phase2Results.success_rate != null) {
-      zapret2Score = this.state.phase2Results.success_rate || 0;
+    } else if (this.state.phase2Results && this.state.phase2Results.network_rate != null) {
+      zapret2Score = this.state.phase2Results.network_rate || 0;
       zapret2BestProfile = this.state.phase2Results.profile || '';
     }
 
@@ -1406,12 +1417,13 @@ const TesterPage = {
     const quickResults = this.state.phase2Results && this.state.phase2Results.all_results;
     if (quickResults && quickResults.length) {
       const rows = quickResults.map(r => {
-        const ws = r.success_rate != null ? r.success_rate.toFixed(0) : '0';
+        const rate = r.network_rate != null ? r.network_rate : (r.success_rate || 0);
+        const ws = rate.toFixed(0);
         const isBest = r.profile === zapret2BestProfile;
         return `<tr class="${isBest ? 'score-row-good' : ''}">
           <td>${escapeHtml(r.profile || '')}${isBest ? ' <span class="badge badge-safe">best</span>' : ''}</td>
-          <td style="color:${scoreColor(r.success_rate || 0)};font-weight:700">${ws}</td>
-          <td>${r.ok_count || 0}/${(r.ok_count || 0) + (r.fail_count || 0)}</td>
+          <td style="color:${scoreColor(rate)};font-weight:700">${ws}</td>
+          <td>${r.net_ok_count != null ? r.net_ok_count + '/' + r.net_total : (r.ok_count || 0) + '/' + ((r.ok_count || 0) + (r.fail_count || 0))}</td>
           <td>${r.provider_hop ? 'hop ' + escapeHtml(String(r.provider_hop)) : '—'}</td>
         </tr>`;
       }).join('');
@@ -1421,7 +1433,7 @@ const TesterPage = {
         <p style="font-size:12px;color:var(--text-secondary);margin-bottom:10px">Протестированы 8 стратегий. Лучшая выбрана автоматически.</p>
         <div class="table-wrapper">
           <table class="live-table analysis-table">
-            <thead><tr><th>Профиль</th><th>Score</th><th>OK</th><th>Hop</th></tr></thead>
+            <thead><tr><th>Профиль</th><th>Доступность</th><th>OK</th><th>Hop</th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
         </div>
@@ -1441,20 +1453,21 @@ const TesterPage = {
     if (!allResults || !allResults.length) return;
     const container = document.getElementById('testResults');
     const rows = allResults.map((r, i) => {
-      const ws = r.success_rate != null ? r.success_rate.toFixed(0) : '0';
+      const rate = r.network_rate != null ? r.network_rate : (r.success_rate || 0);
+      const ws = rate.toFixed(0);
       let medal = '';
       if (i === 0) medal = 'medal-gold';
       else if (i === 1) medal = 'medal-silver';
       else if (i === 2) medal = 'medal-bronze';
       let scoreRow = '';
-      if (r.success_rate >= 80) scoreRow = 'score-row-good';
-      else if (r.success_rate >= 40) scoreRow = 'score-row-mid';
+      if (rate >= 80) scoreRow = 'score-row-good';
+      else if (rate >= 40) scoreRow = 'score-row-mid';
       else scoreRow = 'score-row-bad';
       return `<tr class="${medal} ${scoreRow}">
         <td>${escapeHtml(r.profile)}</td>
         <td>${r.blob ? escapeHtml(r.blob) : '—'}</td>
-        <td style="color:${scoreColor(r.success_rate || 0)};font-weight:700">${ws}</td>
-        <td>${r.ok_count || 0}/${(r.ok_count || 0) + (r.fail_count || 0)}</td>
+        <td style="color:${scoreColor(rate)};font-weight:700">${ws}</td>
+        <td>${r.net_ok_count != null ? r.net_ok_count + '/' + r.net_total : (r.ok_count || 0) + '/' + ((r.ok_count || 0) + (r.fail_count || 0))}</td>
         <td>${r.provider_hop ? escapeHtml(String(r.provider_hop)) : '—'}</td>
       </tr>`;
     }).join('');
@@ -1468,7 +1481,7 @@ const TesterPage = {
               <tr>
                 <th>Профиль</th>
                 <th>Blob</th>
-                <th>Score</th>
+                <th>Доступность</th>
                 <th>OK</th>
                 <th>Hop</th>
               </tr>
@@ -1481,16 +1494,17 @@ const TesterPage = {
 
   _renderTop3(results) {
     if (!results || results.length < 3) return '';
-    const sorted = [...results].sort((a, b) => (b.success_rate || 0) - (a.success_rate || 0));
+    const rate = r => (r.network_rate != null ? r.network_rate : (r.success_rate || 0));
+    const sorted = [...results].sort((a, b) => rate(b) - rate(a));
     const top3 = sorted.slice(0, 3);
     const rows = top3.map((r, i) => {
       const labels = ['🥇', '🥈', '🥉'];
-      const ws = r.success_rate != null ? r.success_rate.toFixed(0) : '0';
+      const ws = (r.network_rate != null ? r.network_rate : (r.success_rate || 0)).toFixed(0);
       return `<tr>
         <td style="font-size:18px;text-align:center">${labels[i]}</td>
         <td><strong>${escapeHtml(r.profile || '')}</strong>${r.blob ? ' + ' + escapeHtml(r.blob) : ''}</td>
-        <td style="color:${scoreColor(r.success_rate || 0)};font-weight:700">${ws}</td>
-        <td>${r.ok_count || 0}/${(r.ok_count || 0) + (r.fail_count || 0)}</td>
+        <td style="color:${scoreColor(r.network_rate != null ? r.network_rate : (r.success_rate || 0))};font-weight:700">${ws}</td>
+        <td>${r.net_ok_count != null ? r.net_ok_count + '/' + r.net_total : (r.ok_count || 0) + '/' + ((r.ok_count || 0) + (r.fail_count || 0))}</td>
       </tr>`;
     }).join('');
     return `<div class="card">
@@ -1519,30 +1533,79 @@ const TesterPage = {
     const phase2 = this.state.phase2Results;
 
     if (mode === 'basic') {
-      // Simple results
       const allResults = phase2 && phase2.all_results;
-      if (allResults && allResults.length) {
-        const best = allResults.reduce((a, b) => (a.success_rate || 0) > (b.success_rate || 0) ? a : b);
-        const bestProfile = best && best.profile ? best.profile : (phase2.profile || '—');
+      const rec = phase2 && phase2.recommendation;
+      const naked = phase2 && phase2.naked;
 
-        html += '<div class="card"><h3>📊 Результаты теста</h3><div class="table-wrapper"><table class="live-table analysis-table"><thead><tr><th>Профиль</th><th>Score</th><th>OK</th></tr></thead><tbody>';
+      // ── Verdict card (top) ──
+      if (rec) {
+        const vmeta = {
+          ok:            { icon: '✅', title: 'Работает', cls: 'verdict-ok' },
+          partial:       { icon: '⚠️', title: 'Частично', cls: 'verdict-partial' },
+          no_bypass:     { icon: '❌', title: 'Не пробито', cls: 'verdict-fail' },
+          engine_broken: { icon: '🔧', title: 'Проблема с движком', cls: 'verdict-fail' },
+          no_data:       { icon: '➖', title: 'Нет данных', cls: 'verdict-neutral' },
+        };
+        const vm = vmeta[rec.verdict] || vmeta.no_data;
+        let keyHtml = '';
+        if (rec.key_hosts && rec.key_hosts.length) {
+          keyHtml = '<div class="key-hosts">' + rec.key_hosts.map(k => {
+            const ok = k.status === 'OK';
+            const t = k.time_ms ? this.formatTimeColored(k.time_ms) : '';
+            const note = (k.domain === 'www.youtube.com' && !ok)
+              ? '<div class="kh-note">известный TLS-прикол: в браузере YouTube работает через QUIC</div>' : '';
+            return `<div class="key-host ${ok ? 'key-host-ok' : 'key-host-fail'}">
+              <span class="kh-icon">${ok ? '✅' : '❌'}</span>
+              <span class="kh-label">${escapeHtml(k.label)}</span>
+              <span class="kh-status">${ok ? 'доступен' : 'не пробит'}</span>
+              ${t ? '<span class="kh-time">' + t + '</span>' : ''}${note}</div>`;
+          }).join('') + '</div>';
+        }
+        html += `<div class="card ${vm.cls}">
+          <h3>${vm.icon} Итог теста: ${vm.title}</h3>
+          <p class="verdict-message">${escapeHtml(rec.message || '')}</p>
+          ${keyHtml}
+          <div class="verdict-actions" style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
+            ${rec.best_profile ? `<button class="btn btn-primary" onclick="TesterPage.applyRecommended()">🚀 Запустить: ${escapeHtml(rec.best_profile)}</button>` : ''}
+            ${rec.same_as_naked ? `<span style="font-size:12px;color:var(--warn);align-self:center">результат совпадает с голым тестом</span>` : ''}
+          </div>
+        </div>`;
+      }
+
+      // ── Results table ──
+      if (allResults && allResults.length) {
+        const bestProfile = rec && rec.best_profile;
+        html += '<div class="card"><h3>📊 Результаты теста</h3><div class="table-wrapper"><table class="live-table analysis-table"><thead><tr><th>Профиль</th><th>Доступность</th><th>OK</th><th>Пинги</th><th>Hop</th></tr></thead><tbody>';
         for (const r of allResults) {
-          const ws = r.success_rate != null ? r.success_rate.toFixed(0) : '0';
+          const ws = r.network_rate != null ? r.network_rate.toFixed(0) : '0';
           const isBest = r.profile === bestProfile;
-          const cls = parseFloat(ws) >= 0.70 ? 'score-row-good' : parseFloat(ws) >= 0.40 ? 'score-row-mid' : 'score-row-bad';
-          html += `<tr class="${cls}"><td>${escapeHtml(r.profile || '')}${isBest ? ' <span class="badge badge-safe">best</span>' : ''}</td><td style="color:${scoreColor(r.success_rate || 0)};font-weight:700">${ws}</td><td>${r.ok_count || 0}/${(r.ok_count || 0) + (r.fail_count || 0)}</td></tr>`;
+          const cls = parseFloat(ws) >= 70 ? 'score-row-good' : parseFloat(ws) >= 40 ? 'score-row-mid' : 'score-row-bad';
+          const okTxt = r.net_ok_count != null ? r.net_ok_count + '/' + r.net_total : (r.ok_count || 0) + '/' + ((r.ok_count || 0) + (r.fail_count || 0));
+          const pings = (r.ping_ok_count != null ? r.ping_ok_count : 0) + '/' + (r.ping_total != null ? r.ping_total : 0);
+          html += `<tr class="${cls}"><td>${escapeHtml(r.profile || '')}${isBest ? ' <span class="badge badge-safe">best</span>' : ''}</td><td style="color:${scoreColor(r.network_rate != null ? r.network_rate : 0)};font-weight:700">${ws}%</td><td>${okTxt}</td><td>${pings}</td><td>${r.provider_hop ? 'hop ' + escapeHtml(String(r.provider_hop)) : '—'}</td></tr>`;
         }
         html += '</tbody></table></div>';
         if (bestProfile) {
           html += `<p style="margin-top:10px;font-size:14px">Рекомендуемая стратегия: <strong>${escapeHtml(bestProfile)}</strong></p>`;
         }
         html += '</div>';
-
-        // Domain grid
-        html += '<div class="card"><h3>🔍 Результаты по доменам</h3>' + this.renderResultGrid(allResults) + '</div>';
-        // Top 3
-        html += this._renderTop3(allResults);
       }
+
+      // ── Blocked domains (nothing bypassed them) ──
+      if (rec && rec.blocked_domains && rec.blocked_domains.length && rec.verdict !== 'ok') {
+        html += '<div class="card"><h3>🚫 Не пробито ни одной стратегией</h3><div class="blocked-list">' +
+          rec.blocked_domains.map(d => `<span class="blocked-chip">${escapeHtml(d)}</span>`).join('') +
+          '</div></div>';
+      }
+
+      // ── Naked baseline note ──
+      if (naked && naked.net_total) {
+        html += `<div class="card"><h3>🌐 Базовый уровень (без защиты)</h3><p style="font-size:13px;color:var(--text-secondary);margin:0">Доступно без zapret: <b>${naked.net_ok_count}/${naked.net_total}</b> (${(naked.network_rate || 0).toFixed(0)}%). Если стратегии дают тот же результат — обход не применяется.</p></div>`;
+      }
+
+      // ── Domain grid + Top 3 ──
+      html += '<div class="card"><h3>🔍 Результаты по доменам (лучшая стратегия)</h3>' + this.renderResultGrid(allResults) + '</div>';
+      html += this._renderTop3(allResults);
     } else {
       // Advanced mode: showComparison + showFullAnalysisTable already ran inside Phase 3 handler
       html = document.getElementById('testResults').innerHTML;
@@ -1645,6 +1708,19 @@ const TesterPage = {
     document.getElementById('testProgressText').textContent = 'Отменено';
     this.clearElapsedTimer();
     setTimeout(() => this.resetToIntro(), 1500);
+  },
+
+  async applyRecommended() {
+    const rec = this.state.phase2Results && this.state.phase2Results.recommendation;
+    const profile = rec && rec.best_profile;
+    if (!profile) { showToast('Нет рекомендации', 'warn'); return; }
+    try {
+      const r = await apiPost('/start', { profile });
+      if (r.status === 'ok') showToast('Запущена стратегия: ' + profile, 'ok');
+      else showToast(r.message || 'Ошибка запуска', 'error');
+    } catch (e) {
+      showToast('Ошибка: ' + e.message, 'error');
+    }
   },
 
   resetToIntro() {

@@ -61,6 +61,13 @@ PING_HOSTS: list[str] = [
     "9.9.9.9",
 ]
 
+# Hosts probed WITHOUT protection before the profile sweep (naked baseline).
+# If every strategy yields the same result as this baseline, winws2 is
+# probably not altering traffic on this machine (or the DPI is extreme).
+NAKED_BASELINE_HOSTS: list[str] = [
+    "discord.com", "www.youtube.com", "gateway.discord.gg", "i.ytimg.com",
+]
+
 # CDN test hosts (опционально, через галочку)
 CDN_HOSTS = [
     "hyperion-cs.github.io", "www.mobil.com.se", "cdn.apple-mapkit.com",
@@ -137,6 +144,16 @@ class ProfileTestResult:
     fail_count: int = 0
     total_time: float = 0.0
     success_rate: float = 0.0
+    # Strategy score on network tests ONLY (curl/TLS, pings excluded).
+    # Pings measure raw reachability, not DPI bypass: including them in the
+    # score produces misleading "partial" results (e.g. all pings OK but
+    # every blocked host still blocked).
+    net_ok_count: int = 0
+    net_fail_count: int = 0
+    net_total: int = 0
+    network_rate: float = 0.0
+    ping_ok_count: int = 0
+    ping_total: int = 0
     tier: str = "full"
     provider_hop: int = 0      # first non-private hop (TTL probe)
     provider_ip: str = ""       # IP of that hop
@@ -525,6 +542,26 @@ class Zapret2Tester:
         ok = sum(1 for r in results if r.status == "OK")
         return ok / len(results)
 
+    @staticmethod
+    def _net_stats(results: list[TestResult]) -> tuple[int, int, int, float, int, int]:
+        """Split results into network (curl/TLS) vs ping counters.
+
+        Returns (net_ok, net_fail, net_total, network_rate_pct,
+                 ping_ok, ping_total).  network_rate is the strategy score:
+        pings measure raw reachability, not DPI bypass — including them
+        inflates the score on machines where pings pass but every blocked
+        host stays blocked (e.g. all 8 presets "20/30 (67%)" while actual
+        connectivity was 4/13).
+        """
+        net = [r for r in results if r.test_type != "ping"]
+        pings = [r for r in results if r.test_type == "ping"]
+        net_ok = sum(1 for r in net if r.status == "OK")
+        net_total = len(net)
+        net_fail = net_total - net_ok
+        ping_ok = sum(1 for r in pings if r.status == "OK")
+        rate = (net_ok / net_total * 100) if net_total else 0.0
+        return net_ok, net_fail, net_total, rate, ping_ok, len(pings)
+
     # ── TTL probe ──────────────────────────────────────────────────
     # Runs a traceroute to detect the first hop outside the local network.
     # That hop is likely the provider's DPI equipment.
@@ -658,6 +695,7 @@ class Zapret2Tester:
         total_time = sum(r.time_ms for r in all_results)
         total = ok_count + fail_count
         success_rate = (ok_count / total * 100) if total else 0
+        net_ok, net_fail, net_total, network_rate, ping_ok, ping_total = self._net_stats(all_results)
         if self._logger:
             self._logger.result(profile_name, ok_count, fail_count, success_rate, provider_hop, provider_ip or "")
         _logged_progress(100, f"Готово: {ok_count}/{total} OK ({success_rate:.0f}%)")
@@ -665,6 +703,8 @@ class Zapret2Tester:
             profile_name=profile_name, results=all_results,
             ok_count=ok_count, fail_count=fail_count, total_time=total_time,
             success_rate=success_rate, tier=tier,
+            net_ok_count=net_ok, net_fail_count=net_fail, net_total=net_total,
+            network_rate=network_rate, ping_ok_count=ping_ok, ping_total=ping_total,
             provider_hop=provider_hop, provider_ip=provider_ip,
         )
 
@@ -796,6 +836,7 @@ class Zapret2Tester:
         total_time = sum(r.time_ms for r in all_results)
         total = ok_count + fail_count
         success_rate = (ok_count / total * 100) if total else 0
+        net_ok, net_fail, net_total, network_rate, ping_ok, ping_total = self._net_stats(all_results)
 
         result = ProfileTestResult(
             profile_name=profile_name,
@@ -805,6 +846,12 @@ class Zapret2Tester:
             total_time=total_time,
             success_rate=success_rate,
             tier=tier,
+            net_ok_count=net_ok,
+            net_fail_count=net_fail,
+            net_total=net_total,
+            network_rate=network_rate,
+            ping_ok_count=ping_ok,
+            ping_total=ping_total,
             cdn_results=cdn_results,
         )
 
@@ -833,6 +880,118 @@ class Zapret2Tester:
     ) -> ProfileTestResult:
         """Raw connection test WITHOUT any zapret running."""
         return self._test_baseline("__naked__", progress_cb, tier, result_cb, kill_processes=True, skip_cdn=skip_cdn)
+
+    def run_naked_baseline(
+        self,
+        progress_cb: Callable[[int, str], None],
+        result_cb: Optional[Callable[[TestResult], None]] = None,
+    ) -> Optional[ProfileTestResult]:
+        """Quick connectivity check with zero protection (4 hosts, ~3-5s).
+
+        Runs before the profile sweep so the final recommendation can detect
+        the "every strategy == naked" case — a sign that winws2 is not
+        actually altering traffic on this machine, or the DPI blocks all
+        desync attempts.  Returns None if the test was cancelled.
+        """
+        self.shutdown_event.clear()
+        self._ensure_winws2_dead()
+        if self.shutdown_event.is_set():
+            return None
+        progress_cb(2, "Голый тест (без защиты) — базовый уровень...")
+        results = self._run_domain_tests(
+            NAKED_BASELINE_HOSTS, concurrency=4, expand_www=False,
+            result_cb=result_cb,
+        )
+        net_ok, net_fail, net_total, network_rate, *_ = self._net_stats(results)
+        return ProfileTestResult(
+            profile_name="__naked__", results=results,
+            ok_count=net_ok, fail_count=net_fail,
+            success_rate=network_rate,
+            net_ok_count=net_ok, net_fail_count=net_fail, net_total=net_total,
+            network_rate=network_rate, tier="smoke",
+        )
+
+    def collect_sanity_info(self, profile_name: str, blocked_domains: list[str]) -> dict:
+        """Diagnostics that distinguish 'strong DPI' from 'winws2 does nothing'.
+
+        Two cheap checks (no debug logging):
+        1. dry-run of the SAME args the tester builds — winws2 prints how many
+           desync profiles it loaded.  0-1 profiles (instead of the expected
+           4-7 for default.txt) is the old short-path bug signature (§1):
+           the preset is broken on THIS machine regardless of the DPI.
+        2. List coverage — if a blocked domain is absent from every @lists/*.txt
+           the preset references, its desync profile never fires (no_action,
+           §15) and the strategy cannot bypass it.
+        """
+        exe = self.bin_dir / "winws2.exe"
+        if not exe.exists():
+            exe = self.root_dir / "winws2.exe"
+        preset = self.root_dir / "presets" / f"{profile_name}.txt"
+        if not exe.exists() or not preset.exists():
+            return {"dry_run": {"ok": False, "profiles_loaded": None, "errors": ["winws2 или пресет не найден"]},
+                    "list_coverage": []}
+
+        dry = {"ok": True, "profiles_loaded": None, "errors": []}
+        try:
+            args = build_args_from_preset(self.root_dir, self.lua_dir, self.blobs_dir, preset)
+            r = subprocess.run(
+                [str(exe), "--dry-run"] + args,
+                capture_output=True, text=True, encoding="oem", errors="replace",
+                timeout=10, cwd=str(self.root_dir),
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
+            output = ((r.stdout or "") + "\n" + (r.stderr or "")).lower()
+            import re as _re
+            m = _re.search(r"(\d+)\s+user defined desync profile", output)
+            if m:
+                dry["profiles_loaded"] = int(m.group(1))
+            for line in output.splitlines():
+                s = line.strip()
+                if any(marker in s for marker in
+                       ("unknown option", "bad file", "cannot access file", "cannot open",
+                        "lua error", "error loading", "cannot create")):
+                    dry["errors"].append(s)
+            if dry["errors"]:
+                dry["ok"] = False
+        except (OSError, subprocess.TimeoutExpired) as e:
+            # WinError 740 = process needs elevation (tester normally runs
+            # elevated, but never treat "can't spawn" as a broken engine).
+            if getattr(e, "winerror", None) == 740 or "WinError 740" in str(e):
+                dry = {"ok": True, "profiles_loaded": None, "errors": []}
+            else:
+                dry["ok"] = False
+                dry["errors"].append(str(e))
+
+        # ── List coverage ──
+        include_lists: list[tuple[str, Path]] = []
+        try:
+            for line in preset.read_text(encoding="utf-8-sig").splitlines():
+                line = line.strip()
+                if line.startswith("--hostlist=") and "@lists/" in line:
+                    name = line.split("=", 1)[1].split("/")[-1]
+                    if not name.endswith(".txt"):
+                        name += ".txt"
+                    include_lists.append((name, self.root_dir / "lists" / name))
+        except OSError:
+            include_lists = []
+
+        coverage: list[dict] = []
+        for domain in blocked_domains:
+            d = domain.lower()
+            found = []
+            for name, path in include_lists:
+                if not path.exists():
+                    continue
+                try:
+                    lines = [l.strip().lower() for l in path.read_text(encoding="utf-8-sig").splitlines()
+                             if l.strip() and not l.strip().startswith(("#", "//"))]
+                except OSError:
+                    continue
+                if any(d == l or d.endswith("." + l) for l in lines):
+                    found.append(name)
+            coverage.append({"domain": domain, "covered": bool(found), "lists": found})
+
+        return {"dry_run": dry, "list_coverage": coverage}
 
     def is_running(self) -> bool:
         return self._any_winws2_running()
