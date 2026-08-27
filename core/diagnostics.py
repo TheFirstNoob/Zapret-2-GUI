@@ -110,6 +110,7 @@ def _check_preset(root_dir: Path, cfg: AppConfig) -> Check:
         root_dir, root_dir / "lua", root_dir / "blobs", preset,
         debug=cfg.winws2_debug, game_filter_mode=cfg.game_filter_mode,
         discord_voice=cfg.discord_voice, autohostlist=cfg.autohostlist,
+        ipset_catchall=cfg.ipset_catchall,
     )
     ok, err = validate_args(exe, args, cwd=root_dir)
     if ok:

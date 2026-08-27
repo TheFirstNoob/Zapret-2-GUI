@@ -64,6 +64,7 @@ def build_args_from_preset(
     game_filter_mode: str = "off",
     discord_voice: bool = False,
     autohostlist: bool = False,
+    ipset_catchall: bool = False,
 ) -> list[str]:
     """Read a .txt preset and return a list of command-line tokens.
 
@@ -75,6 +76,14 @@ def build_args_from_preset(
     ``%GameFilter%`` placeholders in the preset are replaced with
     ``1024-65535`` when *game_filter_mode* is not ``"off"``, or removed
     (with trailing-comma cleanup) otherwise.
+
+    When *ipset_catchall* is True, every ``--hostlist=@lists/list-general.txt``
+    block is replaced with an IP-based catch-all (``--ipset=ipset-all.txt.gz``
+    + ``--ipset-exclude=ipset-exclude.txt``).  This mirrors the Zapret 1
+    "general" block: desync applies to ALL traffic in the known-blocked
+    subnets (no SNI hostlist include — winws2 ANDs ipset with hostlist, so
+    keeping the include would neuter the catch-all).  The SNI-based
+    list-exclude and user exclusions still apply.
 
     When *debug* is True, appends ``--debug=@debug_winws2.log`` so that
     winws2 writes a diagnostic log into the root directory.  The caller's ZIP
@@ -105,6 +114,12 @@ def build_args_from_preset(
     for line in lines:
         line = line.strip()
         if not line or line.startswith("#") or line.startswith("--comment"):
+            continue
+        # Targeted-mode override: turn list-general SNI blocks into an
+        # IP-based catch-all when the toggle is on (see docstring).
+        if ipset_catchall and line.startswith("--hostlist=") and "list-general.txt" in line:
+            tokens.append(f"--ipset={short_lists}\\ipset-all.txt.gz")
+            tokens.append(f"--ipset-exclude={short_lists}\\ipset-exclude.txt")
             continue
         for prefix, spath in [("@lists/", short_lists)]:
             if prefix in line:

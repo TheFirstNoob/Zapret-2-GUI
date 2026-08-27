@@ -570,6 +570,39 @@ Zapret 1 через последний strategy-bat). Результат в по
 
 ---
 
+## 24. Тумблер «Общий IP-обход» (ipset_catchall, 2026-08-27)
+
+Точечная стратегия по умолчанию + опциональный catch-all, как в Zapret 1.
+
+### Архитектура (targeted)
+1. **`default.txt`** — снова точечный: SNI-списки (list-google/discord/general) +
+   excludes. Без ipset. Безопасный дефолт «не трогаем то, что работает».
+2. **Тумблер «Общий IP-обход»** (`AppConfig.ipset_catchall`, как
+   GameFilter/DiscordVoice): при включении лаунчер ЗАМЕНЯЕТ каждый блок
+   `--hostlist=@lists/list-general.txt` на catch-all:
+   `--ipset=<short lists>\ipset-all.txt.gz` + `--ipset-exclude=...ipset-exclude.txt`.
+   include-хостлист УДАЛЯЕТСЯ — winws2 применяет ipset и hostlist как AND
+   (desync.c: `IpsetCheck` → затем hostlist), иначе catch-all не работал бы.
+   `--hostlist-exclude` (list-exclude + user) остаётся.
+3. **`lists/ipset-exclude.txt`** — IP-исключения (приватные диапазоны из v1);
+   редактируется на странице «Списки» (`/api/ipset-exclude-list`).
+4. **Autohostlist** — отдельный тумблер (динамическое точечное дополнение).
+
+### Проверено
+- OFF: 7 профилей, ipset отсутствует, 2× hostlist=list-general ✓
+- ON: 4 ipset-аргумента (2 блока × ipset+exclude), hostlist удалён, 7 профилей ✓
+- Все 8 пресетов валидны в обоих режимах (dry-run)
+- При живом winws2 dry-run даёт «1 profile» + «already running» — НЕ баг
+  (см. §23-фикс: profiles_loaded=None, sanity это обрабатывает)
+
+### Места, где ipset_catchall прокидывается
+config.py (AppConfig) → launcher.build_args_from_preset → zapret_controller.start →
+server (_handle_start_zapret, _restore_protection_after_naked, _prepare_service_bat,
+_handle_get/save_config) → diagnostics._check_preset. UI: тумблер на Главной +
+третья карточка «IP-исключения» на странице «Списки».
+
+---
+
 ## DNS
 
 Яндекс.Браузер и аналоги принудительно подменяют DNS на 77.88.8.8.

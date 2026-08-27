@@ -203,10 +203,12 @@ const MainPage = {
       const dv = document.getElementById('toggleDiscordVoice');
       const db = document.getElementById('toggleWinws2Debug');
       const ah = document.getElementById('toggleAutoHostlist');
+      const ipf = document.getElementById('toggleIpFilter');
       if (gf && c.game_filter_mode) gf.value = c.game_filter_mode;
       if (dv) dv.checked = !!c.discord_voice;
       if (db) db.checked = !!c.winws2_debug;
       if (ah) ah.checked = !!c.autohostlist;
+      if (ipf) ipf.checked = !!c.ipset_catchall;
     } catch (e) { /* ignore */ }
   },
 
@@ -386,7 +388,8 @@ const MainPage = {
     const dv = document.getElementById('toggleDiscordVoice').checked;
     const db = document.getElementById('toggleWinws2Debug').checked;
     const ah = document.getElementById('toggleAutoHostlist').checked;
-    await apiPost('/config', { game_filter_mode: gf, discord_voice: dv, winws2_debug: db, autohostlist: ah });
+    const ipf = document.getElementById('toggleIpFilter').checked;
+    await apiPost('/config', { game_filter_mode: gf, discord_voice: dv, winws2_debug: db, autohostlist: ah, ipset_catchall: ipf });
     const el = document.getElementById('startResult');
     el.textContent = '⏳ Запуск...';
     el.className = '';
@@ -481,7 +484,8 @@ const MainPage = {
       const dv = document.getElementById('toggleDiscordVoice').checked;
       const db = document.getElementById('toggleWinws2Debug').checked;
       const ah = document.getElementById('toggleAutoHostlist').checked;
-      await apiPost('/config', { game_filter_mode: gf, discord_voice: dv, winws2_debug: db, autohostlist: ah });
+      const ipf = document.getElementById('toggleIpFilter').checked;
+      await apiPost('/config', { game_filter_mode: gf, discord_voice: dv, winws2_debug: db, autohostlist: ah, ipset_catchall: ipf });
       el.textContent = '⏹ Остановка...';
       await apiPost('/stop', {});
       await new Promise(r => setTimeout(r, 1000));
@@ -534,10 +538,11 @@ const MainPage = {
     const dv = document.getElementById('toggleDiscordVoice').checked;
     const db = document.getElementById('toggleWinws2Debug').checked;
     const ah = document.getElementById('toggleAutoHostlist').checked;
+    const ipf = document.getElementById('toggleIpFilter').checked;
     this._setServiceBusy(true);
     document.getElementById('serviceStatus').textContent = '⏳ Установка...';
     try {
-      const r = await apiPost('/service/install', { profile, game_filter: gf, discord_voice: dv, debug: db, autohostlist: ah });
+      const r = await apiPost('/service/install', { profile, game_filter: gf, discord_voice: dv, debug: db, autohostlist: ah, ipset_catchall: ipf });
       showToast(r.message || 'Готово', r.status === 'ok' ? 'ok' : 'error');
       this.refreshServiceStatus();
     } catch (e) {
@@ -581,6 +586,7 @@ const ExcludePage = {
   async onShow() {
     await this.loadExclude();
     await this.loadInclude();
+    await this.loadIpsetExclude();
   },
 
   async loadExclude() {
@@ -594,6 +600,13 @@ const ExcludePage = {
     try {
       const r = await apiGet('/include-list');
       document.getElementById('includeTextarea').value = r.content || '';
+    } catch (e) { /* ignore */ }
+  },
+
+  async loadIpsetExclude() {
+    try {
+      const r = await apiGet('/ipset-exclude-list');
+      document.getElementById('ipsetExcludeTextarea').value = r.content || '';
     } catch (e) { /* ignore */ }
   },
 
@@ -619,6 +632,22 @@ const ExcludePage = {
     el.textContent = '⏳ Сохранение...';
     try {
       const r = await apiPost('/include-list', { content });
+      if (r.status === 'ok') {
+        el.textContent = '✅ ' + (r.message || 'OK');
+      } else {
+        el.textContent = '❌ ' + (r.message || 'Ошибка');
+      }
+    } catch (e) {
+      el.textContent = '❌ ' + e.message;
+    }
+  },
+
+  async saveIpsetExclude() {
+    const content = document.getElementById('ipsetExcludeTextarea').value;
+    const el = document.getElementById('ipsetExcludeSaveResult');
+    el.textContent = '⏳ Сохранение...';
+    try {
+      const r = await apiPost('/ipset-exclude-list', { content });
       if (r.status === 'ok') {
         el.textContent = '✅ ' + (r.message || 'OK');
       } else {

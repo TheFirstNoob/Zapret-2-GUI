@@ -29,6 +29,7 @@ class AppConfig:
     discord_voice: bool = False
     winws2_debug: bool = False
     autohostlist: bool = False
+    ipset_catchall: bool = False
 
 
 DEFAULT_PROFILE = "default"

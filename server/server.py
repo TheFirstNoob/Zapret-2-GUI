@@ -267,6 +267,7 @@ def _restore_protection_after_naked(z2_was: bool, z1_was: bool, state) -> str:
                 discord_voice=cfg.discord_voice,
                 winws2_debug=cfg.winws2_debug,
                 autohostlist=cfg.autohostlist,
+                ipset_catchall=cfg.ipset_catchall,
             )
             return (f"Zapret 2 восстановлен (пресет {profile})" if ok
                     else f"Не удалось восстановить Zapret 2: {msg}")
@@ -725,6 +726,8 @@ class ZapretHandler(BaseHTTPRequestHandler):
                 self._handle_get_list("list-exclude-user.txt")
             elif path == "/api/include-list":
                 self._handle_get_list("list-include-user.txt")
+            elif path == "/api/ipset-exclude-list":
+                self._handle_get_list("ipset-exclude.txt")
             elif path == "/api/service/status":
                 self._handle_service_status()
             elif path == "/api/zapret1/strategies":
@@ -765,6 +768,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
             "discord_voice": cfg.discord_voice,
             "winws2_debug": cfg.winws2_debug,
             "autohostlist": cfg.autohostlist,
+            "ipset_catchall": cfg.ipset_catchall,
         }})
 
     def _handle_version(self) -> None:
@@ -880,6 +884,8 @@ class ZapretHandler(BaseHTTPRequestHandler):
                 self._handle_save_list(data, "list-exclude-user.txt")
             elif path == "/api/include-list":
                 self._handle_save_list(data, "list-include-user.txt")
+            elif path == "/api/ipset-exclude-list":
+                self._handle_save_list(data, "ipset-exclude.txt")
             elif path == "/api/service/install":
                 self._handle_service_install(data)
             elif path == "/api/service/remove":
@@ -913,6 +919,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
         if "discord_voice" in data: cfg.discord_voice = bool(data["discord_voice"])
         if "winws2_debug" in data: cfg.winws2_debug = bool(data["winws2_debug"])
         if "autohostlist" in data: cfg.autohostlist = bool(data["autohostlist"])
+        if "ipset_catchall" in data: cfg.ipset_catchall = bool(data["ipset_catchall"])
         ok = get_config_manager().save(cfg)
         self._send_json({"status": "ok" if ok else "error"})
 
@@ -977,6 +984,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
             discord_voice=cfg.discord_voice,
             winws2_debug=cfg.winws2_debug,
             autohostlist=cfg.autohostlist,
+            ipset_catchall=cfg.ipset_catchall,
         )
         self._send_json({"status": "ok" if ok else "error", "message": msg})
 
@@ -1007,6 +1015,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
         discord_voice = bool(data.get("discord_voice", cfg.discord_voice))
         debug = bool(data.get("debug", cfg.winws2_debug))
         autohostlist = bool(data.get("autohostlist", cfg.autohostlist))
+        ipset_catchall = bool(data.get("ipset_catchall", cfg.ipset_catchall))
         root = get_root_dir()
         exe = get_controller().winws2_path
         if exe is None:
@@ -1017,7 +1026,8 @@ class ZapretHandler(BaseHTTPRequestHandler):
         args = build_args_from_preset(root, root / "lua", root / "blobs", preset, debug=debug,
                                        game_filter_mode=game_filter,
                                        discord_voice=discord_voice,
-                                       autohostlist=autohostlist)
+                                       autohostlist=autohostlist,
+                                       ipset_catchall=ipset_catchall)
         ok, err = validate_args(exe, args, cwd=root)
         if not ok:
             return False, err

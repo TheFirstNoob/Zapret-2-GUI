@@ -156,6 +156,11 @@
                   <label class="toggle-switch"><input type="checkbox" id="toggleAutoHostlist"><span class="toggle-slider"></span></label>
                 </label>
                 <label class="toggle-row">
+                  <span class="toggle-label">Общий IP-обход</span>
+                  <span class="toggle-desc">Применять обход ко ВСЕМ известным подсетям блокировок (как в Zapret 1)<br>Точечные списки доменов работают в любом случае. Исключения — в разделе «Списки»</span>
+                  <label class="toggle-switch"><input type="checkbox" id="toggleIpFilter"><span class="toggle-slider"></span></label>
+                </label>
+                <label class="toggle-row">
                   <span class="toggle-label">GameFilter</span>
                   <span class="toggle-desc">Проброс высоких портов (1024-65535) для игр и голосовых чатов</span>
                   <select class="input" id="toggleGameFilter" style="width:130px;cursor:pointer;font-size:12px">
@@ -216,6 +221,18 @@
               <div style="display:flex;gap:8px;margin-top:12px">
                 <button class="btn btn-primary" onclick="ExcludePage.saveInclude()">💾 Сохранить</button>
                 <span id="includeSaveResult" style="font-size:12px;color:var(--text-secondary);align-self:center"></span>
+              </div>
+            </div>
+            <div class="card" style="display:flex;flex-direction:column;height:220px;grid-column:1/-1">
+              <h3 style="margin:0 0 4px">🛡️ IP-исключения (ipset-exclude)</h3>
+              <div style="font-size:12px;color:var(--text-secondary);margin:0 0 12px">
+                Подсети (CIDR), которые НЕ будут обрабатываться при включённом «Общем IP-обходе».
+                По умолчанию — только приватные/служебные диапазоны.
+              </div>
+              <textarea class="input textarea-list" id="ipsetExcludeTextarea" placeholder="192.168.0.0/16" style="flex:1;min-height:0"></textarea>
+              <div style="display:flex;gap:8px;margin-top:12px">
+                <button class="btn btn-primary" onclick="ExcludePage.saveIpsetExclude()">💾 Сохранить</button>
+                <span id="ipsetExcludeSaveResult" style="font-size:12px;color:var(--text-secondary);align-self:center"></span>
               </div>
             </div>
           </div>
