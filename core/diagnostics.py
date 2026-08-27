@@ -149,6 +149,121 @@ def _check_net() -> list[Check]:
     return checks
 
 
+def classify_block(host: str, timeout: float = 2.5, max_ips: int = 2) -> dict:
+    """Determine WHAT kind of block a host faces (pure stdlib, no curl).
+
+    Probes, in order:
+    1. DNS resolution                      -> "dns" (hijack / no answer)
+    2. TCP connect to :443 (any IP)        -> "ip_block" (SYN-level/port filter)
+    3. TLS handshake with the REAL SNI     -> "ok" (site reachable)
+    4. TLS handshake to the SAME IP with a
+       benign SNI (google/cloudflare)      -> "sni_block": the IP is clean, the
+       block is triggered ONLY by the SNI — exactly what a desync must defeat.
+       If even a foreign SNI fails         -> "tls_block" (not SNI-bound:
+       IP/port level or deep DPI).
+
+    The SNI-swap step is the key validator: on "sni_block" a working zapret
+    MUST be able to bypass the site.  If no preset bypasses it anyway, the
+    problem is the engine/lists, not "the DPI is too strong".
+    Never raises; TLS certs are ignored (handshake completion is the signal).
+    """
+    import socket
+    import ssl
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    steps: dict = {}
+    try:
+        infos = socket.getaddrinfo(host, 443, socket.AF_INET, socket.SOCK_STREAM)
+    except OSError as e:
+        return {"kind": "dns", "detail": f"не удалось зарезолвить {host}: {e}", "steps": steps}
+    ips = list(dict.fromkeys(i[4][0] for i in infos))[:max_ips]
+    steps["ips"] = ips
+
+    def _tls(ip: str, sni: str) -> bool:
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        try:
+            raw = socket.create_connection((ip, 443), timeout=timeout)
+            with ctx.wrap_socket(raw, server_hostname=sni) as ss:
+                return True
+        except (OSError, ssl.SSLError):
+            return False
+
+    def _probe(ip: str, sni: Optional[str]) -> bool:
+        """TCP connect probe when sni is None, TLS-handshake probe otherwise."""
+        if sni is None:
+            try:
+                s = socket.create_connection((ip, 443), timeout=timeout)
+                s.close()
+                return True
+            except OSError:
+                return False
+        return _tls(ip, sni)
+
+    def _first_success(ips, sni) -> bool:
+        # Note: NOT a `with` block — exiting a context manager calls
+        # shutdown(wait=True) and blocks until blackholed probes time out,
+        # adding ~timeout to every step.  wait=False lets them die on their own.
+        pool = ThreadPoolExecutor(max_workers=max_ips)
+        futs = [pool.submit(_probe, ip, sni) for ip in ips]
+        try:
+            for fut in as_completed(futs):
+                if fut.result():
+                    return True
+        finally:
+            pool.shutdown(wait=False)
+        return False
+
+    tcp_ok = _first_success(ips, None)
+    if not tcp_ok:
+        return {"kind": "ip_block",
+                "detail": "TCP-коннект к :443 не проходит (блок на уровне IP/порта/SYN)",
+                "steps": steps}
+    steps["tcp"] = "ok"
+
+    real_ok = _first_success(ips, host)
+    steps["real_sni"] = "ok" if real_ok else "blocked"
+    if real_ok:
+        return {"kind": "ok", "detail": "TLS-хендшейк проходит — сайт доступен", "steps": steps}
+
+    benign = None
+    for sni in ("www.google.com", "www.cloudflare.com"):
+        if _first_success(ips, sni):
+            benign = sni
+            break
+    steps["benign_sni"] = "ok" if benign else "blocked"
+    if benign:
+        return {"kind": "sni_block",
+                "detail": (f"SNI-блок: тот же IP c SNI {benign} проходит TLS, с реальным SNI — нет. "
+                           "Блок специфичен для домена — работающий desync обязан его обходить"),
+                "steps": steps}
+    return {"kind": "tls_block",
+            "detail": "TLS не проходит даже с чужим SNI — блок не по SNI (IP/порт-уровень или глубокий DPI)",
+            "steps": steps}
+
+
+def _check_block_types(net_checks: list[Check]) -> list[Check]:
+    """Classify WHY the failed connectivity hosts are blocked (max 1 host,
+    youtube preferred — it is the most common and most informative case)."""
+    failed = {c.id.removeprefix("net_"): c for c in net_checks if c.status == "fail"}
+    names = dict(_NET_CHECKS)
+    if "www.youtube.com" in failed:
+        order = ["www.youtube.com"]
+    elif "discord.com" in failed:
+        order = ["discord.com"]
+    else:
+        order = list(failed)
+    checks: list[Check] = []
+    for host in order[:1]:
+        info = classify_block(host)
+        st = {"ok": "ok", "dns": "fail", "ip_block": "fail",
+              "sni_block": "warn", "tls_block": "fail"}.get(info["kind"], "warn")
+        name = names.get(host, host)
+        checks.append(Check(f"block_{host}", f"Тип блокировки: {name}", st, info["detail"]))
+    return checks
+
+
 def run_diagnostics(root_dir: Path, cfg: AppConfig) -> dict:
     root_dir = Path(root_dir)
 
@@ -204,7 +319,11 @@ def run_diagnostics(root_dir: Path, cfg: AppConfig) -> dict:
     checks.append(_check_debug_log(root_dir, bool(cfg.winws2_debug)))
 
     # connectivity (bypass active or not — see winws2 check for context)
-    checks.extend(_check_net())
+    net_checks = _check_net()
+    checks.extend(net_checks)
+
+    # block-type classification for the failed host(s): DNS vs IP vs SNI
+    checks.extend(_check_block_types(net_checks))
 
     summary = {"ok": 0, "warn": 0, "fail": 0, "skip": 0}
     for c in checks:

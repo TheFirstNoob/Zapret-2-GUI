@@ -481,6 +481,16 @@ Zapret 1 через последний strategy-bat). Результат в по
    «🚀 Запустить: <best>» (POST /api/start) + таблица «Доступность» +
    чипы заблокированных + карточка «Базовый уровень без защиты».
    `renderResultGrid` не учитывает пинги.
+7. **Классификатор типа блокировки** (`core/diagnostics.py::classify_block`,
+   2026-08-27): для заблокированного домена (1 шт., youtube в приоритете) —
+   DNS → TCP:443 → TLS с реальным SNI → **TLS с чужим SNI** (google/cloudflare)
+   к тому же IP. Вердикты: `dns` / `ip_block` / `ok` / **`sni_block`** (IP чистый,
+   блок только по SNI — работающий desync ОБЯЗАН обходить; если не обходит —
+   проблема движка/списков, а не «DPI сильнее всех») / `tls_block` (не по SNI).
+   Проверено вживую на Т2: youtube.com/googlevideo → sni_block (IP 142.251.x.x
+   с SNI google проходит TLS за 36-57ms), discord/i.ytimg → ok.
+   ⚠️ Не использовать `with ThreadPoolExecutor` — shutdown(wait=True) ждёт
+   чёрные дыры (+timeout на шаг); только shutdown(wait=False).
 
 ### Найденные и исправленные баги
 
