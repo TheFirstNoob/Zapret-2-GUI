@@ -247,7 +247,7 @@ def _check_block_types(net_checks: list[Check]) -> list[Check]:
     """Classify WHY the failed connectivity hosts are blocked (max 1 host,
     youtube preferred — it is the most common and most informative case)."""
     failed = {c.id.removeprefix("net_"): c for c in net_checks if c.status == "fail"}
-    names = dict(_NET_CHECKS)
+    names = {h: n for h, n, _k in _NET_CHECKS}
     if "www.youtube.com" in failed:
         order = ["www.youtube.com"]
     elif "discord.com" in failed:
