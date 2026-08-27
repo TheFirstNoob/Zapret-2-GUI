@@ -123,6 +123,22 @@ def build_args_from_preset(
         # Inject --autohostlist into list-general filter blocks
         if autohostlist and "--hostlist=" in line and "list-general" in line:
             tokens.append(f"--hostlist-auto={auto_path}")
+    # CRITICAL: --lua-init @path in SEPARATE-arg form kills winws2's option
+    # parsing when the path contains NO spaces (a real winws2 bug, see
+    # AGENTS.md §23): everything after the option is silently dropped, only
+    # the default no_action profile remains → no desync at all, identical
+    # results across all presets.  The `=` form works with any path.
+    merged: list[str] = []
+    i = 0
+    while i < len(tokens):
+        t = tokens[i]
+        if t == "--lua-init" and i + 1 < len(tokens) and tokens[i + 1].startswith("@"):
+            merged.append(t + "=" + tokens[i + 1])
+            i += 2
+        else:
+            merged.append(t)
+            i += 1
+    tokens = merged
     # Auto-inject user lists if not empty
     exclude_file = lists_dir / "list-exclude-user.txt"
     if exclude_file.exists() and exclude_file.stat().st_size > 0:
