@@ -942,7 +942,14 @@ class Zapret2Tester:
             )
             output = ((r.stdout or "") + "\n" + (r.stderr or "")).lower()
             import re as _re
-            m = _re.search(r"(\d+)\s+user defined desync profile", output)
+            m = None
+            if "already running with the same filter" in output:
+                # Another winws2 with the same filters is running (e.g. the
+                # service): dry-run aborts early ("1 profile") and the count
+                # is meaningless — but the list-coverage check still applies.
+                dry["note"] = "winws2 уже запущен — dry-run не показателен"
+            else:
+                m = _re.search(r"(\d+)\s+user defined desync profile", output)
             if m:
                 dry["profiles_loaded"] = int(m.group(1))
             for line in output.splitlines():

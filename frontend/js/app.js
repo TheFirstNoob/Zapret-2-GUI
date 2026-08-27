@@ -426,42 +426,6 @@ const MainPage = {
     this.refresh();
   },
 
-  async selectZ1Bat(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    // Try to send the full path if available, otherwise upload content
-    const el = document.getElementById('z1Result');
-    el.textContent = '⏳ Сохранение...';
-    el.className = '';
-    try {
-      // Send full path
-      const r = await apiPost('/zapret1/save-bat', { path: file.name });
-      if (r.status === 'ok') {
-        document.getElementById('z1BatPath').value = file.name;
-        el.textContent = '✅ Путь сохранён (укажите полный путь вручную если нужно)';
-      } else {
-        // Fallback: upload content
-        const reader = new FileReader();
-        reader.onload = async () => {
-          const b64 = reader.result.split(',')[1];
-          const r2 = await apiPost('/zapret1/save-bat', { content: b64 });
-          if (r2.status === 'ok') {
-            document.getElementById('z1BatPath').value = '(сохранён)';
-            el.textContent = '✅ ' + (r2.message || 'Файл сохранён');
-          } else {
-            el.textContent = '❌ ' + (r2.message || 'Ошибка');
-            el.className = 'launch-err';
-          }
-        };
-        reader.readAsDataURL(file);
-        return;
-      }
-    } catch (e) {
-      el.textContent = '❌ ' + e.message;
-      el.className = 'launch-err';
-    }
-  },
-
   async startZ1() {
     const sel = document.getElementById('z1StrategySelect');
     const strategy = sel.value;
