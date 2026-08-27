@@ -370,8 +370,20 @@ def _build_recommendation(all_results, naked, sanity: dict) -> dict:
 
     # YouTube over TCP fails on every tested setup due to a known TLS quirk
     # (§17) — the browser reaches it via QUIC, so it is not a real outage.
+    # Verdicts are computed ONLY from the complete per-profile results
+    # (all domain tests finished), never from streaming rows — no async race.
     youtube_tcp_quirk = blocked_set <= {"www.youtube.com", "redirector.googlevideo.com",
                                         "i.ytimg.com", "youtu.be"}
+
+    # "YouTube works" inference: TCP page blocked, but the YouTube infra
+    # (i.ytimg.com thumbnails / youtu.be) is reachable through TLS on the
+    # SAME profile run.  On every working setup i.ytimg.com passed; on
+    # "nothing got through" setups it is blocked as well.
+    yt_tcp_blocked = any(r.domain == "www.youtube.com" and r.test_type != "ping" and r.status != "OK"
+                         for r in best.results)
+    yt_infra_ok = any(r.domain in ("i.ytimg.com", "youtu.be") and r.test_type != "ping" and r.status == "OK"
+                      for r in best.results)
+    youtube_quirk_ok = yt_tcp_blocked and yt_infra_ok
 
     if engine_broken:
         verdict = "engine_broken"
@@ -412,11 +424,18 @@ def _build_recommendation(all_results, naked, sanity: dict) -> dict:
         trs = [r for r in best.results if r.test_type != "ping" and r.domain == domain]
         if trs:
             tr = min(trs, key=lambda r: r.time_ms or 0)
+            status = tr.status
+            note = ""
+            # YouTube TCP is a known false negative — mark it working via QUIC
+            # only when the inference holds on the FULL results of this profile.
+            if domain == "www.youtube.com" and status != "OK" and youtube_quirk_ok:
+                status = "QUIC_OK"
+                note = "TCP-проверка неприменима — работает через QUIC"
             key_hosts.append({"domain": domain, "label": label,
-                              "status": tr.status, "time_ms": tr.time_ms})
+                              "status": status, "time_ms": tr.time_ms, "note": note})
         else:
             key_hosts.append({"domain": domain, "label": label,
-                              "status": "N/A", "time_ms": 0})
+                              "status": "N/A", "time_ms": 0, "note": ""})
 
     return {
         "verdict": verdict,

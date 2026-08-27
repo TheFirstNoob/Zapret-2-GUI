@@ -1550,15 +1550,16 @@ const TesterPage = {
         let keyHtml = '';
         if (rec.key_hosts && rec.key_hosts.length) {
           keyHtml = '<div class="key-hosts">' + rec.key_hosts.map(k => {
-            const ok = k.status === 'OK';
+            const isQuirk = k.status === 'QUIC_OK';
+            const ok = k.status === 'OK' || isQuirk;
             const t = k.time_ms ? this.formatTimeColored(k.time_ms) : '';
-            const note = (k.domain === 'www.youtube.com' && !ok)
-              ? '<div class="kh-note">известный TLS-прикол: в браузере YouTube работает через QUIC</div>' : '';
+            const note = k.note || ((k.domain === 'www.youtube.com' && !ok)
+              ? 'известный TLS-прикол: в браузере YouTube работает через QUIC' : '');
             return `<div class="key-host ${ok ? 'key-host-ok' : 'key-host-fail'}">
               <span class="kh-icon">${ok ? '✅' : '❌'}</span>
               <span class="kh-label">${escapeHtml(k.label)}</span>
-              <span class="kh-status">${ok ? 'доступен' : 'не пробит'}</span>
-              ${t ? '<span class="kh-time">' + t + '</span>' : ''}${note}</div>`;
+              <span class="kh-status">${ok ? (isQuirk ? 'работает (QUIC)' : 'доступен') : 'не пробит'}</span>
+              ${t ? '<span class="kh-time">' + t + '</span>' : ''}${note ? '<div class="kh-note">' + escapeHtml(note) + '</div>' : ''}</div>`;
           }).join('') + '</div>';
         }
         html += `<div class="card ${vm.cls}">
