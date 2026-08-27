@@ -55,6 +55,7 @@ PyInstaller.__main__.run([
     "--noconfirm",
     "--clean",
     "--icon", str(ROOT / "frontend" / "logo.ico"),
+    "--version-file", str(ROOT / "version_info.txt"),
     "--log-level", "WARN",
     *[f"--exclude-module={e}" for e in EXCLUDE],
     *[f"--add-data={a}" for a in ADD_DATA],
