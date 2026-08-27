@@ -46,12 +46,14 @@ def status() -> str:
     code, out = _sc(["query", SERVICE_NAME])
     if code != 0:
         return "not_installed"
-    # Parse SCM state from sc query output
-    for line in out.splitlines():
-        if "STATE" in line:
-            if "RUNNING" in line:
-                return "running"
-            return "stopped"
+    # Parse SCM state from sc query output.  The header is localized
+    # ("STATE" is "СОСТОЯНИЕ" on Russian Windows), but the VALUE is always
+    # English ("4  RUNNING") — search the value, not the label.
+    upper = out.upper()
+    if "RUNNING" in upper:
+        return "running"
+    if "STOPPED" in upper or "STOP_PENDING" in upper:
+        return "stopped"
     return "stopped"
 
 

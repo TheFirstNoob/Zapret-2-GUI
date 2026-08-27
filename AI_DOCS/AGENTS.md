@@ -497,6 +497,16 @@ Zapret 1 через последний strategy-bat). Результат в по
    с SNI google проходит TLS за 36-57ms), discord/i.ytimg → ok.
    ⚠️ Не использовать `with ThreadPoolExecutor` — shutdown(wait=True) ждёт
    чёрные дыры (+timeout на шаг); только shutdown(wait=False).
+8. **Диагностика: фиксы ввода в заблуждение (2026-08-27, 0.3):**
+   - `service_manager.status()`: заголовок `sc query` локализован («СОСТОЯНИЕ»
+     на русской Windows) → `"STATE" in line` никогда не срабатывал → служба
+     всегда «остановлена». Парсим ЗНАЧЕНИЕ (`RUNNING/STOPPED` — всегда
+     английское), не заголовок.
+   - `_check_net`: HTTP 403 в детали объясняется («не блокировка, CDN так
+     отвечает анонимным запросам»).
+   - YouTube: kind `youtube`, i.ytimg.com проверяется ДО www.youtube.com;
+     если youtube TCP не отвечает, но CDN доступен → «ok» с пояснением про
+     QUIC-прикол, а не красный крест. Полный fail (и youtube, и CDN) → fail.
 
 ### Найденные и исправленные баги
 

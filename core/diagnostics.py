@@ -23,11 +23,15 @@ from core.utils import short_path
 DISCORD_UPLOAD_HOST = "discord-attachments-uploads-prd.storage.googleapis.com"
 
 # Connectivity checks: host, human name, expected-any-code (canary must be 2xx-3xx).
+# i.ytimg.com is checked BEFORE www.youtube.com so the YouTube TCP quirk
+# (§17: TCP blocked everywhere, browser works via QUIC) can be explained
+# using the CDN reachability result instead of showing a false red cross.
 _NET_CHECKS = [
     ("www.google.com", "Интернет (канарейка)", "canary"),
     ("discord.com", "Discord", "any"),
     (DISCORD_UPLOAD_HOST, "Discord — отправка файлов", "any"),
-    ("www.youtube.com", "YouTube (TCP)", "any"),
+    ("i.ytimg.com", "YouTube CDN", "any"),
+    ("www.youtube.com", "YouTube", "youtube"),
 ]
 
 _DEBUG_LOG_WARN_BYTES = 50 * 1024 * 1024
@@ -134,6 +138,15 @@ def _check_net() -> list[Check]:
     for host, name, kind in _NET_CHECKS:
         code = _curl_code(host)
         if code is None or code < 100:
+            # YouTube TCP quirk: the page is blackholed on EVERY tested setup,
+            # but the browser works via QUIC.  If the CDN (i.ytimg.com) is
+            # reachable, report the quirk instead of a false red cross.
+            if kind == "youtube" and any(c.id == "net_i.ytimg.com" and c.status == "ok"
+                                         for c in checks):
+                checks.append(Check(f"net_{host}", name, "ok",
+                                    "TCP-проверка неприменима — YouTube работает через QUIC "
+                                    "(известный TLS-прикол), CDN доступен"))
+                continue
             checks.append(Check(f"net_{host}", name, "fail",
                                 "нет ответа (таймаут/обрыв/DPI)"))
         elif kind == "canary":
@@ -145,7 +158,10 @@ def _check_net() -> list[Check]:
         else:
             # Any HTTP code >= 100 means the TLS connection passed the DPI.
             # 403/404/520 are expected "anonymous request" answers from CDNs.
-            checks.append(Check(f"net_{host}", name, "ok", f"HTTP {code}"))
+            detail = f"HTTP {code}"
+            if code == 403:
+                detail = "HTTP 403 — не блокировка (CDN так отвечает анонимным запросам)"
+            checks.append(Check(f"net_{host}", name, "ok", detail))
     return checks
 
 
@@ -303,6 +319,9 @@ def run_diagnostics(root_dir: Path, cfg: AppConfig) -> dict:
             st = svc_status()
             if st == "running":
                 checks.append(Check("service", "Служба zapret2", "ok", "установлена и работает"))
+            elif _pid_of("winws2.exe") is not None:
+                checks.append(Check("service", "Служба zapret2", "warn",
+                                    "служба остановлена в SCM, но winws2 работает (запущен вручную)"))
             else:
                 checks.append(Check("service", "Служба zapret2", "warn",
                                     "установлена, но не запущена (автозапуск после перезагрузки)"))
