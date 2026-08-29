@@ -95,10 +95,28 @@ def _sc_run_bat(lines: list[str]) -> tuple[int, str]:
             pass
 
 
-def install(root_dir: Optional[Path] = None, args: Optional[list[str]] = None) -> tuple[bool, str]:
+def _winws_running() -> bool:
+    r = subprocess.run(
+        ["tasklist", "/FI", "IMAGENAME eq winws.exe"],
+        capture_output=True, text=True, encoding="oem", errors="replace", timeout=10,
+        creationflags=subprocess.CREATE_NO_WINDOW,
+    )
+    return "winws.exe" in r.stdout and "No tasks" not in r.stdout
+
+
+def _zapret1_conflict() -> Optional[str]:
+    """Reason why Zapret 1 blocks the operation, or None when it's free."""
     if _zapret1_service_exists():
-        return False, ("Обнаружена служба Zapret 1 (zapret). "
-            "Пожалуйста, удалите её через service.bat от Zapret 1 перед установкой службы Zapret 2.")
+        return "Обнаружена служба Zapret 1 (zapret). Удалите её через service.bat от Zapret 1."
+    if _winws_running():
+        return "Zapret 1 (winws.exe) запущен. Остановите его перед запуском Zapret 2."
+    return None
+
+
+def install(root_dir: Optional[Path] = None, args: Optional[list[str]] = None) -> tuple[bool, str]:
+    conflict = _zapret1_conflict()
+    if conflict:
+        return False, conflict
     remove()
     time.sleep(0.5)
     if root_dir is None:
@@ -148,6 +166,9 @@ def remove():
 
 
 def start(args: Optional[list[str]] = None):
+    conflict = _zapret1_conflict()
+    if conflict:
+        return False, conflict
     _taskkill_winws2()
     time.sleep(0.5)
     if args:

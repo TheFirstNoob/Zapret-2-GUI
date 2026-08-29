@@ -23,7 +23,20 @@ LITE = ROOT / "lite"
 
 COPY_DIRS = ("bin", "lua", "blobs", "lists", "presets", "windivert")
 
-STOP_BAT = "@echo off\r\ntaskkill /F /IM winws2.exe >nul 2>&1\r\n"
+Z1_CHECK_BLOCK = (
+    'tasklist /FI "IMAGENAME eq winws.exe" /NH 2>nul | findstr /I "winws.exe" >nul\r\n'
+    'if not errorlevel 1 (\r\n'
+    '    echo ERROR: Zapret 1 is running - stop winws.exe first.\r\n'
+    '    pause\r\n'
+    '    exit /b 1\r\n'
+    ')\r\n'
+)
+
+STOP_BAT = (
+    "@echo off\r\n"
+    "taskkill /F /IM winws2.exe >nul 2>&1\r\n"
+    "taskkill /F /IM winws.exe >nul 2>&1\r\n"
+)
 
 
 def _portable_args(args: list[str], root_abs: str, root_short: str) -> list[str]:
@@ -47,6 +60,7 @@ def _write_start_bat(name: str, args: list[str]) -> None:
     (LITE / name).write_text(
         '@echo off\r\n'
         'cd /d "%~dp0"\r\n'
+        + Z1_CHECK_BLOCK +
         f'start "zapret2" /min "%~dp0bin\\winws2.exe" {cmdline}\r\n',
         encoding="ascii",
     )
@@ -117,6 +131,8 @@ def _svc_install_bat(portable_args: list[str]) -> str:
     return (
         '@echo off\r\n'
         'cd /d "%~dp0"\r\n'
+        'sc query zapret >nul 2>&1 && (echo ERROR: Zapret 1 service found - remove it first. & pause & exit /b 1)\r\n'
+        + Z1_CHECK_BLOCK +
         'sc stop zapret2 >nul 2>&1\r\n'
         'sc delete zapret2 >nul 2>&1\r\n'
         f'sc create zapret2 binPath= "\\"%~dp0bin\\winws2.exe\\" {argstr}" '
@@ -197,6 +213,16 @@ def main() -> None:
     (LITE / "service.bat").write_text(SERVICE_MENU_BAT, encoding="ascii")
     (LITE / "service-install.bat").write_text(_svc_install_bat(portable), encoding="ascii")
     (LITE / "service-remove.bat").write_text(SVC_REMOVE_BAT, encoding="ascii")
+
+    # tester: test.bat launcher (double-click safe) + test.ps1 (PS 5.1)
+    (LITE / "test.bat").write_text(
+        '@echo off\r\n'
+        'chcp 65001 >nul\r\n'
+        'powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0test.ps1"\r\n',
+        encoding="ascii")
+    ps1 = (ROOT / "test_lite.ps1").read_text(encoding="utf-8")
+    (LITE / "test.ps1").write_text(ps1, encoding="utf-8-sig")  # BOM: PS5.1 reads Cyrillic correctly
+
     (LITE / "README.txt").write_text(README_TXT, encoding="utf-8")
 
     zip_name = ROOT / "Windows build" / "Zapret2GUI-lite.zip"
