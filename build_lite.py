@@ -42,14 +42,77 @@ def _portable_args(args: list[str], root_abs: str, root_short: str) -> list[str]
     return out
 
 
-def _write_start_bat(exe_rel: str, args: list[str]) -> None:
+def _write_start_bat(name: str, args: list[str]) -> None:
     cmdline = " ".join(f'"{a}"' for a in args)
-    (LITE / "start.bat").write_text(
+    (LITE / name).write_text(
         '@echo off\r\n'
         'cd /d "%~dp0"\r\n'
-        f'start "zapret2" /min "{exe_rel}" {cmdline}\r\n',
+        f'start "zapret2" /min "%~dp0bin\\winws2.exe" {cmdline}\r\n',
         encoding="ascii",
     )
+
+
+SERVICE_MENU_BAT = r"""@echo off
+setlocal enabledelayedexpansion
+cd /d "%~dp0"
+:menu
+cls
+echo ==========================================
+echo   Zapret 2 lite - menu
+echo ==========================================
+echo   1. Select strategy and start
+echo   2. Stop
+echo   3. Install service (autostart, default preset)
+echo   4. Remove service
+echo   5. Exit
+echo.
+set /p c=Choose [1-5]:
+if "%c%"=="1" goto pick
+if "%c%"=="2" goto stop
+if "%c%"=="3" goto svcinstall
+if "%c%"=="4" goto svcremove
+if "%c%"=="5" exit /b
+goto menu
+:pick
+cls
+echo Available strategies:
+set n=0
+for %%f in (start-*.bat) do (
+    set /a n+=1
+    set "nm=%%~nf"
+    set "opt!n!=%%f"
+    echo   !n!. !nm:start-=!
+)
+echo.
+set /p sel=Number:
+set "chosen=opt!sel!"
+call set "filename=%%!chosen!%%"
+if not defined filename goto pick
+call "!filename!"
+echo Started. Press any key...
+pause >nul
+goto menu
+:stop
+taskkill /F /IM winws2.exe >nul 2>&1
+echo Stopped.
+pause >nul
+goto menu
+:svcinstall
+sc stop zapret2 >nul 2>&1
+sc delete zapret2 >nul 2>&1
+sc create zapret2 binPath= "\"cmd.exe\" /C \"%~dp0_zapret_service.bat\"" DisplayName= "Zapret 2 DPI Bypass" start= auto
+sc start zapret2
+echo Service installed and started.
+pause >nul
+goto menu
+:svcremove
+sc stop zapret2 >nul 2>&1
+sc delete zapret2 >nul 2>&1
+taskkill /F /IM winws2.exe >nul 2>&1
+echo Service removed.
+pause >nul
+goto menu
+"""
 
 
 def _write_service_bat(exe_rel: str, args: list[str]) -> None:
@@ -115,13 +178,21 @@ def main() -> None:
             shutil.copytree(src, LITE / d)
 
     exe = LITE / "bin" / "winws2.exe"
-    preset = LITE / "presets" / "default.txt"
-    args = build_args_from_preset(LITE, LITE / "lua", LITE / "blobs", preset)
-    portable = _portable_args(args, str(LITE), short_path(LITE))
 
-    _write_start_bat(r"%~dp0bin\winws2.exe", portable)
+    # one start-<preset>.bat per strategy (portable %~dp0 paths)
+    for pf in sorted((LITE / "presets").glob("*.txt")):
+        args = build_args_from_preset(LITE, LITE / "lua", LITE / "blobs", pf)
+        portable = _portable_args(args, str(LITE), short_path(LITE))
+        _write_start_bat(f"start-{pf.stem}.bat", portable)
+
+    # default preset for the service
+    args = build_args_from_preset(LITE, LITE / "lua", LITE / "blobs",
+                                  LITE / "presets" / "default.txt")
+    portable = _portable_args(args, str(LITE), short_path(LITE))
     _write_service_bat(r"%~dp0bin\winws2.exe", portable)
+
     (LITE / "stop.bat").write_text(STOP_BAT, encoding="ascii")
+    (LITE / "service.bat").write_text(SERVICE_MENU_BAT, encoding="ascii")
     (LITE / "service-install.bat").write_text(SVC_INSTALL_BAT, encoding="ascii")
     (LITE / "service-remove.bat").write_text(SVC_REMOVE_BAT, encoding="ascii")
     (LITE / "README.txt").write_text(README_TXT, encoding="utf-8")
