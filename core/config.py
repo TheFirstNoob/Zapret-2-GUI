@@ -35,7 +35,7 @@ class AppConfig:
 DEFAULT_PROFILE = "default"
 
 # Application version.
-VERSION = "Pre-Release 0.3"
+VERSION = "Pre-Release 0.4"
 
 
 class ConfigManager:

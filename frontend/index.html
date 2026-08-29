@@ -58,6 +58,11 @@
     </aside>
 
     <main class="main">
+      <div id="updateBanner" style="display:none;background:var(--warn);color:#1a1a1a;padding:8px 16px;font-size:13px;align-items:center;gap:10px;flex-wrap:wrap">
+        <span>Доступна новая версия: <b id="updateVersion"></b></span>
+        <a id="updateLink" href="#" target="_blank" rel="noopener" style="color:#1a1a1a;font-weight:700">Скачать</a>
+        <button onclick="document.getElementById('updateBanner').style.display='none'" style="background:none;border:none;cursor:pointer;font-size:16px;margin-left:auto">×</button>
+      </div>
       <header class="topbar">
         <h1 id="pageTitle">Статус</h1>
       </header>

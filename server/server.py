@@ -15,7 +15,7 @@ from urllib.parse import urlparse, parse_qs
 from core.config import ConfigManager, DEFAULT_PROFILE, VERSION
 from core.zapret_controller import ZapretController
 from core.tester import Zapret2Tester, CDN_PROVIDERS, NAKED_BASELINE_HOSTS
-from core.service_manager import SERVICE_NAME, is_installed as svc_installed, status as svc_status, install as svc_install, remove as svc_remove, start as svc_start, stop as svc_stop, build_service_bat
+from core.service_manager import SERVICE_NAME, is_installed as svc_installed, status as svc_status, install as svc_install, remove as svc_remove, start as svc_start, stop as svc_stop
 from core.collector import collect_all, export_data_package
 from core.launcher import build_args_from_preset, validate_args
 from core.test_logger import TestLogger
@@ -736,6 +736,8 @@ class ZapretHandler(BaseHTTPRequestHandler):
                 self._handle_default_profiles()
             elif path == "/api/tester/status":
                 self._handle_tester_status()
+            elif path == "/api/update-check":
+                self._handle_update_check()
             else:
                 self._handle_static(path)
         except RuntimeError as e:

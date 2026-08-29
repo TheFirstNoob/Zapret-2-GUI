@@ -116,6 +116,19 @@ const App = {
     TesterPage.init();
     if (this.currentPage === 'main') MainPage.onShow();
     MainPage.startAutoRefresh();
+    this.checkUpdate();
+  },
+
+  // Non-intrusive update banner (silent on any failure).
+  async checkUpdate() {
+    try {
+      const r = await apiGet('/update-check');
+      if (r.available && r.latest) {
+        document.getElementById('updateVersion').textContent = r.latest;
+        document.getElementById('updateLink').href = r.url || '#';
+        document.getElementById('updateBanner').style.display = 'flex';
+      }
+    } catch (e) { /* silent */ }
   },
 
   async loadVersion() {
