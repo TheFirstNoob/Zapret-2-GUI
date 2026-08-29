@@ -13,7 +13,7 @@ GUI-обёртка для **Zapret 2** (winws2 / lua-desync) — обход DPI/
 | **`Zapret2GUI.zip`** | Классический GUI одним EXE (PyInstaller) | Кому удобен один файл |
 | **`Zapret2GUI-lite.zip`** | Только winws2 + батники, без Python и GUI (как Zapret 1) | Минимализм / очень строгие антивирусы |
 
-Все три содержат одну и ту же стратегию `default`. SHA256 к portable-архиву лежит рядом.
+Все три архива содержат один и тот же набор из **8 стратегий** (default и все остальные — fake-only, fakedsplit, fake-disorder, fake-multidisorder, hostfakesplit, multisplit-pure, multisplit-seqovl). SHA256 к portable-архиву лежит рядом.
 
 ## 🚀 Быстрый старт
 
