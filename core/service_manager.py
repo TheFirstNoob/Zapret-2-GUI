@@ -62,7 +62,40 @@ def _zapret1_service_exists() -> bool:
     return code == 0
 
 
-def install(root_dir: Optional[Path] = None) -> tuple[bool, str]:
+def _service_cmdline(exe: Path, args: list[str]) -> str:
+    """binPath value in the Zapret 1 format: \"exe\" \"arg\" ... — the
+    backslash-quotes are processed by cmd.exe's line parser, exactly like
+    v1's service.bat.  Passing plain quotes via argv makes sc drop the
+    image path or store the escaped form literally."""
+    parts = [f'\\"{exe}\\"']
+    parts += [f'\\"{a}\\"' if " " in a else a for a in args]
+    return " ".join(parts)
+
+
+def _sc_run_bat(lines: list[str]) -> tuple[int, str]:
+    """Run sc via a temporary .bat — the only faithful way to pass the
+    v1-style binPath with backslash-quotes (cmd's line parser handles
+    them; argv and even cmd /c <string> mangle them)."""
+    import tempfile
+    bat = Path(tempfile.gettempdir()) / "zapret2_svc.bat"
+    bat.write_text("\r\n".join(["@echo off"] + lines) + "\r\n", encoding="ascii")
+    try:
+        r = subprocess.run(
+            ["cmd.exe", "/c", str(bat)],
+            capture_output=True, text=True, encoding="oem", errors="replace", timeout=15,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+        return r.returncode, (r.stdout or "") + (r.stderr or "")
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return -1, "cmd failed"
+    finally:
+        try:
+            bat.unlink()
+        except OSError:
+            pass
+
+
+def install(root_dir: Optional[Path] = None, args: Optional[list[str]] = None) -> tuple[bool, str]:
     if _zapret1_service_exists():
         return False, ("Обнаружена служба Zapret 1 (zapret). "
             "Пожалуйста, удалите её через service.bat от Zapret 1 перед установкой службы Zapret 2.")
@@ -70,20 +103,41 @@ def install(root_dir: Optional[Path] = None) -> tuple[bool, str]:
     time.sleep(0.5)
     if root_dir is None:
         root_dir = Path(__file__).resolve().parent.parent
-    bat = root_dir / "_zapret_service.bat"
-    if not bat.exists():
-        return False, "Сначала создайте _zapret_service.bat"
-    binpath = f'"cmd.exe" /C "{bat}"'
-    code, out = _sc(["create", SERVICE_NAME,
-        "binPath=", binpath,
-        "DisplayName=", "Zapret 2 DPI Bypass",
-        "start=", "auto",
+    exe = Path(root_dir) / "bin" / "winws2.exe"
+    if not exe.exists():
+        exe = Path(root_dir) / "winws2.exe"
+    if not exe.exists():
+        return False, "winws2.exe не найден"
+    if args is None:
+        args = []
+    # winws2.exe is the service binary DIRECTLY (like Zapret 1's service.bat:
+    # binPath = "winws.exe <args>", start= auto).  A cmd.exe /C bat wrapper
+    # is what Defender's behavior analytics flags as suspicious — the direct
+    # binary matches the reputable zapret ecosystem and does not trigger.
+    cmdline = _service_cmdline(exe, args)
+    code, out = _sc_run_bat([
+        f'sc create {SERVICE_NAME} binPath= "{cmdline}" '
+        f'DisplayName= "Zapret 2 DPI Bypass" start= auto',
     ])
     if code != 0:
         return False, f"sc create failed: {out.strip()}"
     _sc(["description", SERVICE_NAME, "zapret DPI bypass (Zapret 2)"])
-    start()
+    start(args)
     return True, "Служба zapret2 установлена"
+
+
+def reconfigure(args: list[str]) -> tuple[bool, str]:
+    """Refresh the service's binPath with the current args (strategy changes
+    require re-applying the command line — direct-exe services bake it in)."""
+    root_dir = Path(__file__).resolve().parent.parent
+    exe = root_dir / "bin" / "winws2.exe"
+    if not exe.exists():
+        exe = root_dir / "winws2.exe"
+    cmdline = _service_cmdline(exe, args)
+    code, out = _sc_run_bat([f'sc config {SERVICE_NAME} binPath= "{cmdline}"'])
+    if code != 0:
+        return False, f"sc config failed: {out.strip()}"
+    return True, "Параметры службы обновлены"
 
 
 def remove():
@@ -93,9 +147,11 @@ def remove():
     return True, "Служба zapret2 удалена"
 
 
-def start():
+def start(args: Optional[list[str]] = None):
     _taskkill_winws2()
     time.sleep(0.5)
+    if args:
+        reconfigure(args)
     code, out = _sc(["start", SERVICE_NAME])
     if code != 0:
         return False, f"sc start failed: {out.strip()}"

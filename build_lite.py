@@ -69,8 +69,8 @@ echo.
 set /p c=Choose [1-5]:
 if "%c%"=="1" goto pick
 if "%c%"=="2" goto stop
-if "%c%"=="3" goto svcinstall
-if "%c%"=="4" goto svcremove
+if "%c%"=="3" call "%~dp0service-install.bat"
+if "%c%"=="4" call "%~dp0service-remove.bat"
 if "%c%"=="5" exit /b
 goto menu
 :pick
@@ -97,21 +97,6 @@ taskkill /F /IM winws2.exe >nul 2>&1
 echo Stopped.
 pause >nul
 goto menu
-:svcinstall
-sc stop zapret2 >nul 2>&1
-sc delete zapret2 >nul 2>&1
-sc create zapret2 binPath= "\"cmd.exe\" /C \"%~dp0_zapret_service.bat\"" DisplayName= "Zapret 2 DPI Bypass" start= auto
-sc start zapret2
-echo Service installed and started.
-pause >nul
-goto menu
-:svcremove
-sc stop zapret2 >nul 2>&1
-sc delete zapret2 >nul 2>&1
-taskkill /F /IM winws2.exe >nul 2>&1
-echo Service removed.
-pause >nul
-goto menu
 """
 
 
@@ -122,6 +107,24 @@ def _write_service_bat(exe_rel: str, args: list[str]) -> None:
         'cd /d "%~dp0"\r\n'
         f'start /b /wait "" "{exe_rel}" {cmdline} > nul 2>&1\r\n',
         encoding="ascii",
+    )
+
+
+def _svc_install_bat(portable_args: list[str]) -> str:
+    """Direct-exe service like Zapret 1 (binPath = winws2.exe + args,
+    start= auto) — the cmd/bat wrapper is what Defender flags."""
+    argstr = " ".join(f'\\"{a}\\"' for a in portable_args)
+    return (
+        '@echo off\r\n'
+        'cd /d "%~dp0"\r\n'
+        'sc stop zapret2 >nul 2>&1\r\n'
+        'sc delete zapret2 >nul 2>&1\r\n'
+        f'sc create zapret2 binPath= "\\"%~dp0bin\\winws2.exe\\" {argstr}" '
+        'DisplayName= "Zapret 2 DPI Bypass" start= auto\r\n'
+        'sc start zapret2\r\n'
+        'echo.\r\n'
+        'echo Service installed and started. To remove: service-remove.bat\r\n'
+        'pause\r\n'
     )
 
 
@@ -189,11 +192,10 @@ def main() -> None:
     args = build_args_from_preset(LITE, LITE / "lua", LITE / "blobs",
                                   LITE / "presets" / "default.txt")
     portable = _portable_args(args, str(LITE), short_path(LITE))
-    _write_service_bat(r"%~dp0bin\winws2.exe", portable)
 
     (LITE / "stop.bat").write_text(STOP_BAT, encoding="ascii")
     (LITE / "service.bat").write_text(SERVICE_MENU_BAT, encoding="ascii")
-    (LITE / "service-install.bat").write_text(SVC_INSTALL_BAT, encoding="ascii")
+    (LITE / "service-install.bat").write_text(_svc_install_bat(portable), encoding="ascii")
     (LITE / "service-remove.bat").write_text(SVC_REMOVE_BAT, encoding="ascii")
     (LITE / "README.txt").write_text(README_TXT, encoding="utf-8")
 

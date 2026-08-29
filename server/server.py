@@ -1002,12 +1002,11 @@ class ZapretHandler(BaseHTTPRequestHandler):
         except OSError as e:
             self._send_json({"status": "error", "message": str(e)})
 
-    def _prepare_service_bat(self, data: dict) -> tuple[bool, str]:
-        """(Re)build _zapret_service.bat from the current preset + toggles.
+    def _prepare_service_args(self, data: dict) -> tuple[Optional[list[str]], str]:
+        """Build + validate the winws2 args for the service (direct-exe style).
 
-        Always regenerates before install/start so the service never runs a
-        stale bat with an outdated strategy.  Parameters default to the saved
-        config, so an empty *data* (plain "start" button) is valid.
+        The service runs winws2.exe itself (like Zapret 1), so args are baked
+        into binPath and refreshed on install/start — no cmd/bat wrapper.
         """
         cfg = get_config_manager().load()
         profile = data.get("profile") or cfg.last_profile or DEFAULT_PROFILE
@@ -1019,10 +1018,10 @@ class ZapretHandler(BaseHTTPRequestHandler):
         root = get_root_dir()
         exe = get_controller().winws2_path
         if exe is None:
-            return False, "winws2.exe не найден"
+            return None, "winws2.exe не найден"
         preset = root / "presets" / f"{profile}.txt"
         if not preset.exists():
-            return False, f"Пресет '{profile}.txt' не найден"
+            return None, f"Пресет '{profile}.txt' не найден"
         args = build_args_from_preset(root, root / "lua", root / "blobs", preset, debug=debug,
                                        game_filter_mode=game_filter,
                                        discord_voice=discord_voice,
@@ -1030,16 +1029,15 @@ class ZapretHandler(BaseHTTPRequestHandler):
                                        ipset_catchall=ipset_catchall)
         ok, err = validate_args(exe, args, cwd=root)
         if not ok:
-            return False, err
-        build_service_bat(root, exe, args)
-        return True, ""
+            return None, err
+        return args, ""
 
     def _handle_service_install(self, data: dict) -> None:
-        ok, err = self._prepare_service_bat(data)
-        if not ok:
+        args, err = self._prepare_service_args(data)
+        if err:
             self._send_json({"status": "error", "message": f"Установка отменена — {err}"})
             return
-        ok, msg = svc_install(root_dir=get_root_dir())
+        ok, msg = svc_install(root_dir=get_root_dir(), args=args)
         self._send_json({"status": "ok" if ok else "error", "message": msg})
 
     def _handle_service_remove(self) -> None:
@@ -1047,12 +1045,13 @@ class ZapretHandler(BaseHTTPRequestHandler):
         self._send_json({"status": "ok" if ok else "error", "message": msg})
 
     def _handle_service_start(self) -> None:
-        # Regenerate the bat first: it may be stale (older strategy/preset).
-        ok, err = self._prepare_service_bat({})
-        if not ok:
+        # Refresh binPath with the current args: direct-exe services bake
+        # them in, a stale cmdline would silently run an old strategy.
+        args, err = self._prepare_service_args({})
+        if err:
             self._send_json({"status": "error", "message": f"Служба не запущена — {err}"})
             return
-        ok, msg = svc_start()
+        ok, msg = svc_start(args)
         self._send_json({"status": "ok" if ok else "error", "message": msg})
 
     def _handle_service_stop(self) -> None:
