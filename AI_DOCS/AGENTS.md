@@ -631,6 +631,29 @@ _handle_get/save_config) → diagnostics._check_preset. UI: тумблер на 
 
 ---
 
+## 25. Lite-версия на .bat (2026-08-27) — обход детектов Защитника
+
+Полный GUI (PyInstaller onefile) триггерит облачные эвристики Защитника:
+распаковка в %TEMP%\_MEI*, админ-манифест, локальный HTTP-сервер, запуск
+cmd, загрузка драйвера. Локальный движок (MpCmdRun) — чист, флаги из облака.
+Подпись не помогает радикально (WinDivert MS не вайтлистит принципиально).
+
+**Решение — `python build_lite.py`** → папка `lite/` + `Windows build/Zapret2GUI-lite.zip`
+(1.7 MB): winws2 + lua/blobs/lists/presets + батники, БЕЗ Python вообще
+(как v1). Проверено: start.bat → ютуб/дискорд/гугл 200/200/200.
+
+- `start.bat` — запуск default.txt (портативно через `%~dp0` — папку можно
+  переносить)
+- `stop.bat` — taskkill winws2
+- `service-install.bat` / `service-remove.bat` — служба (sc create, как в
+  service_manager)
+- `_zapret_service.bat` — генерится вместе с start.bat
+- Пути в батниках — `%~dp0`-относительные: `_portable_args()` заменяет
+  абсолютные префиксы (long + short) в токенах `build_args_from_preset`
+- `lite/` в .gitignore (генерируемый артефакт); коммитим только build_lite.py
+
+---
+
 ## DNS
 
 Яндекс.Браузер и аналоги принудительно подменяют DNS на 77.88.8.8.

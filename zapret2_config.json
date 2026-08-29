@@ -19,5 +19,6 @@
   "game_filter_mode": "off",
   "discord_voice": false,
   "winws2_debug": false,
-  "autohostlist": false
+  "autohostlist": false,
+  "ipset_catchall": false
 }
