@@ -654,6 +654,47 @@ cmd, загрузка драйвера. Локальный движок (MpCmdRu
 
 ---
 
+## 26. Portable-версия (2026-08-27) — GUI без паковщика (официальный Python)
+
+Ответ на поведенческие детекты Defender (`Behavior:Win32/Persistence.A!ml`,
+`DefenseEvasion.A!ml` — срабатывали на Zapret2GUI.exe при установке службы и
+загрузке драйвера; winws2/WinDivert сами НЕ флагятся, проверено по истории
+угроз).
+
+`python build_portable.py` → `Windows build/Zapret2GUI-portable.zip` (16.5 MB)
++ `.sha256`:
+```
+portable/
+├── app/      <- наше приложение как .py (main.pyw, core, server, frontend, данные)
+├── python/   <- python-3.13.14-embed-amd64 (pythonw.exe подписан PSF, белая
+│                репутация) + pywebview 6.2.1 (pythonnet 3.1, WebView2-бэкенд)
+├── install.cmd  <- создаёт ярлыки на рабочем столе и в Пуск (pythonw main.pyw)
+└── README.txt
+```
+
+### Подводные камни сборки
+- `. _pth` пишется с КОРОТКОЙ версией: `PY_SHORT = "".join(PY_VER.split(".")[:2])`
+  = "313" — НЕ `PY_VER.replace(".", "")` (даёт "31314", не тот файл!)
+- После extract ОБЯЗАТЕЛЬНО переписать `python313._pth`:
+  `python313.zip / . / Lib\site-packages / import site` — иначе site-packages
+  не на пути и `python -m pip` падает «No module named pip»
+- get-pip.py + `pip install pywebview` (тянет pythonnet для WebView2)
+- `main.py` работает без правок (frozen-ветки не срабатывают, root = папка
+  приложения) + добавлена защита от отсутствия WebView2 (MessageBox вместо
+  тихого падения pythonw)
+- Пользовательские правки lists/presets живут прямо в app/ — их не затирает
+  ничего (нет copytree-механизма из exe-версии)
+
+### Проверено
+- HTTP 200 на "/", validate_args OK, controller.start поднял winws2,
+  канарейки 200/200/200
+- UAC-подъём: main.py сам себя перезапускает с правами админа
+  (relaunch_as_admin) — ярлыку RunAs-флаг не нужен
+- Остаются поведенческие риски (служба/драйвер) — перед релизом тест на
+  чистой VM с облаком (модель-рекомендация извне)
+
+---
+
 ## DNS
 
 Яндекс.Браузер и аналоги принудительно подменяют DNS на 77.88.8.8.

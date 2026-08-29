@@ -81,7 +81,16 @@ def main_gui() -> None:
         relaunch_as_admin()
         return
 
-    import webview
+    try:
+        import webview
+    except Exception:
+        ctypes.windll.user32.MessageBoxW(
+            0,
+            "Не удалось загрузить интерфейс (webview).\n\n"
+            "Убедитесь, что установлен WebView2 Runtime:\n"
+            "https://developer.microsoft.com/microsoft-edge/webview2/",
+            "Zapret2 — ошибка", 0x30)
+        return
 
     from server.server import init, create_server, stop_server
 
@@ -130,8 +139,17 @@ def main_gui() -> None:
         f"{base_url}/?token={app_token}",
         width=1200, height=800, min_size=(900, 600),
     )
-    window.events.closing += on_closing
-    webview.start()
+    try:
+        window.events.closing += on_closing
+        webview.start()
+    except Exception:
+        # pythonw has no console — never fail silently.
+        ctypes.windll.user32.MessageBoxW(
+            0,
+            "Ошибка запуска интерфейса (WebView2).\n\n"
+            "Убедитесь, что установлен WebView2 Runtime:"
+            " https://developer.microsoft.com/microsoft-edge/webview2/",
+            "Zapret2 — ошибка", 0x30)
     print("[zapret2] Goodbye.")
 
 
