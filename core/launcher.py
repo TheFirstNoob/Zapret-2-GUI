@@ -155,6 +155,20 @@ def build_args_from_preset(
             auto_file.write_text("", encoding="utf-8")
         auto_path = short_path(auto_file)
 
+    # User IP-include list (page «Списки»).  Only counts when it has real
+    # entries — an empty file must not change the args at all (the working
+    # default configuration stays byte-for-byte the same).
+    ipset_inc_file = lists_dir / "ipset-include-user.txt"
+    ipset_inc_path = ""
+    if ipset_inc_file.exists():
+        try:
+            has_entry = any(l.strip() and not l.strip().startswith("#")
+                            for l in ipset_inc_file.read_text(encoding="utf-8-sig").splitlines())
+        except OSError:
+            has_entry = False
+        if has_entry:
+            ipset_inc_path = str(short_path(ipset_inc_file))
+
     for line in lines:
         line = line.strip()
         if not line or line.startswith("#") or line.startswith("--comment"):
@@ -163,6 +177,10 @@ def build_args_from_preset(
         # IP-based catch-all when the toggle is on (see docstring).
         if ipset_catchall and line.startswith("--hostlist=") and "list-general.txt" in line:
             tokens.append(f"--ipset={short_lists}\\ipset-all.txt.gz")
+            if ipset_inc_path:
+                # Multiple --ipset tokens OR together (winws2 help: "multiple
+                # ipsets allowed") — user subnets are always desynced too.
+                tokens.append(f"--ipset={ipset_inc_path}")
             tokens.append(f"--ipset-exclude={short_lists}\\ipset-exclude.txt")
             continue
         for prefix, spath in [("@lists/", short_lists)]:
@@ -234,6 +252,34 @@ def build_args_from_preset(
         tokens.append("--payload=discord_ip_discovery")
         tokens.append("--out-range=-d10")
         tokens.append("--lua-desync=fake:blob=quic_google")
+    # ── User IP-includes, targeted mode ──
+    # winws2 ANDs --ipset with --hostlist inside one profile, so user subnets
+    # cannot share the general block.  Duplicate every profile block that
+    # carries list-general and swap its SNI hostlist for --ipset=<user file>:
+    # same filters/payload/desync, but matched by destination IP instead.
+    if ipset_inc_path and not ipset_catchall:
+        segs: list[list[str]] = [[]]
+        for t in tokens:
+            if t == "--new":
+                segs.append([])
+            else:
+                segs[-1].append(t)
+        out_segs: list[list[str]] = []
+        for seg in segs:
+            out_segs.append(seg)
+            if not any(t.startswith("--hostlist=") and "list-general.txt" in t for t in seg):
+                continue
+            dup: list[str] = []
+            for t in seg:
+                if t.startswith("--hostlist=") and "list-general.txt" in t:
+                    dup.append(f"--ipset={ipset_inc_path}")
+                    dup.append(f"--ipset-exclude={short_lists}\\ipset-exclude.txt")
+                elif t.startswith("--hostlist=") or t.startswith("--hostlist-auto="):
+                    continue  # SNI-based includes are meaningless in an IP-matched dup
+                else:
+                    dup.append(t)
+            out_segs.append(dup)
+        tokens = [x for i, s in enumerate(out_segs) for x in ([] if i == 0 else ["--new"]) + s]
     if debug:
         debug_file = root_dir / "debug_winws2.log"
         if not debug_file.exists():

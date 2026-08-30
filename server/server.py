@@ -42,6 +42,11 @@ _tester: Optional[Zapret2Tester] = None
 _config_manager: Optional[ConfigManager] = None
 _app_token: str = ""
 _tester_lock = threading.Lock()
+
+# Streaming diagnostics state (like the tester): running / progress / report.
+_diag_lock = threading.Lock()
+_diag_state = {"running": False, "progress": "", "report": None, "error": None,
+               "started": 0.0}
 _server: Optional[HTTPServer] = None
 
 
@@ -835,8 +840,8 @@ class ZapretHandler(BaseHTTPRequestHandler):
         try:
             if path == "/":
                 self._handle_index(params)
-            elif path == "/new" or path.startswith("/new/"):
-                self._handle_new_ui(path)
+            elif path == "/api/diagnose/status":
+                self._handle_diagnose_status()
             elif path == "/api/config":
                 self._handle_get_config()
             elif path == "/api/version":
@@ -851,6 +856,8 @@ class ZapretHandler(BaseHTTPRequestHandler):
                 self._handle_get_list("list-include-user.txt")
             elif path == "/api/ipset-exclude-list":
                 self._handle_get_list("ipset-exclude.txt")
+            elif path == "/api/ipset-include-list":
+                self._handle_get_list("ipset-include-user.txt")
             elif path == "/api/service/status":
                 self._handle_service_status()
             elif path == "/api/zapret1/strategies":
@@ -878,32 +885,6 @@ class ZapretHandler(BaseHTTPRequestHandler):
             self._send_html(html)
         else:
             self._send_html("<html><body><h1>Frontend not found</h1></body></html>")
-
-    def _handle_new_ui(self, path: str) -> None:
-        """Новый фронт (frontend2) — предпросмотр на /new.
-        Текущий фронт не трогает: / по-прежнему отдаёт frontend/index.html."""
-        frontend2 = get_root_dir() / "frontend2"
-        if path == "/new":
-            index_path = frontend2 / "index.html"
-            if not index_path.exists():
-                self._send_json({"error": "Not found"}, HTTPStatus.NOT_FOUND)
-                return
-            html = index_path.read_text(encoding="utf-8")
-            token = parse_qs(urlparse(self.path).query).get("token", [""])[0]
-            html = html.replace("__APP_TOKEN__", token)
-            self._send_html(html)
-            return
-        rel = path[len("/new/"):]
-        file_path = (frontend2 / rel).resolve()
-        try:
-            frontend2_resolved = frontend2.resolve()
-        except OSError:
-            self._send_json({"error": "Forbidden"}, HTTPStatus.FORBIDDEN)
-            return
-        if not str(file_path).startswith(str(frontend2_resolved)):
-            self._send_json({"error": "Forbidden"}, HTTPStatus.FORBIDDEN)
-            return
-        self._send_file(file_path)
 
     def _handle_get_config(self) -> None:
         cfg = get_config_manager().load()
@@ -1037,6 +1018,8 @@ class ZapretHandler(BaseHTTPRequestHandler):
                 self._handle_save_list(data, "list-include-user.txt")
             elif path == "/api/ipset-exclude-list":
                 self._handle_save_list(data, "ipset-exclude.txt")
+            elif path == "/api/ipset-include-list":
+                self._handle_save_list(data, "ipset-include-user.txt")
             elif path == "/api/service/install":
                 self._handle_service_install(data)
             elif path == "/api/service/remove":
@@ -1047,6 +1030,10 @@ class ZapretHandler(BaseHTTPRequestHandler):
                 self._handle_service_stop()
             elif path == "/api/diagnose":
                 self._handle_diagnose()
+            elif path == "/api/diagnose/action":
+                self._handle_diagnose_action(data)
+            elif path == "/api/diagnose/status":
+                self._handle_diagnose_status()
             elif path == "/api/export-report":
                 self._handle_export_report(data)
             elif path == "/api/collect-info":
@@ -1217,6 +1204,43 @@ class ZapretHandler(BaseHTTPRequestHandler):
         report["elapsed_sec"] = round(_time.time() - start, 1)
         report["report_text"] = format_report_text(report)
         self._send_json({"status": "ok", "report": report})
+
+    # ── Streaming diagnostics (progress like the tester) ──
+    def _handle_diagnose_action(self, data: dict) -> None:
+        import threading as _th
+        import time as _time
+        from core.diagnostics import run_diagnostics, format_report_text
+        if _diag_state.get("running"):
+            self._send_json({"status": "error", "message": "Проверка уже выполняется"})
+            return
+        _diag_state.update({"running": True, "progress": "", "report": None,
+                            "error": None, "started": _time.time()})
+
+        def _worker():
+            try:
+                def _cb(name):
+                    with _diag_lock:
+                        _diag_state["progress"] = name
+                report = run_diagnostics(get_root_dir(), get_config_manager().load(), progress_cb=_cb)
+                report["elapsed_sec"] = round(_time.time() - _diag_state["started"], 1)
+                report["report_text"] = format_report_text(report)
+                with _diag_lock:
+                    _diag_state["report"] = report
+            except Exception as e:
+                with _diag_lock:
+                    _diag_state["error"] = str(e)
+            finally:
+                with _diag_lock:
+                    _diag_state["running"] = False
+
+        _th.Thread(target=_worker, daemon=True).start()
+        self._send_json({"status": "ok"})
+
+    def _handle_diagnose_status(self) -> None:
+        with _diag_lock:
+            self._send_json({"status": "ok", **{k: _diag_state[k] for k in
+                                                ("running", "progress", "error")},
+                             "report": _diag_state["report"]})
 
     def _handle_update_check(self) -> None:
         global _update_check_cache

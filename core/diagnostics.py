@@ -327,64 +327,73 @@ def _check_dns_health() -> Check:
     return Check("dns_health", "DNS (53/DoT/DoH)", status, detail)
 
 
-def run_diagnostics(root_dir: Path, cfg: AppConfig) -> dict:
+def run_diagnostics(root_dir: Path, cfg: AppConfig, progress_cb=None) -> dict:
     root_dir = Path(root_dir)
 
     checks: list[Check] = []
-    checks.append(Check("version", "Версия", "ok", VERSION))
+
+    def _add(ck: Check) -> None:
+        checks.append(ck)
+        if progress_cb is not None:
+            try:
+                progress_cb(ck.name)
+            except Exception:
+                pass
+
+    _add(Check("version", "Версия", "ok", VERSION))
 
     # rights
-    checks.append(Check("admin", "Права администратора",
-                        "ok" if is_admin() else "fail",
-                        "есть" if is_admin() else "нет — WinDivert не загрузится"))
+    _add(Check("admin", "Права администратора",
+               "ok" if is_admin() else "fail",
+               "есть" if is_admin() else "нет — WinDivert не загрузится"))
 
     # install path
-    checks.append(_check_path(root_dir))
+    _add(_check_path(root_dir))
 
     # zapret2 process
     pid = _pid_of("winws2.exe")
     if pid is not None:
         strategy = cfg.last_profile or DEFAULT_PROFILE
-        checks.append(Check("winws2", "Процесс winws2", "ok",
+        _add(Check("winws2", "Процесс winws2", "ok",
                             f"запущен (PID {pid}), пресет «{strategy}»"))
     else:
-        checks.append(Check("winws2", "Процесс winws2", "fail",
+        _add(Check("winws2", "Процесс winws2", "fail",
                             "не запущен — обход неактивен"))
 
     # zapret 1 conflict
     z1 = _pid_of("winws.exe")
     if z1 is not None:
-        checks.append(Check("zapret1", "Zapret 1", "warn",
+        _add(Check("zapret1", "Zapret 1", "warn",
                             f"winws.exe запущен (PID {z1}) — два WinDivert-фильтра конфликтуют"))
     else:
-        checks.append(Check("zapret1", "Zapret 1", "ok", "не запущен"))
+        _add(Check("zapret1", "Zapret 1", "ok", "не запущен"))
 
     # environment scan: other DPI tools / VPN clients / tunnel adapters
     try:
         from core.conflict_scan import scan as scan_conflicts, describe as describe_conflicts
         cr = scan_conflicts()
         if cr.hard_conflict:
-            checks.append(Check("env", "Конфликт DPI-тулзов", "fail",
+            _add(Check("env", "Конфликт DPI-тулзов", "fail",
                                 describe_conflicts(cr) or "обнаружен"))
         elif cr.warnings:
-            checks.append(Check("env", "Окружение (VPN/туннели)", "warn",
+            _add(Check("env", "Окружение (VPN/туннели)", "warn",
                                 describe_conflicts(cr) or "обнаружено"))
         else:
-            checks.append(Check("env", "Окружение", "ok", "конфликтов нет"))
+            _add(Check("env", "Окружение", "ok", "конфликтов нет"))
     except Exception as e:
-        checks.append(Check("env", "Окружение", "skip", f"не удалось проверить: {e}"))
+        _add(Check("env", "Окружение", "skip", f"не удалось проверить: {e}"))
 
     # TCP timestamps (ts-fooling silently dead when disabled)
     try:
         from core.tcp_timestamps import timestamps_enabled as ts_enabled
         if ts_enabled():
-            checks.append(Check("tcp_ts", "TCP timestamps", "ok",
+            _add(Check("tcp_ts", "TCP timestamps", "ok",
                                 "включены — tcp_ts-фулинг активен"))
         else:
-            checks.append(Check("tcp_ts", "TCP timestamps", "warn",
+            _add(Check("tcp_ts", "TCP timestamps", "warn",
                                 "ВЫКЛЮЧЕНЫ — tcp_ts=... в пресетах молча не работает"))
     except Exception as e:
-        checks.append(Check("tcp_ts", "TCP timestamps", "skip", f"не удалось проверить: {e}"))
+        _add(Check("tcp_ts", "TCP timestamps", "skip", f"не удалось проверить: {e}"))
 
     # service
     try:
@@ -392,34 +401,44 @@ def run_diagnostics(root_dir: Path, cfg: AppConfig) -> dict:
         if svc_installed():
             st = svc_status()
             if st == "running":
-                checks.append(Check("service", "Служба zapret2", "ok", "установлена и работает"))
+                _add(Check("service", "Служба zapret2", "ok", "установлена и работает"))
             elif _pid_of("winws2.exe") is not None:
-                checks.append(Check("service", "Служба zapret2", "warn",
+                _add(Check("service", "Служба zapret2", "warn",
                                     "служба остановлена в SCM, но winws2 работает (запущен вручную)"))
             else:
-                checks.append(Check("service", "Служба zapret2", "warn",
+                _add(Check("service", "Служба zapret2", "warn",
                                     "установлена, но не запущена (автозапуск после перезагрузки)"))
         else:
-            checks.append(Check("service", "Служба zapret2", "skip",
+            _add(Check("service", "Служба zapret2", "skip",
                                 "не установлена — обход только при открытом GUI"))
     except Exception as e:
-        checks.append(Check("service", "Служба zapret2", "warn", f"не удалось проверить: {e}"))
+        _add(Check("service", "Служба zapret2", "warn", f"не удалось проверить: {e}"))
 
     # preset validation
-    checks.append(_check_preset(root_dir, cfg))
+    _add(_check_preset(root_dir, cfg))
 
     # debug log
-    checks.append(_check_debug_log(root_dir, bool(cfg.winws2_debug)))
+    _add(_check_debug_log(root_dir, bool(cfg.winws2_debug)))
 
     # connectivity (bypass active or not — see winws2 check for context)
+    if progress_cb is not None:
+        try:
+            progress_cb("Связь (канарейки)")
+        except Exception:
+            pass
     net_checks = _check_net()
     checks.extend(net_checks)
 
     # block-type classification for the failed host(s): DNS vs IP vs SNI
+    if progress_cb is not None:
+        try:
+            progress_cb("Тип блокировки")
+        except Exception:
+            pass
     checks.extend(_check_block_types(net_checks))
 
     # DNS health: plain resolver vs DoT (853) vs DoH (443)
-    checks.append(_check_dns_health())
+    _add(_check_dns_health())
 
     summary = {"ok": 0, "warn": 0, "fail": 0, "skip": 0}
     for c in checks:

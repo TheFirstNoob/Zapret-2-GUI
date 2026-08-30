@@ -5,425 +5,381 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Zapret2 Manager</title>
   <link rel="stylesheet" href="/static/css/app.css">
-  <style>#strategySelect:invalid{color:gray}</style>
 </head>
 <body>
   <div class="app">
+
     <aside class="sidebar">
-      <div class="sidebar-header">
-        <div class="logo">Z2</div>
-        <div>
-          <div class="title">Zapret2 Manager</div>
-          <div class="subtitle">DPI обход <span id="appVersion" style="opacity:.6;font-size:11px"></span></div>
+      <div class="brand">
+        <div class="brand-logo">Z2</div>
+        <div class="brand-text">
+          <div class="brand-name">Zapret2</div>
+          <div class="brand-ver" id="appVersion">—</div>
         </div>
       </div>
-      
-      <nav>
-        <ul style="list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:4px;">
-          <li>
-            <a href="#main" data-page="main" class="nav-link active">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20">
-                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline>
-              </svg>
-              <span>Главная</span>
-            </a>
-          </li>
-          <li>
-            <a href="#diagnostics" data-page="diagnostics" class="nav-link">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20">
-                <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
-              </svg>
-              <span>Проверка системы</span>
-            </a>
-          </li>
-          <li>
-            <a href="#tester" data-page="tester" class="nav-link">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20">
-                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
-              </svg>
-              <span>Подбор стратегии</span>
-            </a>
-          </li>
-          <li>
-            <a href="#exclude" data-page="exclude" class="nav-link">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20">
-                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
-              </svg>
-              <span>Списки</span>
-            </a>
-          </li>
-        </ul>
+
+      <nav class="nav">
+        <a href="#main" data-page="main" class="nav-link active">Главная</a>
+        <a href="#diagnostics" data-page="diagnostics" class="nav-link">Проверка системы</a>
+        <a href="#tester" data-page="tester" class="nav-link">Подбор стратегии</a>
+        <a href="#lists" data-page="lists" class="nav-link">Списки</a>
       </nav>
-      
+
+      <div class="sidebar-foot">
+        <div class="prot-chip" id="protChip">
+          <span class="dot dot-unknown" id="protDot"></span>
+          <span class="prot-text" id="protText">загрузка…</span>
+        </div>
+        <div class="prot-sub" id="protSub"></div>
+      </div>
     </aside>
 
     <main class="main">
-      <div id="updateBanner" style="display:none;background:var(--warn);color:#1a1a1a;padding:8px 16px;font-size:13px;align-items:center;gap:10px;flex-wrap:wrap">
-        <span>Доступна новая версия: <b id="updateVersion"></b></span>
-        <a id="updateLink" href="#" target="_blank" rel="noopener" style="color:#1a1a1a;font-weight:700">GitHub</a>
-        <a id="updateMirrorLink" href="#" target="_blank" rel="noopener" style="color:#1a1a1a;font-weight:700">Зеркало (jsDelivr)</a>
-        <button onclick="document.getElementById('updateBanner').style.display='none'" style="background:none;border:none;cursor:pointer;font-size:16px;margin-left:auto">×</button>
+      <div class="banner" id="updateBanner" hidden>
+        <span>Доступна версия <b id="updateVersion"></b></span>
+        <a id="updateLink" href="#" target="_blank" rel="noopener">GitHub</a>
+        <a id="updateMirrorLink" href="#" target="_blank" rel="noopener">Зеркало</a>
+        <button class="banner-x" id="updateBannerClose" aria-label="Скрыть">×</button>
       </div>
+
       <header class="topbar">
-        <h1 id="pageTitle">Статус</h1>
+        <h1 id="pageTitle">Главная</h1>
+        <div class="topbar-actions" id="topbarActions"></div>
       </header>
-      
+
       <div class="content">
 
-        <!-- Main Page -->
+        <!-- ═══ Главная ═══ -->
         <section id="page-main" class="page active">
-          <div class="main-grid">
 
-            <!-- Обход Card -->
-            <div class="card main-card" id="z2Card">
-              <div class="status-line">
-                <span class="z2-badge">Z2</span>
-                <span class="status-badge" id="z2StatusBadge">⏳ загрузка...</span>
-                <span class="status-sep">·</span>
-                <span>PID <span class="value" id="z2Pid">—</span></span>
-                <span class="status-sep">·</span>
-                <span id="z2Uptime">—</span>
-              </div>
-
-              <div class="conflict-inline" id="conflictInline" style="display:none">
-                ⚠️ Конфликт: Zapret 1 и Zapret 2 запущены одновременно. Остановите один из них перед запуском другого.
-              </div>
-
-              <div style="display:flex;gap:8px;align-items:center;margin-top:12px">
-                <select class="input" id="strategySelect" required style="width:100%;cursor:pointer;font-size:12px">
-                  <option value="" disabled selected>— стратегия —</option>
-                </select>
-              </div>
-
-              <div class="action-panel">
-                <div style="display:flex;gap:8px;align-items:center">
-                  <button class="btn btn-sm btn-primary" id="btnZ2Toggle" onclick="MainPage.toggleZ2()">▶ Запустить</button>
-                  <span id="startResult" style="font-size:12px;color:var(--text-secondary);margin-left:4px"></span>
-                </div>
-                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                  <span style="font-size:11px;color:var(--text-secondary);white-space:nowrap">Служба:</span>
-                  <button class="btn btn-sm btn-secondary" id="btnSvcInstall" onclick="MainPage.installService()" style="font-size:11px">📦 Установить</button>
-                  <button class="btn btn-sm btn-secondary" id="btnSvcRemove" onclick="MainPage.removeService()" style="font-size:11px;display:none">🗑 Удалить</button>
-                  <button class="btn btn-sm btn-secondary" id="btnSvcToggle" onclick="MainPage.toggleService()" style="font-size:11px;display:none">▶ Запустить</button>
-                  <span id="serviceStatus" style="font-size:11px;color:var(--text-secondary)"></span>
-                </div>
-              </div>
-
-              <!-- Zapret 1 (сворачиваемый) -->
-              <details id="z1Card" class="z1-details">
-                <summary><span class="z1-badge">Z1</span> Zapret 1 · <span id="z1StatusBadge">⏳ загрузка...</span> · развернуть</summary>
-                <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
-                  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                    <input class="input" id="z1DirPath" placeholder="C:\Zapret" style="flex:1;min-width:140px;font-size:12px">
-                    <button class="btn btn-sm btn-secondary" onclick="MainPage.saveZ1Dir()">💾 Сохранить путь</button>
-                    <select class="input" id="z1StrategySelect" style="min-width:120px;cursor:pointer;font-size:12px" disabled>
-                      <option value="">— нет стратегий —</option>
-                    </select>
-                    <button class="btn btn-sm btn-primary" id="btnZ1Toggle" onclick="MainPage.toggleZ1()">▶ Запустить</button>
-                  </div>
-                  <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary)">
-                    <span>PID</span><span class="mono" id="z1Pid">—</span>
-                  </div>
-                  <div id="z1Result" style="font-size:12px;color:var(--text-secondary)"></div>
-                </div>
-              </details>
+            <div id="conflictBanner" class="notice notice-fail" hidden>
+              <span>Одновременно запущены Zapret 1 и Zapret 2 — обход не будет работать.</span>
+              <button class="btn btn-sm" id="btnStopZ1Now">Остановить Zapret 1</button>
             </div>
 
-            <!-- Toggles -->
-            <div class="card main-card main-card-wide" id="togglesCard">
-              <div class="toggles-overlay" id="togglesOverlay">
-                <div class="toggles-overlay-content">
-                  <span style="font-size:24px">⚠️</span>
-                  <span>Запущен Zapret 1 — эти настройки применимы только к Zapret 2</span>
-                </div>
-              </div>
-              <h3 style="margin-bottom:12px">⚙️ Дополнительно</h3>
-              <div class="toggles-grid">
-                <label class="toggle-row">
-                  <span class="toggle-label">GameFilter</span>
-                  <span class="toggle-desc">Проброс высоких портов (1024-65535) для игр и голосовых чатов</span>
-                  <select class="input" id="toggleGameFilter" style="width:130px;cursor:pointer;font-size:12px">
-                    <option value="off">Отключено</option>
+          <div class="main-grid">
+
+            <!-- Левая колонка: Zapret 2 (основной фокус) -->
+            <div class="main-col main-col-z2">
+
+            <!-- Защита -->
+          <div class="panel">
+            <div class="panel-title">Защита</div>
+
+            <div class="row">
+              <span class="state" id="z2State">
+                <span class="dot dot-unknown"></span><span class="state-text">—</span>
+              </span>
+              <span class="meta" id="z2Meta"></span>
+            </div>
+
+            <div class="row">
+              <label class="field grow">
+                <span class="field-label">Стратегия</span>
+                <select class="input" id="strategySelect"></select>
+              </label>
+              <button class="btn btn-primary" id="btnZ2Toggle">Запустить</button>
+            </div>
+
+            <div class="row tight">
+              <span class="row-label">Служба (автозапуск)</span>
+              <label class="switch">
+                <input type="checkbox" id="svcAutoSwitch">
+                <span class="switch-track"><span class="switch-knob"></span></span>
+              </label>
+              <button class="btn btn-sm" id="btnSvcStart" hidden>Запустить службу</button>
+              <span class="meta" id="svcStatusText"></span>
+            </div>
+          </div>
+
+          <!-- Тогглы -->
+          <div class="panel" id="togglesPanel">
+            <div class="panel-title">Параметры запуска</div>
+            <div class="panel-sub">Применяются при старте Zapret 2. Не влияют на Zapret 1.</div>
+
+            <div class="toggles-overlay" id="togglesOverlay" hidden>
+              Настройки ниже относятся к Zapret 2 — сейчас запущен Zapret 1.
+            </div>
+
+            <table class="opt-table">
+              <tr>
+                <td class="opt-name">Игровые порты<span class="opt-id">GameFilter</span></td>
+                <td class="opt-desc">Открывает обходу порты 1024–65535 (игры, голосовые чаты). Если игра не работает без него — включите.</td>
+                <td class="opt-ctl">
+                  <select class="input input-sm" id="toggleGameFilter">
+                    <option value="off">Выключено</option>
                     <option value="tcp">Только TCP</option>
                     <option value="udp">Только UDP</option>
                     <option value="both">TCP + UDP</option>
                   </select>
-                </label>
-                <label class="toggle-row">
-                  <span class="toggle-label">Auto Hostlist</span>
-                  <span class="toggle-desc">При обнаружении блокировок DPI winws2 сам добавит домен в список<br>и будет периодически его проверять</span>
-                  <label class="toggle-switch"><input type="checkbox" id="toggleAutoHostlist"><span class="toggle-slider"></span></label>
-                </label>
-                <label class="toggle-row">
-                  <span class="toggle-label">Общий IP-обход</span>
-                  <span class="toggle-desc">Применять обход ко ВСЕМ известным подсетям блокировок (как в Zapret 1)<br>Точечные списки доменов работают в любом случае. Исключения — в разделе «Списки»</span>
-                  <label class="toggle-switch"><input type="checkbox" id="toggleIpFilter"><span class="toggle-slider"></span></label>
-                </label>
-                <label class="toggle-row">
-                  <span class="toggle-label">Discord Voice (UDP)</span>
-                  <span class="toggle-desc">Альтернативное решение для Discord PING 5K или RTC подключения <br>(Не рекомендуется по умолчанию)</span>
-                  <label class="toggle-switch"><input type="checkbox" id="toggleDiscordVoice"><span class="toggle-slider"></span></label>
-                </label>
-                <label class="toggle-row debug-warning">
-                  <span class="toggle-label">DEBUG Winws2</span>
-                  <span class="toggle-desc">Запись КАЖДОГО пакета zapret2. Сильно увеличивает пинг и CPU задержки<br>Только для диагностики и анализа проблем!</span>
-                  <label class="toggle-switch"><input type="checkbox" id="toggleWinws2Debug"><span class="toggle-slider"></span></label>
-                </label>
-              </div>
-              <div style="display:flex;align-items:center;gap:10px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
-                <p style="font-size:11px;color:var(--text-muted);margin:0;flex:1">
-                  Тумблеры применяются при старте. <br> Перезапуск — для смены настроек без ручного стопа.
-                </p>
-                <button class="btn btn-sm btn-primary" id="btnApplyToggles" style="display:none" onclick="MainPage.restartZapret()">🔄 Перезапустить</button>
-                <span id="applyTogglesResult" style="font-size:12px;color:var(--text-secondary)"></span>
-              </div>
-            </div>
+                </td>
+              </tr>
+              <tr>
+                <td class="opt-name">Авто-список<span class="opt-id">Auto Hostlist</span></td>
+                <td class="opt-desc">Zapret сам добавит домен в обход, когда заметит блокировку. Держите включённым.</td>
+                <td class="opt-ctl"><label class="switch"><input type="checkbox" id="toggleAutoHostlist"><span class="switch-track"><span class="switch-knob"></span></span></label></td>
+              </tr>
+              <tr>
+                <td class="opt-name">Общий IP-обход<span class="opt-id">ipset</span></td>
+                <td class="opt-desc">Обрабатывать весь трафик в известных блокируемых подсетях, а не только по спискам доменов. Сильнее грузит систему.</td>
+                <td class="opt-ctl"><label class="switch"><input type="checkbox" id="toggleIpFilter"><span class="switch-track"><span class="switch-knob"></span></span></label></td>
+              </tr>
+              <tr>
+                <td class="opt-name">Discord Voice<span class="opt-id">UDP</span></td>
+                <td class="opt-desc">Отдельный обход голосового UDP-трафика Discord. Включайте только при PING ERROR / 5000 в голосовом чате.</td>
+                <td class="opt-ctl"><label class="switch"><input type="checkbox" id="toggleDiscordVoice"><span class="switch-track"><span class="switch-knob"></span></span></label></td>
+              </tr>
+              <tr class="opt-row-warn">
+                <td class="opt-name">DEBUG-лог<span class="opt-id">winws2</span></td>
+                <td class="opt-desc">Запись каждого пакета. Заметно повышает пинг и нагрузку на CPU. Только для разбора проблем по запросу.</td>
+                <td class="opt-ctl"><label class="switch"><input type="checkbox" id="toggleWinws2Debug"><span class="switch-track"><span class="switch-knob"></span></span></label></td>
+              </tr>
+            </table>
 
+            <div class="panel-foot">
+              <span class="meta" id="applyTogglesHint"></span>
+              <button class="btn btn-primary btn-sm" id="btnApplyToggles" hidden>Перезапустить с новыми параметрами</button>
+            </div>
           </div>
+
+            </div><!-- /main-col-z2 -->
+
+            <!-- Правая колонка: Zapret 1 (вспомогательный) -->
+            <div class="main-col main-col-z1">
+
+          <!-- Zapret 1 -->
+          <details class="panel panel-details" id="z1Panel" open>
+            <summary class="panel-title panel-summary">
+              Zapret 1<span class="state state-inline" id="z1State"><span class="dot dot-unknown"></span><span class="state-text">—</span></span>
+            </summary>
+            <div class="row">
+              <label class="field grow">
+                <span class="field-label">Папка Zapret 1</span>
+                <input class="input" id="z1DirPath" placeholder="C:\Zapret">
+              </label>
+              <button class="btn" id="btnZ1SaveDir">Сохранить путь</button>
+            </div>
+            <div class="row">
+              <label class="field grow">
+                <span class="field-label">Стратегия (.bat)</span>
+                <select class="input" id="z1StrategySelect" disabled><option value="">— сначала укажите папку —</option></select>
+              </label>
+              <button class="btn btn-primary" id="btnZ1Toggle">Запустить</button>
+            </div>
+          </details>
+
+            </div><!-- /main-col-z1 -->
+
+          </div><!-- /main-grid -->
+
         </section>
 
-        <!-- Exclude Page -->
-        <section id="page-exclude" class="page">
-          <div class="card" style="margin-bottom:16px;font-size:13px;color:var(--text-secondary);line-height:1.6">
-            <strong>Формат списков</strong> — каждый домен с <strong>новой строки</strong>, без запятых в конце.
-            <ul style="margin:6px 0 0;padding-left:18px">
-              <li><code>domain.com</code> — все поддомены тоже подпадают под правило (как <code>*.domain.com</code>)</li>
-              <li><code>api.domain.com</code> — только конкретный поддомен <code>api.domain.com</code></li>
-              <li>Префикс <code>www</code> не нужен — <code>domain.com</code> уже покрывает <code>www.domain.com</code></li>
-              <li>Пустые строки и комментарии не допускаются</li>
-            </ul>
-          </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">
-            <div class="card" style="display:flex;flex-direction:column;height:380px">
-              <h3 style="margin:0 0 4px">🚫 Исключения</h3>
-              <div style="font-size:12px;color:var(--text-secondary);margin:0 0 12px">Домены, которые НЕ будут обрабатываться zapret.</div>
-              <textarea class="input textarea-list" id="excludeTextarea" placeholder="example.com" style="flex:1;min-height:0"></textarea>
-              <div style="display:flex;gap:8px;margin-top:12px">
-                <button class="btn btn-primary" onclick="ExcludePage.saveExclude()">💾 Сохранить</button>
-                <span id="excludeSaveResult" style="font-size:12px;color:var(--text-secondary);align-self:center"></span>
-              </div>
-            </div>
-            <div class="card" style="display:flex;flex-direction:column;height:380px">
-              <h3 style="margin:0 0 4px">📥 Включения</h3>
-              <div style="font-size:12px;color:var(--text-secondary);margin:0 0 12px">Домены, которые ВСЕГДА будут обрабатываться zapret.</div>
-              <textarea class="input textarea-list" id="includeTextarea" placeholder="example.com" style="flex:1;min-height:0"></textarea>
-              <div style="display:flex;gap:8px;margin-top:12px">
-                <button class="btn btn-primary" onclick="ExcludePage.saveInclude()">💾 Сохранить</button>
-                <span id="includeSaveResult" style="font-size:12px;color:var(--text-secondary);align-self:center"></span>
-              </div>
-            </div>
-            <div class="card" style="display:flex;flex-direction:column;height:380px;grid-column:1/-1">
-              <h3 style="margin:0 0 4px">🛡️ IP-исключения (ipset-exclude)</h3>
-              <div style="font-size:12px;color:var(--text-secondary);margin:0 0 12px">
-                Подсети (CIDR), которые НЕ будут обрабатываться при включённом «Общем IP-обходе».
-                По умолчанию — только приватные/служебные диапазоны.
-              </div>
-              <textarea class="input textarea-list" id="ipsetExcludeTextarea" placeholder="192.168.0.0/16" style="flex:1;min-height:0"></textarea>
-              <div style="display:flex;gap:8px;margin-top:12px">
-                <button class="btn btn-primary" onclick="ExcludePage.saveIpsetExclude()">💾 Сохранить</button>
-                <span id="ipsetExcludeSaveResult" style="font-size:12px;color:var(--text-secondary);align-self:center"></span>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <!-- Tester Page -->
+        <!-- ═══ Подбор стратегии ═══ -->
         <section id="page-tester" class="page">
-          <div class="card" id="testerIntro">
-            <div class="tester-intro">
-              <h2 style="margin-bottom:10px; display:flex; align-items:center; gap:8px;">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-                Подбор стратегии
-              </h2>
-              <p style="color: var(--text-secondary);">Два шага: сначала проверьте систему, затем подберите стратегию.</p>
-              <div class="guide-steps" style="margin-top:16px;">
-                <div class="guide-step">
-                  <div class="guide-num">1</div>
-                  <div class="guide-step-body">
-                    <strong>Система в порядке?</strong>
-                    <p>Проверка системы ответит: права, служба, конфликты, тип блокировки (DNS/IP/SNI).</p>
-                    <button class="btn btn-secondary" id="btnDiagCheck" onclick="location.hash='#diagnostics'">🔍 Проверить систему</button>
-                    <span id="diagDoneNote" style="display:none;font-size:12px;color:var(--ok, #2ecc71);margin-left:8px">✓ проверена</span>
+
+          <div id="testerIntro" class="stack">
+            <div class="panel">
+              <div class="panel-title">Как это работает</div>
+              <div class="steps">
+                <div class="step">
+                  <span class="step-num">1</span>
+                  <div class="step-body">
+                    <div class="step-name">Проверка системы</div>
+                    <div class="step-desc">Права, конфликты, тип блокировки — ~30 секунд.</div>
+                    <button class="btn btn-sm" id="btnDiagCheck">Открыть проверку системы</button>
+                    <span class="ok-note" id="diagDoneNote" hidden>выполнена</span>
                   </div>
                 </div>
-                <div class="guide-step">
-                  <div class="guide-num">2</div>
-                  <div class="guide-step-body">
-                    <strong>Нужно выбрать лучшую стратегию</strong>
-                    <p>Тест проверит все стратегии (3–5 мин) и в конце покажет рекомендацию: Discord, YouTube и что делать дальше.</p>
-                    <button class="btn btn-primary" id="btnStartTest" onclick="TesterPage.startTest()">
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="margin-right:6px"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-                      Начать тест
-                    </button>
+                <div class="step">
+                  <span class="step-num">2</span>
+                  <div class="step-body">
+                    <div class="step-name">Подбор стратегии</div>
+                    <div class="step-desc">Каждая стратегия тестируется на Discord, YouTube и других сервисах (~12 сек на стратегию). В конце — одна рекомендация.</div>
+                    <div class="test-options">
+                      <label class="opt-line"><input type="checkbox" id="cdnCheck"><span>Тест случайных CDN-сайтов <span class="meta">+5–10 мин</span></span></label>
+                      <label class="opt-line"><input type="checkbox" id="extendedCheck"><span>Расширенный режим <span class="meta">со сравнением Zapret 1</span></span></label>
+                      <label class="opt-line"><input type="checkbox" id="logCheck"><span>Сохранить отчёт для поддержки</span></label>
+                    </div>
+                    <button class="btn btn-primary" id="btnStartTest">Начать подбор</button>
                   </div>
                 </div>
               </div>
-              <div class="test-options" style="margin-top:18px">
-                <div class="test-options-title">Опции теста</div>
-                <label class="option-row">
-                  <input type="checkbox" id="cdnCheck">
-                  <span class="option-box"></span>
-                  <span class="option-text"><strong>CDN-хосты</strong><small>+5–10 мин — случайные сайты для проверки общего доступа</small></span>
-                </label>
-                <label class="option-row">
-                  <input type="checkbox" id="extendedCheck">
-                  <span class="option-box"></span>
-                  <span class="option-text"><strong>Расширенный тест</strong><small>+Zapret 1, Naked, полный анализ</small></span>
-                </label>
-                <label class="option-row">
-                  <input type="checkbox" id="logCheck">
-                  <span class="option-box"></span>
-                  <span class="option-text"><strong>Собирать логи</strong><small>Для отчёта при обращении за поддержкой</small></span>
-                </label>
+            </div>
+            <div class="notice notice-info">На время подбора обход будет перезапускаться с каждой стратегией. Возможно кратковременное отключение от сети.</div>
+          </div>
+
+          <div id="testRun" class="stack" hidden>
+            <div class="panel">
+              <div class="run-head">
+                <div class="run-current" id="testCurrentPhase">Подготовка…</div>
+                <div class="run-elapsed mono" id="testElapsed">00:00</div>
+                <button class="btn btn-sm btn-danger-text" id="btnCancelTest">Отменить</button>
               </div>
+              <div class="progress-bar"><div class="fill" id="testProgressFill"></div></div>
+              <div class="progress-msg" id="testProgressMsg"></div>
             </div>
-          </div>
 
-          <div id="testProgress" class="card" style="display:none">
-            <h3 style="display:flex; align-items:center; gap:8px;">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-              Прогресс
-            </h3>
-            <div id="testPhaseIndicator" class="phase-indicator"></div>
-            <div class="progress-bar"><div class="fill" id="testProgressFill" style="width:0%"></div></div>
-            <div class="progress-info">
-              <span id="testProgressText">Запуск...</span>
-              <span id="testElapsed">00:00</span>
+            <div class="panel">
+              <div class="panel-title">Стратегии</div>
+              <table class="strat-table">
+                <thead>
+                  <tr>
+                    <th class="col-strat">Стратегия</th>
+                    <th class="col-state">Состояние</th>
+                    <th class="col-rate">Доступность</th>
+                    <th class="col-mini">Discord</th>
+                    <th class="col-mini">YouTube</th>
+                    <th class="col-rate">Хосты</th>
+                  </tr>
+                </thead>
+                <tbody id="stratTbody">
+                  <tr class="strat-empty"><td colspan="6">Ожидание первых результатов…</td></tr>
+                </tbody>
+              </table>
+              <div class="meta" style="margin-top:6px">Нажмите на стратегию, чтобы раскрыть проверки по хостам.</div>
             </div>
-            <div class="progress-current" id="testCurrentInfo"></div>
-            <div class="test-log" id="testLog"></div>
-            <div style="text-align:center;margin-top:12px">
-              <button class="btn btn-sm btn-secondary" onclick="TesterPage.cancelTest()" style="font-size:11px;color:var(--err)">✕ Отменить тест</button>
-            </div>
+
+            <details class="panel panel-details">
+              <summary class="panel-title panel-summary">Журнал теста</summary>
+              <div class="test-log" id="testLog"></div>
+            </details>
           </div>
 
-          <div id="testLiveResults" class="card" style="display:none">
-            <h3 style="display:flex; align-items:center; gap:8px;">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></svg>
-              Результаты тестирования
-            </h3>
-            <div id="testLiveBlocks"></div>
-          </div>
-
-          <div id="testSummary" class="card" style="display:none">
-            <h3 style="display:flex; align-items:center; gap:8px;">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
-              Сводка
-            </h3>
-            <div id="summaryContent"></div>
-          </div>
-
-          <div id="testResults"></div>
+          <div id="testSummary" class="stack" hidden></div>
         </section>
 
-        <!-- Diagnostics Page -->
+        <!-- ═══ Проверка системы ═══ -->
         <section id="page-diagnostics" class="page">
-          <div class="card">
-            <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+          <div class="panel">
+            <div class="diag-head">
               <div>
-                <h3 style="display:flex; align-items:center; gap:8px;">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>
-                  Проверка системы
-                </h3>
-                <p style="color:var(--text-secondary); font-size:13px; margin:6px 0 0;">
-                  Права, путь установки, процесс, служба, пресет, конфликты, связь и тип блокировки (DNS/IP/SNI).
-                  Занимает ~30–45 секунд. Если нужна рекомендация по стратегии — перейдите к подбору.
-                </p>
+                <div class="panel-title">Проверка системы</div>
+                <div class="panel-sub">Права, конфликты, служба, пресет, связь и тип блокировки. ~30 секунд.</div>
               </div>
-              <div style="display:flex; gap:8px;">
-                <button class="btn btn-primary" id="diagRunBtn" onclick="DiagnosticsPage.run()">Запустить проверку</button>
-                <button class="btn" id="diagCopyBtn" onclick="DiagnosticsPage.copyReport()" style="display:none;">Скопировать отчёт</button>
+              <div class="diag-actions">
+                <button class="btn btn-primary" id="diagRunBtn">Проверить</button>
+                <button class="btn" id="diagCopyBtn" hidden>Скопировать отчёт</button>
               </div>
             </div>
-            <div id="diagSummary" style="margin-top:14px;"></div>
-            <div id="diagResults" style="margin-top:10px;"></div>
+            <div class="diag-summary" id="diagSummary"></div>
+            <div class="diag-body" id="diagResults">
+              <div class="empty-note">Нажмите «Проверить», чтобы диагностировать окружение.</div>
+            </div>
           </div>
         </section>
+
+        <!-- ═══ Списки ═══ -->
+        <section id="page-lists" class="page">
+          <div class="notice notice-info lists-help">
+            Один адрес на строчку. Домен <b>example.com</b> покрывает и поддомены (www.example.com и т.п.).
+            Ошибочные строки подсвечиваются — пока они есть, список не сохранится.
+          </div>
+
+          <div class="lists-grid">
+            <div class="panel list-panel">
+              <div class="list-head">
+                <div class="panel-title">Домены — обрабатывать</div>
+                <div class="list-desc">Дополнительно к стратегиям: эти домены Zapret будет обходить всегда.</div>
+              </div>
+              <textarea class="input list-area" id="domIncTextarea" spellcheck="false" placeholder="example.com"></textarea>
+              <div class="list-valid" id="domIncValid"></div>
+              <div class="list-foot">
+                <button class="btn btn-primary btn-sm" data-save="domInc">Сохранить</button>
+                <span class="meta" id="domIncResult"></span>
+              </div>
+            </div>
+
+            <div class="panel list-panel">
+              <div class="list-head">
+                <div class="panel-title">Домены — не трогать</div>
+                <div class="list-desc">Эти домены проходят мимо Zapret как есть (банки, игровые серверы и т.п.).</div>
+              </div>
+              <textarea class="input list-area" id="domExcTextarea" spellcheck="false" placeholder="bank.ru"></textarea>
+              <div class="list-valid" id="domExcValid"></div>
+              <div class="list-foot">
+                <button class="btn btn-primary btn-sm" data-save="domExc">Сохранить</button>
+                <span class="meta" id="domExcResult"></span>
+              </div>
+            </div>
+
+            <div class="panel list-panel">
+              <div class="list-head">
+                <div class="panel-title">IP-сети — обрабатывать</div>
+                <div class="list-desc">CIDR-подсети (1.2.3.0/24 или 1.2.3.4), которым обход нужен всегда. Работает при включённом «Общем IP-обходе» и отдельно от него.</div>
+              </div>
+              <textarea class="input list-area" id="ipIncTextarea" spellcheck="false" placeholder="1.2.3.0/24"></textarea>
+              <div class="list-valid" id="ipIncValid"></div>
+              <div class="list-foot">
+                <button class="btn btn-primary btn-sm" data-save="ipInc">Сохранить</button>
+                <span class="meta" id="ipIncResult"></span>
+              </div>
+            </div>
+
+            <div class="panel list-panel">
+              <div class="list-head">
+                <div class="panel-title">IP-сети — не трогать</div>
+                <div class="list-desc">Исключения для «Общего IP-обхода»: свои сети, локальные сервисы. По умолчанию — приватные диапазоны.</div>
+              </div>
+              <textarea class="input list-area" id="ipExcTextarea" spellcheck="false" placeholder="192.168.0.0/16"></textarea>
+              <div class="list-valid" id="ipExcValid"></div>
+              <div class="list-foot">
+                <button class="btn btn-primary btn-sm" data-save="ipExc">Сохранить</button>
+                <span class="meta" id="ipExcResult"></span>
+              </div>
+            </div>
+          </div>
+        </section>
+
       </div>
     </main>
   </div>
 
-  <div id="toast" class="toast"></div>
+  <div id="toast" class="toast" hidden></div>
 
-  <!-- Collection Form -->
+  <!-- Отчёт для поддержки -->
   <div id="collectFormOverlay" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="collectFormTitle">
     <div class="modal">
-      <button onclick="TesterPage.closeCollectForm()" style="position:absolute; top:15px; right:15px; background:none; border:none; cursor:pointer; font-size:24px; color:var(--text-secondary);">×</button>
-      <h3 id="collectFormTitle">📋 Сохранить отчёт</h3>
-      <p id="collectFormDesc" style="color: var(--text-secondary); font-size: 14px;">Укажите данные для сохранения ZIP-архива с результатами теста.</p>
-
-      <div class="mb-2">
-        <label style="display:block; margin-bottom:5px; font-weight:500;">Город</label>
-        <input class="input" id="collectCity" placeholder="Москва">
+      <button class="modal-x" id="collectClose" aria-label="Закрыть">×</button>
+      <div class="modal-title" id="collectFormTitle">Отчёт для поддержки</div>
+      <p class="modal-desc">Будет сохранён ZIP с результатами теста, версией Windows и сетевыми настройками. Личные файлы и пароли не собираются.</p>
+      <label class="field"><span class="field-label">Город</span><input class="input" id="collectCity" placeholder="Москва"></label>
+      <label class="field"><span class="field-label">Провайдер</span><input class="input" id="collectIsp" placeholder="Ростелеком"></label>
+      <div class="drop-zone" id="collectBatZone">
+        <input type="file" accept=".bat" id="collectBatInput" hidden>
+        <span id="collectBatLabel">Файл стратегии Zapret 1 (.bat) — по желанию</span>
       </div>
-      <div class="mb-2">
-        <label style="display:block; margin-bottom:5px; font-weight:500;">Провайдер</label>
-        <input class="input" id="collectIsp" placeholder="Ростелеком">
-      </div>
-
-      <div class="mb-2 drop-zone" onclick="document.getElementById('collectBatInput').click()" ondragover="event.preventDefault()" ondrop="TesterPage.handleCollectDrop(event)">
-        <input type="file" accept=".bat" id="collectBatInput" style="display:none" onchange="TesterPage.handleCollectBat(event)">
-        <div style="font-size:24px;margin-bottom:6px">📄</div>
-        <div style="font-size:13px;color:var(--text-secondary)">Старый .bat файл Zapret 1 (если есть)</div>
-        <div id="collectBatName" style="font-size:12px;color:var(--ok);margin-top:6px;display:none"></div>
-      </div>
-
-      <div class="mb-2" style="background:var(--surface-solid);border-radius:var(--radius-sm);padding:12px;text-align:center">
-        <label class="checkbox-label" style="justify-content:center;margin:0">
-          <input type="checkbox" id="collectConsent">
-          <span>Я согласен предоставить данные для анализа</span>
-        </label>
-        <p style="font-size:11px;color:var(--text-secondary);margin-top:8px">
-          Собираются только результаты тестов, версия Windows, DNS/сетевые настройки и tracert.<br>
-          Пароли, история браузера, файлы и личные данные <strong>не собираются</strong>.
-        </p>
-      </div>
-
+      <label class="opt-line"><input type="checkbox" id="collectConsent"><span>Согласен предоставить данные для анализа</span></label>
       <div class="modal-actions">
-        <button class="btn btn-secondary" onclick="TesterPage.closeCollectForm()">Отмена</button>
-        <button class="btn btn-primary" id="collectSubmitBtn" onclick="TesterPage.saveReport()">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="margin-right:6px"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-          💾 Сохранить
-        </button>
+        <button class="btn" id="collectCancelBtn">Отмена</button>
+        <button class="btn btn-primary" id="collectSubmitBtn">Сохранить отчёт</button>
       </div>
     </div>
   </div>
 
-  <!-- WARP Warning Modal -->
+  <!-- WARP -->
   <div id="vpnOverlay" class="modal-overlay" role="dialog" aria-modal="true">
-    <div class="modal modal-center">
-      <div style="font-size:44px;margin-bottom:12px">🛡️</div>
-      <h3>Обнаружен WARP/VPN</h3>
-      <p style="color: var(--text-secondary); font-size: 14px; line-height: 1.5;">
-        Активный туннель Cloudflare WARP (<span id="vpnDetails"></span>) искажает результаты теста.<br>
-        <strong>Отключите WARP</strong> в приложении Cloudflare WARP/One Client и нажмите «Проверить снова».<br>
-        <span style="font-size:12px;color:var(--text-secondary)">Если вы не используете WARP, проверьте другие VPN/прокси — они тоже влияют на тест.</span>
-      </p>
-      <div class="modal-actions center">
-        <button class="btn btn-secondary" onclick="TesterPage.cancelVpnCheck()">Отмена</button>
-        <button class="btn btn-primary" id="retryVpnBtn" onclick="TesterPage.retryVpnCheck()">🔄 Проверить снова</button>
-        <button class="btn btn-secondary" onclick="TesterPage.skipVpnCheck()">Продолжить всё равно</button>
+    <div class="modal">
+      <div class="modal-title">Обнаружен туннель WARP/VPN</div>
+      <p class="modal-desc">Туннель исказит результаты теста — отключите Cloudflare WARP и проверьте снова.<br><span class="meta" id="vpnDetails"></span></p>
+      <div class="modal-status" id="vpnStatus"></div>
+      <div class="modal-actions">
+        <button class="btn" id="vpnCancelBtn">Отмена</button>
+        <button class="btn btn-primary" id="retryVpnBtn">Проверить снова</button>
+        <button class="btn" id="vpnSkipBtn">Продолжить всё равно</button>
       </div>
-      <div id="vpnStatus" style="font-size:12px;color:var(--text-secondary);margin-top:10px"></div>
     </div>
   </div>
 
-  <!-- Need Zapret 1 Modal -->
+  <!-- Нужен Zapret 1 -->
   <div id="needZapret1Overlay" class="modal-overlay" role="dialog" aria-modal="true">
-    <div class="modal modal-center">
-      <div style="font-size:44px;margin-bottom:12px">⚠️</div>
-      <h3>Zapret 1 не обнаружен</h3>
-      <p style="color: var(--text-secondary); font-size: 14px; line-height: 1.5;">
-        winws.exe (Zapret 1) не запущен.<br>
-        Вы выбрали расширенный тест — для него нужен Zapret 1.<br>
-        Запустите ваш батник Zapret 1 и нажмите «Продолжить»,<br>
-        или отмените и снимите галочку «Расширенный тест».
-      </p>
-      <div class="modal-actions center">
-        <button class="btn btn-secondary" onclick="TesterPage.cancelNeedZapret1()">Отмена</button>
-        <button class="btn btn-primary" id="checkZapret1Btn" onclick="TesterPage.checkZapret1Again()">🔄 Продолжить</button>
+    <div class="modal">
+      <div class="modal-title">Не запущен Zapret 1</div>
+      <p class="modal-desc">Расширенный режим сравнивает результат с вашим текущим Zapret 1. Запустите его батник и продолжьте, либо вернитесь и отключите расширенный режим.</p>
+      <div class="modal-status" id="needZapret1Status"></div>
+      <div class="modal-actions">
+        <button class="btn" id="needZ1CancelBtn">Отмена</button>
+        <button class="btn btn-primary" id="checkZapret1Btn">Я запустил — продолжить</button>
       </div>
-      <div id="needZapret1Status" style="font-size:12px;color:var(--text-secondary);margin-top:10px"></div>
     </div>
   </div>
 
