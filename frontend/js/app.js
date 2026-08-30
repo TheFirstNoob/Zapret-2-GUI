@@ -318,9 +318,12 @@ const MainPage = {
       document.getElementById('z2Card').className = 'card main-card';
     }
     document.getElementById('z2Pid').textContent = z.pid || '—';
-    if (!this._serviceBusy) {
-      document.getElementById('btnZ2Start').disabled = z.running;
-      document.getElementById('btnZ2Stop').disabled = !z.running;
+    const tg = document.getElementById('btnZ2Toggle');
+    if (tg && !this._serviceBusy) {
+      tg.textContent = z.running ? '⏹ Остановить' : '▶ Запустить';
+      tg.classList.toggle('btn-primary', !z.running);
+      tg.classList.toggle('btn-secondary', z.running);
+      tg.disabled = false;
     }
     this._z2Running = z.running;
     this._z2Strategy = z.strategy || '';
@@ -348,8 +351,13 @@ const MainPage = {
       document.getElementById('z1Card').className = 'card main-card';
     }
     document.getElementById('z1Pid').textContent = z1.running && z1.pid ? z1.pid : '—';
-    document.getElementById('btnZ1Start').disabled = z1.running;
-    document.getElementById('btnZ1Stop').disabled = !z1.running;
+    const tg1 = document.getElementById('btnZ1Toggle');
+    if (tg1) {
+      tg1.textContent = z1.running ? '⏹ Остановить' : '▶ Запустить';
+      tg1.classList.toggle('btn-primary', !z1.running);
+      tg1.classList.toggle('btn-secondary', z1.running);
+      tg1.disabled = false;
+    }
     // Show hint if path not set
     const sel = document.getElementById('z1StrategySelect');
     if (!dir && !z1.running) {
@@ -521,13 +529,25 @@ const MainPage = {
   // ── Service Management ──
   _serviceBusy: false,
 
+  toggleZ2() {
+    if (this._z2Running) { this.stop(); } else { this.startSelected(); }
+  },
+
+  toggleZ1() {
+    const tg = document.getElementById('btnZ1Toggle');
+    const running = tg && tg.textContent.indexOf('Остановить') >= 0;
+    if (running) { this.stopZ1(); } else { this.startZ1(); }
+  },
+
   _setServiceBusy(busy) {
     this._serviceBusy = busy;
     document.getElementById('btnSvcInstall').disabled = busy;
     document.getElementById('btnSvcRemove').disabled = busy;
+    const tg = document.getElementById('btnSvcToggle');
+    if (tg) tg.disabled = busy;
     if (busy) {
-      document.getElementById('btnZ2Start').disabled = true;
-      document.getElementById('btnZ2Stop').disabled = true;
+      const t2 = document.getElementById('btnZ2Toggle');
+      if (t2) t2.disabled = true;
     }
   },
 
@@ -537,12 +557,36 @@ const MainPage = {
       const el = document.getElementById('serviceStatus');
       document.getElementById('btnSvcInstall').style.display = r.installed ? 'none' : '';
       document.getElementById('btnSvcRemove').style.display = r.installed ? '' : 'none';
+      const tg = document.getElementById('btnSvcToggle');
+      if (tg) {
+        tg.style.display = r.installed ? '' : 'none';
+        tg.textContent = r.running ? '⏹ Остановить' : '▶ Запустить';
+        tg.classList.toggle('btn-primary', !r.running);
+        tg.classList.toggle('btn-secondary', r.running);
+        tg.disabled = false;
+      }
       if (r.installed) {
         el.textContent = r.running ? '✅ служба запущена' : '⏹ служба остановлена';
       } else {
         el.textContent = '';
       }
     } catch (e) { /* ignore */ }
+  },
+
+  async toggleService() {
+    const tg = document.getElementById('btnSvcToggle');
+    if (!tg) return;
+    const running = tg.textContent.indexOf('Остановить') >= 0;
+    this._setServiceBusy(true);
+    try {
+      const r = await apiPost(running ? '/service/stop' : '/service/start', {});
+      showToast(r.message || 'Готово', r.status === 'ok' ? 'ok' : 'error');
+      this.refreshServiceStatus();
+    } catch (e) {
+      showToast('Ошибка: ' + e.message, 'error');
+    }
+    this._setServiceBusy(false);
+    this.refresh();
   },
 
   async installService() {
@@ -1860,6 +1904,8 @@ const TesterPage = {
   },
 
   resetToIntro() {
+    const note = document.getElementById('diagDoneNote');
+    if (note) note.style.display = localStorage.getItem('z2_diag_done') ? 'inline' : 'none';
     document.getElementById('testerIntro').style.display = 'block';
     document.getElementById('testProgress').style.display = 'none';
     document.getElementById('testLiveResults').style.display = 'none';
@@ -1895,6 +1941,9 @@ const DiagnosticsPage = {
       const r = await apiPost('/diagnose', {});
       if (r.status !== 'ok' || !r.report) throw new Error(r.message || 'ошибка');
       clearInterval(timerId);
+      localStorage.setItem('z2_diag_done', '1');
+      const note = document.getElementById('diagDoneNote');
+      if (note) note.style.display = 'inline';
       this.render(r.report);
     } catch (e) {
       clearInterval(timerId);

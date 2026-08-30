@@ -1,0 +1,530 @@
+﻿db39481 feat(tester): live results grouped per strategy тАФ active highlight, done collapse
+ frontend/css/app.css | 116 +++++++++++++++++++++++++++++++++++
+ frontend/index.html  |  16 +----
+ frontend/js/app.js   | 169 ++++++++++++++++++++++++++++++++++++++++-----------
+ 3 files changed, 251 insertions(+), 50 deletions(-)
+diff --git a/frontend/css/app.css b/frontend/css/app.css
+index 7bc52b4..f2b3684 100644
+--- a/frontend/css/app.css
++++ b/frontend/css/app.css
+@@ -1227,20 +1227,136 @@ label {
+ .time-ms {
+   font-family: "JetBrains Mono", Consolas, monospace;
+   font-size: 12px;
+ }
+ 
+ .time-fast { color: var(--ok); }
+ .time-ok { color: var(--text); }
+ .time-slow { color: var(--warn); }
+ .time-too-slow { color: var(--err); }
+ 
++/* тФАтФА Live Strategy Blocks тФАтФА */
++#testLiveBlocks {
++  display: flex;
++  flex-direction: column;
++  gap: 10px;
++}
++
++.live-block {
++  border: 1px solid var(--border);
++  border-radius: 10px;
++  background: var(--surface);
++  overflow: hidden;
++}
++
++.live-block.active {
++  border-color: var(--accent);
++  background: linear-gradient(180deg, var(--accent-bg), var(--surface));
++  box-shadow: 0 0 0 1px var(--accent), 0 4px 16px var(--accent-glow);
++}
++
++.live-block.done {
++  border-color: var(--border-strong);
++}
++
++.live-block-head {
++  display: flex;
++  align-items: center;
++  gap: 10px;
++  width: 100%;
++  padding: 12px 14px;
++  background: transparent;
++  border: 0;
++  color: var(--text);
++  font: inherit;
++  font-size: 13px;
++  font-weight: 600;
++  text-align: left;
++  cursor: pointer;
++  border-radius: 10px;
++  user-select: none;
++}
++
++.live-block-head:hover {
++  background: var(--surface-hover);
++}
++
++.live-block-head:focus-visible {
++  outline: 2px solid var(--accent);
++  outline-offset: -2px;
++}
++
++.live-block-lamp {
++  width: 10px;
++  height: 10px;
++  border-radius: 50%;
++  flex: none;
++  background: var(--lamp-color, var(--text-muted));
++}
++
++.live-block.active .live-block-lamp {
++  --lamp-color: var(--accent);
++  animation: live-lamp-pulse 1.2s ease-in-out infinite;
++}
++
++@keyframes live-lamp-pulse {
++  0%, 100% { box-shadow: 0 0 0 0 var(--accent-glow); }
++  50% { box-shadow: 0 0 0 6px transparent; }
++}
++
++.live-block-title {
++  min-width: 0;
++  overflow: hidden;
++  text-overflow: ellipsis;
++  white-space: nowrap;
++}
++
++.live-block-score {
++  color: var(--text-secondary);
++  font-weight: 500;
++  font-variant-numeric: tabular-nums;
++  white-space: nowrap;
++}
++
++.live-block-arrow {
++  margin-left: auto;
++  color: var(--text-muted);
++  font-size: 11px;
++  transition: transform 0.15s ease;
++}
++
++.live-block.expanded .live-block-arrow {
++  transform: rotate(180deg);
++}
++
++.live-block table {
++  display: none;
++  border-top: 1px solid var(--border);
++}
++
++.live-block.expanded table {
++  display: table;
++}
++
++.live-block table thead th {
++  cursor: default;
++}
++
++@media (prefers-reduced-motion: reduce) {
++  .live-block.active .live-block-lamp {
++    animation: none;
++  }
++  .live-block-arrow {
++    transition: none;
++  }
++}
++
+ /* тФАтФА Result Grid / Tiles тФАтФА */
+ .result-grid {
+   display: grid;
+   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+   gap: 12px;
+   margin-top: 12px;
+ }
+ 
+ .result-tile {
+   border-radius: var(--radius);
+diff --git a/frontend/index.html b/frontend/index.html
+index 7846e67..8003d0c 100644
+--- a/frontend/index.html
++++ b/frontend/index.html
+@@ -291,35 +291,21 @@
+             <div style="text-align:center;margin-top:12px">
+               <button class="btn btn-sm btn-secondary" onclick="TesterPage.cancelTest()" style="font-size:11px;color:var(--err)">тЬХ ╨Ю╤В╨╝╨╡╨╜╨╕╤В╤М ╤В╨╡╤Б╤В</button>
+             </div>
+           </div>
+ 
+           <div id="testLiveResults" class="card" style="display:none">
+             <h3 style="display:flex; align-items:center; gap:8px;">
+               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></svg>
+               ╨а╨╡╨╖╤Г╨╗╤М╤В╨░╤В╤Л ╤В╨╡╤Б╤В╨╕╤А╨╛╨▓╨░╨╜╨╕╤П
+             </h3>
+-            <div class="table-wrapper">
+-              <table class="live-table">
+-                <thead>
+-                  <tr>
+-                    <th style="width:36px" onclick="TesterPage.sortLiveTable('status',0)" title="╨б╤В╨░╤В╤Г╤Б"></th>
+-                    <th onclick="TesterPage.sortLiveTable('domain',1)">╨Ф╨╛╨╝╨╡╨╜</th>
+-                    <th>╨в╨╕╨┐</th>
+-                    <th>╨Ъ╨╛╨┤</th>
+-                    <th onclick="TesterPage.sortLiveTable('time',4)">╨Т╤А╨╡╨╝╤П</th>
+-                    <th>╨Ю╤И╨╕╨▒╨║╨░</th>
+-                  </tr>
+-                </thead>
+-                <tbody id="testResultsBody"></tbody>
+-              </table>
+-            </div>
++            <div id="testLiveBlocks"></div>
+           </div>
+ 
+           <div id="testSummary" class="card" style="display:none">
+             <h3 style="display:flex; align-items:center; gap:8px;">
+               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+               ╨б╨▓╨╛╨┤╨║╨░
+             </h3>
+             <div id="summaryContent"></div>
+           </div>
+ 
+diff --git a/frontend/js/app.js b/frontend/js/app.js
+index 3997a00..e06b6fe 100644
+--- a/frontend/js/app.js
++++ b/frontend/js/app.js
+@@ -683,21 +683,22 @@ const TesterPage = {
+     collectFormData: null,
+     collectBatFile: null,
+     currentResults: null,
+     nakedResults: null,
+     phase2Results: null,
+     fullAnalysisResults: null,
+     testStartTime: 0,
+     elapsedInterval: null,
+     ws: null,
+     vpnActive: false,
+-    liveTableSort: { key: null, dir: 1 },
++    liveBlocks: null,
++    liveCurrent: null,
+   },
+ 
+   init() {
+     // bind file input
+   },
+ 
+   // тФАтФА UI Helpers тФАтФА
+   getStatusIcon(status) {
+     switch (status) {
+       case 'OK': case 'OK_BLOCKED': return 'тЬЕ';
+@@ -839,21 +840,21 @@ const TesterPage = {
+       this.state.elapsedInterval = null;
+     }
+   },
+ 
+   resetTestUI() {
+     document.getElementById('testerIntro').style.display = 'none';
+     document.getElementById('testProgress').style.display = 'block';
+     document.getElementById('testLiveResults').style.display = 'block';
+     document.getElementById('testSummary').style.display = 'none';
+     document.getElementById('testResults').innerHTML = '';
+-    document.getElementById('testResultsBody').innerHTML = '';
++    this._resetLiveBlocks();
+     document.getElementById('testProgressFill').style.width = '0%';
+     document.getElementById('testProgressText').textContent = '╨Ч╨░╨┐╤Г╤Б╨║...';
+     document.getElementById('testCurrentInfo').textContent = '';
+     document.getElementById('testElapsed').textContent = '00:00';
+     this.clearTestLog();
+   },
+ 
+   // тФАтФА Collection Form тФАтФА
+   showCollectForm() {
+     document.getElementById('collectCity').value = '';
+@@ -992,20 +993,21 @@ const TesterPage = {
+             pollActive = false; clearInterval(pollId);
+             document.getElementById('testProgressText').textContent = onCancel || '╨Ю╤В╨╝╨╡╨╜╨╡╨╜╨╛';
+             this.clearElapsedTimer(); return;
+           }
+           // progress
+           if (state.progress) {
+             document.getElementById('testProgressFill').style.width = (startPercent + (state.progress.percent || 0) * scalePercent) + '%';
+             if (textTemplate && state.progress.message) {
+               document.getElementById('testProgressText').textContent = textTemplate.replace('{msg}', state.progress.message);
+             }
++            this._handleLiveProgressMessage(state.progress.message || '');
+           }
+           // new results
+           while (knownResults < (state.results || []).length) {
+             const item = state.results[knownResults++];
+             if (!item) continue;
+             const type = item.type || '';
+             if (type === 'test_result' || (item.domain && item.status)) {
+               this.addTestResultRow(item);
+             } else if (type === 'intermediate') {
+               if (onIntermediate) { onIntermediate(item); }
+@@ -1111,21 +1113,21 @@ const TesterPage = {
+         onError: () => {
+           document.getElementById('checkZapret1Btn').disabled = false;
+           document.getElementById('needZapret1Status').textContent = '╨Ю╤И╨╕╨▒╨║╨░ ╤Б╨▓╤П╨╖╨╕';
+         },
+       }
+     );
+   },
+ 
+   cancelNeedZapret1() {
+     document.getElementById('needZapret1Overlay').classList.remove('open');
+-    document.getElementById('testResultsBody').innerHTML = '';
++    this._resetLiveBlocks();
+     this.clearElapsedTimer();
+     this.resetToIntro();
+   },
+ 
+   skipNeedZapret1() {
+     document.getElementById('needZapret1Overlay').classList.remove('open');
+     this.resetTestUI();
+     this.startElapsedTimer();
+     this.state.currentResults = null;
+     this.runFullPipelinePhase1();
+@@ -1218,95 +1220,192 @@ const TesterPage = {
+         },
+         onCancel: '╨Ю╤В╨╝╨╡╨╜╨╡╨╜╨╛',
+         onError: () => {
+           document.getElementById('testProgressText').textContent = '╨Ю╤И╨╕╨▒╨║╨░ ╨░╨╜╨░╨╗╨╕╨╖╨░';
+           this.clearElapsedTimer();
+         },
+       }
+     );
+   },
+ 
+-  // тФАтФА Live Results Table тФАтФА
++  // тФАтФА Live Results Blocks тФАтФА
+   addTestResultRow: createBatchProcessor(function(batch) {
+     for (const data of batch) {
+       TesterPage._addResultRowImmediate(data);
+     }
+   }, 80),
+ 
+   _addResultRowImmediate(data) {
+-    const tbody = document.getElementById('testResultsBody');
+-    const rowKey = (data.domain || '') + '|' + (data.test_type || '');
++    const block = this._liveBlockFor(data.profile);
++    if (!block) return;
++    const rowKey = (data.profile || '') + '|' + (data.domain || '') + '|' + (data.test_type || '');
+     const safeKey = rowKey.replace(/[^a-zA-Z0-9_-]/g, '_');
+     const existing = document.getElementById('tr-' + safeKey);
+ 
+     const code = data.status_code || (data.status === 'TCP16_20' || data.status === 'DPI_DROP' ? 'тЪа DPI' : 'тАФ');
+     const statusDesc = this.getStatusDescription(data.status);
+     const codeDesc = this.getCodeDescription(code);
++    const isOk = data.status === 'OK' || data.status === 'OK_BLOCKED';
+ 
+     if (existing) {
++      const wasOk = existing.dataset.status === 'OK' || existing.dataset.status === 'OK_BLOCKED';
++      if (wasOk && !isOk) block.ok--;
++      else if (!wasOk && isOk) block.ok++;
+       existing.className = this.getRowClass(data.status) + (data.alias ? ' row-alias' : '');
+       existing.dataset.domain = data.domain || '';
+       existing.dataset.status = data.status || '';
+       existing.dataset.time = data.time_ms != null ? String(data.time_ms) : '0';
+       const cells = existing.querySelectorAll('td');
+       if (cells.length >= 6) {
+         cells[0].innerHTML = `<span title="${escapeHtml(statusDesc)}">${this.getStatusIcon(data.status)}</span>`;
+         cells[3].innerHTML = `<span title="${escapeHtml(codeDesc)}">${escapeHtml(String(code))}</span>`;
+         cells[4].innerHTML = data.time_ms != null ? this.formatTimeColored(data.time_ms) : '<span class="time-ms" style="color:var(--text-secondary)">...</span>';
+         cells[5].textContent = data.error || '';
+       }
++      this._updateLiveScore(block);
+       return;
+     }
+ 
+     const tr = document.createElement('tr');
+     tr.id = 'tr-' + safeKey;
+     tr.className = this.getRowClass(data.status) + (data.alias ? ' row-alias' : '');
+     tr.dataset.domain = data.domain || '';
+     tr.dataset.status = data.status || '';
+     tr.dataset.time = data.time_ms != null ? String(data.time_ms) : '0';
+     tr.innerHTML = `
+       <td style="text-align:center;font-size:16px" title="${escapeHtml(statusDesc)}">${this.getStatusIcon(data.status)}</td>
+       <td style="font-weight:500">${escapeHtml(data.domain)}${data.alias ? ' <span class="badge badge-alias">al.</span>' : ''}${data.cdn_provider ? ' <span class="badge badge-cdn">' + escapeHtml(data.cdn_provider) + '</span>' : ''}</td>
+       <td>${this.getTestTypeBadge(data.test_type)}</td>
+       <td style="font-size:12px" title="${escapeHtml(codeDesc)}">${escapeHtml(String(code))}</td>
+       <td>${data.time_ms != null ? this.formatTimeColored(data.time_ms) : '<span class="time-ms" style="color:var(--text-secondary)">...</span>'}</td>
+       <td><div class="cell-error">${escapeHtml(data.error || '')}</div></td>
+     `;
+-    tbody.appendChild(tr);
+-  },
+-
+-  sortLiveTable(key, colIdx) {
+-    const tbody = document.getElementById('testResultsBody');
+-    if (!tbody) return;
+-    const rows = Array.from(tbody.querySelectorAll('tr'));
+-    if (!rows.length) return;
+-
+-    const sort = this.state.liveTableSort;
+-    if (sort.key === key) sort.dir = -sort.dir;
+-    else { sort.key = key; sort.dir = 1; }
+-
+-    const dir = sort.dir;
+-    rows.sort((a, b) => {
+-      let av, bv;
+-      if (key === 'domain') { av = a.dataset.domain || ''; bv = b.dataset.domain || ''; return av.localeCompare(bv) * dir; }
+-      if (key === 'status') { av = a.dataset.status || ''; bv = b.dataset.status || ''; return av.localeCompare(bv) * dir; }
+-      if (key === 'time') { av = parseFloat(a.dataset.time || '0'); bv = parseFloat(b.dataset.time || '0'); return (av - bv) * dir; }
+-      return 0;
+-    });
+-    rows.forEach(r => tbody.appendChild(r));
++    block.tbody.appendChild(tr);
++    block.total++;
++    if (isOk) block.ok++;
++    this._updateLiveScore(block);
++  },
++
++  // тФАтФА Live Result Blocks (per strategy) тФАтФА
++  _liveProfileLabel(key) {
++    if (key === '__naked__') return '╨С╨╡╨╖ ╨╖╨░╤Й╨╕╤В╤Л';
++    if (key === '__current__') return 'Zapret 1 (╤В╨╡╨║╤Г╤Й╨░╤П)';
++    return key;
++  },
++
++  _liveBlockFor(profile) {
++    const key = (profile || '').trim() || '__naked__';
++    if (!this.state.liveBlocks) this.state.liveBlocks = new Map();
++    let block = this.state.liveBlocks.get(key);
++    if (block) return block;
++
++    const container = document.getElementById('testLiveBlocks');
++    if (!container) return null;
++    const safeKey = key.replace(/[^a-zA-Z0-9_-]/g, '_');
++
++    const el = document.createElement('div');
++    el.className = 'live-block expanded';
++    el.id = 'lb-' + safeKey;
++
++    const head = document.createElement('button');
++    head.type = 'button';
++    head.className = 'live-block-head';
++    head.setAttribute('aria-expanded', 'true');
++    head.innerHTML =
++      '<span class="live-block-lamp"></span>' +
++      '<span class="live-block-title">' + escapeHtml(this._liveProfileLabel(key)) + '</span>' +
++      '<span class="live-block-score"></span>' +
++      '<span class="live-block-arrow">тЦ╛</span>';
++
++    const table = document.createElement('table');
++    table.className = 'live-table';
++    table.innerHTML = '<thead><tr><th style="width:36px" title="╨б╤В╨░╤В╤Г╤Б"></th><th>╨Ф╨╛╨╝╨╡╨╜</th><th>╨в╨╕╨┐</th><th>╨Ъ╨╛╨┤</th><th>╨Т╤А╨╡╨╝╤П</th><th>╨Ю╤И╨╕╨▒╨║╨░</th></tr></thead>';
++    const tbody = document.createElement('tbody');
++    table.appendChild(tbody);
++
++    el.appendChild(head);
++    el.appendChild(table);
++    container.appendChild(el);
++
++    head.addEventListener('click', () => this._toggleLiveBlock(el, head));
++
++    block = {
++      key, el, head, tbody,
++      title: head.querySelector('.live-block-title'),
++      score: head.querySelector('.live-block-score'),
++      lamp: head.querySelector('.live-block-lamp'),
++      ok: 0, total: 0,
++    };
++    this.state.liveBlocks.set(key, block);
++    this._updateLiveScore(block);
++    return block;
++  },
+ 
+-    const table = tbody.closest('table');
+-    if (table) {
+-      table.querySelectorAll('th').forEach(th => th.classList.remove('sorted-asc', 'sorted-desc'));
+-      const ths = table.querySelectorAll('th');
+-      if (ths[colIdx]) ths[colIdx].classList.add(dir === 1 ? 'sorted-asc' : 'sorted-desc');
+-    }
++  _updateLiveScore(block) {
++    const pct = block.total > 0 ? Math.round(block.ok / block.total * 100) : null;
++    block.score.textContent = block.ok + '/' + block.total + (pct != null ? ' ┬╖ ' + pct + '%' : ' ┬╖ тАФ');
++  },
++
++  _expandLiveBlock(block) {
++    block.el.classList.add('expanded');
++    block.head.setAttribute('aria-expanded', 'true');
++  },
++
++  _collapseLiveBlock(block) {
++    block.el.classList.remove('expanded');
++    block.head.setAttribute('aria-expanded', 'false');
++  },
++
++  _toggleLiveBlock(el, head) {
++    const expanded = el.classList.toggle('expanded');
++    head.setAttribute('aria-expanded', expanded ? 'true' : 'false');
++  },
++
++  _setLiveCurrent(profile) {
++    const block = this._liveBlockFor(profile);
++    if (!block) return;
++    if (this.state.liveCurrent === block) return;
++    if (this.state.liveCurrent) this.state.liveCurrent.el.classList.remove('active');
++    this.state.liveCurrent = block;
++    block.el.classList.remove('done');
++    block.el.classList.add('active');
++    this._expandLiveBlock(block);
++  },
++
++  _finishLiveProfile(profile, score) {
++    const block = this._liveBlockFor(profile);
++    if (!block) return;
++    block.el.classList.remove('active');
++    block.el.classList.add('done');
++    if (this.state.liveCurrent === block) this.state.liveCurrent = null;
++    const pct = score != null && isFinite(score) ? Math.round(score) + '%' : 'тАФ';
++    block.score.textContent = block.ok + '/' + block.total + ' ┬╖ ' + pct;
++    block.lamp.style.setProperty('--lamp-color',
++      score >= 80 ? 'var(--ok)' : score >= 40 ? 'var(--warn)' : 'var(--err)');
++    this._collapseLiveBlock(block);
++  },
++
++  _handleLiveProgressMessage(msg) {
++    if (!msg) return;
++    let m = msg.match(/^╨в╨╡╤Б╤В╨╕╤А╤Г╨╡╨╝ ╤Б╤В╤А╨░╤В╨╡╨│╨╕╤О (.+?) \(\d+\/\d+\)\.\.\.$/);
++    if (m) { this._setLiveCurrent(m[1]); return; }
++    m = msg.match(/^╨в╨╡╤Б╤В╨╕╤А╤Г╨╡╨╝ ╤Б╨╛╨▒╤А╨░╨╜╨╜╤Г╤О ╤Б╤В╤А╨░╤В╨╡╨│╨╕╤О (.+?)\.\.\.$/);
++    if (m) { this._setLiveCurrent(m[1]); return; }
++    m = msg.match(/^╨б╤В╤А╨░╤В╨╡╨│╨╕╤П (.+?): (\d+(?:\.\d+)?)%$/);
++    if (m) { this._finishLiveProfile(m[1], parseFloat(m[2])); }
++  },
++
++  _resetLiveBlocks() {
++    const container = document.getElementById('testLiveBlocks');
++    if (container) container.innerHTML = '';
++    this.state.liveBlocks = new Map();
++    this.state.liveCurrent = null;
+   },
+ 
+   // тФАтФА Result Grid (tiles) тФАтФА
+   renderResultGrid(results) {
+     if (!results || !results.length) return '';
+     const domainMap = {};
+     for (const r of results) {
+       if (!r.results) continue;
+       for (const rr of r.results) {
+         if (rr.test_type === 'ping') continue;
+@@ -1761,21 +1860,21 @@ const TesterPage = {
+       showToast('╨Ю╤И╨╕╨▒╨║╨░: ' + e.message, 'error');
+     }
+   },
+ 
+   resetToIntro() {
+     document.getElementById('testerIntro').style.display = 'block';
+     document.getElementById('testProgress').style.display = 'none';
+     document.getElementById('testLiveResults').style.display = 'none';
+     document.getElementById('testSummary').style.display = 'none';
+     document.getElementById('testResults').innerHTML = '';
+-    document.getElementById('testResultsBody').innerHTML = '';
++    this._resetLiveBlocks();
+     document.getElementById('btnStartTest').disabled = false;
+     this.clearElapsedTimer();
+   }
+ };
+ 
+ // тФАтФА Diagnostics Page тФАтФА
+ const DiagnosticsPage = {
+   lastReportText: '',
+ 
+   async run() {

@@ -97,21 +97,21 @@
 
               <div class="action-panel">
                 <div style="display:flex;gap:8px;align-items:center">
-                  <button class="btn btn-sm btn-primary" id="btnZ2Start" onclick="MainPage.startSelected()">▶ Запустить</button>
-                  <button class="btn btn-sm btn-secondary" id="btnZ2Stop" onclick="MainPage.stop()">⏹ Остановить</button>
+                  <button class="btn btn-sm btn-primary" id="btnZ2Toggle" onclick="MainPage.toggleZ2()">▶ Запустить</button>
                   <span id="startResult" style="font-size:12px;color:var(--text-secondary);margin-left:4px"></span>
                 </div>
-                <div style="display:flex;gap:8px;align-items:center">
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
                   <span style="font-size:11px;color:var(--text-secondary);white-space:nowrap">Служба:</span>
-                  <button class="btn btn-sm btn-secondary" id="btnSvcInstall" onclick="MainPage.installService()" style="font-size:11px">📦 Установить службу</button>
-                  <button class="btn btn-sm btn-secondary" id="btnSvcRemove" onclick="MainPage.removeService()" style="font-size:11px;display:none">🗑 Удалить службу</button>
+                  <button class="btn btn-sm btn-secondary" id="btnSvcInstall" onclick="MainPage.installService()" style="font-size:11px">📦 Установить</button>
+                  <button class="btn btn-sm btn-secondary" id="btnSvcRemove" onclick="MainPage.removeService()" style="font-size:11px;display:none">🗑 Удалить</button>
+                  <button class="btn btn-sm btn-secondary" id="btnSvcToggle" onclick="MainPage.toggleService()" style="font-size:11px;display:none">▶ Запустить</button>
                   <span id="serviceStatus" style="font-size:11px;color:var(--text-secondary)"></span>
                 </div>
               </div>
 
               <!-- Zapret 1 (сворачиваемый) -->
               <details id="z1Card" class="z1-details">
-                <summary>Zapret 1 · <span id="z1StatusBadge">⏳ загрузка...</span> · развернуть</summary>
+                <summary><span class="z1-badge">Z1</span> Zapret 1 · <span id="z1StatusBadge">⏳ загрузка...</span> · развернуть</summary>
                 <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
                   <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
                     <input class="input" id="z1DirPath" placeholder="C:\Zapret" style="flex:1;min-width:140px;font-size:12px">
@@ -119,8 +119,7 @@
                     <select class="input" id="z1StrategySelect" style="min-width:120px;cursor:pointer;font-size:12px" disabled>
                       <option value="">— нет стратегий —</option>
                     </select>
-                    <button class="btn btn-sm btn-primary" id="btnZ1Start" onclick="MainPage.startZ1()">▶ Запустить</button>
-                    <button class="btn btn-sm btn-secondary" id="btnZ1Stop" onclick="MainPage.stopZ1()">⏹ Остановить</button>
+                    <button class="btn btn-sm btn-primary" id="btnZ1Toggle" onclick="MainPage.toggleZ1()">▶ Запустить</button>
                   </div>
                   <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary)">
                     <span>PID</span><span class="mono" id="z1Pid">—</span>
@@ -141,16 +140,6 @@
               <h3 style="margin-bottom:12px">⚙️ Дополнительно</h3>
               <div class="toggles-grid">
                 <label class="toggle-row">
-                  <span class="toggle-label">Auto Hostlist</span>
-                  <span class="toggle-desc">При обнаружении блокировок DPI winws2 сам добавит домен в список<br>и будет периодически его проверять</span>
-                  <label class="toggle-switch"><input type="checkbox" id="toggleAutoHostlist"><span class="toggle-slider"></span></label>
-                </label>
-                <label class="toggle-row">
-                  <span class="toggle-label">Общий IP-обход</span>
-                  <span class="toggle-desc">Применять обход ко ВСЕМ известным подсетям блокировок (как в Zapret 1)<br>Точечные списки доменов работают в любом случае. Исключения — в разделе «Списки»</span>
-                  <label class="toggle-switch"><input type="checkbox" id="toggleIpFilter"><span class="toggle-slider"></span></label>
-                </label>
-                <label class="toggle-row">
                   <span class="toggle-label">GameFilter</span>
                   <span class="toggle-desc">Проброс высоких портов (1024-65535) для игр и голосовых чатов</span>
                   <select class="input" id="toggleGameFilter" style="width:130px;cursor:pointer;font-size:12px">
@@ -159,6 +148,16 @@
                     <option value="udp">Только UDP</option>
                     <option value="both">TCP + UDP</option>
                   </select>
+                </label>
+                <label class="toggle-row">
+                  <span class="toggle-label">Auto Hostlist</span>
+                  <span class="toggle-desc">При обнаружении блокировок DPI winws2 сам добавит домен в список<br>и будет периодически его проверять</span>
+                  <label class="toggle-switch"><input type="checkbox" id="toggleAutoHostlist"><span class="toggle-slider"></span></label>
+                </label>
+                <label class="toggle-row">
+                  <span class="toggle-label">Общий IP-обход</span>
+                  <span class="toggle-desc">Применять обход ко ВСЕМ известным подсетям блокировок (как в Zapret 1)<br>Точечные списки доменов работают в любом случае. Исключения — в разделе «Списки»</span>
+                  <label class="toggle-switch"><input type="checkbox" id="toggleIpFilter"><span class="toggle-slider"></span></label>
                 </label>
                 <label class="toggle-row">
                   <span class="toggle-label">Discord Voice (UDP)</span>
@@ -213,7 +212,7 @@
                 <span id="includeSaveResult" style="font-size:12px;color:var(--text-secondary);align-self:center"></span>
               </div>
             </div>
-            <div class="card" style="display:flex;flex-direction:column;height:220px;grid-column:1/-1">
+            <div class="card" style="display:flex;flex-direction:column;height:380px;grid-column:1/-1">
               <h3 style="margin:0 0 4px">🛡️ IP-исключения (ipset-exclude)</h3>
               <div style="font-size:12px;color:var(--text-secondary);margin:0 0 12px">
                 Подсети (CIDR), которые НЕ будут обрабатываться при включённом «Общем IP-обходе».
@@ -241,9 +240,10 @@
                 <div class="guide-step">
                   <div class="guide-num">1</div>
                   <div class="guide-step-body">
-                    <strong>Что-то не работает?</strong>
-                    <p>Проверка системы ответит почему: права, служба, конфликты, тип блокировки (DNS/IP/SNI).</p>
-                    <button class="btn btn-secondary" onclick="location.hash='#diagnostics'">🔍 Проверить систему</button>
+                    <strong>Система в порядке?</strong>
+                    <p>Проверка системы ответит: права, служба, конфликты, тип блокировки (DNS/IP/SNI).</p>
+                    <button class="btn btn-secondary" id="btnDiagCheck" onclick="location.hash='#diagnostics'">🔍 Проверить систему</button>
+                    <span id="diagDoneNote" style="display:none;font-size:12px;color:var(--ok, #2ecc71);margin-left:8px">✓ проверена</span>
                   </div>
                 </div>
                 <div class="guide-step">
@@ -258,18 +258,22 @@
                   </div>
                 </div>
               </div>
-              <div class="test-options" style="margin-top:18px;">
-                <label class="chip-option">
+              <div class="test-options" style="margin-top:18px">
+                <div class="test-options-title">Опции теста</div>
+                <label class="option-row">
                   <input type="checkbox" id="cdnCheck">
-                  <span>CDN-хосты <small>+5–10 мин</small></span>
+                  <span class="option-box"></span>
+                  <span class="option-text"><strong>CDN-хосты</strong><small>+5–10 мин — случайные сайты для проверки общего доступа</small></span>
                 </label>
-                <label class="chip-option">
+                <label class="option-row">
                   <input type="checkbox" id="extendedCheck">
-                  <span>Расширенный тест <small>+Zapret 1, Naked, полный анализ</small></span>
+                  <span class="option-box"></span>
+                  <span class="option-text"><strong>Расширенный тест</strong><small>+Zapret 1, Naked, полный анализ</small></span>
                 </label>
-                <label class="chip-option">
+                <label class="option-row">
                   <input type="checkbox" id="logCheck">
-                  <span>Собирать логи</span>
+                  <span class="option-box"></span>
+                  <span class="option-text"><strong>Собирать логи</strong><small>Для отчёта при обращении за поддержкой</small></span>
                 </label>
               </div>
             </div>

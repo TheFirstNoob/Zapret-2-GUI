@@ -1,0 +1,125 @@
+﻿1be5326 feat(tester): chip options instead of checkboxes
+diff --git a/frontend/css/app.css b/frontend/css/app.css
+index 01d9922..7bc52b4 100644
+--- a/frontend/css/app.css
++++ b/frontend/css/app.css
+@@ -852,23 +852,78 @@ label {
+ 
+ .tester-actions {
+   display: flex;
+   flex-direction: column;
+   align-items: center;
+   gap: 16px;
+ }
+ 
+ .test-options {
+   display: flex;
+-  flex-direction: column;
++  flex-wrap: wrap;
+   align-items: flex-start;
+-  gap: 8px;
++  gap: 10px;
++}
++
++.chip-option {
++  position: relative;
++}
++
++.chip-option input {
++  position: absolute;
++  opacity: 0;
++  pointer-events: none;
++}
++
++.chip-option span {
++  display: inline-flex;
++  align-items: center;
++  gap: 7px;
++  padding: 8px 14px;
++  border: 1px solid var(--border-strong);
++  border-radius: 24px;
++  font-size: 13px;
++  color: var(--text-secondary);
++  cursor: pointer;
++  background: var(--surface);
++  transition: all 0.15s var(--transition);
++  user-select: none;
++}
++
++.chip-option span small {
++  color: var(--text-muted);
++  font-size: 11px;
++}
++
++.chip-option input:hover + span {
++  border-color: var(--accent);
++}
++
++.chip-option input:checked + span {
++  border-color: var(--accent);
++  color: var(--accent);
++  background: var(--accent-bg);
++}
++
++.chip-option input:checked + span::before {
++  content: "тЬУ";
++  font-weight: 700;
++}
++
++.chip-option input:checked + span small {
++  color: var(--accent);
++  opacity: 0.85;
++}
++
++.chip-option input:focus-visible + span {
++  outline: 2px solid var(--accent);
++  outline-offset: 2px;
+ }
+ 
+ .guide-steps {
+   display: flex;
+   flex-direction: column;
+   gap: 12px;
+   text-align: left;
+ }
+ 
+ .guide-step {
+diff --git a/frontend/index.html b/frontend/index.html
+index 4c315e8..7846e67 100644
+--- a/frontend/index.html
++++ b/frontend/index.html
+@@ -252,29 +252,29 @@
+                     <strong>╨Э╤Г╨╢╨╜╨╛ ╨▓╤Л╨▒╤А╨░╤В╤М ╨╗╤Г╤З╤И╤Г╤О ╤Б╤В╤А╨░╤В╨╡╨│╨╕╤О</strong>
+                     <p>╨в╨╡╤Б╤В ╨┐╤А╨╛╨▓╨╡╤А╨╕╤В ╨▓╤Б╨╡ ╤Б╤В╤А╨░╤В╨╡╨│╨╕╨╕ (3тАУ5 ╨╝╨╕╨╜) ╨╕ ╨▓ ╨║╨╛╨╜╤Ж╨╡ ╨┐╨╛╨║╨░╨╢╨╡╤В ╤А╨╡╨║╨╛╨╝╨╡╨╜╨┤╨░╤Ж╨╕╤О: Discord, YouTube ╨╕ ╤З╤В╨╛ ╨┤╨╡╨╗╨░╤В╤М ╨┤╨░╨╗╤М╤И╨╡.</p>
+                     <button class="btn btn-primary" id="btnStartTest" onclick="TesterPage.startTest()">
+                       <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="margin-right:6px"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                       ╨Э╨░╤З╨░╤В╤М ╤В╨╡╤Б╤В
+                     </button>
+                   </div>
+                 </div>
+               </div>
+               <div class="test-options" style="margin-top:18px;">
+-                <label class="checkbox-label">
++                <label class="chip-option">
+                   <input type="checkbox" id="cdnCheck">
+-                  <span>CDN-╤Е╨╛╤Б╤В╤Л (+5тАУ10 ╨╝╨╕╨╜)</span>
++                  <span>CDN-╤Е╨╛╤Б╤В╤Л <small>+5тАУ10 ╨╝╨╕╨╜</small></span>
+                 </label>
+-                <label class="checkbox-label">
++                <label class="chip-option">
+                   <input type="checkbox" id="extendedCheck">
+-                  <span>╨а╨░╤Б╤И╨╕╤А╨╡╨╜╨╜╤Л╨╣ ╤В╨╡╤Б╤В (+Zapret 1, Naked, ╨┐╨╛╨╗╨╜╤Л╨╣ ╨░╨╜╨░╨╗╨╕╨╖)</span>
++                  <span>╨а╨░╤Б╤И╨╕╤А╨╡╨╜╨╜╤Л╨╣ ╤В╨╡╤Б╤В <small>+Zapret 1, Naked, ╨┐╨╛╨╗╨╜╤Л╨╣ ╨░╨╜╨░╨╗╨╕╨╖</small></span>
+                 </label>
+-                <label class="checkbox-label">
++                <label class="chip-option">
+                   <input type="checkbox" id="logCheck">
+                   <span>╨б╨╛╨▒╨╕╤А╨░╤В╤М ╨╗╨╛╨│╨╕</span>
+                 </label>
+               </div>
+             </div>
+           </div>
+ 
+           <div id="testProgress" class="card" style="display:none">
+             <h3 style="display:flex; align-items:center; gap:8px;">
+               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>

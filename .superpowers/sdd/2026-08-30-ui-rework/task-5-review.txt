@@ -1,0 +1,52 @@
+﻿3fdc817 feat(tester): single verdict summary тАФ no duplicated recommendation, custom as info line
+diff --git a/frontend/js/app.js b/frontend/js/app.js
+index e06b6fe..37dfa39 100644
+--- a/frontend/js/app.js
++++ b/frontend/js/app.js
+@@ -1685,44 +1685,42 @@ const TesterPage = {
+ //    is the best, the verdict button already points at it.
+       const custom = phase2 && phase2.custom;
+       if (custom && custom.summary && custom.valid) {
+         const src = custom.sources || {};
+         const chips = Object.keys(src).map(f =>
+           `<span class="badge" style="margin-right:6px">${escapeHtml(f)} тЖР ${escapeHtml(src[f])}</span>`).join('');
+         const rel = custom.relation === 'better' ? '╨╛╨▒╨│╨╛╨╜╤П╨╡╤В ╨╗╤Г╤З╤И╤Г╤О'
+           : custom.relation === 'worse' ? '╤Г╤Б╤В╤Г╨┐╨░╨╡╤В ╨╗╤Г╤З╤И╨╡╨╣'
+           : (custom.rate != null ? '╤А╨░╨▓╨╜╨░ ╨╗╤Г╤З╤И╨╡╨╣' : '');
+         const isBest = rec && rec.best_profile === 'custom';
++        const isEqual = !isBest && custom.relation === 'equal';
+         html += `<div class="card verdict-partial">
+           <h3>ЁЯзм ╨Ы╨╕╤З╨╜╨░╤П ╤Б╤В╤А╨░╤В╨╡╨│╨╕╤П ┬лcustom┬╗${rel ? ` <span style="font-size:12px;color:var(--warn)">(${rel}${custom.rate != null ? ', ' + custom.rate + '%' : ''})</span>` : ''}</h3>
+           <p style="font-size:14px;margin:8px 0">${escapeHtml(custom.summary)}</p>
+           <div style="margin:6px 0 12px">${chips}</div>
+-          ${isBest ? '<p style="font-size:12px;color:var(--text-secondary);margin:0">╨Ч╨░╨┐╤Г╤Б╨║ тАФ ╨║╨╜╨╛╨┐╨║╨╛╨╣ ╨▓╤Л╤И╨╡ (╨╗╤Г╤З╤И╨░╤П ╤Б╤В╤А╨░╤В╨╡╨│╨╕╤П).</p>' : ''}
++          ${isBest ? '<p style="font-size:12px;color:var(--text-secondary);margin:0">╨Ч╨░╨┐╤Г╤Б╨║ тАФ ╨║╨╜╨╛╨┐╨║╨╛╨╣ ╨▓╤Л╤И╨╡ (╨╗╤Г╤З╤И╨░╤П ╤Б╤В╤А╨░╤В╨╡╨│╨╕╤П).</p>' : isEqual ? '<p style="font-size:12px;color:var(--text-secondary);margin:0">╤А╨░╨▓╨╜╨░ ╨╗╤Г╤З╤И╨╡╨╣ тАФ ╨╖╨░╨┐╤Г╤Б╨║ ╨║╨╜╨╛╨┐╨║╨╛╨╣ ╨▓╤Л╤И╨╡</p>' : ''}
+         </div>`;
+       }
+ 
+       // тФАтФА Results table тФАтФА
+       if (allResults && allResults.length) {
+         const bestProfile = rec && rec.best_profile;
+         html += '<div class="card"><h3>ЁЯУК ╨а╨╡╨╖╤Г╨╗╤М╤В╨░╤В╤Л ╤В╨╡╤Б╤В╨░</h3><div class="table-wrapper"><table class="live-table analysis-table"><thead><tr><th>╨Я╤А╨╛╤Д╨╕╨╗╤М</th><th>╨Ф╨╛╤Б╤В╤Г╨┐╨╜╨╛╤Б╤В╤М</th><th>OK</th><th>╨Я╨╕╨╜╨│╨╕</th><th>Hop</th></tr></thead><tbody>';
+         for (const r of allResults) {
+           const ws = r.network_rate != null ? r.network_rate.toFixed(0) : '0';
+           const isBest = r.profile === bestProfile;
+           const cls = parseFloat(ws) >= 70 ? 'score-row-good' : parseFloat(ws) >= 40 ? 'score-row-mid' : 'score-row-bad';
+           const okTxt = r.net_ok_count != null ? r.net_ok_count + '/' + r.net_total : (r.ok_count || 0) + '/' + ((r.ok_count || 0) + (r.fail_count || 0));
+           const pings = (r.ping_ok_count != null ? r.ping_ok_count : 0) + '/' + (r.ping_total != null ? r.ping_total : 0);
+           html += `<tr class="${cls}"><td>${escapeHtml(r.profile || '')}${isBest ? ' <span class="badge badge-safe">best</span>' : ''}</td><td style="color:${scoreColor(r.network_rate != null ? r.network_rate : 0)};font-weight:700">${ws}%</td><td>${okTxt}</td><td>${pings}</td><td>${r.provider_hop ? 'hop ' + escapeHtml(String(r.provider_hop)) : 'тАФ'}</td></tr>`;
+         }
+         html += '</tbody></table></div>';
+-        if (bestProfile) {
+-          html += `<p style="margin-top:10px;font-size:14px">╨а╨╡╨║╨╛╨╝╨╡╨╜╨┤╤Г╨╡╨╝╨░╤П ╤Б╤В╤А╨░╤В╨╡╨│╨╕╤П: <strong>${escapeHtml(bestProfile)}</strong></p>`;
+-        }
+         html += '</div>';
+       }
+ 
+       // тФАтФА Blocked domains (nothing bypassed them) тФАтФА
+       if (rec && rec.blocked_domains && rec.blocked_domains.length && rec.verdict !== 'ok') {
+         html += '<div class="card"><h3>ЁЯЪл ╨Э╨╡ ╨┐╤А╨╛╨▒╨╕╤В╨╛ ╨╜╨╕ ╨╛╨┤╨╜╨╛╨╣ ╤Б╤В╤А╨░╤В╨╡╨│╨╕╨╡╨╣</h3><div class="blocked-list">' +
+           rec.blocked_domains.map(d => `<span class="blocked-chip">${escapeHtml(d)}</span>`).join('') +
+           '</div></div>';
+       }
+ 
