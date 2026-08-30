@@ -21,6 +21,10 @@ from core.config import VERSION
 VERSION_URL = "https://raw.githubusercontent.com/TheFirstNoob/Zapret-2-GUI/main/VERSION"
 API_URL = "https://api.github.com/repos/TheFirstNoob/Zapret-2-GUI/contents/VERSION"
 RELEASES_URL = "https://github.com/TheFirstNoob/Zapret-2-GUI/releases"
+# jsDelivr serves repo files from a different CDN — works even on networks
+# where raw.githubusercontent/objects.githubusercontent are IP-blocked.
+MIRROR_URL = ("https://cdn.jsdelivr.net/gh/TheFirstNoob/Zapret-2-GUI@main/"
+              "Windows%20build/Zapret2GUI.zip")
 
 _CHECK_TIMEOUT = 5.0
 _UA = {"User-Agent": "Zapret2GUI"}
@@ -71,6 +75,7 @@ def check_for_updates() -> dict:
         "available": False,
         "error": None,
         "url": RELEASES_URL,
+        "mirror_url": MIRROR_URL,
     }
     try:
         latest = None

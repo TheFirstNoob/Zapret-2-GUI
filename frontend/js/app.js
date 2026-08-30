@@ -126,6 +126,7 @@ const App = {
       if (r.available && r.latest) {
         document.getElementById('updateVersion').textContent = r.latest;
         document.getElementById('updateLink').href = r.url || '#';
+        document.getElementById('updateMirrorLink').href = r.mirror_url || '#';
         document.getElementById('updateBanner').style.display = 'flex';
       }
     } catch (e) { /* silent */ }
