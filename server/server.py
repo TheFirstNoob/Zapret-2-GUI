@@ -555,10 +555,11 @@ def _run_tester_action(data: dict) -> None:
                         overall = int(6 + (idx + pct / 100) / total * 94)
                         progress(overall, msg)
 
+                    cb_for_profile = _make_result_cb(state, profile=profile_name)
                     res = _run_tester(
-                        lambda pn=profile_name: tester.test_profile(
+                        lambda pn=profile_name, cb=cb_for_profile: tester.test_profile(
                             pn, _inner_progress, tier=_tier,
-                            result_cb=result_cb, skip_cdn=skip_cdn)
+                            result_cb=cb, skip_cdn=skip_cdn)
                     )
                     all_results.append(res)
                     progress(int(6 + (idx + 1) / total * 94),
@@ -833,6 +834,8 @@ class ZapretHandler(BaseHTTPRequestHandler):
         try:
             if path == "/":
                 self._handle_index(params)
+            elif path == "/new" or path.startswith("/new/"):
+                self._handle_new_ui(path)
             elif path == "/api/config":
                 self._handle_get_config()
             elif path == "/api/version":
@@ -874,6 +877,32 @@ class ZapretHandler(BaseHTTPRequestHandler):
             self._send_html(html)
         else:
             self._send_html("<html><body><h1>Frontend not found</h1></body></html>")
+
+    def _handle_new_ui(self, path: str) -> None:
+        """Новый фронт (frontend2) — предпросмотр на /new.
+        Текущий фронт не трогает: / по-прежнему отдаёт frontend/index.html."""
+        frontend2 = get_root_dir() / "frontend2"
+        if path == "/new":
+            index_path = frontend2 / "index.html"
+            if not index_path.exists():
+                self._send_json({"error": "Not found"}, HTTPStatus.NOT_FOUND)
+                return
+            html = index_path.read_text(encoding="utf-8")
+            token = parse_qs(urlparse(self.path).query).get("token", [""])[0]
+            html = html.replace("__APP_TOKEN__", token)
+            self._send_html(html)
+            return
+        rel = path[len("/new/"):]
+        file_path = (frontend2 / rel).resolve()
+        try:
+            frontend2_resolved = frontend2.resolve()
+        except OSError:
+            self._send_json({"error": "Forbidden"}, HTTPStatus.FORBIDDEN)
+            return
+        if not str(file_path).startswith(str(frontend2_resolved)):
+            self._send_json({"error": "Forbidden"}, HTTPStatus.FORBIDDEN)
+            return
+        self._send_file(file_path)
 
     def _handle_get_config(self) -> None:
         cfg = get_config_manager().load()
