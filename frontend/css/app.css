@@ -250,6 +250,7 @@ select.input { cursor: pointer; }
 .row {
   display: flex; align-items: center; gap: 10px;
   margin-top: 8px;
+  flex-wrap: wrap;
 }
 .row.tight { margin-top: 6px; }
 .row-label { font-size: 12px; color: var(--dim); flex: 0 0 auto; }
@@ -259,7 +260,7 @@ select.input { cursor: pointer; }
 .field-label { font-size: 12px; color: var(--dim); flex: 0 0 auto; }
 
 .state { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; }
-.state-inline { font-size: 12px; font-weight: 500; color: var(--dim); }
+.state-text { font-size: 13px; }
 .state .meta, .row .meta { font-weight: 400; }
 
 /* ── main: options table ── */
@@ -273,9 +274,10 @@ select.input { cursor: pointer; }
 .opt-table tr:first-child td { border-top: none; }
 .opt-name { width: 160px; font-size: 12.5px; font-weight: 600; }
 .opt-id { display: block; font-size: 10.5px; color: var(--faint); font-weight: 400; }
-.opt-desc { color: var(--dim); font-size: 12px; }
+.opt-desc { color: var(--dim); font-size: 12px; min-width: 0; }
 .opt-ctl { width: 140px; text-align: right; }
 .opt-row-warn .opt-name { color: var(--warn); }
+.opt-row-warn .opt-desc { color: var(--warn); opacity: .9; }
 
 .toggles-overlay {
   position: absolute; inset: 0; z-index: 2;

@@ -285,12 +285,15 @@ const MainPage = {
     const conflict = z2.running && z1.running;
     if (z2.running) {
       badge.className = 'dot ' + (conflict ? 'dot-warn' : 'dot-ok');
+      text.className = 'state-text ' + (conflict ? 'st-warn' : 'st-ok');
       text.textContent = conflict ? 'Работает (конфликт с Zapret 1)' : 'Работает';
     } else if (z1.running) {
       badge.className = 'dot dot-warn';
+      text.className = 'state-text st-warn';
       text.textContent = 'Выключен (работает Zapret 1)';
     } else {
       badge.className = 'dot dot-off';
+      text.className = 'state-text st-mute';
       text.textContent = 'Выключен';
     }
     $('z2Meta').textContent = z2.running
@@ -309,11 +312,13 @@ const MainPage = {
     $('conflictBanner').hidden = !(z2.running && z1.running);
     $('togglesOverlay').hidden = !z1.running;
 
-    // Zapret 1
+    // Zapret 1 — единый стиль статуса с Zapret 2 (слова и цвет текста)
     const zs = $('z1State');
-    zs.querySelector('.dot').className = 'dot ' + (z1.running ? 'dot-ok' : 'dot-idle');
-    zs.querySelector('.state-text').textContent =
-      z1.running ? 'запущен (PID ' + z1.pid + ')' : 'остановлен';
+    const z1Text = zs.querySelector('.state-text');
+    const z1Conflict = z1.running && z2.running;
+    zs.querySelector('.dot').className = 'dot ' + (z1Conflict ? 'dot-warn' : z1.running ? 'dot-ok' : 'dot-off');
+    z1Text.className = 'state-text ' + (z1Conflict ? 'st-warn' : z1.running ? 'st-ok' : 'st-mute');
+    z1Text.textContent = z1.running ? 'Работает' : 'Выключен';
     const z1btn = $('btnZ1Toggle');
     z1btn.textContent = z1.running ? 'Остановить' : 'Запустить';
     z1btn.classList.toggle('btn-primary', !z1.running);
