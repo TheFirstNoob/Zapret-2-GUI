@@ -429,4 +429,10 @@
 151.101.66.132 avatars3.githubusercontent.com
 151.101.66.132 avatars4.githubusercontent.com
 151.101.66.132 avatars5.githubusercontent.com
+151.101.66.132 media.githubusercontent.com
+151.101.66.132 camo.githubusercontent.com
+151.101.66.132 cloud.githubusercontent.com
+151.101.66.132 avatars6.githubusercontent.com
+151.101.66.132 avatars7.githubusercontent.com
+151.101.66.132 avatars8.githubusercontent.com
 # =============================================================
