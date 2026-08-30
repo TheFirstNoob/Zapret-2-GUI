@@ -648,7 +648,8 @@ def _run_tester_action(data: dict) -> None:
                         res = _run_tester(
                             lambda: tester.test_profile(
                                 "custom", _make_progress_cb(state),
-                                tier=_tier, result_cb=result_cb, skip_cdn=skip_cdn)
+                                tier=_tier, result_cb=_make_result_cb(state, profile="custom"),
+                                skip_cdn=skip_cdn)
                         )
                         if res is not None:
                             all_results.append(res)
