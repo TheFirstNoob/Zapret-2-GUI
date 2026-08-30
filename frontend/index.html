@@ -74,76 +74,60 @@
         <section id="page-main" class="page active">
           <div class="main-grid">
 
-            <!-- Zapret 2 Card -->
+            <!-- Обход Card -->
             <div class="card main-card" id="z2Card">
-              <div class="main-card-header">
-                <div class="main-card-icon z2-icon">Z2</div>
-                <div>
-                  <h3>Zapret 2</h3>
-                  <div class="status-badge" id="z2StatusBadge">⏳ загрузка...</div>
-                </div>
+              <div class="status-line">
+                <span class="z2-badge">Z2</span>
+                <span class="status-badge" id="z2StatusBadge">⏳ загрузка...</span>
+                <span class="status-sep">·</span>
+                <span>PID <span class="value" id="z2Pid">—</span></span>
+                <span class="status-sep">·</span>
+                <span id="z2Uptime">—</span>
               </div>
-              <div class="main-card-body">
-                <div class="info-row"><span class="label">PID</span><span class="value" id="z2Pid">—</span></div>
-                <div class="info-row"><span class="label">Аптайм</span><span class="value" id="z2Uptime">—</span></div>
+
+              <div class="conflict-inline" id="conflictInline" style="display:none">
+                ⚠️ Конфликт: Zapret 1 и Zapret 2 запущены одновременно. Остановите один из них перед запуском другого.
               </div>
-              <div class="main-card-actions launch-row">
+
+              <div style="display:flex;gap:8px;align-items:center;margin-top:12px">
+                <select class="input" id="strategySelect" required style="width:100%;cursor:pointer;font-size:12px">
+                  <option value="" disabled selected>— стратегия —</option>
+                </select>
+              </div>
+
+              <div class="action-panel">
                 <div style="display:flex;gap:8px;align-items:center">
-                  <select class="input" id="strategySelect" required style="width:100%;cursor:pointer;font-size:12px">
-                    <option value="" disabled selected>— стратегия —</option>
-                  </select>
-                </div>
-                <div style="display:flex;gap:8px;align-items:center;margin-top:6px">
                   <button class="btn btn-sm btn-primary" id="btnZ2Start" onclick="MainPage.startSelected()">▶ Запустить</button>
                   <button class="btn btn-sm btn-secondary" id="btnZ2Stop" onclick="MainPage.stop()">⏹ Остановить</button>
                   <span id="startResult" style="font-size:12px;color:var(--text-secondary);margin-left:4px"></span>
                 </div>
-                <div style="display:flex;gap:8px;align-items:center;margin-top:6px">
+                <div style="display:flex;gap:8px;align-items:center">
+                  <span style="font-size:11px;color:var(--text-secondary);white-space:nowrap">Служба:</span>
                   <button class="btn btn-sm btn-secondary" id="btnSvcInstall" onclick="MainPage.installService()" style="font-size:11px">📦 Установить службу</button>
                   <button class="btn btn-sm btn-secondary" id="btnSvcRemove" onclick="MainPage.removeService()" style="font-size:11px;display:none">🗑 Удалить службу</button>
                   <span id="serviceStatus" style="font-size:11px;color:var(--text-secondary)"></span>
                 </div>
               </div>
-            </div>
 
-            <!-- Zapret 1 Card -->
-            <div class="card main-card" id="z1Card">
-              <div class="main-card-header">
-                <div class="main-card-icon z1-icon">Z1</div>
-                <div>
-                  <h3>Zapret 1</h3>
-                  <div class="status-badge" id="z1StatusBadge">⏳ загрузка...</div>
+              <!-- Zapret 1 (сворачиваемый) -->
+              <details id="z1Card" class="z1-details">
+                <summary>Zapret 1 · <span id="z1StatusBadge">⏳ загрузка...</span> · развернуть</summary>
+                <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
+                  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                    <input class="input" id="z1DirPath" placeholder="C:\Zapret" style="flex:1;min-width:140px;font-size:12px">
+                    <button class="btn btn-sm btn-secondary" onclick="MainPage.saveZ1Dir()">💾 Сохранить путь</button>
+                    <select class="input" id="z1StrategySelect" style="min-width:120px;cursor:pointer;font-size:12px" disabled>
+                      <option value="">— нет стратегий —</option>
+                    </select>
+                    <button class="btn btn-sm btn-primary" id="btnZ1Start" onclick="MainPage.startZ1()">▶ Запустить</button>
+                    <button class="btn btn-sm btn-secondary" id="btnZ1Stop" onclick="MainPage.stopZ1()">⏹ Остановить</button>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary)">
+                    <span>PID</span><span class="mono" id="z1Pid">—</span>
+                  </div>
+                  <div id="z1Result" style="font-size:12px;color:var(--text-secondary)"></div>
                 </div>
-              </div>
-              <div class="main-card-body">
-                <div class="info-row"><span class="label">PID</span><span class="value mono" id="z1Pid">—</span></div>
-              </div>
-              <div class="main-card-actions launch-row">
-                <div style="flex:1;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                  <input class="input" id="z1DirPath" placeholder="C:\Zapret" style="flex:1;min-width:140px;font-size:12px">
-                  <button class="btn btn-sm btn-secondary" onclick="MainPage.saveZ1Dir()">💾 Сохранить путь</button>
-                  <select class="input" id="z1StrategySelect" style="min-width:120px;cursor:pointer;font-size:12px" disabled>
-                    <option value="">— нет стратегий —</option>
-                  </select>
-                  <button class="btn btn-sm btn-primary" id="btnZ1Start" onclick="MainPage.startZ1()">▶ Запустить</button>
-                  <button class="btn btn-sm btn-secondary" id="btnZ1Stop" onclick="MainPage.stopZ1()">⏹ Остановить</button>
-                </div>
-                <div id="z1Result" style="font-size:12px;color:var(--text-secondary)"></div>
-              </div>
-            </div>
-
-            <!-- Conflict Warning -->
-            <div class="card main-card main-card-wide" id="conflictCard" style="display:none">
-              <div style="display:flex;align-items:center;gap:10px;color:var(--err)">
-                <span style="font-size:24px">⚠️</span>
-                <div>
-                  <strong>Конфликт: оба Zapret запущены одновременно!</strong>
-                  <p style="font-size:12px;color:var(--text-secondary);margin-top:4px">
-                    Zapret 1 (winws.exe) и Zapret 2 (winws2.exe) не могут работать вместе.
-                    Остановите один из них перед запуском другого.
-                  </p>
-                </div>
-              </div>
+              </details>
             </div>
 
             <!-- Toggles -->

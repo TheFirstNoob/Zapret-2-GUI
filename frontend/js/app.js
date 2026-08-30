@@ -364,7 +364,7 @@ const MainPage = {
   },
 
   updateConflict(z2, z1) {
-    const el = document.getElementById('conflictCard');
+    const el = document.getElementById('conflictInline');
     if (z2.running && z1.running) {
       el.style.display = 'block';
     } else {
