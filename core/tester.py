@@ -724,7 +724,15 @@ class Zapret2Tester:
                 self._logger.progress(profile, msg)
             progress_cb(pct, msg)
 
-        profile_name, provider_hop, provider_ip, _ = self._setup_profile(profile, progress_cb, _logged_progress)
+        # _setup_profile raises _TestAbort BEFORE the try below (preset missing,
+        # winws2 not spawning).  A single broken profile must never kill the
+        # whole sweep — return its error result so the caller can continue.
+        try:
+            profile_name, provider_hop, provider_ip, _ = self._setup_profile(profile, progress_cb, _logged_progress)
+        except _TestAbort as e:
+            if e.result is not None:
+                return e.result
+            return ProfileTestResult(profile_name=profile)
 
         domains = self._get_tier_hosts(tier)
         all_results: list[TestResult] = []

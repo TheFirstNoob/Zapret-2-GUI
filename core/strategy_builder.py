@@ -134,6 +134,30 @@ def build_custom(
                 best_p, best_rate = p, rate
         sources[fam] = best_p
 
+    # Header must satisfy ALL source presets: a segment may rely on its own
+    # preset's global flags — auto's --wf-tcp-in (for --in-range) AND its
+    # --lua-init @lua/zapret-auto.lua (for circular).  Union of the complete
+    # header (exact-line dedup) of every non-default source preset.
+    extra_header: list[str] = []
+    for fam, src in sources.items():
+        if src == default_name:
+            continue
+        src_header = parse_preset(root / "presets" / f"{src}.txt")[0]
+        for l in src_header:
+            s = l.strip()
+            if not s:
+                continue
+            if s in [x.strip() for x in header] or s in [x.strip() for x in extra_header]:
+                continue
+            extra_header.append(l)
+    if extra_header:
+        insert_at = len(header)
+        for i, l in enumerate(header):
+            if l.strip().startswith("--lua-init"):
+                insert_at = i
+                break
+        header[insert_at:insert_at] = extra_header
+
     lines: list[str] = list(header)
     for seg_name, fam in SEGMENT_FAMILY.items():
         src = sources[fam]

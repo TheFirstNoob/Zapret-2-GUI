@@ -588,6 +588,39 @@ def _run_tester_action(data: dict) -> None:
                                                     args, cwd=get_root_dir())
                             custom["valid"] = ok
                             custom["error"] = None if ok else err
+                            # --dry-run never opens WinDivert: a preset can be
+                            # "valid" yet die at launch (e.g. --in-range without
+                            # --wf-tcp-in).  Real 1.5s smoke launch.
+                            if ok:
+                                try:
+                                    from core.launcher import write_run_bat, launch_winws2_bat
+                                    import time as _time
+                                    bat = get_root_dir() / "_zapret_custom_smoke.bat"
+                                    write_run_bat(get_root_dir(), bat,
+                                                  get_root_dir() / "bin" / "winws2.exe", args)
+                                    launched = launch_winws2_bat(bat, get_root_dir(), timeout=5.0)
+                                    _time.sleep(1.5)
+                                    import subprocess as _sp
+                                    chk = _sp.run(
+                                        ["tasklist", "/FI", "IMAGENAME eq winws2.exe", "/FO", "CSV", "/NH"],
+                                        capture_output=True, text=True, timeout=5,
+                                        encoding="oem", errors="replace",
+                                        creationflags=_sp.CREATE_NO_WINDOW)
+                                    alive = launched and "winws2.exe" in chk.stdout
+                                    _sp.run(["taskkill", "/F", "/IM", "winws2.exe"],
+                                            capture_output=True, timeout=5,
+                                            creationflags=_sp.CREATE_NO_WINDOW)
+                                    if not alive:
+                                        custom["valid"] = False
+                                        custom["error"] = ("custom не стартует на реальном запуске "
+                                                           "(проверьте --wf-tcp-in/--in-range сегментов)")
+                                    try:
+                                        bat.unlink()
+                                    except OSError:
+                                        pass
+                                except Exception as e:
+                                    custom["valid"] = False
+                                    custom["error"] = f"smoke-запуск custom не удался: {e}"
                             src = custom["sources"]
                             custom["summary"] = (
                                 "Собрана личная стратегия «custom»: "
