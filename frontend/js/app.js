@@ -1692,11 +1692,12 @@ const TesterPage = {
           : custom.relation === 'worse' ? 'уступает лучшей'
           : (custom.rate != null ? 'равна лучшей' : '');
         const isBest = rec && rec.best_profile === 'custom';
+        const isEqual = !isBest && custom.relation === 'equal';
         html += `<div class="card verdict-partial">
           <h3>🧬 Личная стратегия «custom»${rel ? ` <span style="font-size:12px;color:var(--warn)">(${rel}${custom.rate != null ? ', ' + custom.rate + '%' : ''})</span>` : ''}</h3>
           <p style="font-size:14px;margin:8px 0">${escapeHtml(custom.summary)}</p>
           <div style="margin:6px 0 12px">${chips}</div>
-          ${isBest ? '<p style="font-size:12px;color:var(--text-secondary);margin:0">Запуск — кнопкой выше (лучшая стратегия).</p>' : ''}
+          ${isBest ? '<p style="font-size:12px;color:var(--text-secondary);margin:0">Запуск — кнопкой выше (лучшая стратегия).</p>' : isEqual ? '<p style="font-size:12px;color:var(--text-secondary);margin:0">равна лучшей — запуск кнопкой выше</p>' : ''}
         </div>`;
       }
 
@@ -1713,9 +1714,6 @@ const TesterPage = {
           html += `<tr class="${cls}"><td>${escapeHtml(r.profile || '')}${isBest ? ' <span class="badge badge-safe">best</span>' : ''}</td><td style="color:${scoreColor(r.network_rate != null ? r.network_rate : 0)};font-weight:700">${ws}%</td><td>${okTxt}</td><td>${pings}</td><td>${r.provider_hop ? 'hop ' + escapeHtml(String(r.provider_hop)) : '—'}</td></tr>`;
         }
         html += '</tbody></table></div>';
-        if (bestProfile) {
-          html += `<p style="margin-top:10px;font-size:14px">Рекомендуемая стратегия: <strong>${escapeHtml(bestProfile)}</strong></p>`;
-        }
         html += '</div>';
       }
 
