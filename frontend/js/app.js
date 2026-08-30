@@ -1570,7 +1570,7 @@ const TesterPage = {
           }).join('') + '</div>';
         }
         html += `<div class="card ${vm.cls}">
-          <h3>${vm.icon} Итог теста: ${vm.title}</h3>
+          <h3>${vm.icon} Итог теста: ${vm.title}${rec.best_profile ? ' — лучшая: <b>' + escapeHtml(rec.best_profile) + '</b>' : ''}</h3>
           <p class="verdict-message">${escapeHtml(rec.message || '')}</p>
           ${keyHtml}
           <div class="verdict-actions" style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
@@ -1587,8 +1587,11 @@ const TesterPage = {
         const src = custom.sources || {};
         const chips = Object.keys(src).map(f =>
           `<span class="badge" style="margin-right:6px">${escapeHtml(f)} ← ${escapeHtml(src[f])}</span>`).join('');
+        const rel = custom.relation === 'better' ? 'обгоняет лучшую'
+          : custom.relation === 'worse' ? 'уступает лучшей'
+          : (custom.rate != null ? 'равна лучшей' : '');
         html += `<div class="card verdict-partial">
-          <h3>🧬 Личная стратегия «custom»</h3>
+          <h3>🧬 Личная стратегия «custom»${rel ? ` <span style="font-size:12px;color:var(--warn)">(${rel}${custom.rate != null ? ', ' + custom.rate + '%' : ''})</span>` : ''}</h3>
           <p style="font-size:14px;margin:8px 0">${escapeHtml(custom.summary)}</p>
           <div style="margin:6px 0 12px">${chips}</div>
           <div class="verdict-actions" style="display:flex;gap:10px;flex-wrap:wrap">
@@ -1781,14 +1784,22 @@ const DiagnosticsPage = {
     const copyBtn = document.getElementById('diagCopyBtn');
     copyBtn.style.display = 'none';
     btn.disabled = true;
-    btn.textContent = 'Проверяю... (~30 сек)';
-    results.innerHTML = '<p style="color:var(--text-secondary)">Идут проверки: права, процесс, служба, пресет, сайты...</p>';
+    btn.textContent = 'Проверяю...';
+    const diagMsg = document.getElementById('diagResults');
+    const t0 = Date.now();
+    diagMsg.innerHTML = '<p style="color:var(--text-secondary)">⏳ Выполняется проверка... <b id="diagTimer">0</b> сек</p>';
+    const timerId = setInterval(() => {
+      const el = document.getElementById('diagTimer');
+      if (el) el.textContent = Math.round((Date.now() - t0) / 1000);
+    }, 1000);
     summary.innerHTML = '';
     try {
       const r = await apiPost('/diagnose', {});
       if (r.status !== 'ok' || !r.report) throw new Error(r.message || 'ошибка');
+      clearInterval(timerId);
       this.render(r.report);
     } catch (e) {
+      clearInterval(timerId);
       results.innerHTML = `<p style="color:#e74c3c">Ошибка диагностики: ${escapeHtml(String(e.message || e))}</p>`;
     } finally {
       btn.disabled = false;

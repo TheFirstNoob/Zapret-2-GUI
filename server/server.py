@@ -503,13 +503,27 @@ def _run_tester_action(data: dict) -> None:
                     tier=data.get("tier", "critical"), result_cb=result_cb,
                     skip_cdn=data.get("skip_cdn", False),
                 ))
+                _play_completion_sound()
                 state.set_final(_serialize_result(result))
 
             elif action == "test_profiles":
                 profiles = data.get("profiles", None)
                 if not profiles:
                     presets_dir = get_root_dir() / "presets"
-                    profiles = sorted(f.stem for f in presets_dir.glob("*.txt")) if presets_dir.is_dir() else ["default"]
+                    if presets_dir.is_dir():
+                        profiles = sorted(f.stem for f in presets_dir.glob("*.txt"))
+                        # default first; auto/custom (generated) last — the
+                        # user expects the proven strategy to be tested first.
+                        def _order_key(p: str):
+                            if p == "default":
+                                return (0, "")
+                            if p in ("auto", "custom"):
+                                return (2, p)
+                            return (1, p)
+                        profiles.sort(key=_order_key)
+                    else:
+                        profiles = ["default"]
+                custom_existed = (get_root_dir() / "presets" / "custom.txt").exists()
 
                 all_results = []
                 total = len(profiles)
@@ -583,6 +597,40 @@ def _run_tester_action(data: dict) -> None:
                     except Exception as e:
                         final["custom"] = {"error": str(e), "preset": "custom"}
 
+                    # A freshly built custom (didn't exist before the sweep)
+                    # deserves one verification test before being recommended.
+                    freshly_built = (not custom_existed
+                                     and final.get("custom", {}).get("valid")
+                                     and not tester.shutdown_event.is_set())
+                    if freshly_built:
+                        progress(98, "Тестируем собранную стратегию custom...")
+                        res = _run_tester(
+                            lambda: tester.test_profile(
+                                "custom", _make_progress_cb(state),
+                                tier=_tier, result_cb=result_cb, skip_cdn=skip_cdn)
+                        )
+                        if res is not None:
+                            all_results.append(res)
+                            best = max(all_results, key=lambda r: (r.network_rate, r.ok_count))
+                            blocked = sorted({r.domain for res in all_results for r in res.results
+                                              if r.test_type != "ping" and r.status != "OK"})
+                            sanity = tester.collect_sanity_info(best.profile_name, blocked)
+                            rec = _build_recommendation(all_results, naked_baseline, sanity)
+                            final = _serialize_result(best)
+                            final["recommendation"] = rec
+                            final["sanity"] = sanity
+                            final["naked"] = _serialize_result(naked_baseline) if naked_baseline else None
+                            final["custom"] = custom
+                            c_rate = getattr(res, "network_rate", 0.0)
+                            if c_rate > best.network_rate + 1e-9:
+                                custom["relation"] = "better"
+                            elif abs(c_rate - best.network_rate) < 1e-9:
+                                custom["relation"] = "equal"
+                            else:
+                                custom["relation"] = "worse"
+                            custom["rate"] = round(c_rate, 1)
+
+                    _play_completion_sound()
                     state.set_final(final, [_serialize_result(r) for r in all_results])
                 else:
                     state.running = False
@@ -1149,7 +1197,6 @@ class ZapretHandler(BaseHTTPRequestHandler):
             except OSError:
                 pass
         if ok:
-            _play_completion_sound()
             self._send_json({"status": "ok", "file": path_or_err})
         else:
             self._send_json({"status": "error", "message": path_or_err})
