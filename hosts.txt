@@ -438,11 +438,12 @@
 45.155.204.190 corp.google.com
 45.155.204.190 assistant-s3-pa.googleapis.com
 45.155.204.190 withgoogle.com
-# --- Zapret2 GitHub fix (githubusercontent ???????????? ?? IP ?? RU-?????) ---
-# Fastly edge, ???????? ??????? GitHub: 151.101.66.132 (???????? 2026-08-30)
+# --- Zapret2 GitHub fix (githubusercontent заменён на Fastly-эдж IP, RU-обход) ---
+# Fastly edge, общий конфиг GitHub: 151.101.66.132 (лучший 2026-08-30)
 151.101.66.132 raw.githubusercontent.com
 151.101.66.132 objects.githubusercontent.com
 151.101.66.132 release-assets.githubusercontent.com
+151.101.66.132 upload-assets.githubusercontent.com
 151.101.66.132 private-user-images.githubusercontent.com
 151.101.66.132 gist.githubusercontent.com
 151.101.66.132 avatars.githubusercontent.com
