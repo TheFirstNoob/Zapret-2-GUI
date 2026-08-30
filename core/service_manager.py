@@ -169,6 +169,8 @@ def start(args: Optional[list[str]] = None):
     conflict = _zapret1_conflict()
     if conflict:
         return False, conflict
+    from core.tcp_timestamps import enable_for_engine
+    enable_for_engine()
     _taskkill_winws2()
     time.sleep(0.5)
     if args:

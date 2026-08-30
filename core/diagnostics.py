@@ -313,6 +313,33 @@ def run_diagnostics(root_dir: Path, cfg: AppConfig) -> dict:
     else:
         checks.append(Check("zapret1", "Zapret 1", "ok", "не запущен"))
 
+    # environment scan: other DPI tools / VPN clients / tunnel adapters
+    try:
+        from core.conflict_scan import scan as scan_conflicts, describe as describe_conflicts
+        cr = scan_conflicts()
+        if cr.hard_conflict:
+            checks.append(Check("env", "Конфликт DPI-тулзов", "fail",
+                                describe_conflicts(cr) or "обнаружен"))
+        elif cr.warnings:
+            checks.append(Check("env", "Окружение (VPN/туннели)", "warn",
+                                describe_conflicts(cr) or "обнаружено"))
+        else:
+            checks.append(Check("env", "Окружение", "ok", "конфликтов нет"))
+    except Exception as e:
+        checks.append(Check("env", "Окружение", "skip", f"не удалось проверить: {e}"))
+
+    # TCP timestamps (ts-fooling silently dead when disabled)
+    try:
+        from core.tcp_timestamps import timestamps_enabled as ts_enabled
+        if ts_enabled():
+            checks.append(Check("tcp_ts", "TCP timestamps", "ok",
+                                "включены — tcp_ts-фулинг активен"))
+        else:
+            checks.append(Check("tcp_ts", "TCP timestamps", "warn",
+                                "ВЫКЛЮЧЕНЫ — tcp_ts=... в пресетах молча не работает"))
+    except Exception as e:
+        checks.append(Check("tcp_ts", "TCP timestamps", "skip", f"не удалось проверить: {e}"))
+
     # service
     try:
         from core.service_manager import is_installed as svc_installed, status as svc_status

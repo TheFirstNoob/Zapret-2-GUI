@@ -78,6 +78,9 @@ class ZapretController:
 
         self.stop()
 
+        from core.tcp_timestamps import enable_for_engine
+        ts_ok, ts_note = enable_for_engine()
+
         bat = self.root_dir / "_zapret_run.bat"
         write_run_bat(self.root_dir, bat, exe_path, args)
 
@@ -86,7 +89,7 @@ class ZapretController:
             return False, "winws2.exe не удалось запустить (проверьте права администратора)"
 
         self.current_strategy = profile
-        return True, "Запущен"
+        return True, "Запущен" + (f" ({ts_note})" if ts_note else "")
 
     def stop(self) -> bool:
         pid = self.get_running_pid(force=True)
