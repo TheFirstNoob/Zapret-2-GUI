@@ -553,3 +553,11 @@ th.col-rate { text-align: right; }
   .main-col-z1 .panel-details { position: static; }
 }
 
+/* ── Global scrollbars (webview + browser) ── */
+* { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--line); border-radius: 5px; border: 2px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: var(--faint); background-clip: padding-box; }
+::-webkit-scrollbar-corner { background: transparent; }
+
