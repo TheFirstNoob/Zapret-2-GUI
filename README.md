@@ -42,10 +42,14 @@ GUI-обёртка для **Zapret 2** (winws2 / lua-desync) — обход DPI/
 это локальная фильтрация подсетей.
 
 **Что делать:**
-1. **Добавьте в `C:\Windows\System32\drivers\etc\hosts`** блок из файла
-   [`hosts-github-fix.txt`](hosts-github-fix.txt) (пиннит githubusercontent
-   на рабочий Fastly-IP), затем `ipconfig /flushdns`.
-   Если IP перестал работать — замените на запасной из списка в файле.
+1. **Добавьте в `C:\Windows\System32\drivers\etc\hosts`** готовый файл
+   [`hosts.txt`](hosts.txt) — это полный hosts (сообщество + github-fix):
+   обход гео-блоков ИИ (ChatGPT/Gemini/Claude), githubusercontent и
+   антитрекер-заглушки. Рекомендуется: сохраните бэкап своего hosts,
+   скопируйте блок из hosts.txt в конец своего файла, затем
+   `ipconfig /flushdns`. Если Fastly-IP перестал работать — замените
+   github-блок на запасные IP (список в комментариях файла).
+   Мёртвые записи (000) из hosts.txt уже вычищены (2026-08-30).
 2. Либо включите **WARP** (Cloudflare) — обходит полностью.
 3. Обновление программы можно скачать через зеркало **jsDelivr**:
    `https://cdn.jsdelivr.net/gh/TheFirstNoob/Zapret-2-GUI@main/Windows%20build/Zapret2GUI.zip`
