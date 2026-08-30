@@ -8,11 +8,13 @@ host).  Every check has a hard timeout and never raises.
 """
 from __future__ import annotations
 
+import socket
 import subprocess
 import time
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
+from urllib import request as _urlreq
 
 from core.admin import is_admin
 from core.config import AppConfig, DEFAULT_PROFILE, VERSION
@@ -281,6 +283,50 @@ def _check_block_types(net_checks: list[Check]) -> list[Check]:
     return checks
 
 
+def _check_dns_health() -> Check:
+    """plain 53 / DoT 853 / DoH 443 — many RU ISPs poison or block DNS layers."""
+    import socket as _s
+    results = []
+
+    try:
+        _s.getaddrinfo("rutracker.org", 443)
+        results.append("системный DNS отвечает")
+    except OSError:
+        results.append("системный DNS МОЛЧИТ")
+
+    def _tcp_ok(ip: str, port: int, timeout: float = 3.0) -> bool:
+        try:
+            with _s.create_connection((ip, port), timeout=timeout):
+                return True
+        except OSError:
+            return False
+
+    dot_ok = _tcp_ok("8.8.8.8", 853) or _tcp_ok("1.1.1.1", 853)
+    results.append("DoT (853): " + ("работает" if dot_ok else "заблокирован/недоступен"))
+
+    doh_ok = False
+    try:
+        req = _urlreq.Request(
+            "https://1.1.1.1/dns-query?name=rutracker.org&type=A",
+            headers={"Accept": "application/dns-json"},
+        )
+        with _urlreq.urlopen(req, timeout=4) as resp:
+            doh_ok = resp.status == 200
+    except Exception:
+        doh_ok = False
+    results.append("DoH (443): " + ("работает" if doh_ok else "недоступен"))
+
+    if dot_ok and doh_ok:
+        status, detail = "ok", "; ".join(results)
+    elif not dot_ok and not doh_ok and "МОЛЧИТ" in results[0]:
+        status, detail = "fail", "; ".join(results) + " — DNS-уровень режется целиком"
+    elif not dot_ok and not doh_ok:
+        status, detail = "fail", "; ".join(results) + " — DoT и DoH мертвы"
+    else:
+        status, detail = "warn", "; ".join(results)
+    return Check("dns_health", "DNS (53/DoT/DoH)", status, detail)
+
+
 def run_diagnostics(root_dir: Path, cfg: AppConfig) -> dict:
     root_dir = Path(root_dir)
 
@@ -371,6 +417,9 @@ def run_diagnostics(root_dir: Path, cfg: AppConfig) -> dict:
 
     # block-type classification for the failed host(s): DNS vs IP vs SNI
     checks.extend(_check_block_types(net_checks))
+
+    # DNS health: plain resolver vs DoT (853) vs DoH (443)
+    checks.append(_check_dns_health())
 
     summary = {"ok": 0, "warn": 0, "fail": 0, "skip": 0}
     for c in checks:

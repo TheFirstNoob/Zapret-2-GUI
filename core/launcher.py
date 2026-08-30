@@ -50,6 +50,50 @@ def validate_args(exe_path: Path, args: list[str], cwd: Optional[Path] = None, t
         stripped = line.strip()
         if any(marker in stripped for marker in _DRY_RUN_ERROR_MARKERS):
             return False, f"winws2 отклонил параметры: {stripped}"
+    return validate_lua(exe_path, args, cwd, timeout)
+
+
+_LUA_ERROR_MARKERS = (
+    "lua error",
+    "not accessible",
+    "unexpected symbol",
+    "' expected",
+    "attempt to",
+    "stack traceback",
+    "bad argument",
+)
+
+
+def validate_lua(exe_path: Path, args: list[str], cwd: Optional[Path] = None, timeout: float = 10.0) -> tuple[bool, str]:
+    """Compile-check the Lua modules referenced by args via --intercept=0.
+
+    --dry-run does NOT initialize Lua, so a typo in a custom lua file (e.g.
+    zapret-custom.lua) passes it and kills winws2 at real launch.  --intercept=0
+    loads and compiles the lua-init files, then exits without capturing.
+    Only the lua/blob-related tokens are passed — no filters, so no WinDivert
+    handle is touched even if another instance is running.
+    """
+    lua_tokens = [t for t in args if t.startswith("--lua-init") or t.startswith("--blob") or t.startswith("--lua-gc")]
+    if not lua_tokens:
+        return True, ""
+    try:
+        r = subprocess.run(
+            [str(exe_path), "--intercept=0"] + lua_tokens,
+            capture_output=True,
+            text=True,
+            encoding="oem",
+            errors="replace",
+            timeout=timeout,
+            cwd=str(cwd) if cwd else None,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+    except (subprocess.TimeoutExpired, OSError) as e:
+        return False, f"winws2 --intercept=0 не выполнился: {e}"
+    output = ((r.stdout or "") + "\n" + (r.stderr or "")).lower()
+    for line in output.splitlines():
+        stripped = line.strip()
+        if any(marker in stripped for marker in _LUA_ERROR_MARKERS):
+            return False, f"winws2: ошибка Lua: {stripped}"
     return True, ""
 
 
