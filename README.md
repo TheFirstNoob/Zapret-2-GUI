@@ -54,6 +54,9 @@ GUI-обёртка для **Zapret 2** (winws2 / lua-desync) — обход DPI/
    `ipconfig /flushdns`. Если Fastly-IP перестал работать — замените
    github-блок на запасные IP (список в комментариях файла).
    Мёртвые записи (000) из hosts.txt уже вычищены (2026-08-30).
+   ⚠️ Не заменяйте файл hosts целиком — **дописывайте строки в конец**
+   существующего файла: полная замена может лишить службу DNS прав на
+   чтение (ACL), и Windows будет молча игнорировать hosts.
 2. Либо включите **WARP** (Cloudflare) — обходит полностью.
 3. Обновление программы можно скачать через зеркало **jsDelivr**:
    `https://cdn.jsdelivr.net/gh/TheFirstNoob/Zapret-2-GUI@main/Windows%20build/Zapret2GUI.zip`
