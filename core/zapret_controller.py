@@ -100,6 +100,8 @@ class ZapretController:
                     capture_output=True, timeout=5,
                     creationflags=subprocess.CREATE_NO_WINDOW,
                 )
+                self._cached_pid = None
+                self._cached_pid_at = 0.0
                 self.current_strategy = None
                 return True
             except (subprocess.TimeoutExpired, OSError):

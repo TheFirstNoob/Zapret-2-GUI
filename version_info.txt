@@ -14,12 +14,12 @@ VSVersionInfo(
       StringTable('040904B0', [
         StringStruct('CompanyName', 'Zapret 2 GUI'),
         StringStruct('FileDescription', 'Zapret 2 DPI bypass GUI'),
-        StringStruct('FileVersion', '0.4.0.0'),
+        StringStruct('FileVersion', '0.5.0.0'),
         StringStruct('InternalName', 'Zapret2GUI'),
         StringStruct('LegalCopyright', 'Open source (MIT)'),
         StringStruct('OriginalFilename', 'Zapret2GUI.exe'),
         StringStruct('ProductName', 'Zapret 2 GUI'),
-        StringStruct('ProductVersion', 'Pre-Release 0.4')
+        StringStruct('ProductVersion', 'Pre-Release 0.5')
       ])
     ]),
     VarFileInfo([VarStruct('Translation', [1033, 1200])])

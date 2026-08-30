@@ -1,6 +1,6 @@
 # AGENTS.md — Критические находки (чтение обязательно перед любыми изменениями)
 >
-> **Последнее обновление: 2026-08-30 (Pre-Release 0.4)**
+> **Последнее обновление: 2026-08-30 (Pre-Release 0.5)**
 > **Размер EXE:** 18.4 MB
 > **Статус:** `default.txt` — универсальная стратегия, работает у всех протестированных провайдеров
 
@@ -12,7 +12,7 @@
 ## ⚡ СЕССИЯ-СНАПШОТ (читать первым после сжатия контекста) 🚨
 
 ### Текущее состояние (2026-08-30)
-- **VERSION = "Pre-Release 0.4"** (config.py + VERSION-файл + version_info 0.4.0.0).
+- **VERSION = "Pre-Release 0.5"** (config.py + VERSION-файл + version_info 0.5.0.0).
 - **Три дистрибутива** (`Windows build/`):
   - `Zapret2GUI.zip` — классический EXE (PyInstaller onefile, 18.4 MB)
   - `Zapret2GUI-portable.zip` (16.5 MB) — GUI на официальном Python embeddable
