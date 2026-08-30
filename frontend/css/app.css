@@ -46,7 +46,7 @@ html, body {
 }
 
 body {
-  font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: Bahnschrift, "Segoe UI Variable", "Segoe UI", Tahoma, sans-serif;
   background: radial-gradient(ellipse at 50% 0%, #151b2d 0%, var(--bg) 55%);
   color: var(--text);
   line-height: 1.5;
@@ -325,7 +325,7 @@ body {
 }
 
 .info-row .value.mono {
-  font-family: "Cascadia Code", "Consolas", monospace;
+  font-family: "Cascadia Mono", Consolas, monospace;
   font-size: 11px;
   color: var(--text-muted);
 }
@@ -445,6 +445,11 @@ body {
   background: var(--accent);
 }
 
+.toggle-switch input:focus-visible + .toggle-slider {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 /* Toggles overlay */
 .toggles-overlay {
   display: none;
@@ -477,7 +482,7 @@ body {
 .textarea-list {
   width: 100%;
   min-height: 200px;
-  font-family: "Cascadia Code", "Consolas", monospace;
+  font-family: "Cascadia Mono", Consolas, monospace;
   font-size: 13px;
   resize: vertical;
   line-height: 1.6;
@@ -582,7 +587,11 @@ p {
   transition: var(--transition);
   background: var(--surface-hover);
   color: var(--text);
-  outline: none;
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .btn:hover:not(:disabled) {
@@ -665,7 +674,7 @@ p {
 
 .textarea {
   min-height: 200px;
-  font-family: "JetBrains Mono", "Fira Code", Consolas, monospace;
+  font-family: "Cascadia Mono", Consolas, monospace;
   font-size: 13px;
   line-height: 1.6;
   resize: vertical;
@@ -780,7 +789,7 @@ label {
 }
 
 .detail-value {
-  font-family: "JetBrains Mono", Consolas, monospace;
+  font-family: "Cascadia Mono", Consolas, monospace;
   color: var(--text);
 }
 
@@ -1082,7 +1091,7 @@ label {
   background: rgba(0, 0, 0, 0.35);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  font-family: "JetBrains Mono", Consolas, "Cascadia Code", monospace;
+  font-family: "Cascadia Mono", Consolas, monospace;
   font-size: 12px;
   color: var(--text-secondary);
   line-height: 1.7;
@@ -1225,7 +1234,7 @@ label {
 }
 
 .time-ms {
-  font-family: "JetBrains Mono", Consolas, monospace;
+  font-family: "Cascadia Mono", Consolas, monospace;
   font-size: 12px;
 }
 
@@ -1342,11 +1351,20 @@ label {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
   .live-block.active .live-block-lamp {
     animation: none;
   }
   .live-block-arrow {
     transition: none;
+  }
+  .progress-bar .fill::after {
+    display: none;
   }
 }
 
@@ -1394,7 +1412,7 @@ label {
 
 .result-tile .tile-time {
   font-size: 11px;
-  font-family: "JetBrains Mono", Consolas, monospace;
+  font-family: "Cascadia Mono", Consolas, monospace;
 }
 
 .result-tile .tile-badges {
@@ -1583,7 +1601,7 @@ label {
   padding: 4px 10px;
   border-radius: 999px;
   font-size: 12px;
-  font-family: var(--font-mono, monospace);
+  font-family: var(--font-mono, "Cascadia Mono", Consolas, monospace);
 }
 
 /* ── Ring Gauge ── */
@@ -1909,4 +1927,10 @@ label {
 #z1Card summary:hover {
   background: var(--surface-hover);
   color: var(--text);
+}
+
+.z1-details summary:focus-visible,
+#z1Card summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
