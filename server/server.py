@@ -368,6 +368,16 @@ def _build_recommendation(all_results, naked, sanity: dict) -> dict:
     engine_broken = (not dry.get("ok", True)
                      or (profiles_loaded is not None and profiles_loaded <= 1))
     misses = [c for c in sanity.get("list_coverage", []) if not c.get("covered")]
+    # Coverage gaps are NOT a block: the bypass works, but those domains are
+    # outside the preset's lists (e.g. random CDN probe hosts).  Report them
+    # as a note — never as "не пробито".
+    miss_note = ""
+    if misses:
+        doms = ", ".join(c["domain"] for c in misses[:6])
+        if len(misses) > 6:
+            doms += f" и ещё {len(misses) - 6}"
+        miss_note = (f" (не покрыты списками: {doms} — стратегия к ним не применяется, "
+                     "доступность может быть нестабильна)")
 
     # YouTube over TCP fails on every tested setup due to a known TLS quirk
     # (§17) — the browser reaches it via QUIC, so it is not a real outage.
@@ -396,11 +406,6 @@ def _build_recommendation(all_results, naked, sanity: dict) -> dict:
             message = ("⚠ winws2 --dry-run отклонил аргументы: "
                        + ("; ".join(dry.get("errors", [])) or "неизвестная ошибка")
                        + ". Результаты стратегий недостоверны.")
-    elif misses:
-        verdict = "no_bypass"
-        doms = ", ".join(c["domain"] for c in misses)
-        message = (f"❌ Не пробито: {doms}. Эти домены отсутствуют в списках пресета — "
-                   "стратегия к ним не применяется (no_action). Добавьте домены в списки и повторите тест.")
     elif same_as_naked and net_rate < 100:
         verdict = "no_bypass"
         message = ("❌ Все стратегии дали тот же результат, что и голый тест (без защиты). "
@@ -411,11 +416,11 @@ def _build_recommendation(all_results, naked, sanity: dict) -> dict:
         verdict = "ok"
         extra = (" YouTube по TCP не доходит — известный TLS-прикол: в браузере "
                  "YouTube работает через QUIC." if youtube_tcp_quirk else "")
-        message = f"✅ Лучшая стратегия: {best.profile_name} — {best.net_ok_count}/{best.net_total} доступно.{extra}"
+        message = f"✅ Лучшая стратегия: {best.profile_name} — {best.net_ok_count}/{best.net_total} доступно.{extra}{miss_note}"
     elif net_rate > 0:
         verdict = "partial"
         message = (f"⚠ Лучшая стратегия: {best.profile_name} — {best.net_ok_count}/{best.net_total} "
-                   f"({net_rate:.0f}%). Не пробито: {', '.join(blocked) or '—'}")
+                   f"({net_rate:.0f}%). Не пробито: {', '.join(blocked) or '—'}{miss_note}")
     else:
         verdict = "no_bypass"
         message = "❌ Ни одна стратегия не пробила блокировку."
@@ -512,17 +517,19 @@ def _run_tester_action(data: dict) -> None:
                     presets_dir = get_root_dir() / "presets"
                     if presets_dir.is_dir():
                         profiles = sorted(f.stem for f in presets_dir.glob("*.txt"))
-                        # default first; auto/custom (generated) last — the
-                        # user expects the proven strategy to be tested first.
-                        def _order_key(p: str):
-                            if p == "default":
-                                return (0, "")
-                            if p in ("auto", "custom"):
-                                return (2, p)
-                            return (1, p)
-                        profiles.sort(key=_order_key)
                     else:
                         profiles = ["default"]
+                # ALWAYS order: default first; auto/custom (generated) last —
+                # the user expects the proven strategy to be tested first.
+                # (The frontend passes its own list from /api/status — order
+                # must be enforced here, not only for the glob path.)
+                def _order_key(p: str):
+                    if p == "default":
+                        return (0, "")
+                    if p in ("auto", "custom"):
+                        return (2, p)
+                    return (1, p)
+                profiles = sorted(profiles, key=_order_key)
                 custom_existed = (get_root_dir() / "presets" / "custom.txt").exists()
 
                 all_results = []
