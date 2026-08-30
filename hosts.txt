@@ -415,6 +415,29 @@
 0.0.0.0 yip.su
 
 # =============================================================
+
+# --- 45.155.204.190 : Google AI geo (Gemini/AI Studio/NotebookLM) ---
+45.155.204.190 gemini.google.com
+45.155.204.190 aistudio.google.com
+45.155.204.190 aisandbox-pa.googleapis.com
+45.155.204.190 generativelanguage.googleapis.com
+45.155.204.190 notebooklm.google.com
+45.155.204.190 labs.google
+45.155.204.190 jules.google.com
+45.155.204.190 o.pki.goog
+45.155.204.190 fitbit-pa.googleapis.com
+45.155.204.190 fitbit.google.com
+45.155.204.190 fitbitvestibuleshim-pa.googleapis.com
+45.155.204.190 api.fitbit.com
+45.155.204.190 stitch.withgoogle.com
+45.155.204.190 webchannel-alkalimakersuite-pa.clients6.google.com
+45.155.204.190 alkalimakersuite-pa.clients6.google.com
+45.155.204.190 aitestkitchen.withgoogle.com
+45.155.204.190 robinfrontend-pa.googleapis.com
+45.155.204.190 proactivebackend-pa.googleapis.com
+45.155.204.190 corp.google.com
+45.155.204.190 assistant-s3-pa.googleapis.com
+45.155.204.190 withgoogle.com
 # --- Zapret2 GitHub fix (githubusercontent ???????????? ?? IP ?? RU-?????) ---
 # Fastly edge, ???????? ??????? GitHub: 151.101.66.132 (???????? 2026-08-30)
 151.101.66.132 raw.githubusercontent.com
