@@ -1581,6 +1581,22 @@ const TesterPage = {
         </div>`;
       }
 
+      // ── Personal strategy card (aggregated segments) ──
+      const custom = phase2 && phase2.custom;
+      if (custom && custom.summary && custom.valid) {
+        const src = custom.sources || {};
+        const chips = Object.keys(src).map(f =>
+          `<span class="badge" style="margin-right:6px">${escapeHtml(f)} ← ${escapeHtml(src[f])}</span>`).join('');
+        html += `<div class="card verdict-partial">
+          <h3>🧬 Личная стратегия «custom»</h3>
+          <p style="font-size:14px;margin:8px 0">${escapeHtml(custom.summary)}</p>
+          <div style="margin:6px 0 12px">${chips}</div>
+          <div class="verdict-actions" style="display:flex;gap:10px;flex-wrap:wrap">
+            <button class="btn btn-primary" onclick="TesterPage.applyCustom()">🚀 Запустить: custom</button>
+          </div>
+        </div>`;
+      }
+
       // ── Results table ──
       if (allResults && allResults.length) {
         const bestProfile = rec && rec.best_profile;
@@ -1726,6 +1742,16 @@ const TesterPage = {
     try {
       const r = await apiPost('/start', { profile });
       if (r.status === 'ok') showToast('Запущена стратегия: ' + profile, 'ok');
+      else showToast(r.message || 'Ошибка запуска', 'error');
+    } catch (e) {
+      showToast('Ошибка: ' + e.message, 'error');
+    }
+  },
+
+  async applyCustom() {
+    try {
+      const r = await apiPost('/start', { profile: 'custom' });
+      if (r.status === 'ok') showToast('Запущена личная стратегия: custom', 'ok');
       else showToast(r.message || 'Ошибка запуска', 'error');
     } catch (e) {
       showToast('Ошибка: ' + e.message, 'error');

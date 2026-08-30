@@ -552,6 +552,37 @@ def _run_tester_action(data: dict) -> None:
                     final["recommendation"] = rec
                     final["sanity"] = sanity
                     final["naked"] = _serialize_result(naked_baseline) if naked_baseline else None
+
+                    # Personal strategy: aggregate the best segment per family
+                    # (Discord <- P_a, Google <- P_b, General <- P_c).
+                    try:
+                        from core.strategy_builder import build_custom
+                        from core.launcher import build_args_from_preset, validate_args
+                        results_by_profile = {
+                            res.profile_name: [
+                                {"domain": r.domain, "status": r.status, "test_type": r.test_type}
+                                for r in res.results
+                            ]
+                            for res in all_results if res
+                        }
+                        custom = build_custom(get_root_dir(), results_by_profile)
+                        if not custom.get("error"):
+                            args = build_args_from_preset(
+                                get_root_dir(), get_root_dir() / "lua", get_root_dir() / "blobs",
+                                get_root_dir() / "presets" / "custom.txt")
+                            ok, err = validate_args(get_root_dir() / "bin" / "winws2.exe",
+                                                    args, cwd=get_root_dir())
+                            custom["valid"] = ok
+                            custom["error"] = None if ok else err
+                            src = custom["sources"]
+                            custom["summary"] = (
+                                "Собрана личная стратегия «custom»: "
+                                f"Discord ← {src.get('discord')}, Google ← {src.get('google')}, "
+                                f"General ← {src.get('general')} (остальное из default).")
+                        final["custom"] = custom
+                    except Exception as e:
+                        final["custom"] = {"error": str(e), "preset": "custom"}
+
                     state.set_final(final, [_serialize_result(r) for r in all_results])
                 else:
                     state.running = False
