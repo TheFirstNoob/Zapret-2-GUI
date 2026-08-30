@@ -1581,7 +1581,9 @@ const TesterPage = {
         </div>`;
       }
 
-      // ── Personal strategy card (aggregated segments) ──
+      // ── Personal strategy card (aggregated segments) — INFO ONLY, no run button:
+//    the primary action lives in the verdict card (best profile).  If custom
+//    is the best, the verdict button already points at it.
       const custom = phase2 && phase2.custom;
       if (custom && custom.summary && custom.valid) {
         const src = custom.sources || {};
@@ -1590,13 +1592,12 @@ const TesterPage = {
         const rel = custom.relation === 'better' ? 'обгоняет лучшую'
           : custom.relation === 'worse' ? 'уступает лучшей'
           : (custom.rate != null ? 'равна лучшей' : '');
+        const isBest = rec && rec.best_profile === 'custom';
         html += `<div class="card verdict-partial">
           <h3>🧬 Личная стратегия «custom»${rel ? ` <span style="font-size:12px;color:var(--warn)">(${rel}${custom.rate != null ? ', ' + custom.rate + '%' : ''})</span>` : ''}</h3>
           <p style="font-size:14px;margin:8px 0">${escapeHtml(custom.summary)}</p>
           <div style="margin:6px 0 12px">${chips}</div>
-          <div class="verdict-actions" style="display:flex;gap:10px;flex-wrap:wrap">
-            <button class="btn btn-primary" onclick="TesterPage.applyCustom()">🚀 Запустить: custom</button>
-          </div>
+          ${isBest ? '<p style="font-size:12px;color:var(--text-secondary);margin:0">Запуск — кнопкой выше (лучшая стратегия).</p>' : ''}
         </div>`;
       }
 
