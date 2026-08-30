@@ -690,7 +690,8 @@ const TesterPage = {
     elapsedInterval: null,
     ws: null,
     vpnActive: false,
-    liveTableSort: { key: null, dir: 1 },
+    liveBlocks: null,
+    liveCurrent: null,
   },
 
   init() {
@@ -846,7 +847,7 @@ const TesterPage = {
     document.getElementById('testLiveResults').style.display = 'block';
     document.getElementById('testSummary').style.display = 'none';
     document.getElementById('testResults').innerHTML = '';
-    document.getElementById('testResultsBody').innerHTML = '';
+    this._resetLiveBlocks();
     document.getElementById('testProgressFill').style.width = '0%';
     document.getElementById('testProgressText').textContent = 'Запуск...';
     document.getElementById('testCurrentInfo').textContent = '';
@@ -999,6 +1000,7 @@ const TesterPage = {
             if (textTemplate && state.progress.message) {
               document.getElementById('testProgressText').textContent = textTemplate.replace('{msg}', state.progress.message);
             }
+            this._handleLiveProgressMessage(state.progress.message || '');
           }
           // new results
           while (knownResults < (state.results || []).length) {
@@ -1118,7 +1120,7 @@ const TesterPage = {
 
   cancelNeedZapret1() {
     document.getElementById('needZapret1Overlay').classList.remove('open');
-    document.getElementById('testResultsBody').innerHTML = '';
+    this._resetLiveBlocks();
     this.clearElapsedTimer();
     this.resetToIntro();
   },
@@ -1225,7 +1227,7 @@ const TesterPage = {
     );
   },
 
-  // ── Live Results Table ──
+  // ── Live Results Blocks ──
   addTestResultRow: createBatchProcessor(function(batch) {
     for (const data of batch) {
       TesterPage._addResultRowImmediate(data);
@@ -1233,16 +1235,21 @@ const TesterPage = {
   }, 80),
 
   _addResultRowImmediate(data) {
-    const tbody = document.getElementById('testResultsBody');
-    const rowKey = (data.domain || '') + '|' + (data.test_type || '');
+    const block = this._liveBlockFor(data.profile);
+    if (!block) return;
+    const rowKey = (data.profile || '') + '|' + (data.domain || '') + '|' + (data.test_type || '');
     const safeKey = rowKey.replace(/[^a-zA-Z0-9_-]/g, '_');
     const existing = document.getElementById('tr-' + safeKey);
 
     const code = data.status_code || (data.status === 'TCP16_20' || data.status === 'DPI_DROP' ? '⚠ DPI' : '—');
     const statusDesc = this.getStatusDescription(data.status);
     const codeDesc = this.getCodeDescription(code);
+    const isOk = data.status === 'OK' || data.status === 'OK_BLOCKED';
 
     if (existing) {
+      const wasOk = existing.dataset.status === 'OK' || existing.dataset.status === 'OK_BLOCKED';
+      if (wasOk && !isOk) block.ok--;
+      else if (!wasOk && isOk) block.ok++;
       existing.className = this.getRowClass(data.status) + (data.alias ? ' row-alias' : '');
       existing.dataset.domain = data.domain || '';
       existing.dataset.status = data.status || '';
@@ -1254,6 +1261,7 @@ const TesterPage = {
         cells[4].innerHTML = data.time_ms != null ? this.formatTimeColored(data.time_ms) : '<span class="time-ms" style="color:var(--text-secondary)">...</span>';
         cells[5].textContent = data.error || '';
       }
+      this._updateLiveScore(block);
       return;
     }
 
@@ -1271,35 +1279,126 @@ const TesterPage = {
       <td>${data.time_ms != null ? this.formatTimeColored(data.time_ms) : '<span class="time-ms" style="color:var(--text-secondary)">...</span>'}</td>
       <td><div class="cell-error">${escapeHtml(data.error || '')}</div></td>
     `;
-    tbody.appendChild(tr);
+    block.tbody.appendChild(tr);
+    block.total++;
+    if (isOk) block.ok++;
+    this._updateLiveScore(block);
   },
 
-  sortLiveTable(key, colIdx) {
-    const tbody = document.getElementById('testResultsBody');
-    if (!tbody) return;
-    const rows = Array.from(tbody.querySelectorAll('tr'));
-    if (!rows.length) return;
+  // ── Live Result Blocks (per strategy) ──
+  _liveProfileLabel(key) {
+    if (key === '__naked__') return 'Без защиты';
+    if (key === '__current__') return 'Zapret 1 (текущая)';
+    return key;
+  },
 
-    const sort = this.state.liveTableSort;
-    if (sort.key === key) sort.dir = -sort.dir;
-    else { sort.key = key; sort.dir = 1; }
+  _liveBlockFor(profile) {
+    const key = (profile || '').trim() || '__naked__';
+    if (!this.state.liveBlocks) this.state.liveBlocks = new Map();
+    let block = this.state.liveBlocks.get(key);
+    if (block) return block;
 
-    const dir = sort.dir;
-    rows.sort((a, b) => {
-      let av, bv;
-      if (key === 'domain') { av = a.dataset.domain || ''; bv = b.dataset.domain || ''; return av.localeCompare(bv) * dir; }
-      if (key === 'status') { av = a.dataset.status || ''; bv = b.dataset.status || ''; return av.localeCompare(bv) * dir; }
-      if (key === 'time') { av = parseFloat(a.dataset.time || '0'); bv = parseFloat(b.dataset.time || '0'); return (av - bv) * dir; }
-      return 0;
-    });
-    rows.forEach(r => tbody.appendChild(r));
+    const container = document.getElementById('testLiveBlocks');
+    if (!container) return null;
+    const safeKey = key.replace(/[^a-zA-Z0-9_-]/g, '_');
 
-    const table = tbody.closest('table');
-    if (table) {
-      table.querySelectorAll('th').forEach(th => th.classList.remove('sorted-asc', 'sorted-desc'));
-      const ths = table.querySelectorAll('th');
-      if (ths[colIdx]) ths[colIdx].classList.add(dir === 1 ? 'sorted-asc' : 'sorted-desc');
-    }
+    const el = document.createElement('div');
+    el.className = 'live-block expanded';
+    el.id = 'lb-' + safeKey;
+
+    const head = document.createElement('button');
+    head.type = 'button';
+    head.className = 'live-block-head';
+    head.setAttribute('aria-expanded', 'true');
+    head.innerHTML =
+      '<span class="live-block-lamp"></span>' +
+      '<span class="live-block-title">' + escapeHtml(this._liveProfileLabel(key)) + '</span>' +
+      '<span class="live-block-score"></span>' +
+      '<span class="live-block-arrow">▾</span>';
+
+    const table = document.createElement('table');
+    table.className = 'live-table';
+    table.innerHTML = '<thead><tr><th style="width:36px" title="Статус"></th><th>Домен</th><th>Тип</th><th>Код</th><th>Время</th><th>Ошибка</th></tr></thead>';
+    const tbody = document.createElement('tbody');
+    table.appendChild(tbody);
+
+    el.appendChild(head);
+    el.appendChild(table);
+    container.appendChild(el);
+
+    head.addEventListener('click', () => this._toggleLiveBlock(el, head));
+
+    block = {
+      key, el, head, tbody,
+      title: head.querySelector('.live-block-title'),
+      score: head.querySelector('.live-block-score'),
+      lamp: head.querySelector('.live-block-lamp'),
+      ok: 0, total: 0,
+    };
+    this.state.liveBlocks.set(key, block);
+    this._updateLiveScore(block);
+    return block;
+  },
+
+  _updateLiveScore(block) {
+    const pct = block.total > 0 ? Math.round(block.ok / block.total * 100) : null;
+    block.score.textContent = block.ok + '/' + block.total + (pct != null ? ' · ' + pct + '%' : ' · —');
+  },
+
+  _expandLiveBlock(block) {
+    block.el.classList.add('expanded');
+    block.head.setAttribute('aria-expanded', 'true');
+  },
+
+  _collapseLiveBlock(block) {
+    block.el.classList.remove('expanded');
+    block.head.setAttribute('aria-expanded', 'false');
+  },
+
+  _toggleLiveBlock(el, head) {
+    const expanded = el.classList.toggle('expanded');
+    head.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+  },
+
+  _setLiveCurrent(profile) {
+    const block = this._liveBlockFor(profile);
+    if (!block) return;
+    if (this.state.liveCurrent === block) return;
+    if (this.state.liveCurrent) this.state.liveCurrent.el.classList.remove('active');
+    this.state.liveCurrent = block;
+    block.el.classList.remove('done');
+    block.el.classList.add('active');
+    this._expandLiveBlock(block);
+  },
+
+  _finishLiveProfile(profile, score) {
+    const block = this._liveBlockFor(profile);
+    if (!block) return;
+    block.el.classList.remove('active');
+    block.el.classList.add('done');
+    if (this.state.liveCurrent === block) this.state.liveCurrent = null;
+    const pct = score != null && isFinite(score) ? Math.round(score) + '%' : '—';
+    block.score.textContent = block.ok + '/' + block.total + ' · ' + pct;
+    block.lamp.style.setProperty('--lamp-color',
+      score >= 80 ? 'var(--ok)' : score >= 40 ? 'var(--warn)' : 'var(--err)');
+    this._collapseLiveBlock(block);
+  },
+
+  _handleLiveProgressMessage(msg) {
+    if (!msg) return;
+    let m = msg.match(/^Тестируем стратегию (.+?) \(\d+\/\d+\)\.\.\.$/);
+    if (m) { this._setLiveCurrent(m[1]); return; }
+    m = msg.match(/^Тестируем собранную стратегию (.+?)\.\.\.$/);
+    if (m) { this._setLiveCurrent(m[1]); return; }
+    m = msg.match(/^Стратегия (.+?): (\d+(?:\.\d+)?)%$/);
+    if (m) { this._finishLiveProfile(m[1], parseFloat(m[2])); }
+  },
+
+  _resetLiveBlocks() {
+    const container = document.getElementById('testLiveBlocks');
+    if (container) container.innerHTML = '';
+    this.state.liveBlocks = new Map();
+    this.state.liveCurrent = null;
   },
 
   // ── Result Grid (tiles) ──
@@ -1768,7 +1867,7 @@ const TesterPage = {
     document.getElementById('testLiveResults').style.display = 'none';
     document.getElementById('testSummary').style.display = 'none';
     document.getElementById('testResults').innerHTML = '';
-    document.getElementById('testResultsBody').innerHTML = '';
+    this._resetLiveBlocks();
     document.getElementById('btnStartTest').disabled = false;
     this.clearElapsedTimer();
   }

@@ -298,21 +298,7 @@
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></svg>
               Результаты тестирования
             </h3>
-            <div class="table-wrapper">
-              <table class="live-table">
-                <thead>
-                  <tr>
-                    <th style="width:36px" onclick="TesterPage.sortLiveTable('status',0)" title="Статус"></th>
-                    <th onclick="TesterPage.sortLiveTable('domain',1)">Домен</th>
-                    <th>Тип</th>
-                    <th>Код</th>
-                    <th onclick="TesterPage.sortLiveTable('time',4)">Время</th>
-                    <th>Ошибка</th>
-                  </tr>
-                </thead>
-                <tbody id="testResultsBody"></tbody>
-              </table>
-            </div>
+            <div id="testLiveBlocks"></div>
           </div>
 
           <div id="testSummary" class="card" style="display:none">
