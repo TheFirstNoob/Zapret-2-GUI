@@ -535,8 +535,10 @@ def _run_tester_action(data: dict) -> None:
                         return (2, p)
                     return (1, p)
                 profiles = sorted(profiles, key=_order_key)
-                custom_existed = (get_root_dir() / "presets" / "custom.txt").exists()
-
+                # custom генерируется ЭТИМ же тестом: стухшая копия из прошлого
+                # запуска бессмысленна (и часто битая) — не тратим на неё прогон;
+                # свежая сборка получает одну проверочную сессию ниже.
+                profiles = [p for p in profiles if p != "custom"]
                 all_results = []
                 total = len(profiles)
                 _tier = data.get("tier", "critical")
@@ -566,9 +568,13 @@ def _run_tester_action(data: dict) -> None:
                             pn, _inner_progress, tier=_tier,
                             result_cb=cb, skip_cdn=skip_cdn)
                     )
-                    all_results.append(res)
-                    progress(int(6 + (idx + 1) / total * 94),
-                             f"Стратегия {profile_name}: {res.success_rate:.0f}%")
+                    if res is not None:
+                        all_results.append(res)
+                        progress(int(6 + (idx + 1) / total * 94),
+                                 f"Стратегия {profile_name}: {res.success_rate:.0f}%")
+                    else:
+                        progress(int(6 + (idx + 1) / total * 94),
+                                 f"Стратегия {profile_name}: не запустилась")
                 if all_results:
                     best = max(all_results, key=lambda r: (r.network_rate, r.ok_count))
                     blocked = sorted({r.domain for res in all_results for r in res.results
@@ -643,12 +649,9 @@ def _run_tester_action(data: dict) -> None:
                     except Exception as e:
                         final["custom"] = {"error": str(e), "preset": "custom"}
 
-                    # A freshly built custom (didn't exist before the sweep)
-                    # deserves one verification test before being recommended.
-                    freshly_built = (not custom_existed
-                                     and final.get("custom", {}).get("valid")
-                                     and not tester.shutdown_event.is_set())
-                    if freshly_built:
+                    # Собранная custom всегда заслуживает одной проверочной сессии,
+                    # прежде чем рекомендовать её (в прогоне её не было).
+                    if final.get("custom", {}).get("valid") and not tester.shutdown_event.is_set():
                         progress(98, "Тестируем собранную стратегию custom...")
                         res = _run_tester(
                             lambda: tester.test_profile(

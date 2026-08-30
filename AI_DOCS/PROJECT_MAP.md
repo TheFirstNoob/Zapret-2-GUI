@@ -1,4 +1,4 @@
-# Zapret 2 GUI — Карта проекта (2026-08-30, Pre-Release 0.6)
+# Zapret 2 GUI — Карта проекта (2026-08-30, Pre-Release 0.5)
 
 ## Что делает программа
 
@@ -32,7 +32,7 @@ zapret2_gui/
 │                           test_logger, admin, utils
 ├── server/server.py        HTTP backend + tester-action runner (threading)
 ├── frontend/               SPA: index.html, css/app.css, js/app.js
-├── presets/                8 .txt стратегий (default + 7)
+├── presets/                8 .txt стратегий + custom (генерируется тестером)
 ├── lua/ blobs/ lists/ bin/ windivert/
 └── AI_DOCS/                AGENTS.md (критично!), rules, PROJECT_MAP, STRATEGY_GUIDE,
                             TESTER_AUDIT, ISP_NOTES
@@ -48,9 +48,15 @@ zapret2_gui/
   --ipset-exclude; выключен по умолчанию).
 - **Тестер** (`/api/tester/action` + polling): naked-базлайн, sanity
   (dry-run профилей + покрытие списков), вердикт+рекомендация, ключевые
-  хосты (Discord/YouTube), «Запустить рекомендованную».
+  хосты (Discord/YouTube), «Запустить рекомендованную». custom
+  пересобирается КАЖДЫМ тестом из лучших сегментов и всегда проходит
+  проверку движком (в прогоне стухшая custom не участвует). Live-UI:
+  доступность/хосты/статусы обновляются в процессе.
 - **Диагностика** (`/api/diagnose`): права/путь/процесс/служба/пресет/
-  связь + **тип блокировки** (DNS/IP/SNI через SNI-swap) + отчёт.
+  связь + **тип блокировки** (DNS/IP/SNI через SNI-swap) + отчёт. Детали —
+  человеческим языком; технические коды — в поле `tech` (tooltip + отчёт).
+  Зеркальный YouTube-quirk: i.ytimg по TCP режется при живом youtube.com
+  → ok с пояснением про QUIC.
 - **Служба**: winws2.exe напрямую (см. AGENTS-снапшот), reconfigure на старт.
 - **Update-check**: raw VERSION → API contents/VERSION фолбэк → баннер
   (GitHub + jsDelivr зеркало).

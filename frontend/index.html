@@ -57,120 +57,116 @@
               <button class="btn btn-sm" id="btnStopZ1Now">Остановить Zapret 1</button>
             </div>
 
-          <div class="main-grid">
+          <div class="stack">
 
-            <!-- Левая колонка: Zapret 2 (основной фокус) -->
-            <div class="main-col main-col-z2">
+            <!-- Обход DPI (Zapret 2) -->
+            <div class="panel panel-accent" id="z2Panel">
+              <div class="panel-head">
+                <div class="panel-title">Обход DPI</div>
+                <span class="meta">Zapret 2</span>
+                <span class="head-right">
+                  <span class="meta" id="z2Meta"></span>
+                  <span class="state" id="z2State">
+                    <span class="dot dot-unknown"></span><span class="state-text">—</span>
+                  </span>
+                </span>
+              </div>
 
-            <!-- Обход DPI -->
-          <div class="panel">
-            <div class="panel-title">Обход DPI</div>
+              <div class="row">
+                <label class="field grow">
+                  <span class="field-label">Стратегия</span>
+                  <select class="input" id="strategySelect"></select>
+                </label>
+                <button class="btn btn-primary" id="btnZ2Toggle">Запустить</button>
+              </div>
 
-            <div class="row">
-              <span class="state" id="z2State">
-                <span class="dot dot-unknown"></span><span class="state-text">—</span>
-              </span>
-              <span class="meta" id="z2Meta"></span>
+              <div class="row tight">
+                <span class="row-label">Служба (автозапуск)</span>
+                <label class="switch">
+                  <input type="checkbox" id="svcAutoSwitch">
+                  <span class="switch-track"><span class="switch-knob"></span></span>
+                </label>
+                <button class="btn btn-sm" id="btnSvcStart" hidden>Запустить службу</button>
+                <span class="meta" id="svcStatusText"></span>
+              </div>
             </div>
 
-            <div class="row">
-              <label class="field grow">
-                <span class="field-label">Стратегия</span>
-                <select class="input" id="strategySelect"></select>
-              </label>
-              <button class="btn btn-primary" id="btnZ2Toggle">Запустить</button>
+            <!-- Параметры запуска (только Zapret 2) -->
+            <div class="panel panel-accent" id="togglesPanel">
+              <div class="panel-title">Параметры запуска</div>
+              <div class="panel-sub">Применяются при старте Zapret 2. Не влияют на Zapret 1.</div>
+
+              <div class="toggles-overlay" id="togglesOverlay" hidden>
+                Настройки ниже относятся к Zapret 2 — сейчас запущен Zapret 1.
+              </div>
+
+              <table class="opt-table">
+                <tr>
+                  <td class="opt-name">Игровые порты<span class="opt-id">GameFilter</span></td>
+                  <td class="opt-desc">Открывает обходу порты 1024–65535 (игры, голосовые чаты). Если игра не работает без него — включите.</td>
+                  <td class="opt-ctl">
+                    <select class="input input-sm" id="toggleGameFilter">
+                      <option value="off">Выключено</option>
+                      <option value="tcp">Только TCP</option>
+                      <option value="udp">Только UDP</option>
+                      <option value="both">TCP + UDP</option>
+                    </select>
+                  </td>
+                </tr>
+                <tr>
+                  <td class="opt-name">Авто-список<span class="opt-id">Auto Hostlist</span></td>
+                  <td class="opt-desc">Zapret сам добавит домен в обход, когда заметит блокировку. Держите включённым.</td>
+                  <td class="opt-ctl"><label class="switch"><input type="checkbox" id="toggleAutoHostlist"><span class="switch-track"><span class="switch-knob"></span></span></label></td>
+                </tr>
+                <tr>
+                  <td class="opt-name">Общий IP-обход<span class="opt-id">ipset</span></td>
+                  <td class="opt-desc">Обрабатывать весь трафик в известных блокируемых подсетях, а не только по спискам доменов. Сильнее грузит систему.</td>
+                  <td class="opt-ctl"><label class="switch"><input type="checkbox" id="toggleIpFilter"><span class="switch-track"><span class="switch-knob"></span></span></label></td>
+                </tr>
+                <tr>
+                  <td class="opt-name">Discord Voice<span class="opt-id">UDP</span></td>
+                  <td class="opt-desc">Отдельный обход голосового UDP-трафика Discord. Включайте только при PING ERROR / 5000 в голосовом чате.</td>
+                  <td class="opt-ctl"><label class="switch"><input type="checkbox" id="toggleDiscordVoice"><span class="switch-track"><span class="switch-knob"></span></span></label></td>
+                </tr>
+                <tr class="opt-row-warn">
+                  <td class="opt-name">DEBUG-лог<span class="opt-id">winws2</span></td>
+                  <td class="opt-desc">Запись каждого пакета. Заметно повышает пинг и нагрузку на CPU. Только для разбора проблем по запросу.</td>
+                  <td class="opt-ctl"><label class="switch"><input type="checkbox" id="toggleWinws2Debug"><span class="switch-track"><span class="switch-knob"></span></span></label></td>
+                </tr>
+              </table>
+
+              <div class="panel-foot">
+                <span class="meta" id="applyTogglesHint"></span>
+                <button class="btn btn-primary btn-sm" id="btnApplyToggles" hidden>Перезапустить с новыми параметрами</button>
+              </div>
             </div>
 
-            <div class="row tight">
-              <span class="row-label">Служба (автозапуск)</span>
-              <label class="switch">
-                <input type="checkbox" id="svcAutoSwitch">
-                <span class="switch-track"><span class="switch-knob"></span></span>
-              </label>
-              <button class="btn btn-sm" id="btnSvcStart" hidden>Запустить службу</button>
-              <span class="meta" id="svcStatusText"></span>
+            <!-- Zapret 1 — запасной вариант -->
+            <div class="panel panel-fallback" id="z1Panel">
+              <div class="panel-head">
+                <div class="panel-title">Zapret 1</div>
+                <span class="meta">запасной вариант — если Zapret 2 не справится</span>
+                <span class="head-right">
+                  <span class="state" id="z1State"><span class="dot dot-unknown"></span><span class="state-text">—</span></span>
+                </span>
+              </div>
+              <div class="row">
+                <label class="field grow">
+                  <span class="field-label">Папка Zapret 1</span>
+                  <input class="input" id="z1DirPath" placeholder="C:\Zapret">
+                </label>
+                <button class="btn btn-sm" id="btnZ1SaveDir">Сохранить путь</button>
+              </div>
+              <div class="row">
+                <label class="field grow">
+                  <span class="field-label">Стратегия (.bat)</span>
+                  <select class="input" id="z1StrategySelect" disabled><option value="">— сначала укажите папку —</option></select>
+                </label>
+                <button class="btn btn-primary" id="btnZ1Toggle">Запустить</button>
+              </div>
             </div>
-          </div>
 
-          <!-- Тогглы -->
-          <div class="panel" id="togglesPanel">
-            <div class="panel-title">Параметры запуска</div>
-            <div class="panel-sub">Применяются при старте Zapret 2. Не влияют на Zapret 1.</div>
-
-            <div class="toggles-overlay" id="togglesOverlay" hidden>
-              Настройки ниже относятся к Zapret 2 — сейчас запущен Zapret 1.
-            </div>
-
-            <table class="opt-table">
-              <tr>
-                <td class="opt-name">Игровые порты<span class="opt-id">GameFilter</span></td>
-                <td class="opt-desc">Открывает обходу порты 1024–65535 (игры, голосовые чаты). Если игра не работает без него — включите.</td>
-                <td class="opt-ctl">
-                  <select class="input input-sm" id="toggleGameFilter">
-                    <option value="off">Выключено</option>
-                    <option value="tcp">Только TCP</option>
-                    <option value="udp">Только UDP</option>
-                    <option value="both">TCP + UDP</option>
-                  </select>
-                </td>
-              </tr>
-              <tr>
-                <td class="opt-name">Авто-список<span class="opt-id">Auto Hostlist</span></td>
-                <td class="opt-desc">Zapret сам добавит домен в обход, когда заметит блокировку. Держите включённым.</td>
-                <td class="opt-ctl"><label class="switch"><input type="checkbox" id="toggleAutoHostlist"><span class="switch-track"><span class="switch-knob"></span></span></label></td>
-              </tr>
-              <tr>
-                <td class="opt-name">Общий IP-обход<span class="opt-id">ipset</span></td>
-                <td class="opt-desc">Обрабатывать весь трафик в известных блокируемых подсетях, а не только по спискам доменов. Сильнее грузит систему.</td>
-                <td class="opt-ctl"><label class="switch"><input type="checkbox" id="toggleIpFilter"><span class="switch-track"><span class="switch-knob"></span></span></label></td>
-              </tr>
-              <tr>
-                <td class="opt-name">Discord Voice<span class="opt-id">UDP</span></td>
-                <td class="opt-desc">Отдельный обход голосового UDP-трафика Discord. Включайте только при PING ERROR / 5000 в голосовом чате.</td>
-                <td class="opt-ctl"><label class="switch"><input type="checkbox" id="toggleDiscordVoice"><span class="switch-track"><span class="switch-knob"></span></span></label></td>
-              </tr>
-              <tr class="opt-row-warn">
-                <td class="opt-name">DEBUG-лог<span class="opt-id">winws2</span></td>
-                <td class="opt-desc">Запись каждого пакета. Заметно повышает пинг и нагрузку на CPU. Только для разбора проблем по запросу.</td>
-                <td class="opt-ctl"><label class="switch"><input type="checkbox" id="toggleWinws2Debug"><span class="switch-track"><span class="switch-knob"></span></span></label></td>
-              </tr>
-            </table>
-
-            <div class="panel-foot">
-              <span class="meta" id="applyTogglesHint"></span>
-              <button class="btn btn-primary btn-sm" id="btnApplyToggles" hidden>Перезапустить с новыми параметрами</button>
-            </div>
-          </div>
-
-            </div><!-- /main-col-z2 -->
-
-            <!-- Правая колонка: Zapret 1 (вспомогательный) -->
-            <div class="main-col main-col-z1">
-
-          <!-- Zapret 1 -->
-          <details class="panel panel-details" id="z1Panel" open>
-            <summary class="panel-title panel-summary">
-              Zapret 1<span class="state" id="z1State"><span class="dot dot-unknown"></span><span class="state-text">—</span></span>
-            </summary>
-            <div class="row">
-              <label class="field grow">
-                <span class="field-label">Папка Zapret 1</span>
-                <input class="input" id="z1DirPath" placeholder="C:\Zapret">
-              </label>
-              <button class="btn" id="btnZ1SaveDir">Сохранить путь</button>
-            </div>
-            <div class="row">
-              <label class="field grow">
-                <span class="field-label">Стратегия (.bat)</span>
-                <select class="input" id="z1StrategySelect" disabled><option value="">— сначала укажите папку —</option></select>
-              </label>
-              <button class="btn btn-primary" id="btnZ1Toggle">Запустить</button>
-            </div>
-          </details>
-
-            </div><!-- /main-col-z1 -->
-
-          </div><!-- /main-grid -->
+          </div><!-- /stack -->
 
         </section>
 
@@ -185,7 +181,7 @@
                   <span class="step-num">1</span>
                   <div class="step-body">
                     <div class="step-name">Проверка системы</div>
-                    <div class="step-desc">Права, конфликты, тип блокировки — ~30 секунд.</div>
+                    <div class="step-desc">Права, конфликты, тип блокировки — обычно несколько секунд.</div>
                     <button class="btn btn-sm" id="btnDiagCheck">Открыть проверку системы</button>
                     <span class="ok-note" id="diagDoneNote" hidden>выполнена</span>
                   </div>
@@ -195,17 +191,38 @@
                   <div class="step-body">
                     <div class="step-name">Подбор стратегии</div>
                     <div class="step-desc">Каждая стратегия тестируется на Discord, YouTube и других сервисах (~12 сек на стратегию). В конце — одна рекомендация.</div>
-                    <div class="test-options">
-                      <label class="opt-line"><input type="checkbox" id="cdnCheck"><span>Тест случайных CDN-сайтов <span class="meta">+5–10 мин</span></span></label>
-                      <label class="opt-line"><input type="checkbox" id="extendedCheck"><span>Расширенный режим <span class="meta">со сравнением Zapret 1</span></span></label>
-                      <label class="opt-line"><input type="checkbox" id="logCheck"><span>Сохранить отчёт для поддержки</span></label>
-                    </div>
+<div class="test-options">
+  <label class="opt-line">
+    <input type="checkbox" id="cdnCheck">
+    <span class="opt-text">
+      <span class="opt-title">Проверка CDN-сайтов</span>
+      <span class="opt-hint">дополнительно тестируются случайные сайты из разных CDN — картина полнее</span>
+    </span>
+    <span class="opt-tag">+5–10 мин</span>
+  </label>
+  <label class="opt-line">
+    <input type="checkbox" id="extendedCheck">
+    <span class="opt-text">
+      <span class="opt-title">Расширенный режим</span>
+      <span class="opt-hint">сравнение с Zapret 1 и без обхода, полный анализ комбинаций стратегий</span>
+    </span>
+    <span class="opt-tag">Zapret 1 + анализ</span>
+  </label>
+  <label class="opt-line">
+    <input type="checkbox" id="logCheck">
+    <span class="opt-text">
+      <span class="opt-title">Отчёт для поддержки</span>
+      <span class="opt-hint">сохранит ZIP с результатами теста и данными о системе</span>
+    </span>
+    <span class="opt-tag">ZIP</span>
+  </label>
+</div>
                     <button class="btn btn-primary" id="btnStartTest">Начать подбор</button>
                   </div>
                 </div>
               </div>
             </div>
-            <div class="notice notice-info">На время подбора обход будет перезапускаться с каждой стратегией. Возможно кратковременное отключение от сети.</div>
+            <div class="notice notice-warn">На время подбора обход будет перезапускаться с каждой стратегией. Возможно кратковременное отключение от сети.</div>
           </div>
 
           <div id="testRun" class="stack" hidden>
@@ -254,7 +271,7 @@
             <div class="diag-head">
               <div>
                 <div class="panel-title">Проверка системы</div>
-                <div class="panel-sub">Права, конфликты, служба, пресет, связь и тип блокировки. ~30 секунд.</div>
+                <div class="panel-sub">Права, конфликты, служба, пресет, связь и тип блокировки. Обычно 5–15 секунд.</div>
               </div>
               <div class="diag-actions">
                 <button class="btn btn-primary" id="diagRunBtn">Проверить</button>
@@ -270,18 +287,25 @@
 
         <!-- ═══ Списки ═══ -->
         <section id="page-lists" class="page">
-          <div class="notice notice-info lists-help">
-            Один адрес на строчку. Домен <b>example.com</b> покрывает и поддомены (www.example.com и т.п.).
-            Ошибочные строки подсвечиваются — пока они есть, список не сохранится.
+          <div class="panel lists-help">
+            <div class="lh-title">Как заполнять</div>
+            <div class="lh-row"><code>example.com</code><span>сайт и все его поддомены (www, api, m и любые другие)</span></div>
+            <div class="lh-row"><code>api.example.com</code><span>точечно — только этот поддомен (и его поддомены)</span></div>
+            <div class="lh-row"><code>1.2.3.0/24</code><span>IP-сеть или один IP-адрес — для блоков IP</span></div>
+            <div class="lh-note"><b>Включения</b> — Zapret обходит принудительно. <b>Исключения</b> — пропускает как есть (если обход мешает).</div>
+            <div class="lh-note">Один адрес на строчку. Ошибочные строки подсвечиваются — пока они есть, список не сохранится.</div>
           </div>
 
           <div class="lists-grid">
             <div class="panel list-panel">
               <div class="list-head">
-                <div class="panel-title">Домены — обрабатывать</div>
-                <div class="list-desc">Дополнительно к стратегиям: эти домены Zapret будет обходить всегда.</div>
+                <div class="panel-title">Домены — включения <span class="list-count" id="domIncCount">0</span></div>
+                <div class="list-desc">Заблокированный сайт, которого нет в стандартных списках, — добавьте сюда: Zapret будет обходить его всегда, при любой стратегии.</div>
               </div>
-              <textarea class="input list-area" id="domIncTextarea" spellcheck="false" placeholder="example.com"></textarea>
+              <div class="list-area-wrap">
+                <div class="line-nums" id="domIncNums" aria-hidden="true">1</div>
+                <textarea class="input list-area" id="domIncTextarea" spellcheck="false" placeholder="example.com"></textarea>
+              </div>
               <div class="list-valid" id="domIncValid"></div>
               <div class="list-foot">
                 <button class="btn btn-primary btn-sm" data-save="domInc">Сохранить</button>
@@ -291,10 +315,13 @@
 
             <div class="panel list-panel">
               <div class="list-head">
-                <div class="panel-title">Домены — не трогать</div>
-                <div class="list-desc">Эти домены проходят мимо Zapret как есть (банки, игровые серверы и т.п.).</div>
+                <div class="panel-title">Домены — исключения <span class="list-count" id="domExcCount">0</span></div>
+                <div class="list-desc">Сайт, которому обход мешает (не открывается, тормозит), — добавьте сюда: Zapret будет пропускать его как есть.</div>
               </div>
-              <textarea class="input list-area" id="domExcTextarea" spellcheck="false" placeholder="bank.ru"></textarea>
+              <div class="list-area-wrap">
+                <div class="line-nums" id="domExcNums" aria-hidden="true">1</div>
+                <textarea class="input list-area" id="domExcTextarea" spellcheck="false" placeholder="bank.ru"></textarea>
+              </div>
               <div class="list-valid" id="domExcValid"></div>
               <div class="list-foot">
                 <button class="btn btn-primary btn-sm" data-save="domExc">Сохранить</button>
@@ -304,10 +331,13 @@
 
             <div class="panel list-panel">
               <div class="list-head">
-                <div class="panel-title">IP-сети — обрабатывать</div>
-                <div class="list-desc">CIDR-подсети (1.2.3.0/24 или 1.2.3.4), которым обход нужен всегда. Работает при включённом «Общем IP-обходе» и отдельно от него.</div>
+                <div class="panel-title">IP-сети — включения <span class="list-count" id="ipIncCount">0</span></div>
+                <div class="list-desc">Подсети, которые обходятся всегда. Нужно при блокировке по IP-адресу, когда сайт не открывается независимо от имени.</div>
               </div>
-              <textarea class="input list-area" id="ipIncTextarea" spellcheck="false" placeholder="1.2.3.0/24"></textarea>
+              <div class="list-area-wrap">
+                <div class="line-nums" id="ipIncNums" aria-hidden="true">1</div>
+                <textarea class="input list-area" id="ipIncTextarea" spellcheck="false" placeholder="1.2.3.0/24"></textarea>
+              </div>
               <div class="list-valid" id="ipIncValid"></div>
               <div class="list-foot">
                 <button class="btn btn-primary btn-sm" data-save="ipInc">Сохранить</button>
@@ -317,10 +347,13 @@
 
             <div class="panel list-panel">
               <div class="list-head">
-                <div class="panel-title">IP-сети — не трогать</div>
-                <div class="list-desc">Исключения для «Общего IP-обхода»: свои сети, локальные сервисы. По умолчанию — приватные диапазоны.</div>
+                <div class="panel-title">IP-сети — исключения <span class="list-count" id="ipExcCount">0</span></div>
+                <div class="list-desc">Свои и локальные сети, которые обход не должен трогать. По умолчанию — приватные диапазоны.</div>
               </div>
-              <textarea class="input list-area" id="ipExcTextarea" spellcheck="false" placeholder="192.168.0.0/16"></textarea>
+              <div class="list-area-wrap">
+                <div class="line-nums" id="ipExcNums" aria-hidden="true">1</div>
+                <textarea class="input list-area" id="ipExcTextarea" spellcheck="false" placeholder="192.168.0.0/16"></textarea>
+              </div>
               <div class="list-valid" id="ipExcValid"></div>
               <div class="list-foot">
                 <button class="btn btn-primary btn-sm" data-save="ipExc">Сохранить</button>

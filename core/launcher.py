@@ -216,15 +216,36 @@ def build_args_from_preset(
             merged.append(t)
             i += 1
     tokens = merged
-    # Auto-inject user lists if not empty
+    # Auto-inject user lists into EVERY hostlist-bearing profile block.
+    # winws2 (v1.0.2 source: desync.c dp_match/dp_find) evaluates hostlist
+    # PER PROFILE and picks the FIRST profile whose filter+hostlist match;
+    # multiple --hostlist inside one profile UNION (hostlist.c AppendHostList).
+    # Appending user lists at the very end only touched the LAST (QUIC) block
+    # — TCP blocks never saw user domains.  Inject right after the first
+    # hostlist token of each profile instead.
     exclude_file = lists_dir / "list-exclude-user.txt"
+    user_excl = ""
     if exclude_file.exists() and exclude_file.stat().st_size > 0:
-        exclude_path = short_path(exclude_file)
-        tokens.append(f"--hostlist-exclude={exclude_path}")
+        user_excl = f"--hostlist-exclude={short_path(exclude_file)}"
     include_file = lists_dir / "list-include-user.txt"
+    user_inc = ""
     if include_file.exists() and include_file.stat().st_size > 0:
-        include_path = short_path(include_file)
-        tokens.append(f"--hostlist={include_path}")
+        user_inc = f"--hostlist={short_path(include_file)}"
+    if user_excl or user_inc:
+        injected: list[str] = []
+        profile_injected = False
+        for t in tokens:
+            injected.append(t)
+            if t == "--new":
+                profile_injected = False
+            elif not profile_injected and (t.startswith("--hostlist=")
+                                           or t.startswith("--hostlist-exclude=")):
+                if user_excl:
+                    injected.append(user_excl)
+                if user_inc:
+                    injected.append(user_inc)
+                profile_injected = True
+        tokens = injected
     # ── GameFilter: high-port capture + catchall profiles ──
     if game_filter_mode in ("udp", "both"):
         # Raw parts don't cover 1024-65535 → add explicit --wf-udp-out

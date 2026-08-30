@@ -11,11 +11,15 @@ dist/
 *.log
 _zapret_run.bat
 _zapret_service.bat
+_exp_run.bat
+_zapret_custom_smoke.bat
 data_version.txt
 tcp1620_test_body.bin
 zapret-auto.txt
 debug_winws2.log
 test_session.log
+hosts.bak
+zapret2_report_*/
 
 # OS
 Thumbs.db

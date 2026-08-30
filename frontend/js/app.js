@@ -120,6 +120,8 @@ const Status = {
     else state = 'off';
 
     dot.className = 'dot dot-' + state;
+    const chip = $('protChip');
+    chip.className = 'prot-chip state-' + state;
     if (state === 'ok') {
       txt.textContent = 'Обход работает';
       sub.textContent = (svc && svc.running) ? 'через службу' : 'PID ' + (z2.pid || '—');
@@ -283,6 +285,17 @@ const MainPage = {
     const badge = st.querySelector('.dot');
     const text = st.querySelector('.state-text');
     const conflict = z2.running && z1.running;
+
+    // статусные рамки панелей: ok / warn (внимание) / err (конфликт)
+    const z2p = $('z2Panel');
+    z2p.classList.remove('is-ok', 'is-warn', 'is-err');
+    if (conflict) z2p.classList.add('is-err');
+    else if (z2.running) z2p.classList.add('is-ok');
+    else if (z1.running) z2p.classList.add('is-warn');
+    const z1p = $('z1Panel');
+    z1p.classList.remove('is-ok', 'is-warn', 'is-err');
+    if (z1.running && z2.running) z1p.classList.add('is-err');
+    else if (z1.running) z1p.classList.add('is-warn');
     if (z2.running) {
       badge.className = 'dot ' + (conflict ? 'dot-warn' : 'dot-ok');
       text.className = 'state-text ' + (conflict ? 'st-warn' : 'st-ok');
@@ -590,17 +603,17 @@ const DiagnosticsPage = {
     const s = report.summary || {};
     $('diagSummary').hidden = false;
     $('diagSummary').innerHTML =
-      (s.ok ? `<span class="st-ok">OK: ${s.ok}</span>` : '') +
+      (s.ok ? `<span class="st-ok">Проверено: ${s.ok}</span>` : '') +
       (s.warn ? `<span class="st-warn">Внимание: ${s.warn}</span>` : '') +
       (s.fail ? `<span class="st-err">Ошибки: ${s.fail}</span>` : '') +
       (s.skip ? `<span class="st-mute">Пропущено: ${s.skip}</span>` : '') +
-      `<span class="st-mute">· ${report.elapsed_sec != null ? report.elapsed_sec : '—'} с</span>`;
+      (report.elapsed_sec != null ? `<span class="st-mute">заняло ${report.elapsed_sec} с</span>` : '');
 
     const rows = (report.checks || []).map(c => `
-      <tr>
+      <tr class="chk-row-${c.status}">
         <td style="width:14px"><span class="dot dot-${icons[c.status] || 'idle'}"></span></td>
         <td class="check-name">${escapeHtml(c.name)}</td>
-        <td class="check-detail">${escapeHtml(c.detail || '')}</td>
+        <td class="check-detail"${c.tech ? ` title="${escapeHtml(c.tech)}"` : ''}>${escapeHtml(c.detail || '')}</td>
       </tr>`).join('');
     let html = `<table class="check-table"><tbody>${rows || '<tr><td class="empty-note">Нет результатов</td></tr>'}</tbody></table>`;
 
@@ -637,6 +650,7 @@ const DiagnosticsPage = {
 
 const ListsPage = {
   _loaded: false,
+  saved: {},
 
   editors: {
     domInc: { api: '/include-list', kind: 'domain' },
@@ -653,6 +667,7 @@ const ListsPage = {
       Object.keys(this.editors).forEach(key => {
         const ta = $(key + 'Textarea');
         ta.addEventListener('input', () => this.validate(key));
+        ta.addEventListener('scroll', () => this._syncNums(key));
         this.load(key);
       });
     }
@@ -663,13 +678,25 @@ const ListsPage = {
     try {
       const r = await apiGet(e.api);
       $(key + 'Textarea').value = r.content || '';
+      this.saved[key] = $(key + 'Textarea').value;
       this.validate(key);
     } catch (err) {
       $(key + 'Valid').innerHTML = '<span class="bad">не удалось загрузить список</span>';
     }
   },
 
+  _dirtyCheck(key) {
+    const dirty = $(key + 'Textarea').value !== (this.saved[key] ?? '');
+    const cnt = $(key + 'Count');
+    if (cnt) cnt.classList.toggle('dirty', dirty);
+    const btn = document.querySelector(`[data-save="${key}"]`);
+    if (btn) btn.classList.toggle('dirty', dirty);
+    return dirty;
+  },
+
   validate(key) {
+    this._syncNums(key);
+    this._dirtyCheck(key);
     const e = this.editors[key];
     const lines = $(key + 'Textarea').value.split('\n');
     let ok = 0;
@@ -680,11 +707,17 @@ const ListsPage = {
       if (e.kind === 'domain' ? this._validDomain(s) : this._validCidr(s)) ok++;
       else bad.push(i + 1);
     });
+    const cnt = $(key + 'Count');
+    if (cnt) cnt.textContent = String(ok);
     const box = $(key + 'Valid');
     if (bad.length) {
       box.innerHTML = `<span class="bad">строки с ошибкой: ${bad.slice(0, 12).join(', ')}${bad.length > 12 ? '…' : ''} — сохранение заблокировано</span>`;
+    } else if (this._dirtyCheck(key)) {
+      box.innerHTML = '<span class="dirty-note">изменения не сохранены — нажмите «Сохранить»</span>';
+    } else if (ok === 0) {
+      box.textContent = 'пусто — список ни на что не влияет';
     } else {
-      box.textContent = ok ? `записей: ${ok}` : 'пусто — список ни на что не влияет';
+      box.textContent = '';
     }
     $(key + 'Result').textContent = '';
     return bad.length === 0;
@@ -693,6 +726,15 @@ const ListsPage = {
   _validDomain(s) {
     if (/\s|,|;|\//.test(s) || s.startsWith('.') || s.endsWith('.')) return false;
     return /^[A-Za-z0-9А-Яа-яЁё]([A-Za-z0-9А-Яа-яЁё_-]*[A-Za-z0-9А-Яа-яЁё])?(\.[A-Za-z0-9А-Яа-яЁё]([A-Za-z0-9А-Яа-яЁё_-]*[A-Za-z0-9А-Яа-яЁё])?)+\.?$/.test(s);
+  },
+
+  _syncNums(key) {
+    const ta = $(key + 'Textarea');
+    const nums = $(key + 'Nums');
+    if (!nums) return;
+    const n = ta.value.split('\n').length;
+    nums.textContent = Array.from({ length: n }, (_, i) => i + 1).join('\n');
+    nums.scrollTop = ta.scrollTop;
   },
 
   _validCidr(s) {
@@ -716,6 +758,7 @@ const ListsPage = {
       const r = await apiPost(e.api, { content: $(key + 'Textarea').value });
       if (r.status === 'ok') {
         el.textContent = 'сохранено';
+        this.saved[key] = $(key + 'Textarea').value;
         showToast('Список сохранён', 'ok');
         this.validate(key);
       } else {
@@ -804,7 +847,7 @@ const TesterPage = {
       discordCell: tr.children[3],
       ytCell: tr.children[4],
       hostsCell: tr.children[5],
-      hosts: new Map(), ok: 0, total: 0,
+      hosts: new Map(), ok: 0, total: 0, netOk: 0, netTotal: 0,
     };
     this.state.rows.set(key, r);
     return r;
@@ -828,9 +871,12 @@ const TesterPage = {
     const row = this.state.rows.get(key);
     if (!row) return;
     row.tr.classList.remove('is-current');
-    row.stateDot.className = 'dot ' + (row.total && row.ok / row.total * 100 >= SCORE_OK ? 'dot-ok' :
-      row.total && row.ok / row.total * 100 >= SCORE_MID ? 'dot-warn' : 'dot-err');
+    const rate = (row.netTotal || row.total)
+      ? (row.netTotal ? row.netOk / row.netTotal : row.ok / row.total) * 100 : 0;
+    row.stateDot.className = 'dot ' + (rate >= SCORE_OK ? 'dot-ok' : rate >= SCORE_MID ? 'dot-warn' : 'dot-err');
     row.stateText.textContent = 'готово';
+    row.tr.classList.remove('st-good', 'st-mid', 'st-bad');
+    row.tr.classList.add(rate >= SCORE_OK ? 'st-good' : rate >= SCORE_MID ? 'st-mid' : 'st-bad');
     row.detail.hidden = true;
     if (this.state.currentKey === key) this.state.currentKey = null;
   },
@@ -850,9 +896,9 @@ const TesterPage = {
     const row = this._rowFor(data.profile);
     const mapKey = (data.domain || '') + '|' + (data.test_type || '');
     const isOk = data.status === 'OK' || data.status === 'OK_BLOCKED';
+    const isPing = data.test_type === 'ping';
     let h = row.hosts.get(mapKey);
-    if (h && !h.ok && isOk) row.ok++;
-    if (h && h.ok && !isOk) row.ok--;
+    const wasOk = h ? h.ok : false;
     if (!h) {
       h = { tr: document.createElement('tr'), ok: false };
       h.tr.innerHTML =
@@ -864,8 +910,20 @@ const TesterPage = {
         '<td class="h-err"></td>';
       row.tbody.appendChild(h.tr);
       row.total++;
+      if (!isPing) row.netTotal++;
     }
     h.ok = isOk;
+    // считаем «доступность» и «хосты» вживую (сеть, без пингов — как финальный network_rate)
+    if (isOk && !wasOk) { row.ok++; if (!isPing) row.netOk++; }
+    if (!isOk && wasOk) { row.ok--; if (!isPing) row.netOk--; }
+    row.hostsCell.textContent = row.netOk + '/' + row.netTotal;
+    if (row.netTotal) {
+      const rate = row.netOk / row.netTotal * 100;
+      row.rateCell.innerHTML = `<span class="${rateClass(rate)}">${rate.toFixed(0)}%</span>`;
+    }
+    h.tr.className = isOk ? 'hrow-ok'
+      : (data.status === 'TIMEOUT' || data.status === 'BLOCKED' || data.status === 'FAIL'
+        ? 'hrow-err' : 'hrow-warn');
     const stIcon = isOk ? '<span class="st-ok">✓</span>'
       : data.status === 'TIMEOUT' || data.status === 'BLOCKED' || data.status === 'FAIL'
         ? '<span class="st-err">✗</span>'
@@ -877,7 +935,6 @@ const TesterPage = {
     cells[4].textContent = data.time_ms != null ? formatTime(data.time_ms) : '';
     cells[5].textContent = data.error || '';
     row.hosts.set(mapKey, h);
-    row.hostsCell.textContent = row.ok + '/' + row.total;
     if (data.domain === 'discord.com' || (data.domain === 'gateway.discord.gg' && !row._discord)) {
       row._discord = true;
       row.discordCell.innerHTML = isOk ? '<span class="st-ok">✓</span>' : '<span class="st-err">✗</span>';
@@ -890,7 +947,18 @@ const TesterPage = {
 
   _handleProgressMessage(msg) {
     if (!msg) return;
-    let m = msg.match(/^Тестируем стратегию (.+?) \(\d+\/\d+\)\.\.\.$/) ||
+    let m = msg.match(/^Голый тест: (\d+)\/(\d+) доступно$/);
+    if (m) {
+      const row = this.state.rows.get('__naked__');
+      if (row) {
+        const rate = +m[1] / +m[2] * 100;
+        row.rateCell.innerHTML = `<span class="${rateClass(rate)}">${Math.round(rate)}%</span>`;
+        row.hostsCell.textContent = m[1] + '/' + m[2];
+      }
+      this._finishRow('__naked__');
+      return;
+    }
+    m = msg.match(/^Тестируем стратегию (.+?) \(\d+\/\d+\)\.\.\.$/) ||
             msg.match(/^Тестируем собранную стратегию (.+?)\.\.\.$/) ||
             msg.match(/^Голый тест.*$/);
     if (m) {
@@ -901,10 +969,16 @@ const TesterPage = {
         : 'Тестирую стратегию: ' + key;
       return;
     }
-    m = msg.match(/^Стратегия (.+?): (\d+(?:\.\d+)?)%$/);
+    m = msg.match(/^Стратегия (.+?): (\d+(?:\.\d+)?)%$/) ||
+        msg.match(/^Стратегия (.+?): не запустилась$/);
     if (m) {
       const row = this.state.rows.get(m[1]);
-      if (row) row.rateCell.textContent = Math.round(+m[2]) + '%';
+      if (row) {
+        row.rateCell.innerHTML = m[2] !== undefined
+          ? Math.round(+m[2]) + '%'
+          : '<span class="st-err">0%</span>';
+        row.tr.classList.add('st-bad');
+      }
       this._finishRow(m[1]);
     }
   },
@@ -966,11 +1040,20 @@ const TesterPage = {
           const fr = state.final_result;
           if (state.error) {
             pollActive = false; clearInterval(pollId);
-            $('testCurrentPhase').textContent = 'Ошибка: ' + state.error;
             this.clearElapsedTimer();
+            $('testCurrentPhase').textContent = 'Ошибка: ' + state.error;
+            showToast('Тест прерван: ' + state.error, 'error');
+            setTimeout(() => this.resetToIntro(), 2500);
             return;
           }
-          if (!fr) return;
+          if (!fr) {
+            pollActive = false; clearInterval(pollId);
+            this.clearElapsedTimer();
+            $('testCurrentPhase').textContent = 'Тест завершился без результата';
+            showToast('Тест завершился без результата — запустите подбор заново', 'warn');
+            setTimeout(() => this.resetToIntro(), 1800);
+            return;
+          }
           pollActive = false; clearInterval(pollId);
           if (state.all_results && !fr.all_results) fr.all_results = state.all_results;
           if (fr.restored) showToast(fr.restored, /Не удалось|не восстановлен/.test(fr.restored) ? 'warn' : 'ok');
@@ -1042,6 +1125,7 @@ const TesterPage = {
 
   runPipeline() {
     $('vpnOverlay').classList.remove('open');
+    $('testerIntro').hidden = true;
     $('testRun').hidden = false;
     $('testCurrentPhase').textContent = 'Подготовка…';
     $('testProgressFill').style.width = '0%';
@@ -1083,7 +1167,12 @@ const TesterPage = {
       onResult: (d) => {
         this.state.nakedResults = d;
         const row = this.state.rows.get('__naked__');
-        if (row) row.rateCell.textContent = (d.network_rate || 0).toFixed(0) + '%';
+        if (row) {
+          const rate = d.network_rate || 0;
+          row.rateCell.innerHTML = `<span class="${rateClass(rate)}">${rate.toFixed(0)}%</span>`;
+          row.hostsCell.textContent = (d.net_ok_count != null ? d.net_ok_count : 0) + '/' + (d.net_total != null ? d.net_total : 0);
+        }
+        this._finishRow('__naked__');
         this.runFullPipelinePhase2();
       },
       onError: () => { $('testCurrentPhase').textContent = 'Ошибка (naked)'; this.clearElapsedTimer(); },
@@ -1145,6 +1234,8 @@ const TesterPage = {
       row.stateDot.className = 'dot ' + (rate >= SCORE_OK ? 'dot-ok' : rate >= SCORE_MID ? 'dot-warn' : 'dot-err');
       row.stateText.textContent = 'готово';
       row.tr.classList.remove('is-current');
+      row.tr.classList.remove('st-good', 'st-mid', 'st-bad');
+      row.tr.classList.add(rate >= SCORE_OK ? 'st-good' : rate >= SCORE_MID ? 'st-mid' : 'st-bad');
     }
     const rec = this.state.phase2Results && this.state.phase2Results.recommendation;
     if (rec && rec.best_profile) {
@@ -1160,6 +1251,7 @@ const TesterPage = {
     $('testProgressFill').style.width = '100%';
     $('testCurrentPhase').textContent = 'Готово';
     $('btnStartTest').disabled = false;
+    $('testRun').hidden = true;
 
     const el = $('testSummary');
     let html = '';
@@ -1173,12 +1265,23 @@ const TesterPage = {
       if (rec) html += this._renderVerdict(rec);
       else html += '<div class="panel"><div class="verdict-title st-warn">Итог не определён</div><div class="verdict-msg">Нет результатов — запустите подбор заново.</div></div>';
 
-      if (custom && custom.summary && custom.valid && rec && rec.best_profile !== 'custom') {
-        html += `<div class="panel">
+      if (custom && custom.summary) {
+        const rel = custom.relation === 'better' ? '— обгоняет лучшую'
+          : custom.relation === 'worse' ? '— уступает лучшей'
+          : custom.relation === 'equal' ? '— равна лучшей' : '';
+        const rateTxt = custom.rate != null ? ` (${custom.rate}%)` : '';
+        html += `<div class="panel${custom.valid ? '' : ' verdict-panel v-no_bypass'}">
           <div class="panel-title">Личная стратегия «custom»</div>
-          <div class="verdict-msg">${escapeHtml(custom.summary)}
-          ${custom.relation === 'better' ? '— обгоняет лучшую' : custom.relation === 'worse' ? '— уступает лучшей' : custom.relation === 'equal' ? '— равна лучшей' : ''}${custom.rate != null ? ' (' + custom.rate + '%)' : ''}.
-          Если «custom» помечена лучшей в таблице — запускайте её кнопкой выше.</div>
+          <div class="verdict-msg">${escapeHtml(custom.summary)}${rel ? ' ' + rel : ''}${rateTxt}.
+          ${custom.valid
+            ? 'Если «custom» помечена лучшей в таблице — запускайте её кнопкой выше.'
+            : 'Не прошла проверку движком — запускать её не стоит.'}
+          ${custom.error && !custom.valid ? `<span class="st-err">${escapeHtml(custom.error)}</span>` : ''}</div>
+        </div>`;
+      } else if (custom && custom.error) {
+        html += `<div class="panel verdict-panel v-no_bypass">
+          <div class="panel-title">Личная стратегия не собрана</div>
+          <div class="verdict-msg st-err">${escapeHtml(custom.error)}</div>
         </div>`;
       }
 
@@ -1242,7 +1345,7 @@ const TesterPage = {
       keys = '<div class="key-grid">' + rec.key_hosts.map(k => {
         const ok = k.status === 'OK' || k.status === 'QUIC_OK';
         const label = k.status === 'QUIC_OK' ? 'через QUIC' : ok ? 'доступен' : 'не пробит';
-        return `<div class="key-cell">
+        return `<div class="key-cell ${ok ? 'cell-ok' : 'cell-err'}">
           <span class="dot ${ok ? 'dot-ok' : 'dot-err'}"></span><b>${escapeHtml(k.label)}</b>
           <span class="meta">${escapeHtml(label)}${k.time_ms ? ' · ' + formatTime(k.time_ms) : ''}</span>
         </div>` + (k.note ? `<div class="verdict-msg" style="grid-column:1/-1">${escapeHtml(k.note)}</div>` : '');
@@ -1261,7 +1364,7 @@ const TesterPage = {
       actions += '<span class="meta">результат как без защиты — обход не применяется</span>';
     }
 
-    return `<div class="panel">
+    return `<div class="panel verdict-panel v-${rec.verdict || 'no_data'}">
       <div class="verdict-title"><span class="dot ${dotCls}"></span>${escapeHtml(title)}${rec.best_profile && rec.verdict !== 'no_bypass' && rec.verdict !== 'engine_broken' ? ' — лучшая стратегия «' + escapeHtml(rec.best_profile) + '»' : ''}</div>
       <div class="verdict-msg">${escapeHtml(rec.message || '')}</div>
       ${keys}

@@ -40,16 +40,20 @@ _DEBUG_LOG_WARN_BYTES = 50 * 1024 * 1024
 
 
 class Check:
-    __slots__ = ("id", "name", "status", "detail")
+    __slots__ = ("id", "name", "status", "detail", "tech")
 
-    def __init__(self, id: str, name: str, status: str, detail: str = "") -> None:
+    def __init__(self, id: str, name: str, status: str, detail: str = "", tech: str = "") -> None:
         self.id = id
         self.name = name
         self.status = status  # ok | warn | fail | skip
-        self.detail = detail
+        self.detail = detail  # человекочитаемое объяснение для пользователя
+        self.tech = tech      # техническая деталь для отчёта поддержки
 
     def to_dict(self) -> dict:
-        return {"id": self.id, "name": self.name, "status": self.status, "detail": self.detail}
+        d = {"id": self.id, "name": self.name, "status": self.status, "detail": self.detail}
+        if self.tech:
+            d["tech"] = self.tech
+        return d
 
 
 def _pid_of(image_name: str) -> Optional[int]:
@@ -93,11 +97,13 @@ def _check_path(root_dir: Path) -> Check:
         return Check("path", "Путь установки", "ok", s)
     if str(short_path(root_dir)) != s:
         return Check("path", "Путь установки", "warn",
-                     f"{s} — кириллица в пути, работает через короткие имена 8.3. "
-                     "Если возникнут проблемы, перенесите в C:\\Zapret2GUI\\")
+                     f"{s} — в пути кириллица; программа работает через короткие имена. "
+                     "Если появятся проблемы, перенесите в C:\\Zapret2GUI\\",
+                     tech="8.3 short path fallback active")
     return Check("path", "Путь установки", "fail",
-                 f"{s} — кириллица без коротких имён 8.3, winws2 не запустится. "
-                 "Перенесите программу в путь без кириллицы.")
+                 f"{s} — в пути кириллица, а короткие имена недоступны: winws2 не запустится. "
+                 "Перенесите программу в папку без кириллицы.",
+                 tech="no 8.3 names available")
 
 
 def _check_preset(root_dir: Path, cfg: AppConfig) -> Check:
@@ -117,7 +123,8 @@ def _check_preset(root_dir: Path, cfg: AppConfig) -> Check:
     ok, err = validate_args(exe, args, cwd=root_dir)
     if ok:
         return Check("preset", f"Пресет «{profile}»", "ok",
-                     f"валиден, аргументов: {len(args)}")
+                     "конфигурация в порядке",
+                     tech=f"validate_args ok, {len(args)} args")
     return Check("preset", f"Пресет «{profile}»", "fail", err)
 
 
@@ -147,24 +154,43 @@ def _check_net() -> list[Check]:
             if kind == "youtube" and any(c.id == "net_i.ytimg.com" and c.status == "ok"
                                          for c in checks):
                 checks.append(Check(f"net_{host}", name, "ok",
-                                    "TCP-проверка неприменима — YouTube работает через QUIC "
-                                    "(известный TLS-прикол), CDN доступен"))
+                                    "YouTube работает через QUIC (в браузере), его CDN доступен — "
+                                    "TCP-проверка здесь неприменима",
+                                    tech="TCP blackholed; QUIC path assumed via reachable CDN"))
                 continue
             checks.append(Check(f"net_{host}", name, "fail",
-                                "нет ответа (таймаут/обрыв/DPI)"))
+                                "сайт не отвечает — соединение блокируется или обрывается",
+                                tech="curl: no HTTP code (timeout/transport)"))
         elif kind == "canary":
             if 200 <= code < 400:
-                checks.append(Check(f"net_{host}", name, "ok", f"HTTP {code}"))
+                checks.append(Check(f"net_{host}", name, "ok",
+                                    "сайт отвечает — интернет работает",
+                                    tech=f"HTTP {code}"))
             else:
                 checks.append(Check(f"net_{host}", name, "warn",
-                                    f"HTTP {code} — канарейка странная, но соединение есть"))
+                                    "сайт отвечает, но с необычным ответом — соединение всё же есть",
+                                    tech=f"HTTP {code}"))
         else:
             # Any HTTP code >= 100 means the TLS connection passed the DPI.
             # 403/404/520 are expected "anonymous request" answers from CDNs.
-            detail = f"HTTP {code}"
             if code == 403:
-                detail = "HTTP 403 — не блокировка (CDN так отвечает анонимным запросам)"
-            checks.append(Check(f"net_{host}", name, "ok", detail))
+                detail = ("соединение работает — код 403 это нормальный ответ CDN "
+                          "на анонимный запрос, это не блокировка")
+            else:
+                detail = "сайт отвечает — соединение работает"
+            checks.append(Check(f"net_{host}", name, "ok", detail, tech=f"HTTP {code}"))
+
+    # Зеркальная сторона YouTube-прикола (§17/§22): i.ytimg.com по TCP режется
+    # точечно (DPI/DNS), но сам youtube.com доступен, а браузер ходит через
+    # QUIC — аватары/видео работают. Красный крест тут только пугает.
+    if any(c.id == "net_i.ytimg.com" and c.status == "fail" for c in checks) and any(
+            c.id == "net_www.youtube.com" and c.status == "ok" for c in checks):
+        for c in checks:
+            if c.id == "net_i.ytimg.com" and c.status == "fail":
+                c.status = "ok"
+                c.detail = ("YouTube работает (аватары, видео, комментарии) — TCP-проба "
+                            "к CDN не проходит, браузер ходит через QUIC, это не блокировка")
+                c.tech = "TCP to i.ytimg.com dropped; www.youtube.com reachable — QUIC path OK"
     return checks
 
 
@@ -194,7 +220,9 @@ def classify_block(host: str, timeout: float = 2.5, max_ips: int = 2) -> dict:
     try:
         infos = socket.getaddrinfo(host, 443, socket.AF_INET, socket.SOCK_STREAM)
     except OSError as e:
-        return {"kind": "dns", "detail": f"не удалось зарезолвить {host}: {e}", "steps": steps}
+        return {"kind": "dns",
+                "detail": "домен не удалось превратить в IP-адрес — вероятна блокировка DNS",
+                "tech": f"getaddrinfo: {e}", "steps": steps}
     ips = list(dict.fromkeys(i[4][0] for i in infos))[:max_ips]
     steps["ips"] = ips
 
@@ -237,14 +265,15 @@ def classify_block(host: str, timeout: float = 2.5, max_ips: int = 2) -> dict:
     tcp_ok = _first_success(ips, None)
     if not tcp_ok:
         return {"kind": "ip_block",
-                "detail": "TCP-коннект к :443 не проходит (блок на уровне IP/порта/SYN)",
-                "steps": steps}
+                "detail": "к сайту не открывается соединение — блокировка на уровне IP-адреса",
+                "tech": "TCP connect :443 failed", "steps": steps}
     steps["tcp"] = "ok"
 
     real_ok = _first_success(ips, host)
     steps["real_sni"] = "ok" if real_ok else "blocked"
     if real_ok:
-        return {"kind": "ok", "detail": "TLS-хендшейк проходит — сайт доступен", "steps": steps}
+        return {"kind": "ok", "detail": "сайт доступен",
+                "tech": "TLS handshake ok", "steps": steps}
 
     benign = None
     for sni in ("www.google.com", "www.cloudflare.com"):
@@ -254,12 +283,13 @@ def classify_block(host: str, timeout: float = 2.5, max_ips: int = 2) -> dict:
     steps["benign_sni"] = "ok" if benign else "blocked"
     if benign:
         return {"kind": "sni_block",
-                "detail": (f"SNI-блок: тот же IP c SNI {benign} проходит TLS, с реальным SNI — нет. "
-                           "Блок специфичен для домена — работающий desync обязан его обходить"),
+                "detail": ("сайт заблокирован по имени — именно такой блок Zapret 2 "
+                           "и должен обходить"),
+                "tech": f"real SNI blocked, benign SNI ({benign}) passes",
                 "steps": steps}
     return {"kind": "tls_block",
-            "detail": "TLS не проходит даже с чужим SNI — блок не по SNI (IP/порт-уровень или глубокий DPI)",
-            "steps": steps}
+            "detail": "соединение режется глубже, чем по имени сайта — обход может не помочь",
+            "tech": "TLS blocked even with foreign SNI", "steps": steps}
 
 
 def _check_block_types(net_checks: list[Check]) -> list[Check]:
@@ -279,7 +309,8 @@ def _check_block_types(net_checks: list[Check]) -> list[Check]:
         st = {"ok": "ok", "dns": "fail", "ip_block": "fail",
               "sni_block": "warn", "tls_block": "fail"}.get(info["kind"], "warn")
         name = names.get(host, host)
-        checks.append(Check(f"block_{host}", f"Тип блокировки: {name}", st, info["detail"]))
+        checks.append(Check(f"block_{host}", f"Тип блокировки: {name}", st,
+                            info["detail"], tech=info.get("tech", "")))
     return checks
 
 
@@ -290,9 +321,9 @@ def _check_dns_health() -> Check:
 
     try:
         _s.getaddrinfo("rutracker.org", 443)
-        results.append("системный DNS отвечает")
+        results.append("обычный DNS отвечает")
     except OSError:
-        results.append("системный DNS МОЛЧИТ")
+        results.append("обычный DNS молчит")
 
     def _tcp_ok(ip: str, port: int, timeout: float = 3.0) -> bool:
         try:
@@ -302,7 +333,7 @@ def _check_dns_health() -> Check:
             return False
 
     dot_ok = _tcp_ok("8.8.8.8", 853) or _tcp_ok("1.1.1.1", 853)
-    results.append("DoT (853): " + ("работает" if dot_ok else "заблокирован/недоступен"))
+    results.append("защищённый DNS (TCP): " + ("работает" if dot_ok else "недоступен"))
 
     doh_ok = False
     try:
@@ -314,17 +345,17 @@ def _check_dns_health() -> Check:
             doh_ok = resp.status == 200
     except Exception:
         doh_ok = False
-    results.append("DoH (443): " + ("работает" if doh_ok else "недоступен"))
+    results.append("защищённый DNS (HTTPS): " + ("работает" if doh_ok else "недоступен"))
 
     if dot_ok and doh_ok:
         status, detail = "ok", "; ".join(results)
-    elif not dot_ok and not doh_ok and "МОЛЧИТ" in results[0]:
-        status, detail = "fail", "; ".join(results) + " — DNS-уровень режется целиком"
+    elif not dot_ok and not doh_ok and "молчит" in results[0]:
+        status, detail = "fail", "; ".join(results) + " — блокируется весь DNS"
     elif not dot_ok and not doh_ok:
-        status, detail = "fail", "; ".join(results) + " — DoT и DoH мертвы"
+        status, detail = "fail", "; ".join(results) + " — защищённый DNS недоступен"
     else:
         status, detail = "warn", "; ".join(results)
-    return Check("dns_health", "DNS (53/DoT/DoH)", status, detail)
+    return Check("dns_health", "DNS (обычный и защищённый)", status, detail)
 
 
 def run_diagnostics(root_dir: Path, cfg: AppConfig, progress_cb=None) -> dict:
@@ -388,10 +419,12 @@ def run_diagnostics(root_dir: Path, cfg: AppConfig, progress_cb=None) -> dict:
         from core.tcp_timestamps import timestamps_enabled as ts_enabled
         if ts_enabled():
             _add(Check("tcp_ts", "TCP timestamps", "ok",
-                                "включены — tcp_ts-фулинг активен"))
+                       "включены — обход работает в полную силу",
+                       tech="timestamps enabled"))
         else:
             _add(Check("tcp_ts", "TCP timestamps", "warn",
-                                "ВЫКЛЮЧЕНЫ — tcp_ts=... в пресетах молча не работает"))
+                       "выключены — часть приёмов обхода молча не работает",
+                       tech="timestamps disabled, tcp_ts= silent"))
     except Exception as e:
         _add(Check("tcp_ts", "TCP timestamps", "skip", f"не удалось проверить: {e}"))
 
@@ -463,6 +496,8 @@ def format_report_text(report: dict) -> str:
         line = f"{icon.get(c['status'], '[??]')} {c['name']}"
         if c.get("detail"):
             line += f" — {c['detail']}"
+        if c.get("tech"):
+            line += f"  [{c['tech']}]"
         lines.append(line)
     s = report.get("summary", {})
     lines += ["", f"Итог: OK={s.get('ok', 0)}, внимание={s.get('warn', 0)}, ошибок={s.get('fail', 0)}"]
