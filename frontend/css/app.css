@@ -859,9 +859,64 @@ label {
 
 .test-options {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
   align-items: flex-start;
-  gap: 8px;
+  gap: 10px;
+}
+
+.chip-option {
+  position: relative;
+}
+
+.chip-option input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.chip-option span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 24px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  background: var(--surface);
+  transition: all 0.15s var(--transition);
+  user-select: none;
+}
+
+.chip-option span small {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.chip-option input:hover + span {
+  border-color: var(--accent);
+}
+
+.chip-option input:checked + span {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-bg);
+}
+
+.chip-option input:checked + span::before {
+  content: "✓";
+  font-weight: 700;
+}
+
+.chip-option input:checked + span small {
+  color: var(--accent);
+  opacity: 0.85;
+}
+
+.chip-option input:focus-visible + span {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .guide-steps {
