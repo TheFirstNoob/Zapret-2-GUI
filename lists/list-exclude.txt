@@ -111,6 +111,5 @@ tochka.com
 vtb.ru
 steamcommunity.com
 steampowered.com
-api.steampowered.com
 steamusercontent.com
 2fa.fb.tools
