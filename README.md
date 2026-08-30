@@ -33,6 +33,30 @@ GUI-обёртка для **Zapret 2** (winws2 / lua-desync) — обход DPI/
 
 **Требования:** Windows 10/11 x64, права администратора, WebView2 Runtime (встроен в Win10/11, для portable).
 
+## 🌐 GitHub заблокирован/тормозит? (актуально с 08.2026)
+
+На многих сетях РФ (Ростелеком, Т2 и др.) режется диапазон
+`185.199.108.0/22` — из-за этого не скачиваются релизы, картинки и
+аватарки GitHub (raw/objects/release-assets/avatars.githubusercontent.com),
+при этом сам github.com и codeload работают. Глобально GitHub жив —
+это локальная фильтрация подсетей.
+
+**Что делать:**
+1. **Добавьте в `C:\Windows\System32\drivers\etc\hosts`** блок из файла
+   [`hosts-github-fix.txt`](hosts-github-fix.txt) (пиннит githubusercontent
+   на рабочий Fastly-IP), затем `ipconfig /flushdns`.
+   Если IP перестал работать — замените на запасной из списка в файле.
+2. Либо включите **WARP** (Cloudflare) — обходит полностью.
+3. Обновление программы можно скачать через зеркало **jsDelivr**:
+   `https://cdn.jsdelivr.net/gh/TheFirstNoob/Zapret-2-GUI@main/Windows%20build/Zapret2GUI.zip`
+   (и для lite/portable — то же имя с суффиксом).
+
+**Бонус-советы с форума Zapret 1 (Ростелеком):**
+- YouTube «тормозит/через раз» → **отключите QUIC в браузере**
+  (chrome://flags → Experimental QUIC protocol → Disabled)
+- Смена DNS на **9.9.9.9 / 149.112.112.112** заметно улучшает загрузку
+  видео на РТК
+
 ## 🦠 Антивирусы (важно)
 
 > WinDivert — инструмент перехвата трафика, необходимый для работы zapret. Он может использоваться как хорошими, так и плохими программами, но сам по себе не является вирусом. Некоторые антивирусы относят его к RiskTool/PUA.

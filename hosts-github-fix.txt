@@ -1,0 +1,32 @@
+# ============================================================
+# GitHub fix — добавляется в C:\Windows\System32\drivers\etc\hosts
+# ============================================================
+# Проблема: на сетях РФ (Ростелеком, Т2 и др.) githubusercontent
+# (raw/objects/release-assets/avatars) блокируется по IP
+# (185.199.108.0/22). github.com, codeload, api.github.com работают.
+# Решение: Fastly отдаёт контент GitHub с любого своего edge-IP —
+# пинним домены на рабочий IP (проверено 2026-08-30, Т2, без VPN).
+#
+# Если IP перестал работать (блоки «моргают»), замените все строки
+# на любой IP из списка запасных ниже.
+#
+# Основной:
+151.101.66.132 raw.githubusercontent.com
+151.101.66.132 objects.githubusercontent.com
+151.101.66.132 release-assets.githubusercontent.com
+151.101.66.132 private-user-images.githubusercontent.com
+151.101.66.132 gist.githubusercontent.com
+151.101.66.132 avatars.githubusercontent.com
+151.101.66.132 avatars0.githubusercontent.com
+151.101.66.132 avatars1.githubusercontent.com
+151.101.66.132 avatars2.githubusercontent.com
+151.101.66.132 avatars3.githubusercontent.com
+151.101.66.132 avatars4.githubusercontent.com
+151.101.66.132 avatars5.githubusercontent.com
+#
+# Запасные IP (проверены на отдачу контента GitHub):
+#   151.101.130.132   151.101.194.132   146.75.30.132
+#   146.75.78.132     146.75.22.132     151.101.2.132
+#
+# После правки: ipconfig /flushdns
+# ============================================================
