@@ -8,6 +8,7 @@ host).  Every check has a hard timeout and never raises.
 """
 from __future__ import annotations
 
+import json
 import socket
 import subprocess
 import time
@@ -358,6 +359,51 @@ def _check_dns_health() -> Check:
     return Check("dns_health", "DNS (обычный и защищённый)", status, detail)
 
 
+def _check_dns_poison() -> Check:
+    """Подмена DNS: системный резолвер vs чистый DoH для «заблокированных»
+    доменов. Домены выбраны за Cloudflare (anycast — IP одинаковы глобально,
+    гео-вариаций нет): непересечение IP-множеств или NXDOMAIN у системы при
+    живом ответе DoH = подмена. Если DoH недоступен — проверка невозможна.
+    """
+    domains = ("rutracker.org", "discord.com")
+    poisoned: list[str] = []
+    checked = 0
+    for h in domains:
+        try:
+            sys_ips = sorted({i[4][0] for i in socket.getaddrinfo(h, 443, socket.AF_INET)})
+        except OSError:
+            sys_ips = []
+        doh_ips: Optional[list[str]] = None
+        try:
+            req = _urlreq.Request(
+                f"https://1.1.1.1/dns-query?name={h}&type=A",
+                headers={"Accept": "application/dns-json"},
+            )
+            with _urlreq.urlopen(req, timeout=4) as resp:
+                data = json.loads(resp.read(8192).decode("utf-8", "replace"))
+            doh_ips = [a["data"] for a in data.get("Answer", []) if a.get("type") == 1]
+        except Exception:
+            doh_ips = None
+        if doh_ips is None:
+            continue
+        checked += 1
+        if not sys_ips:
+            poisoned.append(f"{h}: системный DNS не отвечает, а чистый резолвит")
+        elif not (set(sys_ips) & set(doh_ips)):
+            poisoned.append(f"{h}: системный DNS даёт чужие IP ({', '.join(sys_ips[:2])})")
+    if checked == 0:
+        return Check("dns_poison", "DNS подмена", "skip",
+                     "не удалось проверить (защищённый DNS недоступен)")
+    if poisoned:
+        return Check("dns_poison", "DNS подмена", "fail",
+                     "; ".join(poisoned) + " — смените DNS на 8.8.8.8 или 1.1.1.1, "
+                     "обход без этого работать не будет",
+                     tech=f"system vs DoH mismatch ({checked} domains)")
+    return Check("dns_poison", "DNS подмена", "ok",
+                 "системный DNS совпадает с чистым резолвером",
+                 tech=f"system == DoH for {checked} domains")
+
+
 def run_diagnostics(root_dir: Path, cfg: AppConfig, progress_cb=None) -> dict:
     root_dir = Path(root_dir)
 
@@ -472,6 +518,9 @@ def run_diagnostics(root_dir: Path, cfg: AppConfig, progress_cb=None) -> dict:
 
     # DNS health: plain resolver vs DoT (853) vs DoH (443)
     _add(_check_dns_health())
+
+    # DNS poisoning: system resolver vs clean DoH for blocked domains
+    _add(_check_dns_poison())
 
     summary = {"ok": 0, "warn": 0, "fail": 0, "skip": 0}
     for c in checks:
