@@ -21,6 +21,9 @@ klipy.com
 live-video.net
 discord-attachments-uploads-prd.storage.googleapis.com
 storage.googleapis.com
+s3.dualstack.eu-central-1.amazonaws.com
+s3.dualstack.eu-west-1.amazonaws.com
+blob.core.windows.net
 github.com
 codeload.github.com
 raw.githubusercontent.com

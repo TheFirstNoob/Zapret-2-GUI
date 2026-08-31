@@ -418,11 +418,16 @@ Discord грузит файлы на `discord-attachments-uploads-prd.storage.go
 и `list-discord.txt` (покрытие Discord TCP). Домен есть в list-general
 обоих эталонов: 1.9.6 и 1.10.1.
 
-**Расширение (2026-08-31):** steam cloud синкается через
-`steamcloud-<регион>.storage.googleapis.com` (GCS) — TLS-SNI блок плавает
-«через раз» (TCP жив, хендшейк таймаутит). В list-general добавлен
-РОДИТЕЛЬСКИЙ `storage.googleapis.com` (покрывает все регионы steamcloud-*
-и discord-uploads). Комментарии в list-файлы НЕ писать — только домены.
+**Расширение (2026-08-31):** steam cloud синкается через ТРИ ротируемых
+бэкенда: `steamcloud-<регион>.storage.googleapis.com` (GCS),
+`steamcloud-<reg>.s3.dualstack.*.amazonaws.com` (S3) и
+`steamcloud*.blob.core.windows.net` (Azure). TLS-SNI блок плавает «через
+раз» (TCP жив, хендшейк/запрос таймаутит). В list-general добавлены
+РОДИТЕЛЬСКИЕ домены: `storage.googleapis.com`, `s3.dualstack.eu-central-1.amazonaws.com`,
+`s3.dualstack.eu-west-1.amazonaws.com`, `blob.core.windows.net` (покрывают
+все регионы steamcloud-* и discord-uploads). Проверено live: после
+применения S3/Azure/GCS отвечают за <1с в том же окне, где был 000.
+Комментарии в list-файлы НЕ писать — только домены.
 
 ### Проверка загрузки без Discord-клиента
 ```
