@@ -423,10 +423,11 @@ Discord грузит файлы на `discord-attachments-uploads-prd.storage.go
 `steamcloud-<reg>.s3.dualstack.*.amazonaws.com` (S3) и
 `steamcloud*.blob.core.windows.net` (Azure). TLS-SNI блок плавает «через
 раз» (TCP жив, хендшейк/запрос таймаутит). В list-general добавлены
-РОДИТЕЛЬСКИЕ домены: `storage.googleapis.com`, `s3.dualstack.eu-central-1.amazonaws.com`,
-`s3.dualstack.eu-west-1.amazonaws.com`, `blob.core.windows.net` (покрывают
-все регионы steamcloud-* и discord-uploads). Проверено live: после
-применения S3/Azure/GCS отвечают за <1с в том же окне, где был 000.
+РОДИТЕЛЬСКИЕ домены: `storage.googleapis.com`, `amazonaws.com` (как в v1 —
+поддомены матчатся суффиксами, подтверждено hostlist.c SearchHostList),
+`blob.core.windows.net`. Проверено live: S3/Azure/GCS отвечают за <0.4с
+в том же окне, где был 000. Урок: после taskkill winws2 первый
+`sc start zapret2` может дать 1053 (служба не успела ответить) — повторить.
 Комментарии в list-файлы НЕ писать — только домены.
 
 ### Проверка загрузки без Discord-клиента
