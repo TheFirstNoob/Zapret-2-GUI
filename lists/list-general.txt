@@ -24,16 +24,9 @@ storage.googleapis.com
 amazonaws.com
 blob.core.windows.net
 github.com
-codeload.github.com
-raw.githubusercontent.com
-objects.githubusercontent.com
-release-assets.githubusercontent.com
-api.github.com
-avatars.githubusercontent.com
 githubusercontent.com
 githubassets.com
 github.io
 github.blog
 github.dev
 githubcopilot.com
-desktop.githubusercontent.com

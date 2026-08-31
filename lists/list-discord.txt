@@ -3,8 +3,6 @@ discord.gg
 discordapp.com
 discordapp.net
 discord.media
-cdn.discordapp.com
-gateway.discord.gg
 discordstatus.com
 discord.co
 discord.gift
