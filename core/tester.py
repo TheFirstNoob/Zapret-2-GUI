@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import gzip
 import ipaddress
 import os
+import socket
 import subprocess
 import threading
 import time
@@ -207,7 +209,9 @@ class CdnScanVerdict:
     alive: str            # "A" — жив под защитой, "x" — мёртв
     dpi: str              # "DET" — stateful DPI режет, "ok" — не режет, "—" — не проверялось
     naked: str            # "A"/"x"/"—" — живой/мёртвый без защиты (— если не проверялось)
-    verdict: str          # fix / ok / break / dead / unknown
+    verdict: str          # fix / ok / break / dead / unknown / hard / covered
+    ips: list[str] = field(default_factory=list)   # IP кандидата (для ipset-включений)
+    covered: bool = False  # все IP уже внутри ipset-all — наложения нет
 
 
 @dataclass
@@ -217,6 +221,7 @@ class CdnScanResult:
     z2_was: bool = False
     z1_was: bool = False
     error: str = ""
+    ipset_mode: bool = False
 
 
 class Zapret2Tester:
@@ -234,9 +239,42 @@ class Zapret2Tester:
         # TTL probe result cache: provider hop position never changes between
         # profiles in one session — probe tracert once, reuse for all profiles.
         self._ttl_cache: Optional[dict] = None
+        self._ipset_net_cache: Optional[list] = None
 
     def set_logger(self, logger: Optional["TestLogger"]) -> None:
         self._logger = logger
+
+    def _ipset_networks(self) -> list:
+        """CIDR-сети из ipset-all.txt.gz (кэш на инстанс). Для проверки
+        «IP кандидата уже десинкается ipset-режимом» — отсутствие наложений."""
+        if self._ipset_net_cache is None:
+            nets: list = []
+            try:
+                with gzip.open(self.root_dir / "lists" / "ipset-all.txt.gz", "rt",
+                               encoding="utf-8", errors="replace") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line or line.startswith("#"):
+                            continue
+                        try:
+                            nets.append(ipaddress.ip_network(line, strict=False))
+                        except ValueError:
+                            continue
+            except OSError:
+                pass
+            self._ipset_net_cache = nets
+        return self._ipset_net_cache
+
+    @staticmethod
+    def _resolve_ips(domain: str, timeout: float = 2.0) -> list[str]:
+        """A-записи домена (для ipset-включений: winws2 --ipset принимает IP)."""
+        try:
+            return sorted({addr[4][0] for addr in
+                           socket.getaddrinfo(domain, None, socket.AF_INET,
+                                              socket.SOCK_STREAM)
+                           if addr[4]})
+        except OSError:
+            return []
 
     def _ensure_winws2_dead(self) -> None:
         # Kill managed process handle first (by PID) — чистый PID-таргетинг
@@ -855,7 +893,8 @@ class Zapret2Tester:
         except _TestAbort as e:
             return e.result if e.result is not None else self._build_result(profile_name, all_results, [], provider_hop, provider_ip, tier, _logged_progress)
 
-    def scan_cdn_recommendations(self, progress_cb, result_cb=None, naked_check: bool = True) -> CdnScanResult:
+    def scan_cdn_recommendations(self, progress_cb, result_cb=None, naked_check: bool = True,
+                                 ipset_mode: bool = False) -> CdnScanResult:
         """CDN-стабилизация: вердикты по CDN-хостам для полу-автономного ведения списков.
 
         Три фазы:
@@ -867,11 +906,15 @@ class Zapret2Tester:
              на этом провайдере). Вылечился → fix; режется дальше или умер →
              hard (не лечится, не трогать).
 
-        Вызывающий обязан восстановить защиту, если naked_done=True
-        (флаги z2_was/z1_was).
+        ipset_mode=True — защита работает через ipset-all (hostlist заменён
+        на IP-списки). Тогда fix-кандидат проверяется на ПОКРЫТИЕ: если все
+        его IP уже внутри ipset-all → вердикт covered (наложения нет,
+        добавлять нечего); иначе fix с резолвнутыми IP (их пишут в
+        ipset-include-user). Вызывающий обязан восстановить защиту, если
+        naked_done=True (флаги z2_was/z1_was).
         """
         self.shutdown_event.clear()
-        result = CdnScanResult()
+        result = CdnScanResult(ipset_mode=ipset_mode)
         try:
             if not self._any_winws2_running():
                 result.error = "winws2 не запущен — запустите защиту перед сканированием"
@@ -903,16 +946,34 @@ class Zapret2Tester:
                     result.z2_was = self._any_winws2_running()
                     result.z1_was = self._any_winws_running()
                 progress_cb(60, "Верификация кандидатов десинком (пробный список)...")
-                verify_map = self._verify_with_desync(candidates, progress_cb, result_cb)
+                if ipset_mode:
+                    verify_map = self._verify_with_ipset(candidates, progress_cb, result_cb)
+                else:
+                    verify_map = self._verify_with_desync(candidates, progress_cb, result_cb,
+                                                          ipset_catchall=ipset_mode)
                 if verify_map:
                     result.naked_done = True
+            # покрытие ipset-all для fix-кандидатов (только ipset-режим)
+            ip_map: dict[str, list[str]] = {}
+            cover_map: dict[str, bool] = {}
+            if ipset_mode:
+                nets = self._ipset_networks()
+                fix_domains = [d for d in verify_map if verify_map[d] == "fix"]
+                for d in fix_domains:
+                    ips = self._resolve_ips(d)
+                    ip_map[d] = ips
+                    cover_map[d] = bool(ips) and all(
+                        any(ipaddress.ip_address(ip) in n for n in nets) for ip in ips)
             progress_cb(90, "Сборка вердиктов...")
             for r in protected:
                 dpi = dpi_map.get(r.domain, "—")
                 naked = naked_map.get(r.domain, "—")
+                verdict = ""
                 if r.status == "OK":
                     if dpi == "DET":
                         verdict = verify_map.get(r.domain, "unknown")
+                        if verdict == "fix" and cover_map.get(r.domain):
+                            verdict = "covered"
                     else:
                         verdict = "ok"
                 elif naked == "A":
@@ -926,6 +987,8 @@ class Zapret2Tester:
                     provider=CDN_PROVIDERS.get(r.domain, "—"),
                     alive="A" if r.status == "OK" else "x",
                     dpi=dpi, naked=naked, verdict=verdict,
+                    ips=ip_map.get(r.domain, []),
+                    covered=cover_map.get(r.domain, False),
                 ))
             progress_cb(100, "Готово")
         except _TestAbort as e:
@@ -935,7 +998,8 @@ class Zapret2Tester:
                 result.error = "прервано"
         return result
 
-    def _verify_with_desync(self, domains: list[str], progress_cb, result_cb) -> dict[str, str]:
+    def _verify_with_desync(self, domains: list[str], progress_cb, result_cb,
+                            ipset_catchall: bool = False) -> dict[str, str]:
         """Пробный прогон с десинком кандидатов: вердикт fix/hard по факту.
 
         Возвращает вердикт для КАЖДОГО домена (fix — вылечился, hard — умер
@@ -952,7 +1016,7 @@ class Zapret2Tester:
             probe_preset = preset_src.replace(marker, marker + "--hostlist=@lists/list-probe.txt\n")
             preset_path = self.root_dir / "presets" / "_probe_cdn.txt"
             preset_path.write_text(probe_preset, encoding="utf-8")
-            if not self._run_profile("_probe_cdn"):
+            if not self._run_profile("_probe_cdn", ipset_catchall=ipset_catchall):
                 return result
             try:
                 alive_now = self._run_domain_tests(domains, concurrency=15, http_only=True, result_cb=result_cb)
@@ -968,6 +1032,48 @@ class Zapret2Tester:
             return result
         except (OSError, _TestAbort):
             return result
+
+    def _verify_with_ipset(self, domains: list[str], progress_cb, result_cb) -> dict[str, str]:
+        """Верификация в ipset-режиме: резолв кандидатов в IP → временный
+        ipset-include-user → прогон default+ipset. Возвращает вердикт для
+        КАЖДОГО домена (fix/hard), пусто = проверка не состоялась."""
+        result: dict[str, str] = {}
+        inc_path = self.root_dir / "lists" / "ipset-include-user.txt"
+        saved = inc_path.read_text(encoding="utf-8") if inc_path.exists() else None
+        ips_by_domain: dict[str, list[str]] = {}
+        all_ips: set[str] = set()
+        for d in domains:
+            ips = self._resolve_ips(d)
+            ips_by_domain[d] = ips
+            all_ips.update(ips)
+        if not all_ips:
+            return result
+        try:
+            inc_path.write_text("\n".join(sorted(all_ips)) + "\n", encoding="utf-8")
+            if not self._run_profile("default", ipset_catchall=True):
+                return result
+            try:
+                alive_now = self._run_domain_tests(domains, concurrency=15, http_only=True, result_cb=result_cb)
+                alive_names = {r.domain for r in alive_now if r.status == "OK"}
+                for d in domains:
+                    result[d] = "hard" if d not in alive_names else "fix"
+                if alive_names:
+                    for r in self._run_tcp1620_tests(sorted(alive_names)):
+                        if r.status == "TCP16_20":
+                            result[r.domain] = "hard"
+            finally:
+                self._ensure_winws2_dead()
+            return result
+        except (OSError, _TestAbort):
+            return result
+        finally:
+            if saved is None:
+                try:
+                    inc_path.unlink()
+                except OSError:
+                    pass
+            else:
+                inc_path.write_text(saved, encoding="utf-8")
 
     def _test_baseline(
         self,

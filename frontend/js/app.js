@@ -797,6 +797,7 @@ const CdnStab = {
 
   VERDICTS: {
     fix: { label: 'DPI режет — лечится', cls: 'bad', btn: { action: 'general', text: 'В обход' } },
+    covered: { label: 'уже в ipset-all — наложения нет', cls: '', btn: null },
     ok: { label: 'чисто', cls: '', btn: null },
     break: { label: 'обход ломает', cls: 'bad', btn: { action: 'exclude', text: 'В стоп-лист' } },
     hard: { label: 'не лечится', cls: '', btn: null },
@@ -866,28 +867,39 @@ const CdnStab = {
     const counts = {};
     v.forEach(x => { counts[x.verdict] = (counts[x.verdict] || 0) + 1; });
     const sum = (k) => counts[k] || 0;
+    const modeTxt = fr.ipset_mode
+      ? '<span class="meta">режим: ipset (list-general заменён ipset-all — правки идут в ipset-включения/исключения)</span>'
+      : '<span class="meta">режим: hostlist (правки идут в list-general / list-exclude)</span>';
     const head = `
       <div class="cdn-summary">
         <span>режет DPI, лечится: <b class="bad">${sum('fix')}</b></span>
+        <span>уже в ipset: <b>${sum('covered')}</b></span>
         <span>режет, не лечится: <b>${sum('hard')}</b></span>
         <span>чисто: <b>${sum('ok')}</b></span>
         <span>обход ломает: <b class="bad">${sum('break')}</b></span>
         <span>мёртвые: <b>${sum('dead')}</b></span>
-        ${fr.naked_done ? '<span class="meta">+ проверки без защиты</span>' : ''}
+        ${modeTxt}
       </div>`;
     const rows = v.map(x => {
       const vd = this.VERDICTS[x.verdict] || this.VERDICTS.unknown;
       const applied = this._applied.has(x.domain);
-      const btn = (!applied && vd.btn)
-        ? `<button class="btn btn-sm" data-cdn-act="${vd.btn.action}" data-cdn-domain="${escapeHtml(x.domain)}">${vd.btn.text}</button>`
-        : (applied ? '<span class="meta">применено</span>' : '');
-      return `<tr class="${vd.cls}">
+      let btn = '';
+      if (!applied && vd.btn) {
+        const text = (fr.ipset_mode && vd.btn.action === 'general')
+          ? 'В ipset-включения' : vd.btn.text;
+        btn = `<button class="btn btn-sm" data-cdn-act="${vd.btn.action}" data-cdn-domain="${escapeHtml(x.domain)}">${text}</button>`;
+      } else if (applied) {
+        btn = '<span class="meta">применено</span>';
+      }
+      const ips = (fr.ipset_mode && x.ips && x.ips.length)
+        ? `<span class="meta">${escapeHtml(x.ips.join(', '))}</span>` : '';
+      return `<tr class="${vd.cls}" data-cdn-ips="${escapeHtml((x.ips || []).join(','))}">
         <td class="mono">${escapeHtml(x.domain)}</td>
         <td>${escapeHtml(x.provider)}</td>
         <td>${x.alive === 'A' ? 'да' : 'нет'}</td>
         <td>${x.dpi === 'DET' ? '<span class="bad">режет</span>' : (x.dpi === 'ok' ? 'не режет' : '—')}</td>
         <td>${x.naked === '—' ? '—' : (x.naked === 'A' ? 'жив' : 'мёртв')}</td>
-        <td>${vd.label}</td>
+        <td>${vd.label}${ips}</td>
         <td>${btn}</td>
       </tr>`;
     }).join('');
@@ -896,29 +908,34 @@ const CdnStab = {
         <th>Хост</th><th>CDN</th><th>Под защитой</th><th>Stateful DPI</th><th>Без защиты</th><th>Вердикт</th><th></th>
       </tr></thead><tbody>${rows}</tbody></table>`;
     $('cdnBody').querySelectorAll('[data-cdn-act]').forEach(b =>
-      b.addEventListener('click', () => this.apply(b)));
+      b.addEventListener('click', () => this.apply(b, fr.ipset_mode)));
     $('cdnBody').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   },
 
-  async apply(btn) {
+  async apply(btn, ipsetMode) {
     const domain = btn.dataset.cdnDomain;
     const action = btn.dataset.cdnAct;
+    const row = btn.closest('tr');
+    const ips = row ? row.dataset.cdnIps : '';
     btn.disabled = true;
     btn.textContent = '…';
     try {
-      const r = await apiPost('/api/cdn/recommendation', { domain, action });
+      const r = await apiPost('/api/cdn/recommendation', {
+        domain, action,
+        ips: ips ? ips.split(',') : [],
+      });
       if (r.status === 'ok') {
         this._applied.add(domain);
         btn.textContent = '✓ ' + r.message.split(',')[0];
         showToast('Применено: ' + domain, 'ok');
       } else {
         btn.disabled = false;
-        btn.textContent = btn.dataset.cdnAct === 'general' ? 'В обход' : 'В стоп-лист';
+        btn.textContent = (ipsetMode && action === 'general') ? 'В ipset-включения' : (action === 'general' ? 'В обход' : 'В стоп-лист');
         showToast('Ошибка: ' + (r.message || ''), 'error');
       }
     } catch (err) {
       btn.disabled = false;
-      btn.textContent = btn.dataset.cdnAct === 'general' ? 'В обход' : 'В стоп-лист';
+      btn.textContent = (ipsetMode && action === 'general') ? 'В ipset-включения' : (action === 'general' ? 'В обход' : 'В стоп-лист');
       showToast('Ошибка: ' + err.message, 'error');
     }
   },
