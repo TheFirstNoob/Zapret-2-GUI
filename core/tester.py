@@ -101,6 +101,9 @@ NAKED_BASELINE_HOSTS: list[str] = [
     "discord.com", "www.youtube.com", "gateway.discord.gg", "i.ytimg.com",
 ]
 
+# TCP 16-20 test body size (64KB random — stateful DPI cuts the stream mid-transfer).
+TCP1620_BODY = 64 * 1024
+
 # CDN test hosts (опционально, через галочку)
 CDN_HOSTS = [
     "hyperion-cs.github.io", "www.mobil.com.se", "cdn.apple-mapkit.com",
@@ -561,7 +564,15 @@ class Zapret2Tester:
             parts = r.stdout.strip().split()
             code = int(parts[0]) if parts and parts[0].isdigit() else 0
             if code >= 200 and code < 500:
+                # Server answered — the connection survived the 64KB upload:
+                # no stateful-DPI cutoff on this path.
                 return TestResult(domain, "tcp1620", "OK", code, elapsed)
+            if code == 0:
+                # No HTTP response at all while a plain GET on the same host
+                # just succeeded: the 64KB upload got cut mid-stream — that's
+                # the stateful-DPI signature (dpich "Detected").
+                return TestResult(domain, "tcp1620", "TCP16_20", 0, elapsed,
+                                  "upload cutoff — stateful DPI")
             return TestResult(domain, "tcp1620", "BLOCKED", code, elapsed)
         except subprocess.TimeoutExpired:
             elapsed = (time.time() - start) * 1000
@@ -722,6 +733,15 @@ class Zapret2Tester:
         if not skip_cdn and self._any_winws2_running() and not self.shutdown_event.is_set():
             _logged_progress(97, "Проверка CDN-хостов...")
             cdn_results = self._run_domain_tests(CDN_HOSTS, concurrency=15, http_only=True, result_cb=result_cb)
+            # TCP 16-20: POST 64KB — stateful DPI cuts the stream mid-transfer.
+            # Only probed on hosts that answered (dead hosts tell nothing).
+            alive = [r.domain for r in cdn_results if r.status == "OK"]
+            if alive and not self.shutdown_event.is_set():
+                _logged_progress(98, "Проверка stateful DPI (TCP 16-20)...")
+                for r in self._run_tcp1620_tests(alive):
+                    cdn_results.append(r)
+                    if result_cb:
+                        result_cb(r)
         return cdn_results
 
     def _build_result(self, profile_name, all_results, cdn_results, provider_hop, provider_ip, tier, _logged_progress):
