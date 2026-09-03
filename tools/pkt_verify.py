@@ -159,9 +159,9 @@ def sni_hint(payload: bytes) -> str:
     return best
 
 
-def analyze(linktype: int, pkt: bytes, summary: dict):
+def analyze(linktype: int, pkt: bytes, summary: dict, ports: set):
     p = parse_packet(linktype, pkt)
-    if not p or p["dport"] != 443:
+    if not p or p["dport"] not in ports:
         return
     summary["total"] += 1
     opts = {k for k, _, _ in p["options"]}
@@ -191,9 +191,12 @@ def main():
     ap.add_argument("--url", default="https://www.youtube.com/",
                     help="тестовый URL (хост должен покрываться пресетом)")
     ap.add_argument("--label", default="run", help="метка прогона (для имён файлов)")
+    ap.add_argument("--ports", default="443", help="порты захвата, через запятую")
     ap.add_argument("--wait", type=float, default=3.0,
                     help="секунд захвата вокруг запроса")
     args = ap.parse_args()
+
+    ports = [p.strip() for p in args.ports.split(",") if p.strip()]
 
     out_dir = Path(tempfile.gettempdir()) / "pkt_verify"
     out_dir.mkdir(exist_ok=True)
@@ -202,7 +205,8 @@ def main():
 
     print("== 1. очистка фильтров и старт захвата ==")
     run(["pktmon", "filter", "remove"], check=False)
-    run(["pktmon", "filter", "add", "web443", "-t", "TCP", "-p", "443"])
+    for i, p in enumerate(ports):
+        run(["pktmon", "filter", "add", f"port{p}", "-t", "TCP", "-p", p])
     run(["pktmon", "start", "--capture", "--pkt-size", "0",
          "--file-name", str(etl)])
 
@@ -225,10 +229,11 @@ def main():
     data = pcap.read_bytes()
     summary = {"total": 0, "md5": 0, "ts": 0, "syn": 0, "tls": 0,
                "ttls": [], "snls": set(), "pkts": []}
+    ports_set = {int(p) for p in ports}
     for lt, pkt in parse_pcapng(data):
-        analyze(lt, pkt, summary)
+        analyze(lt, pkt, summary, ports_set)
 
-    print(f"   исходящих TCP-пакетов на :443: {summary['total']}")
+    print(f"   исходящих TCP-пакетов на :{','.join(ports)}: {summary['total']}")
     print(f"   с TCP-опцией MD5 (kind 19):   {summary['md5']}")
     print(f"   с TCP-опцией TS (kind 8):     {summary['ts']}")
     print(f"   SYN: {summary['syn']}  TLS-handshake пакетов: {summary['tls']}")
