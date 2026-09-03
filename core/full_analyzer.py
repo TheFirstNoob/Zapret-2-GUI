@@ -18,6 +18,7 @@ def run_full_analysis(
     profiles: list[str],
     lock: threading.Lock,
     on_event: Optional[Callable[[AnalyzerEvent], None]] = None,
+    ipset_catchall: bool = False,
 ) -> list[dict]:
     """Тестирует список профилей на smoke tier. Топ-3 валидирует на full tier.
     Без блоб-тестирования — только чистые профили."""
@@ -70,6 +71,7 @@ def run_full_analysis(
             result = tester.test_profile(
                 profile_name, _cb, tier=tier,
                 result_cb=rcb, skip_cdn=(tier != "full"),
+                ipset_catchall=ipset_catchall,
             )
         entry = {
             "profile": profile_name,

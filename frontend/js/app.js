@@ -233,7 +233,6 @@ const MainPage = {
     $('btnZ1SaveDir').addEventListener('click', () => this.saveZ1Dir());
     $('btnZ1Toggle').addEventListener('click', () => this.toggleZ1());
     $('updateBannerClose').addEventListener('click', () => { $('updateBanner').hidden = true; });
-    $('btnSvcStart').addEventListener('click', () => this.startSvcNow());
 
     ['toggleGameFilter', 'toggleAutoHostlist', 'toggleIpFilter',
       'toggleDiscordVoice', 'toggleWinws2Debug'].forEach(id => {
@@ -793,6 +792,7 @@ const ListsPage = {
 
 const CdnStab = {
   _polling: false,
+  _pollTicks: 0,
   _applied: new Set(),
 
   VERDICTS: {
@@ -811,34 +811,50 @@ const CdnStab = {
 
   async scan() {
     if (this._polling) return;
+    this._applied = new Set();
     $('cdnScanBtn').disabled = true;
     $('cdnProgress').hidden = false;
+    $('cdnProgress').textContent = '';
     $('cdnBody').innerHTML = '<div class="empty-note">Сканирование…</div>';
     try {
-      const r = await apiPost('/api/tester/action', { action: 'cdn_scan' });
+      // apiPost уже добавляет /api — пути без префикса
+      const r = await apiPost('/tester/action', { action: 'cdn_scan' });
       if (r.status !== 'ok') {
-        showToast('Не удалось запустить сканирование: ' + (r.message || ''), 'error');
-        this._stop();
+        this._fail('Не удалось запустить сканирование: ' + (r.message || ''));
         return;
       }
       this._polling = true;
+      this._pollTicks = 0;
       this._poll();
     } catch (err) {
-      showToast('Ошибка: ' + err.message, 'error');
-      this._stop();
+      this._fail('Ошибка запуска: ' + err.message);
     }
+  },
+
+  _fail(msg) {
+    this._stop();
+    $('cdnBody').innerHTML = `<div class="empty-note">${escapeHtml(msg)}</div>`;
+    showToast(msg, 'error');
   },
 
   async _poll() {
     if (!this._polling) return;
+    if (++this._pollTicks > 200) {  // ~4 минуты максимум
+      this._fail('Сканирование не завершилось за отведённое время.');
+      return;
+    }
     let st;
     try {
       st = await apiGet('/tester/status');
     } catch {
-      this._stop('Не удалось получить статус сканирования.');
+      this._fail('Не удалось получить статус сканирования.');
       return;
     }
     if (st.running) {
+      if (st.action && st.action !== 'cdn_scan') {
+        this._fail('Запущена другая задача тестера — сканирование CDN прервано.');
+        return;
+      }
       const p = st.progress || {};
       $('cdnProgress').textContent = `Шаг: ${p.message || '…'} (${p.percent ?? 0}%)`;
       setTimeout(() => this._poll(), 1200);
@@ -846,20 +862,22 @@ const CdnStab = {
     }
     const fr = st.final_result;
     if (fr && fr.type === 'cdn_scan') {
+      if (fr.error) {
+        this._fail(fr.error);
+        return;
+      }
       this._render(fr);
       if (fr.naked_done && fr.note) showToast(fr.note);
     } else {
-      $('cdnBody').innerHTML = `<div class="empty-note">${escapeHtml(fr?.error || 'Сканирование прервано.')}</div>`;
-      if (fr?.error) showToast(fr.error, 'error');
+      this._fail(fr?.error || 'Сканирование прервано.');
     }
     this._stop();
   },
 
-  _stop(msg) {
+  _stop() {
     this._polling = false;
     $('cdnScanBtn').disabled = false;
     $('cdnProgress').hidden = true;
-    if (msg) $('cdnProgress').textContent = msg;
   },
 
   _render(fr) {
@@ -920,7 +938,8 @@ const CdnStab = {
     btn.disabled = true;
     btn.textContent = '…';
     try {
-      const r = await apiPost('/api/cdn/recommendation', {
+      // apiPost уже добавляет /api — путь без префикса
+      const r = await apiPost('/cdn/recommendation', {
         domain, action,
         ips: ips ? ips.split(',') : [],
       });
@@ -1226,7 +1245,6 @@ const TesterPage = {
           if (fr.restored) showToast(fr.restored, /Не удалось|не восстановлен/.test(fr.restored) ? 'warn' : 'ok');
           if (resultType && fr.type === resultType) { if (onResult) onResult(fr); }
           else if (fr.type === 'current_result') { this.state.currentResults = fr; this.runFullPipelinePhase1(); }
-          else if (fr.type === 'naked_result') { if (onResult) onResult(fr); }
           else if (fr.type === 'need_zapret1') {
             this.clearElapsedTimer();
             $('testRun').hidden = true;

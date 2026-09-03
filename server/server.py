@@ -546,6 +546,7 @@ def _run_tester_action(data: dict) -> None:
                     data.get("profile", DEFAULT_PROFILE), progress,
                     tier=data.get("tier", "critical"), result_cb=result_cb,
                     skip_cdn=data.get("skip_cdn", False),
+                    ipset_catchall=bool(get_config_manager().load().ipset_catchall),
                 ))
                 _play_completion_sound()
                 state.set_final(_serialize_result(result))
@@ -573,6 +574,7 @@ def _run_tester_action(data: dict) -> None:
                 total = len(profiles)
                 _tier = data.get("tier", "critical")
                 skip_cdn = data.get("skip_cdn", False)
+                ipset_mode = bool(get_config_manager().load().ipset_catchall)
 
                 # Naked baseline first: detects "strategies do nothing" cases.
                 naked_baseline = _run_tester(lambda: tester.run_naked_baseline(
@@ -596,7 +598,8 @@ def _run_tester_action(data: dict) -> None:
                     res = _run_tester(
                         lambda pn=profile_name, cb=cb_for_profile: tester.test_profile(
                             pn, _inner_progress, tier=_tier,
-                            result_cb=cb, skip_cdn=skip_cdn)
+                            result_cb=cb, skip_cdn=skip_cdn,
+                            ipset_catchall=ipset_mode)
                     )
                     if res is not None:
                         all_results.append(res)
@@ -776,9 +779,10 @@ def _run_tester_action(data: dict) -> None:
                         elif ev.type == "intermediate":
                             state.results.append(ev.payload)
 
-                final_all = _run_tester(
-                    lambda: run_full_analysis(tester, profiles, _tester_lock, on_event=_on_event),
-                )
+                # run_full_analysis сам берёт _tester_lock (нереентерабельный
+                # Lock — оборачивать в _run_tester = гарантированный дедлок)
+                final_all = run_full_analysis(tester, profiles, _tester_lock, on_event=_on_event,
+                                              ipset_catchall=bool(get_config_manager().load().ipset_catchall))
                 
                 # Reduce intermediate + progress noise from final poll
                 with state.lock:
@@ -1003,11 +1007,12 @@ class ZapretHandler(BaseHTTPRequestHandler):
         if rel.startswith("static/"):
             rel = rel[7:]
         file_path = frontend / rel
-        # Security: prevent path traversal
+        # Security: prevent path traversal (is_relative_to — не строковый
+        # префикс: sibling-папка frontend2/backup не проходит)
         try:
             file_path = file_path.resolve()
             frontend_resolved = frontend.resolve()
-            if not str(file_path).startswith(str(frontend_resolved)):
+            if not file_path.is_relative_to(frontend_resolved):
                 self._send_json({"error": "Forbidden"}, HTTPStatus.FORBIDDEN)
                 return
         except (ValueError, OSError):
@@ -1294,6 +1299,12 @@ class ZapretHandler(BaseHTTPRequestHandler):
 
         bat_path = None
         if zapret1_filename and zapret1_strategy:
+            # Клиент-контролируемое имя: только базовое имя, без разделителей —
+            # иначе запись вне корня (path traversal).
+            if Path(zapret1_filename).name != zapret1_filename or any(
+                    c in zapret1_filename for c in "/\\:?"):
+                self._send_json({"status": "error", "message": "Недопустимое имя файла стратегии"})
+                return
             try:
                 bat_bytes = base64.b64decode(zapret1_strategy)
                 bat_path = root / zapret1_filename
@@ -1335,6 +1346,11 @@ class ZapretHandler(BaseHTTPRequestHandler):
                 _tester_state.cancelled = True
             self._send_json({"status": "ok", "action": "cancelled"})
             return
+        with _tester_state.lock:
+            if _tester_state.running:
+                self._send_json({"status": "error", "message": "Тестер уже занят — дождитесь завершения"},
+                                HTTPStatus.CONFLICT)
+                return
         t = threading.Thread(target=_run_tester_action, args=(data,), daemon=True)
         t.start()
         self._send_json({"status": "ok", "action": "started"})
@@ -1374,23 +1390,29 @@ class ZapretHandler(BaseHTTPRequestHandler):
                     self._send_json({"status": "error",
                                      "message": "ipset-режим: у кандидата нет резолвнутых IP — добавьте вручную"})
                     return
+                try:
+                    ip_list = [str(ipaddress.ip_address(i)) for i in ips]
+                except ValueError:
+                    self._send_json({"status": "error", "message": "Некорректный IP в запросе"})
+                    return
                 excl_path = get_root_dir() / "lists" / "ipset-exclude.txt"
                 excl_networks = []
-                for l in excl_path.read_text(encoding="utf-8").splitlines():
-                    l = l.strip()
-                    if l and not l.startswith("#"):
-                        try:
-                            excl_networks.append(ipaddress.ip_network(l, strict=False))
-                        except ValueError:
-                            pass
-                blocked = [ip for ip in ips
+                if excl_path.exists():
+                    for l in excl_path.read_text(encoding="utf-8").splitlines():
+                        l = l.strip()
+                        if l and not l.startswith("#"):
+                            try:
+                                excl_networks.append(ipaddress.ip_network(l, strict=False))
+                            except ValueError:
+                                pass
+                blocked = [ip for ip in ip_list
                            if any(ipaddress.ip_address(ip) in n for n in excl_networks)]
                 if blocked:
                     self._send_json({"status": "error",
                                      "message": f"Наложение: {domain} ({', '.join(blocked)}) уже в ipset-исключениях — пропускаем"})
                     return
                 existing = {l.strip() for l in path.read_text(encoding="utf-8").splitlines() if l.strip()}
-                new_ips = [ip for ip in ips if ip not in existing]
+                new_ips = [ip for ip in ip_list if ip not in existing]
                 if new_ips:
                     with path.open("a", encoding="utf-8") as f:
                         f.write("\n".join(new_ips) + "\n")

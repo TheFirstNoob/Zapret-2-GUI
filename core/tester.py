@@ -57,6 +57,13 @@ CONTROL_HOSTS = [
 TEST_HOSTS = RATED_HOSTS + CONTROL_HOSTS
 CONTROL_DOMAINS = frozenset(CONTROL_HOSTS)
 
+
+def _is_control_alias(domain: str) -> bool:
+    """www-алиас control-хоста (создаётся _expand_with_www) не должен
+    искажать network_rate: например www.x.com из control-хоста x.com."""
+    base = domain[4:] if domain.startswith("www.") else ""
+    return base in CONTROL_DOMAINS
+
 # Test type per domain
 # "http" = curl GET (returns HTTP code). "tls" = handshake only.
 HOST_TEST: dict[str, str] = {
@@ -639,14 +646,6 @@ class Zapret2Tester:
             return TestResult(domain, "tcp1620", "ERROR", 0, elapsed, f"curl: {e}")
 
     @staticmethod
-    def _simple_score(results: list[TestResult]) -> float:
-        """Simple OK/total ratio (0.0–1.0)."""
-        if not results:
-            return 0.0
-        ok = sum(1 for r in results if r.status == "OK")
-        return ok / len(results)
-
-    @staticmethod
     def _net_stats(results: list[TestResult]) -> tuple[int, int, int, float, int, int]:
         """Split results into network (curl/TLS) vs ping counters.
 
@@ -658,7 +657,8 @@ class Zapret2Tester:
         connectivity was 4/13).
         """
         net = [r for r in results
-               if r.test_type != "ping" and r.domain not in CONTROL_DOMAINS]
+               if r.test_type != "ping" and r.domain not in CONTROL_DOMAINS
+               and not _is_control_alias(r.domain)]
         pings = [r for r in results if r.test_type == "ping"]
         net_ok = sum(1 for r in net if r.status == "OK")
         net_total = len(net)
@@ -854,7 +854,6 @@ class Zapret2Tester:
         domains = self._get_tier_hosts(tier)
         all_results: list[TestResult] = []
         tests_done = 0
-        total_tests = len(domains) * 2 + len(PING_HOSTS)
 
         try:
             _logged_progress(15, f"Тест {len(domains)} доменов...")
@@ -947,12 +946,13 @@ class Zapret2Tester:
                     result.z1_was = self._any_winws_running()
                 progress_cb(60, "Верификация кандидатов десинком (пробный список)...")
                 if ipset_mode:
-                    verify_map = self._verify_with_ipset(candidates, progress_cb, result_cb)
+                    verify_map = self._verify_with_ipset(candidates, result_cb)
                 else:
-                    verify_map = self._verify_with_desync(candidates, progress_cb, result_cb,
+                    verify_map = self._verify_with_desync(candidates, result_cb,
                                                           ipset_catchall=ipset_mode)
-                if verify_map:
-                    result.naked_done = True
+                # верификация ВСЕГДА снимает защиту (finally в verify-функциях),
+                # даже если пробный прогон не состоялся — рестор обязателен
+                result.naked_done = True
             # покрытие ipset-all для fix-кандидатов (только ipset-режим)
             ip_map: dict[str, list[str]] = {}
             cover_map: dict[str, bool] = {}
@@ -992,13 +992,13 @@ class Zapret2Tester:
                 ))
             progress_cb(100, "Готово")
         except _TestAbort as e:
-            if e.result is not None:
-                result.error = str(e.result)
+            if e.result is not None and getattr(e.result, "error", None):
+                result.error = str(e.result.error)
             else:
                 result.error = "прервано"
         return result
 
-    def _verify_with_desync(self, domains: list[str], progress_cb, result_cb,
+    def _verify_with_desync(self, domains: list[str], result_cb,
                             ipset_catchall: bool = False) -> dict[str, str]:
         """Пробный прогон с десинком кандидатов: вердикт fix/hard по факту.
 
@@ -1006,67 +1006,70 @@ class Zapret2Tester:
         под десинком или режется дальше). Пустой словарь = проверка не
         состоялась (вызывающий помечает вердикты как unknown)."""
         result: dict[str, str] = {}
+        probe_list = self.root_dir / "lists" / "list-probe.txt"
+        preset_path = self.root_dir / "presets" / "_probe_cdn.txt"
         try:
-            probe_list = self.root_dir / "lists" / "list-probe.txt"
             probe_list.write_text("\n".join(domains) + "\n", encoding="utf-8")
             preset_src = (self.root_dir / "presets" / "default.txt").read_text(encoding="utf-8")
             marker = "--hostlist=@lists/list-general.txt\n"
             if marker not in preset_src:
                 return result
             probe_preset = preset_src.replace(marker, marker + "--hostlist=@lists/list-probe.txt\n")
-            preset_path = self.root_dir / "presets" / "_probe_cdn.txt"
             preset_path.write_text(probe_preset, encoding="utf-8")
             if not self._run_profile("_probe_cdn", ipset_catchall=ipset_catchall):
                 return result
-            try:
-                alive_now = self._run_domain_tests(domains, concurrency=15, http_only=True, result_cb=result_cb)
-                alive_names = {r.domain for r in alive_now if r.status == "OK"}
-                for d in domains:
-                    result[d] = "hard" if d not in alive_names else "fix"
-                if alive_names:
-                    for r in self._run_tcp1620_tests(sorted(alive_names)):
-                        if r.status == "TCP16_20":
-                            result[r.domain] = "hard"
-            finally:
-                self._ensure_winws2_dead()
+            if not self._any_winws2_running():
+                return result
+            alive_now = self._run_domain_tests(domains, concurrency=15, http_only=True, result_cb=result_cb)
+            alive_names = {r.domain for r in alive_now if r.status == "OK"}
+            for d in domains:
+                result[d] = "hard" if d not in alive_names else "fix"
+            if alive_names:
+                for r in self._run_tcp1620_tests(sorted(alive_names)):
+                    if r.status == "TCP16_20":
+                        result[r.domain] = "hard"
             return result
         except (OSError, _TestAbort):
             return result
+        finally:
+            self._ensure_winws2_dead()
+            for p in (probe_list, preset_path):
+                try:
+                    p.unlink()
+                except OSError:
+                    pass
 
-    def _verify_with_ipset(self, domains: list[str], progress_cb, result_cb) -> dict[str, str]:
+    def _verify_with_ipset(self, domains: list[str], result_cb) -> dict[str, str]:
         """Верификация в ipset-режиме: резолв кандидатов в IP → временный
         ipset-include-user → прогон default+ipset. Возвращает вердикт для
         КАЖДОГО домена (fix/hard), пусто = проверка не состоялась."""
         result: dict[str, str] = {}
         inc_path = self.root_dir / "lists" / "ipset-include-user.txt"
         saved = inc_path.read_text(encoding="utf-8") if inc_path.exists() else None
-        ips_by_domain: dict[str, list[str]] = {}
         all_ips: set[str] = set()
         for d in domains:
-            ips = self._resolve_ips(d)
-            ips_by_domain[d] = ips
-            all_ips.update(ips)
+            all_ips.update(self._resolve_ips(d))
         if not all_ips:
             return result
         try:
             inc_path.write_text("\n".join(sorted(all_ips)) + "\n", encoding="utf-8")
             if not self._run_profile("default", ipset_catchall=True):
                 return result
-            try:
-                alive_now = self._run_domain_tests(domains, concurrency=15, http_only=True, result_cb=result_cb)
-                alive_names = {r.domain for r in alive_now if r.status == "OK"}
-                for d in domains:
-                    result[d] = "hard" if d not in alive_names else "fix"
-                if alive_names:
-                    for r in self._run_tcp1620_tests(sorted(alive_names)):
-                        if r.status == "TCP16_20":
-                            result[r.domain] = "hard"
-            finally:
-                self._ensure_winws2_dead()
+            if not self._any_winws2_running():
+                return result
+            alive_now = self._run_domain_tests(domains, concurrency=15, http_only=True, result_cb=result_cb)
+            alive_names = {r.domain for r in alive_now if r.status == "OK"}
+            for d in domains:
+                result[d] = "hard" if d not in alive_names else "fix"
+            if alive_names:
+                for r in self._run_tcp1620_tests(sorted(alive_names)):
+                    if r.status == "TCP16_20":
+                        result[r.domain] = "hard"
             return result
         except (OSError, _TestAbort):
             return result
         finally:
+            self._ensure_winws2_dead()
             if saved is None:
                 try:
                     inc_path.unlink()
@@ -1084,6 +1087,9 @@ class Zapret2Tester:
         kill_processes: bool = False,
         skip_cdn: bool = False,
     ) -> ProfileTestResult:
+        # _setup_profile масштабирует self.timeout по RTT — сбрасываем, чтобы
+        # базовые прогоны не использовали устаревший таймаут прошлого пресета.
+        self.timeout = self._original_timeout
         self.shutdown_event.clear()
         if kill_processes:
             self._ensure_winws2_dead()
@@ -1096,7 +1102,6 @@ class Zapret2Tester:
         _logged_progress(5, f"{profile_name}: проверка...")
 
         domains = self._get_tier_hosts(tier)
-        total_tests = len(domains) * 2 + len(PING_HOSTS)
         tests_done = 0
         all_results: list[TestResult] = []
 
@@ -1134,9 +1139,19 @@ class Zapret2Tester:
             progress_cb(pct, f"{profile_name} ping {host}")
 
         cdn_results: list[TestResult] = []
-        if not skip_cdn and not self.shutdown_event.is_set():
+        # CDN-фаза с тем же гейтом и TCP16-20-легом, что и у test_profile:
+        # naked/current должны честно показывать stateful-DPI картину и не
+        # пробивать CDN, когда никакой защиты не запущено.
+        if not skip_cdn and not self.shutdown_event.is_set() and self._any_winws2_running():
             _logged_progress(97, f"Проверка CDN-хостов ({profile_name})...")
             cdn_results = self._run_domain_tests(CDN_HOSTS, concurrency=15, http_only=True, result_cb=result_cb)
+            alive = [r.domain for r in cdn_results if r.status == "OK"]
+            if alive and not self.shutdown_event.is_set():
+                _logged_progress(98, f"Проверка stateful DPI (TCP 16-20, {profile_name})...")
+                for r in self._run_tcp1620_tests(alive):
+                    cdn_results.append(r)
+                    if result_cb:
+                        result_cb(r)
 
         ok_count = sum(1 for r in all_results if r.status == "OK")
         fail_count = sum(1 for r in all_results if r.status in ("BLOCKED", "TIMEOUT", "FAIL", "ERROR"))

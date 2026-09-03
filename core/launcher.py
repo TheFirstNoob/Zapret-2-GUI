@@ -232,20 +232,32 @@ def build_args_from_preset(
     if include_file.exists() and include_file.stat().st_size > 0:
         user_inc = f"--hostlist={short_path(include_file)}"
     if user_excl or user_inc:
-        injected: list[str] = []
-        profile_injected = False
+        # Per-segment processing: winws2 ANDs --ipset with --hostlist inside
+        # one profile (AGENTS.md §24.2) — injecting the SNI include into an
+        # ipset-bearing segment would collapse the catch-all to only the
+        # user's listed domains.  hostlist-exclude stays safe in both.
+        segs: list[list[str]] = [[]]
         for t in tokens:
-            injected.append(t)
             if t == "--new":
-                profile_injected = False
-            elif not profile_injected and (t.startswith("--hostlist=")
-                                           or t.startswith("--hostlist-exclude=")):
-                if user_excl:
-                    injected.append(user_excl)
-                if user_inc:
-                    injected.append(user_inc)
-                profile_injected = True
-        tokens = injected
+                segs.append([])
+            else:
+                segs[-1].append(t)
+        out: list[str] = []
+        for i, seg in enumerate(segs):
+            if i > 0:
+                out.append("--new")
+            has_ipset = any(t.startswith("--ipset=") for t in seg)
+            injected_once = False
+            for t in seg:
+                if not injected_once and (t.startswith("--hostlist=")
+                                          or t.startswith("--hostlist-exclude=")):
+                    if user_excl:
+                        out.append(user_excl)
+                    if user_inc and not has_ipset:
+                        out.append(user_inc)
+                    injected_once = True
+                out.append(t)
+        tokens = out
     # ── GameFilter: high-port capture + catchall profiles ──
     if game_filter_mode in ("udp", "both"):
         # Raw parts don't cover 1024-65535 → add explicit --wf-udp-out
