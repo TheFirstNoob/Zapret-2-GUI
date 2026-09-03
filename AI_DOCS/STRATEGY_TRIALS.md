@@ -60,3 +60,21 @@ SNI фейка = www.google.com (блоб) — виден в захвате. М�
 но НЕ берёт telegram/facebook/instagram/whatsapp/apns (глубже: MTProto/
 IP-блэкхол — под ipset-десинк не попадают или блок не по IP). Рейтинг
 профилей теперь честный: CONTROL-домены не искажают network_rate.
+
+## CDN + stateful DPI: ipset A/B (Т2, 2026-08-31, наш CDN-тест с TCP-16-20)
+
+| Провайдер | без ipset (TCP16-20 detected) | + ipset | эффект |
+|---|---|---|---|
+| AWS (amplifon/optout) | 2/2 | 0/2 | ✅ починено |
+| Akamai (mobil) | 1/2 | 0/2 | ✅ починено |
+| Cloudflare (esm/justice) | 2/4 | 0/4 | ✅ починено |
+| Melbicom / Oracle / Scaleway | 1/1, 1/2, 1/1 | 0 | ✅ починено |
+| DigitalOcean / Hetzner / BuyVM / OVH / Vultr | detected | **alive → 0** | ❌ ipset ЛОМАЕТ |
+| Azure / Fastly / Gcore / self | 0 | 0 | не резались |
+
+Вывод: грубый ipset чинит stateful-DPI класс (AWS/Akamai/CF/Oracle/
+Melbicom/Scaleway), но ломает здоровый трафик в подсетях DO/Hetzner/
+BuyVM/OVH/Vultr (ipset-all содержит их диапазоны, десинк вредит). →
+Точечный подход: конкретные домены режущихся сервисов в list-general
+(с проверкой полигоном, что десинк не ломает). Тест-домены CDN в списки
+не добавляем.

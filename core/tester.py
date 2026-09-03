@@ -763,6 +763,7 @@ class Zapret2Tester:
             net_ok_count=net_ok, net_fail_count=net_fail, net_total=net_total,
             network_rate=network_rate, ping_ok_count=ping_ok, ping_total=ping_total,
             provider_hop=provider_hop, provider_ip=provider_ip,
+            cdn_results=cdn_results,
         )
 
     def test_profile(
