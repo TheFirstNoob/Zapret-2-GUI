@@ -82,12 +82,13 @@
 
               <div class="row tight">
                 <span class="row-label">Служба (автозапуск)</span>
-                <label class="switch">
-                  <input type="checkbox" id="svcAutoSwitch">
-                  <span class="switch-track"><span class="switch-knob"></span></span>
-                </label>
-                <button class="btn btn-sm" id="btnSvcStart" hidden>Запустить службу</button>
                 <span class="meta" id="svcStatusText"></span>
+                <span class="svc-actions">
+                  <button class="btn btn-sm" id="btnSvcInstall" hidden>Установить службу</button>
+                  <button class="btn btn-sm" id="btnSvcStart" hidden>Запустить</button>
+                  <button class="btn btn-sm" id="btnSvcStop" hidden>Остановить</button>
+                  <button class="btn btn-sm btn-danger-text" id="btnSvcRemove" hidden>Удалить</button>
+                </span>
               </div>
             </div>
 
@@ -359,6 +360,22 @@
                 <button class="btn btn-primary btn-sm" data-save="ipExc">Сохранить</button>
                 <span class="meta" id="ipExcResult"></span>
               </div>
+            </div>
+          </div>
+
+          <div class="panel cdn-panel">
+            <div class="list-head">
+              <div>
+                <div class="panel-title">CDN-стабилизация</div>
+                <div class="panel-desc">Сканирует CDN-хосты под активной защитой и предлагает точечные правки списков: «В обход» — если DPI режет живой хост (stateful-класс, лечится десинком); «В стоп-лист» — если обход ломает живой хост. Полу-автономно: программа предлагает, вы подтверждаете одной кнопкой.</div>
+              </div>
+              <div class="diag-actions">
+                <button class="btn btn-primary" id="cdnScanBtn">Сканировать CDN</button>
+              </div>
+            </div>
+            <div class="cdn-progress" id="cdnProgress" hidden></div>
+            <div class="cdn-body" id="cdnBody">
+              <div class="empty-note">Сканирование занимает 1–2 минуты. Требуется работающая защита (winws2).</div>
             </div>
           </div>
         </section>

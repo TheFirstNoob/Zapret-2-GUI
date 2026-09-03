@@ -226,7 +226,10 @@ const MainPage = {
     $('btnZ2Toggle').addEventListener('click', () => this.toggleZ2());
     $('btnStopZ1Now').addEventListener('click', () => this.stopZ1());
     $('btnApplyToggles').addEventListener('click', () => this.restartZapret());
-    $('svcAutoSwitch').addEventListener('change', (e) => this.setSvcAuto(e.target.checked));
+    $('btnSvcInstall').addEventListener('click', () => this.svcInstall());
+    $('btnSvcStart').addEventListener('click', () => this.svcStart());
+    $('btnSvcStop').addEventListener('click', () => this.svcStop());
+    $('btnSvcRemove').addEventListener('click', () => this.svcRemove());
     $('btnZ1SaveDir').addEventListener('click', () => this.saveZ1Dir());
     $('btnZ1Toggle').addEventListener('click', () => this.toggleZ1());
     $('updateBannerClose').addEventListener('click', () => { $('updateBanner').hidden = true; });
@@ -342,28 +345,74 @@ const MainPage = {
   },
 
   renderServiceLine() {
-    const sw = $('svcAutoSwitch');
     const svc = Status.svc;
     if (!svc) return;
-    if (!this._svcBusy) sw.checked = svc.installed;
-    $('btnSvcStart').hidden = !(svc.installed && !svc.running);
-    $('svcStatusText').textContent = !svc.installed ? ''
-      : (svc.running ? 'установлена · запущена' : 'установлена · остановлена');
+    const installed = !!svc.installed;
+    const running = !!svc.running;
+    $('btnSvcInstall').hidden = installed;
+    $('btnSvcStart').hidden = !(installed && !running);
+    $('btnSvcStop').hidden = !(installed && running);
+    $('btnSvcRemove').hidden = !installed;
+    $('svcStatusText').textContent = this._svcBusy ? '…'
+      : !installed ? 'не установлена — обход только при открытом приложении'
+      : (running ? 'установлена · работает (автозапуск при загрузке)'
+                 : 'установлена · остановлена');
   },
 
-  async startSvcNow() {
-    const btn = $('btnSvcStart');
-    btn.disabled = true;
+  _setSvcBusy(b) {
+    this._svcBusy = b;
+    ['btnSvcInstall', 'btnSvcStart', 'btnSvcStop', 'btnSvcRemove'].forEach(id => {
+      $(id).disabled = b;
+    });
+  },
+
+  async _svcAction(fn, busyText, okText, errText) {
+    this._setSvcBusy(true);
+    $('svcStatusText').textContent = busyText;
     try {
-      const r = await apiPost('/service/start', {});
-      showToast(r.status === 'ok' ? 'Служба запущена' : ('Ошибка: ' + (r.message || '')),
-        r.status === 'ok' ? 'ok' : 'error');
+      const r = await fn();
+      if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
+      showToast(okText, 'ok');
     } catch (e) {
-      showToast('Ошибка: ' + e.message, 'error');
+      showToast(errText + e.message, 'error');
     }
-    btn.disabled = false;
+    this._setSvcBusy(false);
     Status.refreshService();
     Status.refresh();
+  },
+
+  svcInstall() {
+    const t = this._collectToggles();
+    this._svcAction(
+      async () => {
+        const r = await apiPost('/service/install', {
+          profile: $('strategySelect').value,
+          game_filter: t.game_filter_mode, discord_voice: t.discord_voice,
+          debug: t.winws2_debug, autohostlist: t.autohostlist,
+          ipset_catchall: t.ipset_catchall,
+        });
+        if (r.status !== 'ok') return r;
+        return apiPost('/service/start', {});
+      },
+      'Установка…', 'Служба установлена и запущена — обход работает без программы',
+      'Не удалось установить службу: ');
+  },
+
+  svcStart() {
+    this._svcAction(() => apiPost('/service/start', {}),
+      'Запуск…', 'Служба запущена', 'Не удалось запустить службу: ');
+  },
+
+  svcStop() {
+    this._svcAction(() => apiPost('/service/stop', {}),
+      'Остановка…', 'Служба остановлена', 'Не удалось остановить службу: ');
+  },
+
+  svcRemove() {
+    this._svcAction(async () => {
+      if (Status.svc && Status.svc.running) await apiPost('/service/stop', {}).catch(() => {});
+      return apiPost('/service/remove', {});
+    }, 'Удаление…', 'Служба удалена', 'Не удалось удалить службу: ');
   },
 
   _collectToggles() {
@@ -450,42 +499,9 @@ const MainPage = {
   _setBusy(b) {
     this._busy = b;
     $('btnZ2Toggle').disabled = b;
-    $('svcAutoSwitch').disabled = b;
-  },
-
-  async setSvcAuto(on) {
-    const sw = $('svcAutoSwitch');
-    this._svcBusy = true;
-    sw.disabled = true;
-    try {
-      if (on) {
-        if (!Status.svc || !Status.svc.installed) {
-          const t = this._collectToggles();
-          const r = await apiPost('/service/install', {
-            profile: $('strategySelect').value,
-            game_filter: t.game_filter_mode, discord_voice: t.discord_voice,
-            debug: t.winws2_debug, autohostlist: t.autohostlist,
-            ipset_catchall: t.ipset_catchall,
-          });
-          if (r.status !== 'ok') throw new Error(r.message || 'не установлено');
-        }
-        const r = await apiPost('/service/start', {});
-        if (r.status !== 'ok') throw new Error(r.message || 'не запущена');
-        showToast('Служба включена — обход работает без программы', 'ok');
-      } else {
-        if (Status.svc && Status.svc.running) await apiPost('/service/stop', {}).catch(() => {});
-        const r = await apiPost('/service/remove', {});
-        if (r.status !== 'ok') throw new Error(r.message || 'не удалена');
-        showToast('Служба удалена', 'ok');
-      }
-    } catch (e) {
-      sw.checked = !on;
-      showToast('Со службой не вышло: ' + e.message, 'error');
-    }
-    this._svcBusy = false;
-    sw.disabled = false;
-    Status.refreshService();
-    Status.refresh();
+    ['btnSvcInstall', 'btnSvcStart', 'btnSvcStop', 'btnSvcRemove'].forEach(id => {
+      $(id).disabled = b;
+    });
   },
 
   // ── Zapret 1 ──
@@ -670,6 +686,7 @@ const ListsPage = {
         ta.addEventListener('scroll', () => this._syncNums(key));
         this.load(key);
       });
+      CdnStab.init();
     }
   },
 
@@ -773,6 +790,139 @@ const ListsPage = {
 };
 
 // ══════════════════════════ ТЕСТЕР ══════════════════════════
+
+const CdnStab = {
+  _polling: false,
+  _applied: new Set(),
+
+  VERDICTS: {
+    fix: { label: 'DPI режет — лечится', cls: 'bad', btn: { action: 'general', text: 'В обход' } },
+    ok: { label: 'чисто', cls: '', btn: null },
+    break: { label: 'обход ломает', cls: 'bad', btn: { action: 'exclude', text: 'В стоп-лист' } },
+    hard: { label: 'не лечится', cls: '', btn: null },
+    dead: { label: 'хост мёртв (не блок)', cls: '', btn: null },
+    unknown: { label: 'не проверено', cls: '', btn: null },
+  },
+
+  init() {
+    $('cdnScanBtn').addEventListener('click', () => this.scan());
+  },
+
+  async scan() {
+    if (this._polling) return;
+    $('cdnScanBtn').disabled = true;
+    $('cdnProgress').hidden = false;
+    $('cdnBody').innerHTML = '<div class="empty-note">Сканирование…</div>';
+    try {
+      const r = await apiPost('/api/tester/action', { action: 'cdn_scan' });
+      if (r.status !== 'ok') {
+        showToast('Не удалось запустить сканирование: ' + (r.message || ''), 'error');
+        this._stop();
+        return;
+      }
+      this._polling = true;
+      this._poll();
+    } catch (err) {
+      showToast('Ошибка: ' + err.message, 'error');
+      this._stop();
+    }
+  },
+
+  async _poll() {
+    if (!this._polling) return;
+    let st;
+    try {
+      st = await apiGet('/tester/status');
+    } catch {
+      this._stop('Не удалось получить статус сканирования.');
+      return;
+    }
+    if (st.running) {
+      const p = st.progress || {};
+      $('cdnProgress').textContent = `Шаг: ${p.message || '…'} (${p.percent ?? 0}%)`;
+      setTimeout(() => this._poll(), 1200);
+      return;
+    }
+    const fr = st.final_result;
+    if (fr && fr.type === 'cdn_scan') {
+      this._render(fr);
+      if (fr.naked_done && fr.note) showToast(fr.note);
+    } else {
+      $('cdnBody').innerHTML = `<div class="empty-note">${escapeHtml(fr?.error || 'Сканирование прервано.')}</div>`;
+      if (fr?.error) showToast(fr.error, 'error');
+    }
+    this._stop();
+  },
+
+  _stop(msg) {
+    this._polling = false;
+    $('cdnScanBtn').disabled = false;
+    $('cdnProgress').hidden = true;
+    if (msg) $('cdnProgress').textContent = msg;
+  },
+
+  _render(fr) {
+    const v = fr.verdicts || [];
+    const counts = {};
+    v.forEach(x => { counts[x.verdict] = (counts[x.verdict] || 0) + 1; });
+    const sum = (k) => counts[k] || 0;
+    const head = `
+      <div class="cdn-summary">
+        <span>режет DPI, лечится: <b class="bad">${sum('fix')}</b></span>
+        <span>режет, не лечится: <b>${sum('hard')}</b></span>
+        <span>чисто: <b>${sum('ok')}</b></span>
+        <span>обход ломает: <b class="bad">${sum('break')}</b></span>
+        <span>мёртвые: <b>${sum('dead')}</b></span>
+        ${fr.naked_done ? '<span class="meta">+ проверки без защиты</span>' : ''}
+      </div>`;
+    const rows = v.map(x => {
+      const vd = this.VERDICTS[x.verdict] || this.VERDICTS.unknown;
+      const applied = this._applied.has(x.domain);
+      const btn = (!applied && vd.btn)
+        ? `<button class="btn btn-sm" data-cdn-act="${vd.btn.action}" data-cdn-domain="${escapeHtml(x.domain)}">${vd.btn.text}</button>`
+        : (applied ? '<span class="meta">применено</span>' : '');
+      return `<tr class="${vd.cls}">
+        <td class="mono">${escapeHtml(x.domain)}</td>
+        <td>${escapeHtml(x.provider)}</td>
+        <td>${x.alive === 'A' ? 'да' : 'нет'}</td>
+        <td>${x.dpi === 'DET' ? '<span class="bad">режет</span>' : (x.dpi === 'ok' ? 'не режет' : '—')}</td>
+        <td>${x.naked === '—' ? '—' : (x.naked === 'A' ? 'жив' : 'мёртв')}</td>
+        <td>${vd.label}</td>
+        <td>${btn}</td>
+      </tr>`;
+    }).join('');
+    $('cdnBody').innerHTML = head + `
+      <table class="list-table"><thead><tr>
+        <th>Хост</th><th>CDN</th><th>Под защитой</th><th>Stateful DPI</th><th>Без защиты</th><th>Вердикт</th><th></th>
+      </tr></thead><tbody>${rows}</tbody></table>`;
+    $('cdnBody').querySelectorAll('[data-cdn-act]').forEach(b =>
+      b.addEventListener('click', () => this.apply(b)));
+    $('cdnBody').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  },
+
+  async apply(btn) {
+    const domain = btn.dataset.cdnDomain;
+    const action = btn.dataset.cdnAct;
+    btn.disabled = true;
+    btn.textContent = '…';
+    try {
+      const r = await apiPost('/api/cdn/recommendation', { domain, action });
+      if (r.status === 'ok') {
+        this._applied.add(domain);
+        btn.textContent = '✓ ' + r.message.split(',')[0];
+        showToast('Применено: ' + domain, 'ok');
+      } else {
+        btn.disabled = false;
+        btn.textContent = btn.dataset.cdnAct === 'general' ? 'В обход' : 'В стоп-лист';
+        showToast('Ошибка: ' + (r.message || ''), 'error');
+      }
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = btn.dataset.cdnAct === 'general' ? 'В обход' : 'В стоп-лист';
+      showToast('Ошибка: ' + err.message, 'error');
+    }
+  },
+};
 
 const TesterPage = {
   state: {

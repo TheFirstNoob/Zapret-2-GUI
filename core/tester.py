@@ -200,6 +200,25 @@ class _TestAbort(Exception):
     def __init__(self, result=None): self.result = result
 
 
+@dataclass
+class CdnScanVerdict:
+    domain: str
+    provider: str
+    alive: str            # "A" — жив под защитой, "x" — мёртв
+    dpi: str              # "DET" — stateful DPI режет, "ok" — не режет, "—" — не проверялось
+    naked: str            # "A"/"x"/"—" — живой/мёртвый без защиты (— если не проверялось)
+    verdict: str          # fix / ok / break / dead / unknown
+
+
+@dataclass
+class CdnScanResult:
+    verdicts: list[CdnScanVerdict] = field(default_factory=list)
+    naked_done: bool = False
+    z2_was: bool = False
+    z1_was: bool = False
+    error: str = ""
+
+
 class Zapret2Tester:
     def __init__(self, root_dir: Path, timeout: int = 8) -> None:
         self.root_dir = Path(root_dir)
@@ -835,6 +854,120 @@ class Zapret2Tester:
 
         except _TestAbort as e:
             return e.result if e.result is not None else self._build_result(profile_name, all_results, [], provider_hop, provider_ip, tier, _logged_progress)
+
+    def scan_cdn_recommendations(self, progress_cb, result_cb=None, naked_check: bool = True) -> CdnScanResult:
+        """CDN-стабилизация: вердикты по CDN-хостам для полу-автономного ведения списков.
+
+        Три фазы:
+          1. CDN-батарея (Alive + TCP16-20) под текущей защитой.
+          2. Для мёртвых — naked-перепроверка без защиты: «хост мёртв» vs
+             «десинк ломает живой хост».
+          3. Для живых+режущихся (кандидаты) — ВЕРИФИКАЦИЯ десинком: пробный
+             прогон с временным списком (метод fake+multisplit, проверенный
+             на этом провайдере). Вылечился → fix; режется дальше или умер →
+             hard (не лечится, не трогать).
+
+        Вызывающий обязан восстановить защиту, если naked_done=True
+        (флаги z2_was/z1_was).
+        """
+        self.shutdown_event.clear()
+        result = CdnScanResult()
+        try:
+            if not self._any_winws2_running():
+                result.error = "winws2 не запущен — запустите защиту перед сканированием"
+                return result
+            progress_cb(5, "Проверка CDN-хостов под защитой...")
+            protected = self._run_domain_tests(CDN_HOSTS, concurrency=15, http_only=True, result_cb=result_cb)
+            if self.shutdown_event.is_set():
+                return result
+            alive = [r.domain for r in protected if r.status == "OK"]
+            dpi_map: dict[str, str] = {}
+            if alive:
+                progress_cb(25, "Проверка stateful DPI (TCP 16-20)...")
+                for r in self._run_tcp1620_tests(alive):
+                    dpi_map[r.domain] = "DET" if r.status == "TCP16_20" else "ok"
+            dead = [r.domain for r in protected if r.status != "OK"]
+            naked_map: dict[str, str] = {}
+            if naked_check and dead:
+                result.z2_was = self._any_winws2_running()
+                result.z1_was = self._any_winws_running()
+                progress_cb(45, "Перепроверка мёртвых хостов без защиты...")
+                self._ensure_winws2_dead()
+                result.naked_done = True
+                for r in self._run_domain_tests(dead, concurrency=8, http_only=True, result_cb=result_cb):
+                    naked_map[r.domain] = "A" if r.status == "OK" else "x"
+            candidates = [d for d in alive if dpi_map.get(d) == "DET"]
+            verify_map: dict[str, str] = {}
+            if candidates and not self.shutdown_event.is_set():
+                if not result.naked_done:
+                    result.z2_was = self._any_winws2_running()
+                    result.z1_was = self._any_winws_running()
+                progress_cb(60, "Верификация кандидатов десинком (пробный список)...")
+                verify_map = self._verify_with_desync(candidates, progress_cb, result_cb)
+                if verify_map:
+                    result.naked_done = True
+            progress_cb(90, "Сборка вердиктов...")
+            for r in protected:
+                dpi = dpi_map.get(r.domain, "—")
+                naked = naked_map.get(r.domain, "—")
+                if r.status == "OK":
+                    if dpi == "DET":
+                        verdict = verify_map.get(r.domain, "unknown")
+                    else:
+                        verdict = "ok"
+                elif naked == "A":
+                    verdict = "break"
+                elif naked == "x":
+                    verdict = "dead"
+                else:
+                    verdict = "unknown"
+                result.verdicts.append(CdnScanVerdict(
+                    domain=r.domain,
+                    provider=CDN_PROVIDERS.get(r.domain, "—"),
+                    alive="A" if r.status == "OK" else "x",
+                    dpi=dpi, naked=naked, verdict=verdict,
+                ))
+            progress_cb(100, "Готово")
+        except _TestAbort as e:
+            if e.result is not None:
+                result.error = str(e.result)
+            else:
+                result.error = "прервано"
+        return result
+
+    def _verify_with_desync(self, domains: list[str], progress_cb, result_cb) -> dict[str, str]:
+        """Пробный прогон с десинком кандидатов: вердикт fix/hard по факту.
+
+        Возвращает вердикт для КАЖДОГО домена (fix — вылечился, hard — умер
+        под десинком или режется дальше). Пустой словарь = проверка не
+        состоялась (вызывающий помечает вердикты как unknown)."""
+        result: dict[str, str] = {}
+        try:
+            probe_list = self.root_dir / "lists" / "list-probe.txt"
+            probe_list.write_text("\n".join(domains) + "\n", encoding="utf-8")
+            preset_src = (self.root_dir / "presets" / "default.txt").read_text(encoding="utf-8")
+            marker = "--hostlist=@lists/list-general.txt\n"
+            if marker not in preset_src:
+                return result
+            probe_preset = preset_src.replace(marker, marker + "--hostlist=@lists/list-probe.txt\n")
+            preset_path = self.root_dir / "presets" / "_probe_cdn.txt"
+            preset_path.write_text(probe_preset, encoding="utf-8")
+            if not self._run_profile("_probe_cdn"):
+                return result
+            try:
+                alive_now = self._run_domain_tests(domains, concurrency=15, http_only=True, result_cb=result_cb)
+                alive_names = {r.domain for r in alive_now if r.status == "OK"}
+                for d in domains:
+                    result[d] = "hard" if d not in alive_names else "fix"
+                if alive_names:
+                    for r in self._run_tcp1620_tests(sorted(alive_names)):
+                        if r.status == "TCP16_20":
+                            result[r.domain] = "hard"
+            finally:
+                self._ensure_winws2_dead()
+            return result
+        except (OSError, _TestAbort):
+            return result
 
     def _test_baseline(
         self,

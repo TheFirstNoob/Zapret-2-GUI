@@ -128,7 +128,7 @@ def _ui_presets() -> list[str]:
         return []
     return sorted(
         f.stem for f in presets_dir.glob("*.txt")
-        if not f.stem.startswith(("exp-", "test-", "cand-"))
+        if not f.stem.startswith(("exp-", "test-", "cand-", "_probe"))
     )
 
 def get_controller() -> ZapretController:
@@ -488,7 +488,7 @@ def _run_tester_action(data: dict) -> None:
     logger = None
 
     try:
-        if action in ("test", "test_profiles", "current", "naked",
+        if action in ("test", "test_profiles", "current", "naked", "cdn_scan",
                        "check-winws", "check_vpn", "full_analysis"):
 
             # short synchronous checks
@@ -501,6 +501,24 @@ def _run_tester_action(data: dict) -> None:
             if action == "check_vpn":
                 result = _check_vpn()
                 state.set_final({"type": "vpn_result", **result})
+                state.running = False
+                return
+
+            if action == "cdn_scan":
+                progress = _make_progress_cb(state)
+                result_cb = _make_result_cb(state)
+                scan = _run_tester(lambda: tester.scan_cdn_recommendations(
+                    progress, result_cb=result_cb))
+                note = ""
+                if scan.naked_done:
+                    note = _restore_protection_after_naked(scan.z2_was, scan.z1_was, state)
+                state.set_final({
+                    "type": "cdn_scan",
+                    "verdicts": [v.__dict__ for v in scan.verdicts],
+                    "naked_done": scan.naked_done,
+                    "note": note,
+                    "error": scan.error,
+                })
                 state.running = False
                 return
 
@@ -1045,6 +1063,8 @@ class ZapretHandler(BaseHTTPRequestHandler):
                 self._handle_collect_info()
             elif path == "/api/tester/action":
                 self._handle_tester_action(data)
+            elif path == "/api/cdn/recommendation":
+                self._handle_cdn_recommendation(data)
             else:
                 self._send_json({"error": "Not found"}, HTTPStatus.NOT_FOUND)
         except RuntimeError as e:
@@ -1314,6 +1334,36 @@ class ZapretHandler(BaseHTTPRequestHandler):
         t = threading.Thread(target=_run_tester_action, args=(data,), daemon=True)
         t.start()
         self._send_json({"status": "ok", "action": "started"})
+
+    def _handle_cdn_recommendation(self, data: dict) -> None:
+        """Полу-автономное применение вердикта: домен в list-general.txt
+        (action=general) или list-exclude.txt (action=exclude), затем
+        перезапуск текущего пресета, чтобы изменение вступило в силу."""
+        domain = (data.get("domain") or "").strip().lower().rstrip(".")
+        action = data.get("action", "")
+        if not domain or action not in ("general", "exclude"):
+            self._send_json({"status": "error", "message": "Нужны domain и action (general|exclude)"})
+            return
+        fname = "list-general.txt" if action == "general" else "list-exclude.txt"
+        path = get_root_dir() / "lists" / fname
+        existing = [l.strip().lower() for l in path.read_text(encoding="utf-8").splitlines() if l.strip()]
+        if domain not in existing:
+            with path.open("a", encoding="utf-8") as f:
+                f.write(domain + "\n")
+        cfg = get_config_manager().load()
+        profile = cfg.last_profile or DEFAULT_PROFILE
+        ok, msg = get_controller().start(
+            profile,
+            game_filter_mode=cfg.game_filter_mode,
+            discord_voice=cfg.discord_voice,
+            winws2_debug=cfg.winws2_debug,
+            autohostlist=cfg.autohostlist,
+            ipset_catchall=cfg.ipset_catchall,
+        )
+        if ok:
+            self._send_json({"status": "ok", "message": f"{domain} → {fname}, пресет {profile} перезапущен"})
+        else:
+            self._send_json({"status": "error", "message": f"{domain} добавлен в {fname}, но перезапуск не удался: {msg}"})
 
 
 # ── Server lifecycle ────────────────────────────────────────
