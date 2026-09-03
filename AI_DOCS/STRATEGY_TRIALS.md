@@ -48,3 +48,15 @@ pktmon-захват исходящего :443 → тестовый curl → ра
 Вывод: tcp_md5 реально применяется на уровне пакета (не мусор и не перекрыт);
 SNI фейка = www.google.com (блоб) — виден в захвате. Метод: эталон vs параметр,
 сравнение полей; если поле не изменилось — параметр мёртв/перекрыт.
+
+## ipset catchall A/B (Т2, 2026-08-31, тестер с группами rated/control)
+
+| Режим | RATED (покрыто) | CONTROL, пробилось |
+|---|---|---|
+| default (без ipset) | 87.5% (14/16, i.ytimg флак) | 8/16; заблокированы: telegram×2, x.com, facebook, instagram, linkedin, whatsapp, apns |
+| default + ipset | 93.8% (15/16, i.ytimg флак) | 10/16; **x.com и linkedin пробились по IP** |
+
+Вывод: ipset_catchall пробивает CDN-класс (x.com/linkedin — их IP в ipset-all),
+но НЕ берёт telegram/facebook/instagram/whatsapp/apns (глубже: MTProto/
+IP-блэкхол — под ipset-десинк не попадают или блок не по IP). Рейтинг
+профилей теперь честный: CONTROL-домены не искажают network_rate.

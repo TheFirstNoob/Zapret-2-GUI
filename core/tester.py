@@ -30,12 +30,30 @@ BROWSER_HEADERS = [
     "-H", "Accept-Encoding: identity",
 ]
 
-TEST_HOSTS = [
+# Domains counted in network_rate — MUST be covered by our hostlists
+# (zapret desyncs them), otherwise a DPI block outside profile control
+# would distort the strategy score.
+RATED_HOSTS = [
     "discord.com", "gateway.discord.gg", "cdn.discordapp.com", "updates.discord.com",
     "www.youtube.com", "youtu.be", "i.ytimg.com", "redirector.googlevideo.com",
+    "github.com", "raw.githubusercontent.com", "storage.googleapis.com",
+]
+
+# Probed but NOT counted in network_rate: excluded / not-covered hosts.
+# Shows the raw network state (RF-blocked sites, excluded services) without
+# distorting the strategy comparison.
+CONTROL_HOSTS = [
     "www.google.com", "www.gstatic.com",
     "www.cloudflare.com", "cdnjs.cloudflare.com",
+    "web.telegram.org", "api.telegram.org",
+    "x.com", "www.facebook.com", "www.instagram.com",
+    "www.linkedin.com", "web.whatsapp.com",
+    "fcm.googleapis.com", "api.push.apple.com",
+    "vk.ru", "ya.ru", "www.gosuslugi.ru",
 ]
+
+TEST_HOSTS = RATED_HOSTS + CONTROL_HOSTS
+CONTROL_DOMAINS = frozenset(CONTROL_HOSTS)
 
 # Test type per domain
 # "http" = curl GET (returns HTTP code). "tls" = handshake only.
@@ -48,10 +66,25 @@ HOST_TEST: dict[str, str] = {
     "youtu.be":                 "http",
     "i.ytimg.com":              "tls",
     "redirector.googlevideo.com": "tls",
+    "github.com":               "http",
+    "raw.githubusercontent.com": "http",
+    "storage.googleapis.com":   "tls",
     "www.google.com":           "http",
     "www.gstatic.com":          "tls",
     "www.cloudflare.com":       "http",
     "cdnjs.cloudflare.com":     "tls",
+    "web.telegram.org":         "http",
+    "api.telegram.org":         "http",
+    "x.com":                    "http",
+    "www.facebook.com":         "http",
+    "www.instagram.com":        "http",
+    "www.linkedin.com":         "http",
+    "web.whatsapp.com":         "http",
+    "fcm.googleapis.com":       "tls",
+    "api.push.apple.com":       "tls",
+    "vk.ru":                    "http",
+    "ya.ru":                    "http",
+    "www.gosuslugi.ru":         "http",
 }
 
 # PING hosts (ICMP only, no curl)
@@ -330,7 +363,7 @@ class Zapret2Tester:
         """Kill process, never hang. Delegates to multi-method kill."""
         Zapret2Tester._kill_never_hang(image_name)
 
-    def _run_profile(self, profile_name: str) -> bool:
+    def _run_profile(self, profile_name: str, ipset_catchall: bool = False) -> bool:
         exe_path = self.bin_dir / "winws2.exe"
         if not exe_path.exists():
             exe_path = self.root_dir / "winws2.exe"
@@ -343,7 +376,8 @@ class Zapret2Tester:
 
         self._wait_windivert_free()
 
-        args = build_args_from_preset(self.root_dir, self.lua_dir, self.blobs_dir, preset)
+        args = build_args_from_preset(self.root_dir, self.lua_dir, self.blobs_dir, preset,
+                                      ipset_catchall=ipset_catchall)
         bat = self.root_dir / "_zapret_run.bat"
         write_run_bat(self.root_dir, bat, exe_path, args)
 
@@ -425,8 +459,10 @@ class Zapret2Tester:
         seen: set[str] = set()
         for d in domains:
             base = d[4:] if d.startswith("www.") else d
-            # Skip www expansion for CDN subdomains and NO_WWW domains
-            if base in NO_WWW or base.startswith(CDN_PREFIXES):
+            # Skip www expansion for CDN subdomains, NO_WWW domains and any
+            # 3+ label subdomain (web.telegram.org, api.push.apple.com, ...)
+            # — they have no www variant.
+            if base in NO_WWW or base.startswith(CDN_PREFIXES) or base.count(".") >= 2:
                 if base not in seen:
                     expanded.append((base, False))
                     seen.add(base)
@@ -553,7 +589,8 @@ class Zapret2Tester:
         host stays blocked (e.g. all 8 presets "20/30 (67%)" while actual
         connectivity was 4/13).
         """
-        net = [r for r in results if r.test_type != "ping"]
+        net = [r for r in results
+               if r.test_type != "ping" and r.domain not in CONTROL_DOMAINS]
         pings = [r for r in results if r.test_type == "ping"]
         net_ok = sum(1 for r in net if r.status == "OK")
         net_total = len(net)
@@ -628,7 +665,7 @@ class Zapret2Tester:
     def _get_tier_hosts(self, tier: str) -> list[str]:
         return list(TEST_HOSTS)
 
-    def _setup_profile(self, profile: str, progress_cb, _logged_progress) -> tuple[str, str, str, float]:
+    def _setup_profile(self, profile: str, progress_cb, _logged_progress, ipset_catchall: bool = False) -> tuple[str, str, str, float]:
         """Returns (profile_name, provider_hop, provider_ip) or raises early return via tuple[3] being 0."""
         profile_name = profile
         preset = self.root_dir / "presets" / f"{profile_name}.txt"
@@ -641,7 +678,7 @@ class Zapret2Tester:
             self._logger.progress(profile_name, "START")
 
         _logged_progress(5, f"[{profile_name}] запуск winws2...")
-        if not self._run_profile(profile_name):
+        if not self._run_profile(profile_name, ipset_catchall):
             raise _TestAbort(ProfileTestResult(profile_name=profile_name, results=[
                 TestResult(profile_name, "process", "ERROR", error="winws2 not found or spawn failed"),
             ]))
@@ -715,6 +752,7 @@ class Zapret2Tester:
         tier: str = "critical",
         result_cb: Optional[Callable[[TestResult], None]] = None,
         skip_cdn: bool = False,
+        ipset_catchall: bool = False,
     ) -> ProfileTestResult:
         self.shutdown_event.clear()
         self._ensure_winws2_dead()
@@ -728,7 +766,8 @@ class Zapret2Tester:
         # winws2 not spawning).  A single broken profile must never kill the
         # whole sweep — return its error result so the caller can continue.
         try:
-            profile_name, provider_hop, provider_ip, _ = self._setup_profile(profile, progress_cb, _logged_progress)
+            profile_name, provider_hop, provider_ip, _ = self._setup_profile(
+                profile, progress_cb, _logged_progress, ipset_catchall)
         except _TestAbort as e:
             if e.result is not None:
                 return e.result
