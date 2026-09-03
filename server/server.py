@@ -119,6 +119,18 @@ def get_root_dir() -> Path:
         raise RuntimeError("Service not initialised")
     return _root_dir
 
+
+def _ui_presets() -> list[str]:
+    """Профили для GUI: exp-/test-/cand- префиксы — стенды экспериментов и
+    кандидатов, пользователь не должен видеть их в интерфейсе."""
+    presets_dir = get_root_dir() / "presets"
+    if not presets_dir.is_dir():
+        return []
+    return sorted(
+        f.stem for f in presets_dir.glob("*.txt")
+        if not f.stem.startswith(("exp-", "test-", "cand-"))
+    )
+
 def get_controller() -> ZapretController:
     if _controller is None:
         raise RuntimeError("Service not initialised")
@@ -519,11 +531,7 @@ def _run_tester_action(data: dict) -> None:
             elif action == "test_profiles":
                 profiles = data.get("profiles", None)
                 if not profiles:
-                    presets_dir = get_root_dir() / "presets"
-                    if presets_dir.is_dir():
-                        profiles = sorted(f.stem for f in presets_dir.glob("*.txt"))
-                    else:
-                        profiles = ["default"]
+                    profiles = _ui_presets() or ["default"]
                 # ALWAYS order: default first; auto/custom (generated) last —
                 # the user expects the proven strategy to be tested first.
                 # (The frontend passes its own list from /api/status — order
@@ -913,11 +921,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
         controller = get_controller()
         status = controller.status()
         zapret1 = _scan_winws_exe()
-        presets_dir = get_root_dir() / "presets"
-        profiles = []
-        if presets_dir.is_dir():
-            for f in sorted(presets_dir.glob("*.txt")):
-                profiles.append(f.stem)
+        profiles = _ui_presets()
         self._send_json({
             "status": "ok",
             "zapret": {
@@ -929,11 +933,10 @@ class ZapretHandler(BaseHTTPRequestHandler):
         })
 
     def _handle_list_profiles(self) -> None:
-        presets_dir = get_root_dir() / "presets"
-        profiles = []
-        if presets_dir.is_dir():
-            for f in sorted(presets_dir.glob("*.txt")):
-                profiles.append({"name": f.stem, "display_name": f.stem, "description": "", "is_valid": True, "parse_error": "", "warnings": []})
+        profiles = [
+            {"name": name, "display_name": name, "description": "", "is_valid": True, "parse_error": "", "warnings": []}
+            for name in _ui_presets()
+        ]
         self._send_json({"status": "ok", "profiles": profiles})
 
     def _handle_get_list(self, filename: str) -> None:
@@ -968,8 +971,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
         self._send_json({"status": "ok", "strategies": bats})
 
     def _handle_default_profiles(self) -> None:
-        presets_dir = get_root_dir() / "presets"
-        profiles = sorted(f.stem for f in presets_dir.glob("*.txt")) if presets_dir.is_dir() else ["default"]
+        profiles = _ui_presets() or ["default"]
         self._send_json({"status": "ok", "profiles": profiles})
 
     def _handle_static(self, path: str) -> None:
