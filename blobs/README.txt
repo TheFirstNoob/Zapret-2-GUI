@@ -1,4 +1,4 @@
-﻿СПРАВОЧНИК БЛОБОВ (бинарные данные для lua-desync)
+СПРАВОЧНИК БЛОБОВ (бинарные данные для lua-desync)
 
 Приоритет по полезности:
    1. steamcommunity (quic_initial_steamcommunity_com.bin) — новый блоб из 1.9.9e preview,
