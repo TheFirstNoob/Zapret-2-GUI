@@ -49,10 +49,19 @@
    пробе ≠ гео ок! gemini: 62.133.62.97 умер → упал на RU → гео-детект).
 5. Пресеты/списки правки — в репо (Documents\GitHub\Zapret-2-GUI), Desktop-
    копия синхронизируется коммитами.
-6. **НЕ перекодировать файлы через PS 5.1** (Get-Content/Set-Content без
-   -Encoding: чтение = ANSI, `>` = UTF-16, -Encoding UTF8 = +BOM) — mojibake
-   всего файла (случай README 2026-08-30, коммит 9c104de-фикс). Правки
-   только edit-инструментом; восстановление из git — `git checkout <rev> -- <file>`.
+6. **Кодировка — UTF-8 БЕЗ BOM — стандарт** (PS 5.1 это ломает; Notepad++ пишет
+   без BOM). Правки только edit-инструментом (Write/Edit, Node — без BOM);
+   восстановление из git — `git checkout <rev> -- <file>`.
+   - **НЕ перекодировать файлы через PS 5.1** (Get-Content/Set-Content без
+     -Encoding: чтение = ANSI, `>` = UTF-16, -Encoding UTF8 = +BOM) — mojibake
+     всего файла (случай README 2026-08-30, коммит 9c104de-фикс).
+   - **Добавляют BOM**: PS5.1 `Set-Content`/`Out-File -Encoding UTF8`; python
+     `utf-8-sig` при записи; старый Notepad. **НЕ добавляют**: Write/Edit,
+     python `utf-8`, git, PS7 по умолчанию (`utf8NoBOM`), VSCode.
+   - **Единственное исключение**: `build_lite.py` пишет `test.ps1` с
+     `utf-8-sig` (BOM) — PS 5.1 читает кириллицу только с BOM.
+   - Пресеты/списки код читает через `utf-8-sig` (BOM-безопасно), но хранить
+     их надо БЕЗ BOM (вычищено 2026-09-04: presets/*.txt + blobs/README.txt).
 7. **Списки: точечность над широтой (2026-08-31)** — фильтровать только то,
    что реально блокируется. google.com сам отвечает 200 в голую — не
    десинкать весь google.com/l.google.com (wide-youtube/youtube-ui.l.google.com
