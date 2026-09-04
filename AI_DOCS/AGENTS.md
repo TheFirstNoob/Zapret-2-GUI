@@ -62,6 +62,12 @@
      `utf-8-sig` (BOM) — PS 5.1 читает кириллицу только с BOM.
    - Пресеты/списки код читает через `utf-8-sig` (BOM-безопасно), но хранить
      их надо БЕЗ BOM (вычищено 2026-09-04: presets/*.txt + blobs/README.txt).
+   - **Вывод утилит с кириллицей (2026-09-04)**: задан `PYTHONUTF8=1`
+     (user env) — python пишет UTF-8 штатно; нативные тулы (rg/fd/git/node/
+     curl) и так UTF-8 — они проходят в opencode чисто. НЕ гнать вывод через
+     PS-кмдлеты (Select-Object/Select-String/Get-Content/Write-Output) — они
+     кодируют в cp866 (PTY) и ломают кириллицу. Если PS-вывод всё же нужен —
+     префикс `[Console]::OutputEncoding=[Text.Encoding]::UTF8;`.
 7. **Списки: точечность над широтой (2026-08-31)** — фильтровать только то,
    что реально блокируется. google.com сам отвечает 200 в голую — не
    десинкать весь google.com/l.google.com (wide-youtube/youtube-ui.l.google.com
