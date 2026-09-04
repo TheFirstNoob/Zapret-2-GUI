@@ -1273,6 +1273,7 @@ const TesterPage = {
 
   startTest() {
     this.state.cdnTest = $('cdnCheck').checked;
+    this.state.ipsetTest = $('cdnIpsetCheck').checked;
     this.state.advancedTest = $('extendedCheck').checked;
     this.state.collectLogs = $('logCheck').checked;
     this.resetAllState();
@@ -1324,7 +1325,7 @@ const TesterPage = {
   runBasicPhase2() {
     $('testCurrentPhase').textContent = 'Стратегии тестируются по очереди';
     this._startTesterAction(
-      { action: 'test_profiles', profiles: PROFILES, skip_cdn: !this.state.cdnTest },
+      { action: 'test_profiles', profiles: PROFILES, skip_cdn: !this.state.cdnTest, ipset: this.state.ipsetTest },
       {
         progressConfig: { startPercent: 0, scalePercent: 1, textTemplate: '{msg}' },
         onResult: (d) => {
@@ -1367,7 +1368,7 @@ const TesterPage = {
   runFullPipelinePhase2() {
     $('testCurrentPhase').textContent = 'Фаза 3 из 4: тест стратегий Zapret 2';
     this._startTesterAction(
-      { action: 'test_profiles', profiles: PROFILES, skip_cdn: !this.state.cdnTest },
+      { action: 'test_profiles', profiles: PROFILES, skip_cdn: !this.state.cdnTest, ipset: this.state.ipsetTest },
       {
         resultType: 'result',
         progressConfig: { startPercent: 15, scalePercent: 0.1 },
@@ -1388,7 +1389,7 @@ const TesterPage = {
       return;
     }
     $('testCurrentPhase').textContent = 'Фаза 4 из 4: полный анализ комбинаций';
-    this._startTesterAction({ action: 'full_analysis', profiles: PROFILES }, {
+    this._startTesterAction({ action: 'full_analysis', profiles: PROFILES, ipset: this.state.ipsetTest }, {
       progressConfig: { startPercent: 25, scalePercent: 0.35 },
       onError: () => { $('testCurrentPhase').textContent = 'Ошибка анализа'; this.clearElapsedTimer(); },
     });

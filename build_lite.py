@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import pathlib
 import shutil
-import subprocess
 import zipfile
 
 from core.launcher import build_args_from_preset
@@ -114,16 +113,6 @@ goto menu
 """
 
 
-def _write_service_bat(exe_rel: str, args: list[str]) -> None:
-    cmdline = " ".join(f'"{a}"' for a in args)
-    (LITE / "_zapret_service.bat").write_text(
-        '@echo off\r\n'
-        'cd /d "%~dp0"\r\n'
-        f'start /b /wait "" "{exe_rel}" {cmdline} > nul 2>&1\r\n',
-        encoding="ascii",
-    )
-
-
 def _svc_install_bat(portable_args: list[str]) -> str:
     """Direct-exe service like Zapret 1 (binPath = winws2.exe + args,
     start= auto) — the cmd/bat wrapper is what Defender flags."""
@@ -143,19 +132,6 @@ def _svc_install_bat(portable_args: list[str]) -> str:
         'pause\r\n'
     )
 
-
-SVC_INSTALL_BAT = (
-    '@echo off\r\n'
-    'cd /d "%~dp0"\r\n'
-    'sc stop zapret2 >nul 2>&1\r\n'
-    'sc delete zapret2 >nul 2>&1\r\n'
-    'sc create zapret2 binPath= "\\"cmd.exe\\" /C \\"%~dp0_zapret_service.bat\\"" '
-    'DisplayName= "Zapret 2 DPI Bypass" start= auto\r\n'
-    'sc start zapret2\r\n'
-    'echo.\r\n'
-    'echo Service installed and started. To remove: service-remove.bat\r\n'
-    'pause\r\n'
-)
 
 SVC_REMOVE_BAT = (
     '@echo off\r\n'
@@ -195,8 +171,6 @@ def main() -> None:
         src = ROOT / d
         if src.is_dir():
             shutil.copytree(src, LITE / d)
-
-    exe = LITE / "bin" / "winws2.exe"
 
     # one start-<preset>.bat per strategy (portable %~dp0 paths)
     for pf in sorted((LITE / "presets").glob("*.txt")):

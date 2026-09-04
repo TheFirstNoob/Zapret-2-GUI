@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import threading
-import time
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -17,17 +16,24 @@ class TestLogger:
         self.mode = mode
         self.log_path = self.root_dir / "test_session.log"
         self._lock = threading.Lock()
+        self._fh = None
+        try:
+            self._fh = open(self.log_path, "a", encoding="utf-8", errors="replace")
+        except OSError:
+            self._fh = None
         self._write("=" * 60)
         self._write(f"Zapret2 {VERSION} test session started at {datetime.now().isoformat()}")
         self._write(f"Mode: {mode}")
         self._write("=" * 60)
 
     def _write(self, line: str) -> None:
+        if self._fh is None:
+            return
         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         with self._lock:
             try:
-                with open(self.log_path, "a", encoding="utf-8", errors="replace") as f:
-                    f.write(f"[{ts}] {line}\n")
+                self._fh.write(f"[{ts}] {line}\n")
+                self._fh.flush()
             except OSError:
                 pass
 
@@ -58,6 +64,13 @@ class TestLogger:
     def close(self) -> None:
         self._write(f"Session finished at {datetime.now().isoformat()}")
         self._write("=" * 60)
+        with self._lock:
+            if self._fh is not None:
+                try:
+                    self._fh.close()
+                except OSError:
+                    pass
+                self._fh = None
 
     def get_path(self) -> Path:
         return self.log_path

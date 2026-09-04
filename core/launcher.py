@@ -140,11 +140,7 @@ def build_args_from_preset(
         lists_dir = root_dir / "lists"
     if windivert_dir is None:
         windivert_dir = root_dir / "windivert"
-    short_root = short_path(root_dir)
-    short_lua = short_path(lua_dir)
-    short_blobs = short_path(blobs_dir)
     short_lists = short_path(lists_dir)
-    short_windivert = short_path(windivert_dir)
     lines = preset_path.read_text(encoding="utf-8-sig").strip().splitlines()
     game_on = game_filter_mode != "off"
     tokens: list[str] = []
@@ -183,9 +179,8 @@ def build_args_from_preset(
                 tokens.append(f"--ipset={ipset_inc_path}")
             tokens.append(f"--ipset-exclude={short_lists}\\ipset-exclude.txt")
             continue
-        for prefix, spath in [("@lists/", short_lists)]:
-            if prefix in line:
-                line = line.replace(prefix, str(spath) + "\\")
+        if "@lists/" in line:
+            line = line.replace("@lists/", str(short_lists) + "\\")
         for dir_name, dir_path in [("@lua/", lua_dir), ("@blobs/", blobs_dir), ("@windivert/", windivert_dir)]:
             if dir_name in line:
                 line = line.replace(dir_name, "@" + str(dir_path) + "\\")

@@ -178,7 +178,6 @@ class TestResult:
     status_code: int = 0
     time_ms: float = 0.0
     error: str = ""
-    alias: bool = False  # True = www-added variant, not the primary domain
 
 
 @dataclass
@@ -470,43 +469,49 @@ class Zapret2Tester:
 
     # ── curl-based tests (как в zapret_test_final.py — проверено, работает) ──
 
+    def _curl_attempt(self, url: str, head: bool, timeout: float) -> tuple[Optional[int], int, float, str]:
+        """Один curl к url: (http_code | None, returncode, elapsed_ms, stderr).
+
+        head=True — HEAD (-I, только заголовки); иначе полный GET. timeout — curl
+        -m (макс. время операции), --connect-timeout всегда 2с. Бросает
+        TimeoutExpired/OSError наружу — их обрабатывает _curl_test."""
+        t0 = time.time()
+        args = ["curl.exe", "-4", "-s", "-m", str(int(timeout)),
+                "--connect-timeout", "2", "--show-error"]
+        if head:
+            args.insert(2, "-I")
+        args += BROWSER_HEADERS + ["-o", "NUL", "-w", "%{http_code}", url]
+        r = subprocess.run(
+            args, capture_output=True, text=True, encoding="oem", errors="replace",
+            timeout=timeout + 5, creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+        s = r.stdout.strip()
+        code = int(s) if s.isdigit() else None
+        return code, r.returncode, (time.time() - t0) * 1000, (r.stderr or "")[:80]
+
     def _curl_test(self, domain: str, test_type: str, path: str = "/") -> TestResult:
         start = time.time()
         url = f"https://{domain}{path}"
+        timeout = float(min(int(self.timeout), 6))
         try:
-            r = subprocess.run(
-                ["curl.exe", "-4", "-I", "-s", "-m", str(min(int(self.timeout), 6)),
-                 "--connect-timeout", "2", "--show-error"]
-                + BROWSER_HEADERS
-                + ["-o", "NUL", "-w", "%{http_code}", url],
-                capture_output=True, text=True, encoding="oem", errors="replace", timeout=self.timeout + 5,
-                creationflags=subprocess.CREATE_NO_WINDOW,
-            )
+            # HEAD — быстрый, но не все серверы отвечают на него (#14: ложные
+            # 403/418), поэтому при «000» есть GET-фолбэк.
+            # Пер-хостовых ретраев НЕТ: флак/спайк фиксируется как есть, спорные
+            # домены перепроверяются ОДНИМ общим речеком в конце прогона (§29).
+            code, _, _, _ = self._curl_attempt(url, head=True, timeout=timeout)
+            if code is not None and code >= 100:
+                return TestResult(domain, test_type, "OK", code, (time.time() - start) * 1000)
+
+            code, rc, _, stderr = self._curl_attempt(url, head=False, timeout=timeout)
             elapsed = (time.time() - start) * 1000
-            code_str = r.stdout.strip()
-            if code_str.isdigit():
-                code = int(code_str)
-                if code >= 100:
-                    return TestResult(domain, test_type, "OK", code, elapsed)
-            # HEAD failed — try GET (no -I)
-            r = subprocess.run(
-                ["curl.exe", "-4", "-s", "-m", str(min(int(self.timeout), 6)),
-                 "--connect-timeout", "2", "--show-error"]
-                + BROWSER_HEADERS
-                + ["-o", "NUL", "-w", "%{http_code}", url],
-                capture_output=True, text=True, encoding="oem", errors="replace", timeout=self.timeout + 5,
-                creationflags=subprocess.CREATE_NO_WINDOW,
-            )
-            elapsed = (time.time() - start) * 1000
-            code_str = r.stdout.strip()
-            if code_str.isdigit():
-                code = int(code_str)
-                if code >= 100:
-                    return TestResult(domain, test_type, "OK", code, elapsed)
+            if code is not None and code >= 100:
+                return TestResult(domain, test_type, "OK", code, elapsed)
+            if code is not None:
+                # GET вернул «000» — нет HTTP-ответа, фиксируем как есть.
                 return TestResult(domain, test_type, "BLOCKED", code, elapsed)
-            if test_type == "tls:443" and r.returncode == 0:
+            if test_type == "tls:443" and rc == 0:
                 return TestResult(domain, test_type, "OK", time_ms=elapsed)
-            err = r.stderr[:80] if r.stderr else f"rc={r.returncode}"
+            err = stderr or f"rc={rc}"
             return TestResult(domain, test_type, "ERROR", 0, elapsed, err)
         except subprocess.TimeoutExpired:
             elapsed = (time.time() - start) * 1000
@@ -515,14 +520,13 @@ class Zapret2Tester:
             elapsed = (time.time() - start) * 1000
             return TestResult(domain, test_type, "ERROR", 0, elapsed, f"curl not found: {e}")
 
-    def _expand_with_www(self, domains: list[str]) -> list[tuple[str, bool]]:
-        """Expand domain list with www variants.
+    def _expand_with_www(self, domains: list[str]) -> list[str]:
+        """Expand domain list with www variants (flat list, без дублей).
         Skips subdomains (redirector.*, gateway.*, cdn.*, i.*, updates.*) — they don't have www variants.
-        Domains specified with www. prefix only test the www variant (non-www often redirects/fails).
-        Returns list of (domain, is_alias) tuples where is_alias=True for added www/non-www variants."""
+        Domains specified with www. prefix only test the www variant (non-www often redirects/fails)."""
         CDN_PREFIXES = ("redirector.", "gateway.", "cdn.", "cdnjs.", "i.", "updates.")
         NO_WWW = {"youtu.be"}
-        expanded: list[tuple[str, bool]] = []
+        expanded: list[str] = []
         seen: set[str] = set()
         for d in domains:
             base = d[4:] if d.startswith("www.") else d
@@ -531,19 +535,18 @@ class Zapret2Tester:
             # — they have no www variant.
             if base in NO_WWW or base.startswith(CDN_PREFIXES) or base.count(".") >= 2:
                 if base not in seen:
-                    expanded.append((base, False))
+                    expanded.append(base)
                     seen.add(base)
                 continue
             if d.startswith("www."):
                 # Domain explicitly has www — only test the www variant
                 if d not in seen:
-                    expanded.append((d, False))
+                    expanded.append(d)
                     seen.add(d)
                 continue
             for variant in (base, f"www.{base}"):
                 if variant not in seen:
-                    is_alias = variant != d
-                    expanded.append((variant, is_alias))
+                    expanded.append(variant)
                     seen.add(variant)
         return expanded
 
@@ -560,23 +563,22 @@ class Zapret2Tester:
         if expand_www:
             test_items = self._expand_with_www(domains)
         else:
-            test_items = [(d, False) for d in domains]
+            test_items = list(domains)
         total = len(test_items)
         done = 0
         results = []
         with ThreadPoolExecutor(max_workers=concurrency) as pool:
             futures = {}
-            for d, is_alias in test_items:
+            for d in test_items:
                 if http_only:
-                    futures[pool.submit(self._curl_test, d, "http", path="/")] = (d, is_alias)
+                    futures[pool.submit(self._curl_test, d, "http", path="/")] = d
                 else:
                     ttype = self._host_test_type(d)
                     label = "tls:443" if ttype == "tls" else "https"
-                    futures[pool.submit(self._curl_test, d, label)] = (d, is_alias)
+                    futures[pool.submit(self._curl_test, d, label)] = d
             for fut in as_completed(futures):
-                d, is_alias = futures[fut]
+                d = futures[fut]
                 r = fut.result()
-                r.alias = is_alias
                 results.append(r)
                 done += 1
                 if progress_cb:
@@ -734,7 +736,9 @@ class Zapret2Tester:
         return list(TEST_HOSTS)
 
     def _setup_profile(self, profile: str, progress_cb, _logged_progress, ipset_catchall: bool = False) -> tuple[str, str, str, float]:
-        """Returns (profile_name, provider_hop, provider_ip) or raises early return via tuple[3] being 0."""
+        """Запустить winws2 для пресета, измерить RTT, пробить хоп ТСПУ.
+        Возвращает (profile_name, provider_hop, provider_ip, timeout);
+        при сбое запуска — raise _TestAbort с результатом-ошибкой."""
         profile_name = profile
         preset = self.root_dir / "presets" / f"{profile_name}.txt"
         if not preset.exists():
@@ -853,7 +857,6 @@ class Zapret2Tester:
 
         domains = self._get_tier_hosts(tier)
         all_results: list[TestResult] = []
-        tests_done = 0
 
         try:
             _logged_progress(15, f"Тест {len(domains)} доменов...")
@@ -861,7 +864,6 @@ class Zapret2Tester:
             if self.shutdown_event.is_set():
                 raise _TestAbort(ProfileTestResult(profile_name=profile_name))
 
-            curl_total = len(domains) * 2  # +www expansion
             def _on_curl_progress(done_curl, total_curl):
                 pct = 15 + int(done_curl * 40 / total_curl)
                 progress_cb(pct, f"curl-тест {done_curl}/{total_curl}")
@@ -870,21 +872,24 @@ class Zapret2Tester:
                 if self.shutdown_event.is_set():
                     raise _TestAbort(ProfileTestResult(profile_name=profile_name))
                 all_results.append(r)
-                tests_done += 1
 
+            # Пинг-фаза считает отдельно: tests_done включал curl-результаты,
+            # из-за чего бар прыгал с 55% сразу на ~88%.
+            ping_total = len(domains) + len(PING_HOSTS)
+            ping_done = 0
             for domain in domains:
                 if self.shutdown_event.is_set(): break
                 all_results.append(self._ping_test(domain))
                 if result_cb: result_cb(all_results[-1])
-                tests_done += 1
-                progress_cb(55 + int(tests_done * 20 / (len(domains) + len(PING_HOSTS))), f"ping {domain}")
+                ping_done += 1
+                progress_cb(55 + int(ping_done * 20 / ping_total), f"ping {domain}")
 
             for host in PING_HOSTS:
                 if self.shutdown_event.is_set(): break
                 all_results.append(self._ping_test(host))
                 if result_cb: result_cb(all_results[-1])
-                tests_done += 1
-                progress_cb(55 + int(tests_done * 20 / (len(domains) + len(PING_HOSTS))), f"ping {host}")
+                ping_done += 1
+                progress_cb(55 + int(ping_done * 20 / ping_total), f"ping {host}")
 
             cdn_results = self._run_aux_tests(skip_cdn, _logged_progress, result_cb)
             return self._build_result(profile_name, all_results, cdn_results, provider_hop, provider_ip, tier, _logged_progress)
@@ -1102,7 +1107,6 @@ class Zapret2Tester:
         _logged_progress(5, f"{profile_name}: проверка...")
 
         domains = self._get_tier_hosts(tier)
-        tests_done = 0
         all_results: list[TestResult] = []
 
         _logged_progress(15, f"{profile_name}: {len(domains)} доменов...")
@@ -1116,17 +1120,18 @@ class Zapret2Tester:
             if self.shutdown_event.is_set():
                 return ProfileTestResult(profile_name=profile_name)
             all_results.append(r)
-            tests_done += 1
 
+        # Пинг-фаза считает отдельно (см. test_profile) — бар не прыгает.
+        ping_total = len(domains) + len(PING_HOSTS)
+        ping_done = 0
         for domain in domains:
             if self.shutdown_event.is_set():
                 return ProfileTestResult(profile_name=profile_name)
             all_results.append(self._ping_test(domain))
             if result_cb:
                 result_cb(all_results[-1])
-            tests_done += 1
-            pct = 55 + int(tests_done * 20 / (len(domains) + len(PING_HOSTS)))
-            progress_cb(pct, f"{profile_name} ping {domain}")
+            ping_done += 1
+            progress_cb(55 + int(ping_done * 20 / ping_total), f"{profile_name} ping {domain}")
 
         for host in PING_HOSTS:
             if self.shutdown_event.is_set():
@@ -1134,9 +1139,8 @@ class Zapret2Tester:
             all_results.append(self._ping_test(host))
             if result_cb:
                 result_cb(all_results[-1])
-            tests_done += 1
-            pct = 55 + int(tests_done * 20 / (len(domains) + len(PING_HOSTS)))
-            progress_cb(pct, f"{profile_name} ping {host}")
+            ping_done += 1
+            progress_cb(55 + int(ping_done * 20 / ping_total), f"{profile_name} ping {host}")
 
         cdn_results: list[TestResult] = []
         # CDN-фаза с тем же гейтом и TCP16-20-легом, что и у test_profile:
@@ -1305,19 +1309,24 @@ class Zapret2Tester:
             include_lists = []
 
         coverage: list[dict] = []
+        # Читаем каждый список ОДИН раз, а не на каждый домен: sanity вызывается
+        # для всех заблокированных доменов сразу, повторные чтения файлов — мусор.
+        list_entries: dict[str, list[str]] = {}
+        for name, path in include_lists:
+            if not path.exists():
+                continue
+            try:
+                list_entries[name] = [
+                    l.strip().lower()
+                    for l in path.read_text(encoding="utf-8-sig").splitlines()
+                    if l.strip() and not l.strip().startswith(("#", "//"))
+                ]
+            except OSError:
+                continue
         for domain in blocked_domains:
             d = domain.lower()
-            found = []
-            for name, path in include_lists:
-                if not path.exists():
-                    continue
-                try:
-                    lines = [l.strip().lower() for l in path.read_text(encoding="utf-8-sig").splitlines()
-                             if l.strip() and not l.strip().startswith(("#", "//"))]
-                except OSError:
-                    continue
-                if any(d == l or d.endswith("." + l) for l in lines):
-                    found.append(name)
+            found = [name for name, entries in list_entries.items()
+                     if any(d == l or d.endswith("." + l) for l in entries)]
             coverage.append({"domain": domain, "covered": bool(found), "lists": found})
 
         return {"dry_run": dry, "list_coverage": coverage}

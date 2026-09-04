@@ -11,7 +11,6 @@ from __future__ import annotations
 import json
 import socket
 import subprocess
-import time
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -233,7 +232,7 @@ def classify_block(host: str, timeout: float = 2.5, max_ips: int = 2) -> dict:
         ctx.verify_mode = ssl.CERT_NONE
         try:
             raw = socket.create_connection((ip, 443), timeout=timeout)
-            with ctx.wrap_socket(raw, server_hostname=sni) as ss:
+            with ctx.wrap_socket(raw, server_hostname=sni):
                 return True
         except (OSError, ssl.SSLError):
             return False

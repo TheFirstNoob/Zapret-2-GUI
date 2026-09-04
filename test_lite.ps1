@@ -107,8 +107,6 @@ if ($z1Proc -or $z1Svc) {
 }
 
 try {
-    $runningBefore = (tasklist /FI "IMAGENAME eq winws2.exe" /NH 2>$null) -match "winws2"
-
     # Phase 0: naked baseline
     Kill-Winws
     $nakedOk = Test-Hosts "ГОЛЫЙ ТЕСТ (без защиты)"

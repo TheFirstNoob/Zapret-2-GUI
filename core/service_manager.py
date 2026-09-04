@@ -6,6 +6,23 @@ from typing import Optional
 
 SERVICE_NAME = "zapret2"
 
+# Короткий TTL-кэш состояния службы: фронтенд поллит /api/service/status каждые
+# ~9с, а sc query — это подпроцесс. Сбрасывается на любой мутирующей операции
+# (install/remove/start/stop/reconfigure) — как PID-кэш в контроллере (§28).
+_STATUS_TTL = 10.0
+_status_cache_at = 0.0
+_status_cache_value: Optional[str] = None
+_installed_cache_at = 0.0
+_installed_cache_value: Optional[bool] = None
+
+
+def _invalidate_service_cache() -> None:
+    global _status_cache_at, _status_cache_value, _installed_cache_at, _installed_cache_value
+    _status_cache_at = 0.0
+    _status_cache_value = None
+    _installed_cache_at = 0.0
+    _installed_cache_value = None
+
 
 def _sc(args: list[str]) -> tuple[int, str]:
     try:
@@ -38,23 +55,32 @@ def _winws2_running() -> bool:
 
 
 def is_installed() -> bool:
-    code, _ = _sc(["query", SERVICE_NAME])
-    return code == 0
+    global _installed_cache_at, _installed_cache_value
+    now = time.time()
+    if _installed_cache_value is not None and now - _installed_cache_at < _STATUS_TTL:
+        return _installed_cache_value
+    # Один sc query обслуживает оба кэша: status() сам ходит в SCM.
+    _installed_cache_value = status() != "not_installed"
+    _installed_cache_at = now
+    return _installed_cache_value
 
 
 def status() -> str:
+    global _status_cache_at, _status_cache_value
+    now = time.time()
+    if _status_cache_value is not None and now - _status_cache_at < _STATUS_TTL:
+        return _status_cache_value
     code, out = _sc(["query", SERVICE_NAME])
     if code != 0:
-        return "not_installed"
-    # Parse SCM state from sc query output.  The header is localized
-    # ("STATE" is "СОСТОЯНИЕ" on Russian Windows), but the VALUE is always
-    # English ("4  RUNNING") — search the value, not the label.
-    upper = out.upper()
-    if "RUNNING" in upper:
-        return "running"
-    if "STOPPED" in upper or "STOP_PENDING" in upper:
-        return "stopped"
-    return "stopped"
+        _status_cache_value = "not_installed"
+    else:
+        # Parse SCM state from sc query output.  The header is localized
+        # ("STATE" is "СОСТОЯНИЕ" on Russian Windows), but the VALUE is always
+        # English ("4  RUNNING") — search the value, not the label.
+        upper = out.upper()
+        _status_cache_value = "running" if "RUNNING" in upper else "stopped"
+    _status_cache_at = now
+    return _status_cache_value
 
 
 def _zapret1_service_exists() -> bool:
@@ -117,6 +143,7 @@ def install(root_dir: Optional[Path] = None, args: Optional[list[str]] = None) -
     conflict = _zapret1_conflict()
     if conflict:
         return False, conflict
+    _invalidate_service_cache()
     remove()
     time.sleep(0.5)
     if root_dir is None:
@@ -147,6 +174,7 @@ def install(root_dir: Optional[Path] = None, args: Optional[list[str]] = None) -
 def reconfigure(args: list[str]) -> tuple[bool, str]:
     """Refresh the service's binPath with the current args (strategy changes
     require re-applying the command line — direct-exe services bake it in)."""
+    _invalidate_service_cache()
     root_dir = Path(__file__).resolve().parent.parent
     exe = root_dir / "bin" / "winws2.exe"
     if not exe.exists():
@@ -159,6 +187,8 @@ def reconfigure(args: list[str]) -> tuple[bool, str]:
 
 
 def remove():
+    _invalidate_service_cache()
+    _sc(["stop", SERVICE_NAME])
     _taskkill_winws2()
     time.sleep(0.5)
     _sc(["delete", SERVICE_NAME])
@@ -169,9 +199,11 @@ def start(args: Optional[list[str]] = None):
     conflict = _zapret1_conflict()
     if conflict:
         return False, conflict
+    _invalidate_service_cache()
     from core.tcp_timestamps import enable_for_engine
     enable_for_engine()
-    _taskkill_winws2()
+    stop()
+    # Даём SCM время закрыть состояние (иначе первый sc start может дать 1053).
     time.sleep(0.5)
     if args:
         reconfigure(args)
@@ -182,18 +214,9 @@ def start(args: Optional[list[str]] = None):
 
 
 def stop():
+    # Сначала — корректный sc stop (SCM состояние), taskkill как страховка
+    # для вручную запущенного winws2.
+    _invalidate_service_cache()
+    _sc(["stop", SERVICE_NAME])
     _taskkill_winws2()
     return True, "winws2 остановлен"
-
-
-def build_service_bat(root_dir: Path, exe_path: Path, args: list[str]) -> Path:
-    root_dir = Path(root_dir)
-    args_str = subprocess.list2cmdline(args)
-    bat_path = root_dir / "_zapret_service.bat"
-    lines = [
-        "@echo off",
-        'cd /d "%~dp0"',
-        f'start /b /wait "" "{exe_path}" {args_str} > nul 2>&1',
-    ]
-    bat_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    return bat_path

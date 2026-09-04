@@ -131,7 +131,7 @@ def enable_privilege(name: str) -> bool:
                     err2 = _kernel32.GetLastError()
                     print(f"[privilege] linked token AdjustTokenPrivileges ret={ret2}, last_err={err2}")
                     return err2 == 0
-                print(f"[privilege] linked token not found")
+                print("[privilege] linked token not found")
         except Exception as e:
             print(f"[privilege] linked token exception: {e}")
 

@@ -9,20 +9,7 @@ from typing import Optional
 @dataclass
 class AppConfig:
     root_dir: str = ""
-    lua_dir: str = "lua"
-    blobs_dir: str = "blobs"
-    bin_dir: str = "bin"
-    profiles_dir: str = "presets"
-    lists_dir: str = "lists"
-    auto_hostlist: str = "zapret-auto.txt"
-    exclude_hostlist: str = "zapret-exclude.txt"
-    theme: str = "dark"
-    language: str = "ru"
-    service_name: str = "zapret2"
-    wf_tcp_out: str = "80,443"
-    wf_udp_out: str = "443"
     last_profile: str = "default"
-    tester_timeout: int = 8
     zapret1_dir: str = ""
     zapret1_last_strategy: str = ""
     game_filter_mode: str = "off"
@@ -50,7 +37,11 @@ class ConfigManager:
         if self.config_path.exists():
             try:
                 data = json.loads(self.config_path.read_text(encoding="utf-8"))
-                self._config = AppConfig(**data)
+                # Отбрасываем ключи, которых нет в AppConfig (старые/чужие поля),
+                # иначе TypeError валит всю загрузку и теряется last_profile.
+                known = {k: v for k, v in data.items()
+                         if k in AppConfig.__dataclass_fields__}
+                self._config = AppConfig(**known)
             except (OSError, json.JSONDecodeError, TypeError):
                 self._config = AppConfig(root_dir=str(self.root_dir))
         else:

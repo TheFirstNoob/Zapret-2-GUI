@@ -20,7 +20,6 @@ import argparse
 import socket
 import struct
 import subprocess
-import sys
 import tempfile
 import time
 from pathlib import Path
@@ -52,8 +51,6 @@ def parse_pcapng(data: bytes):
         if btype == 0x0A0D0D0A:          # SHB
             if len(data) - off < blen:
                 break
-            bom = struct.unpack_from("<I", data, off + 8)[0]
-            endian = "<" if bom == 0x1A2B3C4D else ">"
             linktype = None
             # find IDB later; store byte order
         elif btype == 1:                 # IDB

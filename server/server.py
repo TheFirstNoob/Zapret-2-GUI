@@ -15,9 +15,9 @@ from urllib.parse import urlparse, parse_qs
 
 from core.config import ConfigManager, DEFAULT_PROFILE, VERSION
 from core.zapret_controller import ZapretController
-from core.tester import Zapret2Tester, CDN_PROVIDERS, NAKED_BASELINE_HOSTS
+from core.tester import Zapret2Tester, CDN_PROVIDERS, NAKED_BASELINE_HOSTS, RATED_HOSTS
 from core.service_manager import SERVICE_NAME, is_installed as svc_installed, status as svc_status, install as svc_install, remove as svc_remove, start as svc_start, stop as svc_stop
-from core.collector import collect_all, export_data_package
+from core.collector import export_data_package
 from core.launcher import build_args_from_preset, validate_args
 from core.test_logger import TestLogger
 
@@ -368,7 +368,10 @@ def _build_recommendation(all_results, naked, sanity: dict) -> dict:
         return {"verdict": "no_data", "message": "Нет результатов тестов", "best_profile": ""}
 
     best = max(all_results, key=lambda r: (r.network_rate, r.ok_count))
-    blocked = sorted({r.domain for res in all_results for r in res.results
+    # «Не пробито» — провалы ЛУЧШЕЙ стратегии, а не объединение по всем
+    # пресетам: домен, который пробила другая стратегия, не должен выглядеть
+    # нерабочим (union по всем профилям вводил в заблуждение).
+    blocked = sorted({r.domain for r in best.results
                       if r.test_type != "ping" and r.status != "OK"})
     net_rate = best.network_rate
     blocked_set = set(blocked)
@@ -470,11 +473,59 @@ def _build_recommendation(all_results, naked, sanity: dict) -> dict:
         "best_total": best.net_total,
         "same_as_naked": same_as_naked,
         "blocked_domains": blocked,
+        # Домены, чей 000 — известный «прикол», а не блок (YouTube TCP/QUIC):
+        # речек спорных доменов (§29) их не перепроверяет и не помечает «заблокирован».
+        "quirk_skip": (["www.youtube.com", "redirector.googlevideo.com",
+                        "i.ytimg.com", "youtu.be"] if youtube_quirk_ok else []),
         "key_hosts": key_hosts,
         "naked_network_rate": naked.network_rate if naked else None,
         "provider_hop": best.provider_hop,
         "provider_ip": best.provider_ip,
     }
+
+
+def _recheck_contested(tester, best, rec: dict, progress) -> dict:
+    """Речек спорных доменов (§29): вердикт «заблокирован» vs «временно недоступен».
+
+    Пер-хостовых ретраев в _curl_test нет — 000 фиксируется как есть. Спорно то,
+    что RATED-домен («популярный, должен работать») не пробился ЛУЧШЕЙ
+    стратегией: один общий повтор в конце прогона (naked) отличает транзиентный
+    спайк/флак от реального блока. Ожившие на речеке уходят из «не пробито»
+    и помечаются «временно недоступен — ретест»; стабильные 000 — «заблокирован».
+    """
+    best_failed = {r.domain for r in best.results
+                   if r.test_type != "ping" and r.status != "OK"}
+    # Домены с известным «приколом» (YouTube TCP/QUIC) не спорны — их 000
+    # ожидаем, вердикт уже объясняет QUIC-путь (§17).
+    skip = set(rec.get("quirk_skip") or [])
+    contested = [d for d in RATED_HOSTS if d in best_failed and d not in skip]
+    if not contested or tester.shutdown_event.is_set():
+        return rec
+    progress(98, "Речек спорных доменов...")
+    recheck: dict[str, bool] = {}
+    try:
+        tester._ensure_winws2_dead()
+        for r in tester._run_domain_tests(contested, concurrency=8, expand_www=False):
+            recheck[r.domain] = (r.status == "OK")
+    except Exception:
+        recheck = {}
+    if not recheck:
+        return rec
+    temporary = [d for d in contested if recheck.get(d)]
+    confirmed = [d for d in contested if not recheck.get(d)]
+    note = []
+    if temporary:
+        note.append("временно недоступен (ретест): " + ", ".join(temporary))
+    if confirmed:
+        note.append("заблокирован: " + ", ".join(confirmed))
+    rec = dict(rec)
+    rec["recheck"] = {"temporary": temporary, "blocked": confirmed}
+    # Ожившие на речеке уходят из чипов «не пробито».
+    rec["blocked_domains"] = [d for d in (rec.get("blocked_domains") or [])
+                              if d not in temporary]
+    if note:
+        rec["message"] = ((rec.get("message") or "").rstrip() + " — " + "; ".join(note))
+    return rec
 
 
 def _run_tester_action(data: dict) -> None:
@@ -574,7 +625,11 @@ def _run_tester_action(data: dict) -> None:
                 total = len(profiles)
                 _tier = data.get("tier", "critical")
                 skip_cdn = data.get("skip_cdn", False)
-                ipset_mode = bool(get_config_manager().load().ipset_catchall)
+                # Галочка «Использовать IPSets для точности» форсирует ipset-режим
+                # на весь прогон независимо от глобального тумблера (A/B сравнение).
+                ipset_mode = (data.get("ipset")
+                              if isinstance(data.get("ipset"), bool)
+                              else bool(get_config_manager().load().ipset_catchall))
 
                 # Naked baseline first: detects "strategies do nothing" cases.
                 naked_baseline = _run_tester(lambda: tester.run_naked_baseline(
@@ -610,7 +665,7 @@ def _run_tester_action(data: dict) -> None:
                                  f"Стратегия {profile_name}: не запустилась")
                 if all_results:
                     best = max(all_results, key=lambda r: (r.network_rate, r.ok_count))
-                    blocked = sorted({r.domain for res in all_results for r in res.results
+                    blocked = sorted({r.domain for r in best.results
                                       if r.test_type != "ping" and r.status != "OK"})
                     sanity = tester.collect_sanity_info(best.profile_name, blocked)
                     rec = _build_recommendation(all_results, naked_baseline, sanity)
@@ -652,16 +707,10 @@ def _run_tester_action(data: dict) -> None:
                                                   get_root_dir() / "bin" / "winws2.exe", args)
                                     launched = launch_winws2_bat(bat, get_root_dir(), timeout=5.0)
                                     _time.sleep(1.5)
-                                    import subprocess as _sp
-                                    chk = _sp.run(
-                                        ["tasklist", "/FI", "IMAGENAME eq winws2.exe", "/FO", "CSV", "/NH"],
-                                        capture_output=True, text=True, timeout=5,
-                                        encoding="oem", errors="replace",
-                                        creationflags=_sp.CREATE_NO_WINDOW)
-                                    alive = launched and "winws2.exe" in chk.stdout
-                                    _sp.run(["taskkill", "/F", "/IM", "winws2.exe"],
-                                            capture_output=True, timeout=5,
-                                            creationflags=_sp.CREATE_NO_WINDOW)
+                                    alive = launched and tester.is_running()
+                                    subprocess.run(["taskkill", "/F", "/IM", "winws2.exe"],
+                                                   capture_output=True, timeout=5,
+                                                   creationflags=subprocess.CREATE_NO_WINDOW)
                                     if not alive:
                                         custom["valid"] = False
                                         custom["error"] = ("custom не стартует на реальном запуске "
@@ -690,12 +739,12 @@ def _run_tester_action(data: dict) -> None:
                             lambda: tester.test_profile(
                                 "custom", _make_progress_cb(state),
                                 tier=_tier, result_cb=_make_result_cb(state, profile="custom"),
-                                skip_cdn=skip_cdn)
+                                skip_cdn=skip_cdn, ipset_catchall=ipset_mode)
                         )
                         if res is not None:
                             all_results.append(res)
                             best = max(all_results, key=lambda r: (r.network_rate, r.ok_count))
-                            blocked = sorted({r.domain for res in all_results for r in res.results
+                            blocked = sorted({r.domain for r in best.results
                                               if r.test_type != "ping" and r.status != "OK"})
                             sanity = tester.collect_sanity_info(best.profile_name, blocked)
                             rec = _build_recommendation(all_results, naked_baseline, sanity)
@@ -712,6 +761,14 @@ def _run_tester_action(data: dict) -> None:
                             else:
                                 custom["relation"] = "worse"
                             custom["rate"] = round(c_rate, 1)
+
+                    # ── Речек спорных доменов (§29) ──
+                    # Пер-хостовых ретраев в _curl_test нет: 000 фиксируется как
+                    # есть, а «популярный домен, который должен работать» и не
+                    # пробился лучшей стратегией — спорен. Один общий повтор в
+                    # конце прогона отличает транзиентный спайк/флак от блока.
+                    rec = _recheck_contested(tester, best, rec, progress)
+                    final["recommendation"] = rec
 
                     _play_completion_sound()
                     state.set_final(final, [_serialize_result(r) for r in all_results])
@@ -766,9 +823,6 @@ def _run_tester_action(data: dict) -> None:
                 from core.full_analyzer import run_full_analysis, AnalyzerEvent
 
                 def _on_event(ev: AnalyzerEvent) -> None:
-                    if ev.type == "skipped":
-                        state.set_progress(0, f"Пропущено {ev.payload.get('count', 0)} blob-комбо ({ev.payload.get('reason', '')})")
-                        return
                     with state.lock:
                         ev.payload["type"] = ev.type
                         if ev.type == "progress":
@@ -781,8 +835,11 @@ def _run_tester_action(data: dict) -> None:
 
                 # run_full_analysis сам берёт _tester_lock (нереентерабельный
                 # Lock — оборачивать в _run_tester = гарантированный дедлок)
+                fa_ipset = (data.get("ipset")
+                            if isinstance(data.get("ipset"), bool)
+                            else bool(get_config_manager().load().ipset_catchall))
                 final_all = run_full_analysis(tester, profiles, _tester_lock, on_event=_on_event,
-                                              ipset_catchall=bool(get_config_manager().load().ipset_catchall))
+                                              ipset_catchall=fa_ipset)
                 
                 # Reduce intermediate + progress noise from final poll
                 with state.lock:
@@ -899,8 +956,6 @@ class ZapretHandler(BaseHTTPRequestHandler):
                 self._handle_service_status()
             elif path == "/api/zapret1/strategies":
                 self._handle_zapret1_strategies()
-            elif path == "/api/default-profiles":
-                self._handle_default_profiles()
             elif path == "/api/tester/status":
                 self._handle_tester_status()
             elif path == "/api/update-check":
@@ -927,9 +982,6 @@ class ZapretHandler(BaseHTTPRequestHandler):
         cfg = get_config_manager().load()
         self._send_json({"status": "ok", "config": {
             "root_dir": cfg.root_dir,
-            "theme": cfg.theme,
-            "language": cfg.language,
-            "service_name": cfg.service_name,
             "last_profile": cfg.last_profile,
             "zapret1_dir": cfg.zapret1_dir,
             "zapret1_last_strategy": cfg.zapret1_last_strategy,
@@ -996,10 +1048,6 @@ class ZapretHandler(BaseHTTPRequestHandler):
             bats.append({"name": f.stem, "path": str(f)})
         self._send_json({"status": "ok", "strategies": bats})
 
-    def _handle_default_profiles(self) -> None:
-        profiles = _ui_presets() or ["default"]
-        self._send_json({"status": "ok", "profiles": profiles})
-
     def _handle_static(self, path: str) -> None:
         frontend = get_root_dir() / "frontend"
         # /static/... or direct paths like /css/..., /js/...
@@ -1060,16 +1108,12 @@ class ZapretHandler(BaseHTTPRequestHandler):
                 self._handle_service_start()
             elif path == "/api/service/stop":
                 self._handle_service_stop()
-            elif path == "/api/diagnose":
-                self._handle_diagnose()
             elif path == "/api/diagnose/action":
                 self._handle_diagnose_action(data)
             elif path == "/api/diagnose/status":
                 self._handle_diagnose_status()
             elif path == "/api/export-report":
                 self._handle_export_report(data)
-            elif path == "/api/collect-info":
-                self._handle_collect_info()
             elif path == "/api/tester/action":
                 self._handle_tester_action(data)
             elif path == "/api/cdn/recommendation":
@@ -1083,8 +1127,6 @@ class ZapretHandler(BaseHTTPRequestHandler):
 
     def _handle_save_config(self, data: dict) -> None:
         cfg = get_config_manager().load()
-        if "theme" in data: cfg.theme = data["theme"]
-        if "language" in data: cfg.language = data["language"]
         if "last_profile" in data: cfg.last_profile = data["last_profile"]
         if "zapret1_dir" in data: cfg.zapret1_dir = data["zapret1_dir"]
         if "game_filter_mode" in data: cfg.game_filter_mode = data["game_filter_mode"]
@@ -1230,16 +1272,6 @@ class ZapretHandler(BaseHTTPRequestHandler):
         ok, msg = svc_stop()
         self._send_json({"status": "ok" if ok else "error", "message": msg})
 
-    def _handle_diagnose(self) -> None:
-        import time as _time
-        from core.diagnostics import run_diagnostics, format_report_text
-        start = _time.time()
-        report = run_diagnostics(get_root_dir(), get_config_manager().load())
-        report["elapsed_sec"] = round(_time.time() - start, 1)
-        report["report_text"] = format_report_text(report)
-        self._send_json({"status": "ok", "report": report})
-
-    # ── Streaming diagnostics (progress like the tester) ──
     def _handle_diagnose_action(self, data: dict) -> None:
         import threading as _th
         import time as _time
@@ -1334,9 +1366,6 @@ class ZapretHandler(BaseHTTPRequestHandler):
             self._send_json({"status": "ok", "file": path_or_err})
         else:
             self._send_json({"status": "error", "message": path_or_err})
-
-    def _handle_collect_info(self) -> None:
-        self._send_json({"status": "ok", "data": collect_all()})
 
     def _handle_tester_action(self, data: dict) -> None:
         action = data.get("action", "")
