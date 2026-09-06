@@ -59,7 +59,21 @@ def timestamps_enabled() -> bool:
 
 
 def _set_modern(enabled: bool) -> bool:
-    return bool(_ps_run(_PS_SET_ON if enabled else _PS_SET_OFF))
+    # Set-NetTCPSetting prints nothing on success — judge by exit code,
+    # then confirm via the authoritative getter.
+    try:
+        r = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command",
+             _PS_SET_ON if enabled else _PS_SET_OFF],
+            capture_output=True, text=True, timeout=10,
+            encoding="utf-8", errors="replace",
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+        if r.returncode != 0:
+            return False
+    except (subprocess.TimeoutExpired, OSError):
+        return False
+    return timestamps_enabled() is (True if enabled else False)
 
 
 def _set_legacy_netsh(enabled: bool) -> bool:

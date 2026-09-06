@@ -21,8 +21,9 @@
       <nav class="nav">
         <a href="#main" data-page="main" class="nav-link active">Главная</a>
         <a href="#diagnostics" data-page="diagnostics" class="nav-link">Проверка системы</a>
-        <a href="#tester" data-page="tester" class="nav-link">Подбор стратегии</a>
+        <a href="#tester" data-page="tester" class="nav-link">Подбор стратегии<span class="nav-badge" id="testerBadge" hidden>идёт тест</span></a>
         <a href="#lists" data-page="lists" class="nav-link">Списки</a>
+        <a href="#cdn" data-page="cdn" class="nav-link">CDN-стабилизация</a>
       </nav>
 
       <div class="sidebar-foot">
@@ -79,15 +80,16 @@
                 </label>
                 <button class="btn btn-primary" id="btnZ2Toggle">Запустить</button>
               </div>
+              <div class="meta" id="strategyApplyHint" hidden></div>
 
               <div class="row tight">
                 <span class="row-label">Служба (автозапуск)</span>
                 <span class="meta" id="svcStatusText"></span>
                 <span class="svc-actions">
                   <button class="btn btn-sm" id="btnSvcInstall" hidden>Установить службу</button>
-                  <button class="btn btn-sm" id="btnSvcStart" hidden>Запустить</button>
-                  <button class="btn btn-sm" id="btnSvcStop" hidden>Остановить</button>
-                  <button class="btn btn-sm btn-danger-text" id="btnSvcRemove" hidden>Удалить</button>
+                  <button class="btn btn-sm" id="btnSvcStart" hidden>Запустить службу</button>
+                  <button class="btn btn-sm" id="btnSvcStop" hidden>Остановить службу</button>
+                  <button class="btn btn-sm btn-danger-text" id="btnSvcRemove" hidden>Удалить службу</button>
                 </span>
               </div>
             </div>
@@ -114,6 +116,18 @@
                     </select>
                   </td>
                 </tr>
+
+                <tr>
+                  <td class="opt-name">Discord Voice<span class="opt-id">UDP</span></td>
+                  <td class="opt-desc">Дополнительный обход голосового UDP-трафика Discord. Обычно «Выключено» хватает.<span class="opt-mode-hint" id="voiceModeHint"></span></td>
+                  <td class="opt-ctl">
+                    <select class="input input-sm" id="toggleDiscordVoice">
+                      <option value="off">Выключено</option>
+                      <option value="fake">Стандарт</option>
+                      <option value="udplen">UDP-длина</option>
+                    </select>
+                  </td>
+                </tr>
                 <tr>
                   <td class="opt-name">Авто-список<span class="opt-id">Auto Hostlist</span></td>
                   <td class="opt-desc">Zapret сам добавит домен в обход, когда заметит блокировку. Держите включённым.</td>
@@ -124,11 +138,6 @@
                   <td class="opt-desc">Обрабатывать весь трафик в известных блокируемых подсетях, а не только по спискам доменов. Сильнее грузит систему.</td>
                   <td class="opt-ctl"><label class="switch"><input type="checkbox" id="toggleIpFilter"><span class="switch-track"><span class="switch-knob"></span></span></label></td>
                 </tr>
-                <tr>
-                  <td class="opt-name">Discord Voice<span class="opt-id">UDP</span></td>
-                  <td class="opt-desc">Отдельный обход голосового UDP-трафика Discord. Включайте только при PING ERROR / 5000 в голосовом чате.</td>
-                  <td class="opt-ctl"><label class="switch"><input type="checkbox" id="toggleDiscordVoice"><span class="switch-track"><span class="switch-knob"></span></span></label></td>
-                </tr>
                 <tr class="opt-row-warn">
                   <td class="opt-name">DEBUG-лог<span class="opt-id">winws2</span></td>
                   <td class="opt-desc">Запись каждого пакета. Заметно повышает пинг и нагрузку на CPU. Только для разбора проблем по запросу.</td>
@@ -138,7 +147,7 @@
 
               <div class="panel-foot">
                 <span class="meta" id="applyTogglesHint"></span>
-                <button class="btn btn-primary btn-sm" id="btnApplyToggles" hidden>Перезапустить с новыми параметрами</button>
+                <button class="btn btn-warnline btn-sm" id="btnApplyToggles" hidden>Перезапустить с новыми параметрами</button>
               </div>
             </div>
 
@@ -163,7 +172,7 @@
                   <span class="field-label">Стратегия (.bat)</span>
                   <select class="input" id="z1StrategySelect" disabled><option value="">— сначала укажите папку —</option></select>
                 </label>
-                <button class="btn btn-primary" id="btnZ1Toggle">Запустить</button>
+                <button class="btn" id="btnZ1Toggle">Запустить</button>
               </div>
             </div>
 
@@ -184,6 +193,7 @@
                     <div class="step-name">Проверка системы</div>
                     <div class="step-desc">Права, конфликты, тип блокировки — обычно несколько секунд.</div>
                     <button class="btn btn-sm" id="btnDiagCheck">Открыть проверку системы</button>
+                    <span class="opt-tag" style="margin-left:8px">по желанию</span>
                     <span class="ok-note" id="diagDoneNote" hidden>выполнена</span>
                   </div>
                 </div>
@@ -197,23 +207,23 @@
     <input type="checkbox" id="cdnCheck">
     <span class="opt-text">
       <span class="opt-title">Проверка CDN-сайтов</span>
-      <span class="opt-hint">дополнительно тестируются случайные сайты из разных CDN — картина полнее</span>
+      <span class="opt-hint">случайные сайты из разных CDN — картина полнее</span>
     </span>
-    <span class="opt-tag">+5–10 мин</span>
+    <span class="opt-tag opt-tag-cost">+5–10 мин</span>
   </label>
-  <label class="opt-line">
+  <label class="opt-line opt-sub">
     <input type="checkbox" id="cdnIpsetCheck">
     <span class="opt-text">
       <span class="opt-title">Использовать IPSets для точности</span>
-      <span class="opt-hint">форсирует IP-обход (ipset) на время этого теста: точнее для CDN-класса, но может уронить то, что работало. Сравните прогон с галочкой и без неё</span>
+      <span class="opt-hint">форсирует IP-обход на весь прогон: точнее для CDN-класса, но может уронить работавшее</span>
     </span>
-    <span class="opt-tag">IP-обход</span>
+    <span class="opt-tag">для CDN</span>
   </label>
   <label class="opt-line">
     <input type="checkbox" id="extendedCheck">
     <span class="opt-text">
       <span class="opt-title">Расширенный режим</span>
-      <span class="opt-hint">сравнение с Zapret 1 и без обхода, полный анализ комбинаций стратегий</span>
+      <span class="opt-hint">сравнение с Zapret 1 и без обхода, полный анализ комбинаций</span>
     </span>
     <span class="opt-tag">Zapret 1 + анализ</span>
   </label>
@@ -221,7 +231,7 @@
     <input type="checkbox" id="logCheck">
     <span class="opt-text">
       <span class="opt-title">Отчёт для поддержки</span>
-      <span class="opt-hint">сохранит ZIP с результатами теста и данными о системе</span>
+      <span class="opt-hint">ZIP с результатами теста и данными о системе</span>
     </span>
     <span class="opt-tag">ZIP</span>
   </label>
@@ -279,7 +289,7 @@
           <div class="panel">
             <div class="diag-head">
               <div>
-                <div class="panel-title">Проверка системы</div>
+                <div class="panel-title">Результаты проверки</div>
                 <div class="panel-sub">Права, конфликты, служба, пресет, связь и тип блокировки. Обычно 5–15 секунд.</div>
               </div>
               <div class="diag-actions">
@@ -296,14 +306,20 @@
 
         <!-- ═══ Списки ═══ -->
         <section id="page-lists" class="page">
-          <div class="panel lists-help">
-            <div class="lh-title">Как заполнять</div>
-            <div class="lh-row"><code>example.com</code><span>сайт и все его поддомены (www, api, m и любые другие)</span></div>
-            <div class="lh-row"><code>api.example.com</code><span>точечно — только этот поддомен (и его поддомены)</span></div>
-            <div class="lh-row"><code>1.2.3.0/24</code><span>IP-сеть или один IP-адрес — для блоков IP</span></div>
-            <div class="lh-note"><b>Включения</b> — Zapret обходит принудительно. <b>Исключения</b> — пропускает как есть (если обход мешает).</div>
-            <div class="lh-note">Один адрес на строчку. Ошибочные строки подсвечиваются — пока они есть, список не сохранится.</div>
-          </div>
+          <details class="panel panel-details lists-help">
+            <summary class="panel-summary">
+              <span class="panel-title">Как заполнять</span>
+              <span class="meta">домены, IP-сети, включения и исключения</span>
+            </summary>
+            <div>
+              <div class="lh-row"><code>example.com</code><span>сайт и все его поддомены (www, api, m и любые другие)</span></div>
+              <div class="lh-row"><code>api.example.com</code><span>точечно — только этот поддомен (и его поддомены)</span></div>
+              <div class="lh-row"><code>1.2.3.0/24</code><span>IP-сеть или один IP-адрес — для блоков IP</span></div>
+              <div class="lh-note"><b>Включения</b> — Zapret обходит принудительно. <b>Исключения</b> — пропускает как есть (если обход мешает).</div>
+              <div class="lh-note"><b>Приоритет:</b> исключение сильнее включения. Если домен или сеть есть и там и там, обход на них действовать <b>не будет</b>. Включения из разных списков просто объединяются — дубль безвреден.</div>
+              <div class="lh-note">Один адрес на строчку. Ошибочные строки подсвечиваются — пока они есть, список не сохранится.</div>
+            </div>
+          </details>
 
           <div class="lists-grid">
             <div class="panel list-panel">
@@ -317,7 +333,7 @@
               </div>
               <div class="list-valid" id="domIncValid"></div>
               <div class="list-foot">
-                <button class="btn btn-primary btn-sm" data-save="domInc">Сохранить</button>
+                <button class="btn btn-sm" data-save="domInc">Сохранить</button>
                 <span class="meta" id="domIncResult"></span>
               </div>
             </div>
@@ -333,7 +349,7 @@
               </div>
               <div class="list-valid" id="domExcValid"></div>
               <div class="list-foot">
-                <button class="btn btn-primary btn-sm" data-save="domExc">Сохранить</button>
+                <button class="btn btn-sm" data-save="domExc">Сохранить</button>
                 <span class="meta" id="domExcResult"></span>
               </div>
             </div>
@@ -349,7 +365,7 @@
               </div>
               <div class="list-valid" id="ipIncValid"></div>
               <div class="list-foot">
-                <button class="btn btn-primary btn-sm" data-save="ipInc">Сохранить</button>
+                <button class="btn btn-sm" data-save="ipInc">Сохранить</button>
                 <span class="meta" id="ipIncResult"></span>
               </div>
             </div>
@@ -365,17 +381,31 @@
               </div>
               <div class="list-valid" id="ipExcValid"></div>
               <div class="list-foot">
-                <button class="btn btn-primary btn-sm" data-save="ipExc">Сохранить</button>
+                <button class="btn btn-sm" data-save="ipExc">Сохранить</button>
                 <span class="meta" id="ipExcResult"></span>
               </div>
             </div>
+          </div>
+        </section>
+
+        <!-- ═══ CDN-стабилизация ═══ -->
+        <section id="page-cdn" class="page">
+          <div class="panel lists-help">
+            <div class="lh-title">Что это и когда запускать</div>
+            <div class="lh-note">Сканер популярных CDN-хостов (Cloudflare, Akamai, AWS, Fastly, Google и др.) при работающей защите. CDN обслуживают не только сайты: через них идут игровые загрузки и патчи, матчмейкинг, Discord-медиа, видео. Для каждого хоста проверяется: жив ли он под защитой, режет ли его stateful DPI, как он ведёт себя совсем без защиты — и лечится ли проблема точечным обходом.</div>
+            <div class="lh-row" style="margin-top:8px"><code>«В обход»</code><span>хост жив без защиты, но DPI режет его под обходом, и пробный точечный прогон подтвердил, что он лечится. Домен попадёт в «Домены — включения» (в режиме IP-обхода — его IP в ipset-включения), защита перезапустится.</span></div>
+            <div class="lh-row"><code>«В стоп-лист»</code><span>хост живой, но под обходом умирает. Домен попадёт в «Домены — исключения», защита перезапустится.</span></div>
+            <div class="lh-row"><code>без кнопки</code><span>«чисто» — проблем нет; «уже в ipset» — уже покрыто IP-обходом; «не лечится» — режется, но точечный обход не помогает; «хост мёртв» — не отвечает даже без защиты, это не блокировка.</span></div>
+            <div class="lh-note"><b>Когда запускать:</b> тормозят или не открываются отдельные сайты, игры (загрузки/подключение), Discord-медиа при работающем обходе; после смены провайдера или пресета. Без повода — не чаще раза в пару недель: каждое «В обход» добавляет домен в постоянную обработку.</div>
+            <div class="lh-note"><b>Про IPSets:</b> скан сам подстраивается под тоггл «Общий IP-обход» — правки идут в списки доменов (hostlist-режим) или в ipset-списки (ipset-режим). Запускайте в том режиме, в котором реально живёте.</div>
+            <div class="lh-note">Во время скана защита на короткое время выключается (перепроверка хостов без защиты) и включается обратно — это нормально.</div>
           </div>
 
           <div class="panel cdn-panel">
             <div class="list-head">
               <div>
-                <div class="panel-title">CDN-стабилизация</div>
-                <div class="panel-desc">Сканирует CDN-хосты под активной защитой и предлагает точечные правки списков: «В обход» — если DPI режет живой хост (stateful-класс, лечится десинком); «В стоп-лист» — если обход ломает живой хост. Полу-автономно: программа предлагает, вы подтверждаете одной кнопкой.</div>
+                <div class="panel-title">Скан CDN-хостов</div>
+                <div class="panel-desc">Программа предлагает, вы подтверждаете одной кнопкой. Требуется работающий обход.</div>
               </div>
               <div class="diag-actions">
                 <button class="btn btn-primary" id="cdnScanBtn">Сканировать CDN</button>
@@ -383,7 +413,7 @@
             </div>
             <div class="cdn-progress" id="cdnProgress" hidden></div>
             <div class="cdn-body" id="cdnBody">
-              <div class="empty-note">Сканирование занимает 1–2 минуты. Требуется работающая защита (winws2).</div>
+              <div class="empty-note">Сканирование занимает 1–2 минуты. Запустите обход на «Главной», затем сканируйте.</div>
             </div>
           </div>
         </section>
