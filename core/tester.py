@@ -286,6 +286,41 @@ class Zapret2Tester:
         except OSError:
             return []
 
+    @staticmethod
+    def _safe_prefixes(ips: list[str], protection: set[str], max_prefix: int = 24) -> list[str]:
+        """Для каждого IP — НАИБОЛЬШИЙ чистый префикс, не пересекающийся с
+        защищёнными адресами (protection).
+
+        Отвечает на «какую сеть исключать/включать» в ipset-режиме: от /max_prefix
+        расширяем к /32, пока в префиксе нет ни одного рабочего IP. Anycast-сети
+        (Cloudflare/Fastly — общие адреса тысяч доменов) сами вырождаются в /32,
+        обычные CDN (Hetzner/OVH выделяют /24) получают /24 и переживают ротацию.
+        Возвращает строки «ip/prefix»."""
+        out: list[str] = []
+        prot_objs: set[ipaddress.IPv4Address | ipaddress.IPv6Address] = set()
+        for p in protection:
+            try:
+                prot_objs.add(ipaddress.ip_address(p))
+            except ValueError:
+                continue
+        for s in ips:
+            try:
+                ip = ipaddress.ip_address(s)
+            except ValueError:
+                continue
+            # Только осмысленные единицы: /max_prefix (натуральная аллокация
+            # CDN) или /32 (голый IP). Промежуточные /25-/31 дают случайные
+            # границы, не соответствующие реальным аллокациям провайдеров.
+            for plen in (max_prefix, 32):
+                net = ipaddress.ip_network(f"{ip}/{plen}", strict=False)
+                if any(p in net for p in prot_objs):
+                    continue
+                net_s = str(net)
+                if net_s not in out:
+                    out.append(net_s)
+                break
+        return out
+
     def _ensure_winws2_dead(self) -> None:
         # Kill managed process handle first (by PID) — чистый PID-таргетинг
         self._kill_managed()
@@ -619,7 +654,11 @@ class Zapret2Tester:
         return results
 
     def _tcp1620_test_curl(self, domain: str, body_file: Path) -> TestResult:
-        """TCP 16-20 test via curl: POST 64KB body, detect stateful DPI cutoff."""
+        """TCP 16-20 test via curl: POST 64KB body, detect stateful DPI cutoff.
+
+        Классификация по фактически загруженному объёму (size_upload), а не
+        только по http-коду: stateful DPI режет поток на N КБ — это и есть
+        сигнатура «обрыв на N КБ» (как в dpi-detector, окно 12-36 КБ)."""
         start = time.time()
         try:
             r = subprocess.run(
@@ -634,20 +673,34 @@ class Zapret2Tester:
             elapsed = (time.time() - start) * 1000
             parts = r.stdout.strip().split()
             code = int(parts[0]) if parts and parts[0].isdigit() else 0
+            uploaded = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
             if code >= 200 and code < 500:
-                # Server answered — the connection survived the 64KB upload:
-                # no stateful-DPI cutoff on this path.
+                # Сервер ответил — загрузка 64KB пережила поток: обрыва нет.
                 return TestResult(domain, "tcp1620", "OK", code, elapsed)
-            if code == 0:
-                # No HTTP response at all while a plain GET on the same host
-                # just succeeded: the 64KB upload got cut mid-stream — that's
-                # the stateful-DPI signature (dpich "Detected").
+            if uploaded >= TCP1620_BODY:
+                # Полный объём ушёл, ответа нет (сервер молчит/таймаут) —
+                # поток НЕ резан: это не сигнатура stateful DPI.
+                return TestResult(domain, "tcp1620", "OK", 0, elapsed,
+                                  "upload OK, ответа нет")
+            if uploaded > 0:
+                # Поток обрезан на N КБ — сигнатура stateful DPI (dpich Detected).
                 return TestResult(domain, "tcp1620", "TCP16_20", 0, elapsed,
-                                  "upload cutoff — stateful DPI")
-            return TestResult(domain, "tcp1620", "BLOCKED", code, elapsed)
+                                  f"обрыв на {uploaded // 1024} КБ — stateful DPI")
+            # uploaded == 0: соединение умерло до/в начале загрузки — фаза.
+            err = (r.stderr or "").lower()
+            if "reset by peer" in err or "recv failure" in err:
+                return TestResult(domain, "tcp1620", "BLOCKED", 0, elapsed, "TCP RST")
+            if "connection timed out" in err:
+                return TestResult(domain, "tcp1620", "BLOCKED", 0, elapsed, "SYN DROP")
+            if "ssl" in err and ("handshake" in err or "alert" in err):
+                return TestResult(domain, "tcp1620", "BLOCKED", 0, elapsed, "TLS RST")
+            if "timed out" in err:
+                return TestResult(domain, "tcp1620", "BLOCKED", 0, elapsed, "TIMEOUT")
+            return TestResult(domain, "tcp1620", "BLOCKED", 0, elapsed,
+                              (err.strip()[:60] or f"код {r.returncode}"))
         except subprocess.TimeoutExpired:
             elapsed = (time.time() - start) * 1000
-            return TestResult(domain, "tcp1620", "TCP16_20", 0, elapsed, "POST timeout — stateful DPI")
+            return TestResult(domain, "tcp1620", "TIMEOUT", 0, elapsed, "POST timeout")
         except OSError as e:
             elapsed = (time.time() - start) * 1000
             return TestResult(domain, "tcp1620", "ERROR", 0, elapsed, f"curl: {e}")
