@@ -298,6 +298,7 @@ def _restore_protection_after_naked(z2_was: bool, z1_was: bool, state, svc_was: 
                 game_filter_mode=cfg.game_filter_mode,
                 discord_voice=cfg.discord_voice,
                 discord_voice_mode=cfg.discord_voice_mode,
+                fake_blob=cfg.fake_blob,
                 winws2_debug=cfg.winws2_debug,
                 autohostlist=cfg.autohostlist,
                 ipset_catchall=cfg.ipset_catchall,
@@ -315,9 +316,8 @@ def _restore_protection_after_naked(z2_was: bool, z1_was: bool, state, svc_was: 
                                      creationflags=subprocess.CREATE_NO_WINDOW)
                     return f"Zapret 1 восстановлен ({strat})"
             return "Zapret 1 не восстановлен (стратегия не настроена)"
-    except Exception:
-        pass
-    return ""
+    except Exception as e:
+        return f"Не удалось восстановить защиту: {e}"
 
 
 def _run_with_timeout(args: list[str], timeout: float = 8.0) -> subprocess.CompletedProcess:
@@ -541,6 +541,51 @@ def _recheck_contested(tester, best, rec: dict, progress) -> dict:
     if note:
         rec["message"] = ((rec.get("message") or "").rstrip() + " — " + "; ".join(note))
     return rec
+
+
+def _run_blob_probe(data: dict) -> None:
+    """Перебор TLS-фейк-блобов на короткой батарее. Защита на время прогона
+    перезапускается по одному разу на блоб — восстановление сервис-осведомлённое."""
+    state = _tester_state
+    tester = get_tester()
+    logger = None
+    try:
+        with state.lock:
+            state.reset()
+            state.action_type = "blob_probe"
+        cfg = get_config_manager().load()
+        from core.service_manager import is_installed as svc_installed, status as svc_status
+        svc_was = svc_installed() and svc_status() == "running"
+        z2_was = tester.is_running()
+        exclude_kyber = True
+        blobs_dir = get_root_dir() / "blobs"
+        keys = sorted(f.stem.removeprefix("tls_clienthello_")
+                      for f in blobs_dir.glob("tls_clienthello_*.bin")
+                      if not f.stem.removeprefix("tls_clienthello_").endswith("_kyber"))
+        if not keys:
+            with state.lock:
+                state.error = "в blobs/ нет tls_clienthello_*.bin"
+            return
+        results = _run_tester(lambda: tester.probe_blobs(
+            _make_progress_cb(state), keys,
+            profile_name=cfg.last_profile or DEFAULT_PROFILE))
+        note = ""
+        if z2_was or svc_was:
+            note = _restore_protection_after_naked(True, False, state, svc_was)
+        with state.lock:
+            state.final_result = {"type": "blob_probe", "results": results,
+                                  "restored": note}
+            state.running = False
+            return
+    except Exception as e:
+        with state.lock:
+            state.error = str(e)
+    finally:
+        with state.lock:
+            state.running = False
+        if logger:
+            logger.close()
+            tester.set_logger(None)
 
 
 def _run_tester_action(data: dict) -> None:
@@ -987,6 +1032,8 @@ class ZapretHandler(BaseHTTPRequestHandler):
                 self._handle_get_list("list-include-user.txt")
             elif path == "/api/bundled-domains":
                 self._handle_bundled_domains()
+            elif path == "/api/fake-blobs":
+                self._handle_fake_blobs()
             elif path == "/api/ipset-exclude-list":
                 self._handle_get_list("ipset-exclude.txt")
             elif path == "/api/ipset-include-list":
@@ -1063,6 +1110,17 @@ class ZapretHandler(BaseHTTPRequestHandler):
         if path.exists():
             content = path.read_text(encoding="utf-8")
         self._send_json({"status": "ok", "content": content})
+
+    def _handle_fake_blobs(self) -> None:
+        """Ключи доступных TLS-фейк-блобов (blobs/tls_clienthello_<key>.bin)."""
+        blobs_dir = get_root_dir() / "blobs"
+        keys = []
+        if blobs_dir.is_dir():
+            for f in sorted(blobs_dir.glob("tls_clienthello_*.bin")):
+                key = f.stem.removeprefix("tls_clienthello_")
+                if key and not key.endswith("_kyber"):
+                    keys.append(key)
+        self._send_json({"status": "ok", "blobs": keys})
 
     def _handle_bundled_domains(self) -> None:
         """Домены из наших (не пользовательских) включений — для клиентского
@@ -1171,6 +1229,8 @@ class ZapretHandler(BaseHTTPRequestHandler):
                 self._handle_diagnose_status()
             elif path == "/api/export-report":
                 self._handle_export_report(data)
+            elif path == "/api/blob-probe":
+                self._handle_blob_probe(data)
             elif path == "/api/tester/action":
                 self._handle_tester_action(data)
             elif path == "/api/cdn/recommendation":
@@ -1194,6 +1254,12 @@ class ZapretHandler(BaseHTTPRequestHandler):
                 cfg.discord_voice_mode = mode
                 cfg.discord_voice = mode != "off"  # совместимость со старыми сборками
         if "winws2_debug" in data: cfg.winws2_debug = bool(data["winws2_debug"])
+        if "fake_blob" in data:
+            fb = str(data["fake_blob"]).strip()
+            if fb and not (get_root_dir() / "blobs" / f"tls_clienthello_{fb}.bin").exists():
+                self._send_json({"status": "error", "message": f"неизвестный блоб: {fb}"})
+                return
+            cfg.fake_blob = fb
         if "autohostlist" in data: cfg.autohostlist = bool(data["autohostlist"])
         if "ipset_catchall" in data: cfg.ipset_catchall = bool(data["ipset_catchall"])
         ok = get_config_manager().save(cfg)
@@ -1259,6 +1325,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
             game_filter_mode=cfg.game_filter_mode,
             discord_voice=cfg.discord_voice,
             discord_voice_mode=cfg.discord_voice_mode,
+            fake_blob=cfg.fake_blob,
             winws2_debug=cfg.winws2_debug,
             autohostlist=cfg.autohostlist,
             ipset_catchall=cfg.ipset_catchall,
@@ -1306,6 +1373,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
                                        game_filter_mode=game_filter,
                                        discord_voice=discord_voice,
                                        discord_voice_mode=voice_mode,
+                                       fake_blob=str(data.get("fake_blob") or cfg.fake_blob or ""),
                                        autohostlist=autohostlist,
                                        ipset_catchall=ipset_catchall)
         ok, err = validate_args(exe, args, cwd=root)
@@ -1436,6 +1504,16 @@ class ZapretHandler(BaseHTTPRequestHandler):
         else:
             self._send_json({"status": "error", "message": path_or_err})
 
+    def _handle_blob_probe(self, data: dict) -> None:
+        with _tester_state.lock:
+            if _tester_state.running:
+                self._send_json({"status": "error", "message": "Тестер занят"}, HTTPStatus.CONFLICT)
+                return
+            _tester_state.running = True
+        t = threading.Thread(target=_run_blob_probe, args=(data or {},), daemon=True)
+        t.start()
+        self._send_json({"status": "ok"})
+
     def _handle_tester_action(self, data: dict) -> None:
         action = data.get("action", "")
         if action == "cancel":
@@ -1528,6 +1606,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
                 game_filter_mode=cfg.game_filter_mode,
                 discord_voice=cfg.discord_voice,
                 discord_voice_mode=cfg.discord_voice_mode,
+                fake_blob=cfg.fake_blob,
                 winws2_debug=cfg.winws2_debug,
                 autohostlist=cfg.autohostlist,
                 ipset_catchall=cfg.ipset_catchall,
@@ -1595,6 +1674,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
             game_filter_mode=cfg.game_filter_mode,
             discord_voice=cfg.discord_voice,
             discord_voice_mode=cfg.discord_voice_mode,
+                fake_blob=cfg.fake_blob,
             winws2_debug=cfg.winws2_debug,
             autohostlist=cfg.autohostlist,
             ipset_catchall=cfg.ipset_catchall,

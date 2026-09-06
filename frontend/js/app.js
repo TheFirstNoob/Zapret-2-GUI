@@ -255,6 +255,7 @@ const MainPage = {
   onShow() {
     if (!this._loaded) {
       this._loaded = true;
+      this.populateFakeBlobs();
       this.loadConfig();
       this.bind();
       MainPage.renderServiceLine();
@@ -275,9 +276,10 @@ const MainPage = {
     $('updateBannerClose').addEventListener('click', () => { $('updateBanner').hidden = true; });
 
     ['toggleGameFilter', 'toggleAutoHostlist', 'toggleIpFilter',
-      'toggleDiscordVoice', 'toggleWinws2Debug'].forEach(id => {
+      'toggleDiscordVoice', 'toggleWinws2Debug', 'fakeBlobSelect'].forEach(id => {
       $(id).addEventListener('change', () => this.saveToggles());
     });
+    $('btnBlobProbe').addEventListener('click', () => this.runBlobProbe());
   },
 
   async loadConfig() {
@@ -289,6 +291,11 @@ const MainPage = {
       $('toggleIpFilter').checked = !!c.ipset_catchall;
       $('toggleDiscordVoice').value = c.discord_voice_mode || (c.discord_voice ? 'fake' : 'off');
       this._updateVoiceHint();
+      this._pendingFakeBlob = c.fake_blob || '';
+      const fbSel = $('fakeBlobSelect');
+      if (fbSel && Array.from(fbSel.options).some(o => o.value === this._pendingFakeBlob)) {
+        fbSel.value = this._pendingFakeBlob;
+      }
       $('toggleWinws2Debug').checked = !!c.winws2_debug;
       $('z1DirPath').value = c.zapret1_dir || '';
       if (c.last_profile) {
@@ -306,6 +313,72 @@ const MainPage = {
         this._updateApplyHint();
       }
     } catch (e) { /* ignore */ }
+  },
+
+  // Список доступных TLS-фейк-блобов (blobs/tls_clienthello_*.bin).
+  async populateFakeBlobs() {
+    try {
+      const r = await apiGet('/fake-blobs');
+      const sel = $('fakeBlobSelect');
+      if (!sel || this._blobsLoaded) return;
+      this._blobsLoaded = true;
+      for (const key of r.blobs || []) {
+        if (Array.from(sel.options).some(o => o.value === key)) continue;
+        const o = document.createElement('option');
+        o.value = key;
+        o.textContent = key.replace(/_/g, '.');
+        sel.appendChild(o);
+      }
+      sel.value = this._pendingFakeBlob || '';
+    } catch (e) { /* список не критичен */ }
+  },
+
+  // Перебор TLS-фейк-блобов: короткая батарея на каждом, победитель
+  // подставляется в селектор (применение — через «Перезапустить»).
+  async runBlobProbe() {
+    if (this._blobProbing || App.testActive) return;
+    this._blobProbing = true;
+    const btn = $('btnBlobProbe');
+    const hint = $('fakeBlobHint');
+    btn.disabled = true;
+    hint.textContent = 'Запуск...';
+    try {
+      const started = await apiPost('/blob-probe', {});
+      if (started.status !== 'ok') throw new Error(started.message || 'ошибка');
+      const deadline = Date.now() + 6 * 60 * 1000;
+      let final = null;
+      while (!final && Date.now() < deadline) {
+        await new Promise(res => setTimeout(res, 700));
+        const st = await apiGet('/tester/status');
+        if (st.error) throw new Error(st.error);
+        if (st.progress && hint) {
+          hint.textContent = `${st.progress.message || ''} (${st.progress.percent ?? 0}%)`;
+        }
+        if (!st.running) final = st.final_result;
+      }
+      if (!final) throw new Error('подбор не завершился вовремя');
+      if (final.restored) showToast(final.restored, 'ok');
+      const results = (final.results || []).filter(x => x.rate >= 0)
+        .sort((a, b) => b.rate - a.rate || b.ok - a.ok);
+      if (!results.length) throw new Error('нет результатов');
+      if (hint) {
+        hint.innerHTML = results.map(x =>
+          `<div>${x.blob === results[0].blob ? '<b>' : ''}${escapeHtml(x.blob)}: ${x.rate}% (${x.ok}/${x.total})${x.blob === results[0].blob ? '</b>' : ''}</div>`).join('');
+      }
+      const best = results[0];
+      const sel = $('fakeBlobSelect');
+      showToast(`Лучший блоб: ${best.blob.replace(/_/g, '.')} (${best.rate}%)`, 'ok');
+      if (Array.from(sel.options).some(o => o.value === best.blob) && sel.value !== best.blob) {
+        sel.value = best.blob;
+        this.saveToggles();
+      }
+    } catch (e) {
+      showToast('Подбор блоба: ' + e.message, 'error');
+      if (hint) hint.textContent = '';
+    }
+    btn.disabled = false;
+    this._blobProbing = false;
+    Status.refresh();
   },
 
   populateProfiles(list) {
@@ -497,6 +570,7 @@ const MainPage = {
       winws2_debug: $('toggleWinws2Debug').checked,
       autohostlist: $('toggleAutoHostlist').checked,
       ipset_catchall: $('toggleIpFilter').checked,
+      fake_blob: $('fakeBlobSelect') ? $('fakeBlobSelect').value : '',
     };
   },
 
@@ -530,7 +604,8 @@ const MainPage = {
       (a.discord_voice_mode || (a.discord_voice ? 'fake' : 'off')) === (b.discord_voice_mode || (b.discord_voice ? 'fake' : 'off')) &&
       !!a.winws2_debug === !!b.winws2_debug &&
       !!a.autohostlist === !!b.autohostlist &&
-      !!a.ipset_catchall === !!b.ipset_catchall;
+      !!a.ipset_catchall === !!b.ipset_catchall &&
+      (a.fake_blob || '') === (b.fake_blob || '');
   },
 
   _updateApplyHint() {

@@ -110,6 +110,7 @@ def build_args_from_preset(
     discord_voice_mode: str = "",
     autohostlist: bool = False,
     ipset_catchall: bool = False,
+    fake_blob: str = "",
 ) -> list[str]:
     """Read a .txt preset and return a list of command-line tokens.
 
@@ -220,6 +221,30 @@ def build_args_from_preset(
         # Inject --autohostlist into list-general filter blocks
         if autohostlist and "--hostlist=" in line and "list-general" in line:
             tokens.append(f"--hostlist-auto={auto_path}")
+    # ── Fake blob selector: подмена TLS-фейка без записи в пресет ──
+    # Регистрируется ОТДЕЛЬНОЕ имя alt_tls на новый файл и переписываются
+    # только fake:blob=<tls-blob> — seqovl_pattern (выравнивание перекрытия)
+    # и QUIC/HTTP блобы остаются родными.
+    if fake_blob:
+        alt_file = blobs_dir / f"tls_clienthello_{fake_blob}.bin"
+        if alt_file.exists():
+            # имена --blob, чьи файлы — TLS clienthello (не quic/http)
+            tls_blob_names = set()
+            for i, t in enumerate(tokens):
+                if t == "--blob" and i + 1 < len(tokens) and "tls_clienthello_" in tokens[i + 1]:
+                    tls_blob_names.add(tokens[i + 1].split(":", 1)[0])
+            tokens.insert(0, "--blob")
+            tokens.insert(1, f"alt_tls:@{short_path(alt_file)}")
+            def _swap_fake_ref(t: str) -> str:
+                if not t.startswith("--lua-desync=fake:blob="):
+                    return t
+                for n in tls_blob_names:
+                    if t == f"--lua-desync=fake:blob={n}":
+                        return "--lua-desync=fake:blob=alt_tls"
+                    if t.startswith(f"--lua-desync=fake:blob={n}:"):
+                        return t.replace(f"fake:blob={n}", "fake:blob=alt_tls", 1)
+                return t
+            tokens = [_swap_fake_ref(t) for t in tokens]
     # ── Discord Voice udplen: переписать инлайн голосовой блок ──
     # Гипотеза (STRATEGY_ROADMAP §1): UDP-сегментации нет, DPI с жёсткой
     # привязкой к длине/сигнатуре голосовых пакетов промахивается при сдвиге
