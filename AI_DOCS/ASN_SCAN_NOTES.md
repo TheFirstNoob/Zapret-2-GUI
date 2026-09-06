@@ -223,3 +223,24 @@ tls_handshake → sending_data → reading_data) через httpx event hooks;
 | Расхождения | 4 (2 в пользу curl, 2 в пользу httpx) — все объясняются порогами таймаута (curl -m 6 < httpx 8) и флаком, НЕ фингерпринтом |
 
 **Вывод:** ТСПУ на Т2 не дифференцирует клиентов-проб (curl vs httpx дают одну картину). «Лучшие скрины» не объясняются httpx-клиентом их тулзы. В CDN-скане единственная честная «SNI-подобная» переменная — **SNI фейка (блоб)**, а не пробующий клиент. RATED-набор без защиты падает у обоих клиентов одинаково (реальные блоки).
+
+---
+
+## СЛЕДУЮЩИЙ ШАГ / НЕ СДЕЛАНО (07.09, сессия сжата — читать в первую очередь)
+
+**Последний коммит: `bc80d8f` (origin main, зеркало синхронизировано).**
+**Состояние машины после тестов:** winws2 поднят (default, google blob, ipset OFF), WARP Connected, служба zapret2 остановлена, конфиг не менялся (fake_blob='', discord_voice_mode=off). temp-артефакты: `%TEMP%\opencode\client_ab.txt`, `dpidet_report*.txt`, `our_asn*.json` — результаты прогонов.
+
+### Задача 1 (ОБЯЗАТЕЛЬНО перед релизом 0.6): пересборка дистрибутивов
+0.6 **не релизился**. С последней сборки (`fbe3868`, делала нейронка) накопились изменения: фикс custom-smoke бага (write_run_bat), tcp16-20 v2 (size_upload), safe_prefixes + working_domains, ASN-вкладка (page-asn), busy-блокировки (_checkers_busy), скорость asn_scan (--connect-timeout 3, concurrency 8), ASN_SNI=example.com, 2 новых блоба (sferum_ru, sochi_park).
+- Команды: `python build_lite.py`, `python build_portable.py`, `python build.py` (затем zip dist/Zapret2GUI.exe → Windows build/Zapret2GUI.zip).
+- После: commit + push zips + sync зеркала. Тэг/релиз — по решению пользователя.
+
+### Задача 2 (по желанию, фича из плана): автоприменение из A/B-вердиктов
+Одна кнопка «применить всё по матрице» на вкладке CDN: из вердиктов скана собрать предлагаемый набор правок (fix→list-general / ipset-include-user, break→list-exclude / ipset-exclude-user с `_safe_prefixes` и working_domains) и применить с подтверждением. Backend-основа готова (`_handle_cdn_recommendation` уже умеет все 4 действия + safe-prefixes; фронт `CdnStab.apply` шлёт working_domains). Осталось: сборка списка правок из вердиктов + кнопка + подтверждение + перезапуск.
+
+### Осознанно НЕ делаем (обоснование выше)
+- HTTP/2 vs 1.1 проба (ожидаемо нулевой эффект, как клиент).
+- Chunked-метод tcp16-20 (их DETECTED 1/110, наша таксономия честнее).
+- Доп. сравнительные прогоны (флап ТСПУ, нет конкретной задачи).
+- Блоб-валидация на «сожжённых» сетях (на Т2 не воспроизводится).
