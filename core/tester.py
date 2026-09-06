@@ -1145,14 +1145,21 @@ class Zapret2Tester:
 
     # ── ASN-скан (110 IP-проб из dpi-detector): белый SNI на конкретный IP,
     # загрузка ~32KB, классификация обрыва — как в оригинальном инструменте ──
-    ASN_SNI = "hcaptcha.com"          # белый SNI из whitelist-sni.txt
+    ASN_SNI = "example.com"           # IANA-домен: в реестре РКН быть не может,
+    # пропускает максимум (батарея SNI 07.09: example 104/110, sferum 100,
+    # hcaptcha 84, google 79; чёрный rutracker.org = 0/110 — ТСПУ режет по SNI)
     ASN_BODY = 32 * 1024
 
-    def asn_scan(self, progress_cb, result_cb=None) -> list[dict]:
+    def asn_scan(self, progress_cb, result_cb=None, sni: str = "") -> list[dict]:
         """IP-пробы по ASN: подключение к IP:443 с белым SNI и загрузкой ~32KB.
         Статусы: OK / DETECTED (обрыв на N КБ — stateful DPI) / TCP RST /
         SYN DROP / TIMEOUT / ERROR. Работает под текущей защитой, ничего
-        не перезапускает. Возвращает список для таблицы."""
+        не перезапускает. Возвращает список для таблицы.
+
+        sni — SNI для пробы (по умолчанию ASN_SNI=hcaptcha.com). Эксперименты
+        2026-09-07: SNI пробы — переменная: на «чёрном» SNI (rutracker.org)
+        валится всё, на «белых» (example.com / google / hcaptcha) картина
+        одинаковая — DPI режет по IP, а не по белому SNI."""
         from concurrent.futures import ThreadPoolExecutor, as_completed
         import subprocess
         self.shutdown_event.clear()
@@ -1178,7 +1185,7 @@ class Zapret2Tester:
             return [{"id": "—", "asn": "—", "provider": "—", "status": "ERROR",
                      "detail": "не удалось создать тестовое тело"}]
 
-        sni = self.ASN_SNI
+        sni = sni or self.ASN_SNI
 
         def probe_one(p: dict) -> dict:
             # Мобильные сети теряют SYN рывками: «не отвечает» подтверждаем
