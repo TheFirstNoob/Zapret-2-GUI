@@ -1459,21 +1459,86 @@ class ZapretHandler(BaseHTTPRequestHandler):
     def _handle_cdn_recommendation(self, data: dict) -> None:
         """Полу-автономное применение вердикта без наложений.
 
-        hostlist-режим: fix → list-general.txt (домен), exclude → list-exclude.txt.
-        ipset-режим:    fix → ipset-include-user.txt (IP кандидата, приходят
-        из скана), с проверкой пересечения с ipset-exclude.txt — наложение
-        блокируется. exclude → list-exclude.txt (hostname-исключение работает
-        и в ipset-режиме, наложений не создаёт).
+        Действия по вердиктам CDN-скана:
+        general         — hostlist-режим: домен -> list-general.txt;
+                          ipset-режим: IP кандидата -> ipset-include-user.txt
+                          (с проверкой пересечения с ipset-exclude.txt).
+        exclude         — домен -> list-exclude.txt (hostname-исключение
+                          работает в обоих режимах).
+        ipset-include   — IP кандидата -> ipset-include-user.txt: точечный
+                          IP-обход хоста, который чинится только ipset
+                          (A/B «чинит» в hostlist-режиме).
+        ipset-exclude   — IP кандидата -> ipset-exclude-user.txt: хост, который
+                          ipset ломает, остаётся живым при включённом тоггле
+                          (A/B «ломает» в ipset-режиме).
         Затем перезапуск текущего пресета, чтобы изменение вступило в силу.
         """
         domain = (data.get("domain") or "").strip().lower().rstrip(".")
         action = data.get("action", "")
         ips = [str(i).strip() for i in (data.get("ips") or []) if str(i).strip()]
-        if not domain or action not in ("general", "exclude"):
-            self._send_json({"status": "error", "message": "Нужны domain и action (general|exclude)"})
+        if not domain or action not in ("general", "exclude", "ipset-include", "ipset-exclude"):
+            self._send_json({"status": "error",
+                             "message": "Нужны domain и action (general|exclude|ipset-include|ipset-exclude)"})
             return
         cfg = get_config_manager().load()
         ipset_mode = bool(cfg.ipset_catchall)
+        # IP-действия: домен не обязателен как цель — работаем по адресам.
+        if action in ("ipset-include", "ipset-exclude"):
+            fname = "ipset-include-user.txt" if action == "ipset-include" else "ipset-exclude-user.txt"
+            path = get_root_dir() / "lists" / fname
+            if not ips:
+                self._send_json({"status": "error",
+                                 "message": "у кандидата нет резолвнутых IP — добавьте вручную"})
+                return
+            try:
+                ip_list = [str(ipaddress.ip_address(i)) for i in ips]
+            except ValueError:
+                self._send_json({"status": "error", "message": "Некорректный IP в запросе"})
+                return
+            if action == "ipset-include":
+                # Не включать то, что пользователь уже исключил.
+                excl_path = get_root_dir() / "lists" / "ipset-exclude.txt"
+                excl_extra = get_root_dir() / "lists" / "ipset-exclude-user.txt"
+                excl_networks = []
+                for ep in (excl_path, excl_extra):
+                    if ep.exists():
+                        for l in ep.read_text(encoding="utf-8").splitlines():
+                            l = l.strip()
+                            if l and not l.startswith("#"):
+                                try:
+                                    excl_networks.append(ipaddress.ip_network(l, strict=False))
+                                except ValueError:
+                                    pass
+                blocked = [ip for ip in ip_list
+                           if any(ipaddress.ip_address(ip) in n for n in excl_networks)]
+                if blocked:
+                    self._send_json({"status": "error",
+                                     "message": f"Наложение: {domain} ({', '.join(blocked)}) уже в ipset-исключениях — пропускаем"})
+                    return
+            existing = set()
+            if path.exists():
+                existing = {l.strip() for l in path.read_text(encoding="utf-8").splitlines() if l.strip()}
+            new_ips = [ip for ip in ip_list if ip not in existing]
+            if new_ips:
+                with path.open("a", encoding="utf-8") as f:
+                    f.write("\n".join(new_ips) + "\n")
+            profile = cfg.last_profile or DEFAULT_PROFILE
+            ok, msg = get_controller().start(
+                profile,
+                game_filter_mode=cfg.game_filter_mode,
+                discord_voice=cfg.discord_voice,
+                discord_voice_mode=cfg.discord_voice_mode,
+                winws2_debug=cfg.winws2_debug,
+                autohostlist=cfg.autohostlist,
+                ipset_catchall=cfg.ipset_catchall,
+            )
+            if ok:
+                self._send_json({"status": "ok",
+                                 "message": f"{domain}: {len(new_ips) or 'все'} IP -> {fname}, пресет {profile} перезапущен"})
+            else:
+                self._send_json({"status": "error",
+                                 "message": f"{domain}: IP записаны в {fname}, но перезапуск не удался: {msg}"})
+            return
         if action == "exclude":
             fname = "list-exclude.txt"
             path = get_root_dir() / "lists" / fname
