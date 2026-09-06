@@ -70,7 +70,7 @@ def run_full_analysis(
         with lock:
             result = tester.test_profile(
                 profile_name, _cb, tier=tier,
-                result_cb=rcb, skip_cdn=(tier != "full"),
+                result_cb=rcb,
                 ipset_catchall=ipset_catchall,
             )
         entry = {
