@@ -887,7 +887,7 @@ class Zapret2Tester:
                 self._ensure_winws2_dead()
             except Exception:
                 pass
-            return e.result if e.result is not None else self._build_result(profile_name, all_results, [], provider_hop, provider_ip, tier, _logged_progress)
+            return e.result if e.result is not None else self._build_result(profile_name, all_results, provider_hop, provider_ip, tier, _logged_progress)
 
     def scan_cdn_recommendations(self, progress_cb, result_cb=None, naked_check: bool = True,
                                  ipset_mode: bool = False, ab_ipset: bool = True,
@@ -1082,7 +1082,7 @@ class Zapret2Tester:
                 time.sleep(0.8)
                 res = self._run_domain_tests(self.BLOB_PROBE_HOSTS, concurrency=6,
                                              http_only=False, result_cb=None)
-                ok = sum(1 for r in res if r.status in ("OK", "OK_BLOCKED", "QUIC_OK"))
+                ok = sum(1 for r in res if r.status == "OK")
                 out.append({"blob": key, "ok": ok, "total": len(res),
                             "rate": round(ok / len(res) * 100, 1) if res else 0.0})
             progress_cb(95, "Восстановление защиты...")

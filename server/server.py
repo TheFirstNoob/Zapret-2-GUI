@@ -581,7 +581,6 @@ def _run_blob_probe(data: dict) -> None:
     перезапускается по одному разу на блоб — восстановление сервис-осведомлённое."""
     state = _tester_state
     tester = get_tester()
-    logger = None
     try:
         with state.lock:
             state.reset()
@@ -590,7 +589,6 @@ def _run_blob_probe(data: dict) -> None:
         from core.service_manager import is_installed as svc_installed, status as svc_status
         svc_was = svc_installed() and svc_status() == "running"
         z2_was = tester.is_running()
-        exclude_kyber = True
         blobs_dir = get_root_dir() / "blobs"
         keys = sorted(f.stem.removeprefix("tls_clienthello_")
                       for f in blobs_dir.glob("tls_clienthello_*.bin")
@@ -616,9 +614,6 @@ def _run_blob_probe(data: dict) -> None:
     finally:
         with state.lock:
             state.running = False
-        if logger:
-            logger.close()
-            tester.set_logger(None)
 
 
 def _run_tester_action(data: dict) -> None:
@@ -782,7 +777,7 @@ def _run_tester_action(data: dict) -> None:
                     # (Discord <- P_a, Google <- P_b, General <- P_c).
                     try:
                         from core.strategy_builder import build_custom
-                        from core.launcher import build_args_from_preset, validate_args
+                        from core.launcher import build_args_from_preset, validate_args, write_run_bat
                         results_by_profile = {
                             res.profile_name: [
                                 {"domain": r.domain, "status": r.status, "test_type": r.test_type}
@@ -1719,7 +1714,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
             game_filter_mode=cfg.game_filter_mode,
             discord_voice=cfg.discord_voice,
             discord_voice_mode=cfg.discord_voice_mode,
-                fake_blob=cfg.fake_blob,
+            fake_blob=cfg.fake_blob,
             winws2_debug=cfg.winws2_debug,
             autohostlist=cfg.autohostlist,
             ipset_catchall=cfg.ipset_catchall,
