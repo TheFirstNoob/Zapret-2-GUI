@@ -1156,9 +1156,9 @@ class Zapret2Tester:
         from concurrent.futures import ThreadPoolExecutor, as_completed
         import subprocess
         self.shutdown_event.clear()
-        # Конкурентность низкая: пачка SYN в один ASN с одного источника
-        # будит анти-скан фильтры хостера и даёт ложные SYN DROP.
-        concurrency = 4
+        # Конкурентность 8 — компромисс: у dpi-detector 30-50 и комьюнити
+        # спокойно это терпит; 4 было перестраховкой от «пачки SYN в один ASN».
+        concurrency = 8
         probes = []
         probe_file = self.root_dir / "lists" / "cdn-asn-probes.json"
         try:
@@ -1199,7 +1199,7 @@ class Zapret2Tester:
             ip, pid = p.get("ip", ""), p.get("id", "?")
             try:
                 r = subprocess.run(
-                    ["curl.exe", "-4", "-k", "-sS", "-m", "10",
+                    ["curl.exe", "-4", "-k", "-sS", "-m", "10", "--connect-timeout", "3",
                      "--resolve", f"{sni}:443:{ip}",
                      "-w", "%{http_code} %{size_upload} %{time_total}",
                      "-o", "NUL",
