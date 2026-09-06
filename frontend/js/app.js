@@ -166,15 +166,19 @@ const App = {
   pages: ['main', 'tester', 'lists', 'diagnostics', 'cdn', 'asn'],
   testActive: false,
 
-  // Идёт подбор стратегии: обходом управляет тестер — блокируем ручной
-  // запуск/остановку с других вкладок и показываем бейдж на «Подборе».
+  // Идёт проверка (стратегии/CDN/ASN/blob/диагностика): обходом управляет
+  // тестер — блокируем ручной запуск/остановку, службу и другие кнопки
+  // проверок, показываем бейдж на вкладке-источнике.
   setTestActive(active) {
     if (this.testActive === active) return;
     this.testActive = active;
     const badge = $('testerBadge');
     if (badge) badge.hidden = !active;
+    // Кнопки всех проверок — взаимоисключающие (бэкенд дублирует 409-ом).
+    ['btnStartTest', 'cdnScanBtn', 'asnScanBtn', 'btnBlobProbe', 'diagRunBtn', 'btnDiagCheck']
+      .forEach(id => { const el = $(id); if (el) el.disabled = active; });
     if (active && this.currentPage !== 'tester') {
-      showToast('Идёт подбор стратегии — обход перезапускается тестером', 'warn');
+      showToast('Идёт проверка — остальные запуски/остановки заблокированы', 'warn');
     }
     if (Status.last) MainPage.renderStatus(Status.last);
   },
@@ -339,6 +343,7 @@ const MainPage = {
   async runBlobProbe() {
     if (this._blobProbing || App.testActive) return;
     this._blobProbing = true;
+    App.setTestActive(true);
     const btn = $('btnBlobProbe');
     const hint = $('fakeBlobHint');
     btn.disabled = true;
@@ -379,6 +384,7 @@ const MainPage = {
     }
     btn.disabled = false;
     this._blobProbing = false;
+    App.setTestActive(false);
     Status.refresh();
   },
 
@@ -794,6 +800,11 @@ const DiagnosticsPage = {
   },
 
   async run() {
+    if (App.testActive) {
+      showToast('Идёт другая проверка — дождитесь завершения', 'warn');
+      return;
+    }
+    App.setTestActive(true);
     const btn = $('diagRunBtn');
     btn.disabled = true;
     btn.textContent = 'Проверяю…';
@@ -831,6 +842,7 @@ const DiagnosticsPage = {
       results.innerHTML = '<div class="empty-note st-err">Ошибка диагностики: ' + escapeHtml(String(e.message || e)) + '</div>';
     }
     clearInterval(timer);
+    App.setTestActive(false);
     btn.disabled = false;
     btn.textContent = 'Проверить';
   },
@@ -1073,8 +1085,9 @@ const CdnStab = {
   },
 
   async scan() {
-    if (this._polling) return;
+    if (this._polling || App.testActive) return;
     this._applied = new Set();
+    App.setTestActive(true);
     $('cdnScanBtn').disabled = true;
     $('cdnProgress').hidden = false;
     $('cdnProgress').textContent = '';
@@ -1139,6 +1152,7 @@ const CdnStab = {
 
   _stop() {
     this._polling = false;
+    App.setTestActive(false);
     $('cdnScanBtn').disabled = false;
     $('cdnProgress').hidden = true;
   },
@@ -1276,8 +1290,9 @@ const AsnPage = {
   },
 
   async scan() {
-    if (this._polling) return;
+    if (this._polling || App.testActive) return;
     this._polling = true;
+    App.setTestActive(true);
     $('asnScanBtn').disabled = true;
     $('asnProgress').hidden = false;
     $('asnProgress').textContent = '';
@@ -1302,6 +1317,7 @@ const AsnPage = {
       showToast('ASN-скан: ' + e.message, 'error');
     }
     this._polling = false;
+    App.setTestActive(false);
     $('asnScanBtn').disabled = false;
     $('asnProgress').hidden = true;
   },
