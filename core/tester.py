@@ -201,7 +201,6 @@ class ProfileTestResult:
     tier: str = "full"
     provider_hop: int = 0      # first non-private hop (TTL probe)
     provider_ip: str = ""       # IP of that hop
-    cdn_results: list[TestResult] = field(default_factory=list)
 
 
 class _TestAbort(Exception):
@@ -794,23 +793,7 @@ class Zapret2Tester:
 
         return profile_name, provider_hop, provider_ip, self.timeout
 
-    def _run_aux_tests(self, skip_cdn, _logged_progress, result_cb):
-        cdn_results: list[TestResult] = []
-        if not skip_cdn and self._any_winws2_running() and not self.shutdown_event.is_set():
-            _logged_progress(97, "Проверка CDN-хостов...")
-            cdn_results = self._run_domain_tests(CDN_HOSTS, concurrency=15, http_only=True, result_cb=result_cb)
-            # TCP 16-20: POST 64KB — stateful DPI cuts the stream mid-transfer.
-            # Only probed on hosts that answered (dead hosts tell nothing).
-            alive = [r.domain for r in cdn_results if r.status == "OK"]
-            if alive and not self.shutdown_event.is_set():
-                _logged_progress(98, "Проверка stateful DPI (TCP 16-20)...")
-                for r in self._run_tcp1620_tests(alive):
-                    cdn_results.append(r)
-                    if result_cb:
-                        result_cb(r)
-        return cdn_results
-
-    def _build_result(self, profile_name, all_results, cdn_results, provider_hop, provider_ip, tier, _logged_progress):
+    def _build_result(self, profile_name, all_results, provider_hop, provider_ip, tier, _logged_progress):
         _logged_progress(97, "Остановка...")
         self._ensure_winws2_dead()
         ok_count = sum(1 for r in all_results if r.status == "OK")
@@ -829,7 +812,6 @@ class Zapret2Tester:
             net_ok_count=net_ok, net_fail_count=net_fail, net_total=net_total,
             network_rate=network_rate, ping_ok_count=ping_ok, ping_total=ping_total,
             provider_hop=provider_hop, provider_ip=provider_ip,
-            cdn_results=cdn_results,
         )
 
     def test_profile(
@@ -838,7 +820,6 @@ class Zapret2Tester:
         progress_cb: Callable[[int, str], None],
         tier: str = "critical",
         result_cb: Optional[Callable[[TestResult], None]] = None,
-        skip_cdn: bool = False,
         ipset_catchall: bool = False,
     ) -> ProfileTestResult:
         self.shutdown_event.clear()
@@ -896,8 +877,7 @@ class Zapret2Tester:
                 ping_done += 1
                 progress_cb(55 + int(ping_done * 20 / ping_total), f"ping {host}")
 
-            cdn_results = self._run_aux_tests(skip_cdn, _logged_progress, result_cb)
-            return self._build_result(profile_name, all_results, cdn_results, provider_hop, provider_ip, tier, _logged_progress)
+            return self._build_result(profile_name, all_results, provider_hop, provider_ip, tier, _logged_progress)
 
         except _TestAbort as e:
             # Отмена/сбой посреди прогона: winws2 с параметрами пресета может
@@ -1152,7 +1132,6 @@ class Zapret2Tester:
         tier: str = "smoke",
         result_cb: Optional[Callable[[TestResult], None]] = None,
         kill_processes: bool = False,
-        skip_cdn: bool = False,
     ) -> ProfileTestResult:
         # _setup_profile масштабирует self.timeout по RTT — сбрасываем, чтобы
         # базовые прогоны не использовали устаревший таймаут прошлого пресета.
@@ -1204,21 +1183,6 @@ class Zapret2Tester:
             ping_done += 1
             progress_cb(55 + int(ping_done * 20 / ping_total), f"{profile_name} ping {host}")
 
-        cdn_results: list[TestResult] = []
-        # CDN-фаза с тем же гейтом и TCP16-20-легом, что и у test_profile:
-        # naked/current должны честно показывать stateful-DPI картину и не
-        # пробивать CDN, когда никакой защиты не запущено.
-        if not skip_cdn and not self.shutdown_event.is_set() and self._any_winws2_running():
-            _logged_progress(97, f"Проверка CDN-хостов ({profile_name})...")
-            cdn_results = self._run_domain_tests(CDN_HOSTS, concurrency=15, http_only=True, result_cb=result_cb)
-            alive = [r.domain for r in cdn_results if r.status == "OK"]
-            if alive and not self.shutdown_event.is_set():
-                _logged_progress(98, f"Проверка stateful DPI (TCP 16-20, {profile_name})...")
-                for r in self._run_tcp1620_tests(alive):
-                    cdn_results.append(r)
-                    if result_cb:
-                        result_cb(r)
-
         ok_count = sum(1 for r in all_results if r.status == "OK")
         fail_count = sum(1 for r in all_results if r.status in ("BLOCKED", "TIMEOUT", "FAIL", "ERROR"))
         total_time = sum(r.time_ms for r in all_results)
@@ -1240,7 +1204,6 @@ class Zapret2Tester:
             network_rate=network_rate,
             ping_ok_count=ping_ok,
             ping_total=ping_total,
-            cdn_results=cdn_results,
         )
 
         if self._logger:
@@ -1254,20 +1217,18 @@ class Zapret2Tester:
         progress_cb: Callable[[int, str], None],
         tier: str = "smoke",
         result_cb: Optional[Callable[[TestResult], None]] = None,
-        skip_cdn: bool = False,
     ) -> ProfileTestResult:
         """Test the CURRENT setup (whatever is running — likely Zapret 1)."""
-        return self._test_baseline("__current__", progress_cb, tier, result_cb, kill_processes=False, skip_cdn=skip_cdn)
+        return self._test_baseline("__current__", progress_cb, tier, result_cb, kill_processes=False)
 
     def test_naked(
         self,
         progress_cb: Callable[[int, str], None],
         tier: str = "smoke",
         result_cb: Optional[Callable[[TestResult], None]] = None,
-        skip_cdn: bool = False,
     ) -> ProfileTestResult:
         """Raw connection test WITHOUT any zapret running."""
-        return self._test_baseline("__naked__", progress_cb, tier, result_cb, kill_processes=True, skip_cdn=skip_cdn)
+        return self._test_baseline("__naked__", progress_cb, tier, result_cb, kill_processes=True)
 
     def run_naked_baseline(
         self,

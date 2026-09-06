@@ -184,12 +184,6 @@ def _serialize_result(res) -> dict:
              "time_ms": r.time_ms, "error": r.error}
             for r in res.results
         ],
-        "cdn_results": [
-            {"domain": r.domain, "test_type": r.test_type, "status": r.status,
-             "time_ms": r.time_ms, "error": r.error,
-             "cdn_provider": CDN_PROVIDERS.get(r.domain, "")}
-            for r in res.cdn_results
-        ],
     }
 
 
@@ -629,7 +623,6 @@ def _run_tester_action(data: dict) -> None:
                 result = _run_tester(lambda: tester.test_profile(
                     data.get("profile", DEFAULT_PROFILE), progress,
                     tier=data.get("tier", "critical"), result_cb=result_cb,
-                    skip_cdn=data.get("skip_cdn", False),
                     ipset_catchall=bool(get_config_manager().load().ipset_catchall),
                 ))
                 _play_completion_sound()
@@ -657,12 +650,12 @@ def _run_tester_action(data: dict) -> None:
                 all_results = []
                 total = len(profiles)
                 _tier = data.get("tier", "critical")
-                skip_cdn = data.get("skip_cdn", False)
                 # Галочка «Использовать IPSets для точности» форсирует ipset-режим
                 # на весь прогон независимо от глобального тумблера (A/B сравнение).
-                ipset_mode = (data.get("ipset")
-                              if isinstance(data.get("ipset"), bool)
-                              else bool(get_config_manager().load().ipset_catchall))
+                # Тестер гоняет стратегии в текущей конфигурации пользователя
+                # (глобальный тоггл «Общий IP-обход»); CDN-механика переехала
+                # в отдельную вкладку (скан с A/B по ipset).
+                ipset_mode = bool(get_config_manager().load().ipset_catchall)
 
                 # Naked baseline first: detects "strategies do nothing" cases.
                 naked_baseline = _run_tester(lambda: tester.run_naked_baseline(
@@ -686,7 +679,7 @@ def _run_tester_action(data: dict) -> None:
                     res = _run_tester(
                         lambda pn=profile_name, cb=cb_for_profile: tester.test_profile(
                             pn, _inner_progress, tier=_tier,
-                            result_cb=cb, skip_cdn=skip_cdn,
+                            result_cb=cb,
                             ipset_catchall=ipset_mode)
                     )
                     if res is not None:
@@ -785,7 +778,7 @@ def _run_tester_action(data: dict) -> None:
                             lambda: tester.test_profile(
                                 "custom", _make_progress_cb(state),
                                 tier=_tier, result_cb=_make_result_cb(state, profile="custom"),
-                                skip_cdn=skip_cdn, ipset_catchall=ipset_mode)
+                                ipset_catchall=ipset_mode)
                         )
                         if res is not None:
                             all_results.append(res)
@@ -834,8 +827,7 @@ def _run_tester_action(data: dict) -> None:
                 cur_result = _run_tester(
                     lambda: tester.test_current_setup(
                         cur_progress, tier=data.get("tier", "critical"),
-                        result_cb=cur_result_cb,
-                        skip_cdn=data.get("skip_cdn", False))
+                        result_cb=cur_result_cb)
                 )
                 state.set_final({
                     "type": "current_result",
@@ -853,7 +845,7 @@ def _run_tester_action(data: dict) -> None:
                 naked_result = _run_tester(
                     lambda: tester.test_naked(
                         _make_progress_cb(state), tier=data.get("tier", "critical"),
-                        result_cb=result_cb, skip_cdn=data.get("skip_cdn", False))
+                        result_cb=result_cb)
                 )
                 restore_note = _restore_protection_after_naked(
                     z2_was_running, z1_was_running, state, svc_was_running)
@@ -882,9 +874,7 @@ def _run_tester_action(data: dict) -> None:
 
                 # run_full_analysis сам берёт _tester_lock (нереентерабельный
                 # Lock — оборачивать в _run_tester = гарантированный дедлок)
-                fa_ipset = (data.get("ipset")
-                            if isinstance(data.get("ipset"), bool)
-                            else bool(get_config_manager().load().ipset_catchall))
+                fa_ipset = bool(get_config_manager().load().ipset_catchall)
                 final_all = run_full_analysis(tester, profiles, _tester_lock, on_event=_on_event,
                                               ipset_catchall=fa_ipset)
                 

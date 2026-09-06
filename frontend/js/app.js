@@ -1171,7 +1171,7 @@ const CdnStab = {
 
 const TesterPage = {
   state: {
-    cdnTest: false, extendedTest: false, collectLogs: false,
+    extendedTest: false, collectLogs: false,
     vpnActive: false,
     currentResults: null, nakedResults: null, phase2Results: null,
     fullAnalysisResults: null,
@@ -1185,9 +1185,6 @@ const TesterPage = {
       this._bound = true;
       $('btnStartTest').addEventListener('click', () => this.startTest());
       $('btnDiagCheck').addEventListener('click', () => { location.hash = 'diagnostics'; });
-      // IPSets — подпункт проверки CDN: без неё недоступны
-      $('cdnCheck').addEventListener('change', () => this._syncIpsetSub());
-      this._syncIpsetSub();
       $('btnCancelTest').addEventListener('click', () => this.cancelTest());
       if (this._diagDoneRecently()) $('diagDoneNote').hidden = false;
       this.bindModals();
@@ -1505,17 +1502,7 @@ const TesterPage = {
 
   // ── запуск ──
 
-  // IPSets имеет смысл только вместе с проверкой CDN
-  _syncIpsetSub() {
-    const cdn = $('cdnCheck').checked;
-    const ip = $('cdnIpsetCheck');
-    ip.disabled = !cdn;
-    if (!cdn) ip.checked = false;
-  },
-
   startTest() {
-    this.state.cdnTest = $('cdnCheck').checked;
-    this.state.ipsetTest = $('cdnCheck').checked && $('cdnIpsetCheck').checked;
     this.state.advancedTest = $('extendedCheck').checked;
     this.state.collectLogs = $('logCheck').checked;
     this.resetAllState();
@@ -1581,7 +1568,7 @@ const TesterPage = {
   runBasicPhase2() {
     $('testCurrentPhase').textContent = 'Стратегии тестируются по очереди';
     this._startTesterAction(
-      { action: 'test_profiles', profiles: PROFILES, skip_cdn: !this.state.cdnTest, ipset: this.state.ipsetTest },
+      { action: 'test_profiles', profiles: PROFILES },
       {
         progressConfig: { startPercent: 0, scalePercent: 1, textTemplate: '{msg}' },
         onResult: (d) => {
@@ -1595,7 +1582,7 @@ const TesterPage = {
 
   runFullPipelinePhase0() {
     $('testCurrentPhase').textContent = 'Фаза 1 из 4: текущий Zapret 1';
-    this._startTesterAction({ action: 'current', skip_cdn: !this.state.cdnTest }, {
+    this._startTesterAction({ action: 'current' }, {
       progressConfig: { startPercent: 0, scalePercent: 0.08 },
       onError: () => { $('testCurrentPhase').textContent = 'Ошибка (Zapret 1)'; this.clearElapsedTimer(); },
     });
@@ -1603,7 +1590,7 @@ const TesterPage = {
 
   runFullPipelinePhase1() {
     $('testCurrentPhase').textContent = 'Фаза 2 из 4: базовый уровень без защиты';
-    this._startTesterAction({ action: 'naked', skip_cdn: !this.state.cdnTest }, {
+    this._startTesterAction({ action: 'naked' }, {
       resultType: 'naked_result',
       progressConfig: { startPercent: 8, scalePercent: 0.07 },
       onResult: (d) => {
@@ -1624,7 +1611,7 @@ const TesterPage = {
   runFullPipelinePhase2() {
     $('testCurrentPhase').textContent = 'Фаза 3 из 4: тест стратегий Zapret 2';
     this._startTesterAction(
-      { action: 'test_profiles', profiles: PROFILES, skip_cdn: !this.state.cdnTest, ipset: this.state.ipsetTest },
+      { action: 'test_profiles', profiles: PROFILES },
       {
         resultType: 'result',
         progressConfig: { startPercent: 15, scalePercent: 0.1 },
@@ -1645,7 +1632,7 @@ const TesterPage = {
       return;
     }
     $('testCurrentPhase').textContent = 'Фаза 4 из 4: полный анализ комбинаций';
-    this._startTesterAction({ action: 'full_analysis', profiles: PROFILES, ipset: this.state.ipsetTest }, {
+    this._startTesterAction({ action: 'full_analysis', profiles: PROFILES }, {
       progressConfig: { startPercent: 25, scalePercent: 0.35 },
       onError: () => { $('testCurrentPhase').textContent = 'Ошибка анализа'; this.clearElapsedTimer(); },
     });
@@ -1954,7 +1941,7 @@ const TesterPage = {
     const phase2 = this.state.phase2Results;
     const slim = r => r ? {
       ok_count: r.ok_count, fail_count: r.fail_count, success_rate: r.success_rate,
-      total_time_ms: r.total_time_ms, results: r.results, cdn_results: r.cdn_results,
+      total_time_ms: r.total_time_ms, results: r.results,
     } : null;
 
     const body = {
