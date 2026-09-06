@@ -163,7 +163,7 @@ const Status = {
 
 const App = {
   currentPage: 'main',
-  pages: ['main', 'tester', 'lists', 'diagnostics', 'cdn'],
+  pages: ['main', 'tester', 'lists', 'diagnostics', 'cdn', 'asn'],
   testActive: false,
 
   // Идёт подбор стратегии: обходом управляет тестер — блокируем ручной
@@ -213,11 +213,12 @@ const App = {
     // Смена вкладки — наверх: скролл не должен переезжать между страницами
     const content = document.querySelector('.content');
     if (content) content.scrollTop = 0;
-    const titles = { main: 'Главная', tester: 'Подбор стратегии', lists: 'Списки', diagnostics: 'Проверка системы', cdn: 'CDN-стабилизация' };
+    const titles = { main: 'Главная', tester: 'Подбор стратегии', lists: 'Списки', diagnostics: 'Проверка системы', cdn: 'CDN-стабилизация', asn: 'ASN-скан' };
     $('pageTitle').textContent = titles[hash];
     if (hash === 'main') MainPage.onShow();
     if (hash === 'lists') ListsPage.onShow();
     if (hash === 'cdn') CdnStab.init();
+    if (hash === 'asn') AsnPage.init();
     if (hash === 'diagnostics') DiagnosticsPage.onShow();
     if (hash === 'tester') TesterPage.onShow();
   },
@@ -1069,11 +1070,10 @@ const CdnStab = {
     if (this._bound) return;
     this._bound = true;
     $('cdnScanBtn').addEventListener('click', () => this.scan());
-    $('asnScanBtn').addEventListener('click', () => this.asnScan());
   },
 
   async scan() {
-    if (this._polling || this._asnPolling) return;
+    if (this._polling) return;
     this._applied = new Set();
     $('cdnScanBtn').disabled = true;
     $('cdnProgress').hidden = false;
@@ -1141,66 +1141,6 @@ const CdnStab = {
     this._polling = false;
     $('cdnScanBtn').disabled = false;
     $('cdnProgress').hidden = true;
-  },
-
-  // ── ASN-скан: 110 IP-проб с белым SNI, под текущей защитой ──
-  _asnPolling: false,
-
-  async asnScan() {
-    if (this._polling || this._asnPolling) return;
-    this._asnPolling = true;
-    $('asnScanBtn').disabled = true;
-    $('cdnScanBtn').disabled = true;
-    $('cdnProgress').hidden = false;
-    $('cdnProgress').textContent = '';
-    $('cdnBody').innerHTML = '<div class="empty-note">ASN-пробы при выключенном обходе — меряем ТСПУ напрямую. Защита вернётся автоматически…</div>';
-    try {
-      const r = await apiPost('/asn-scan', {});
-      if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
-      const deadline = Date.now() + 4 * 60 * 1000;
-      let final = null;
-      while (!final && Date.now() < deadline) {
-        await new Promise(res => setTimeout(res, 700));
-        const st = await apiGet('/tester/status');
-        if (st.error && !st.running) throw new Error(st.error);
-        if (st.progress) $('cdnProgress').textContent = `${st.progress.message || ''} (${st.progress.percent ?? 0}%)`;
-        if (!st.running) final = st.final_result;
-      }
-      if (!final) throw new Error('скан не завершился вовремя');
-      if (final.type === 'asn_scan') this._renderAsn(final.probes || []);
-      else throw new Error('неожиданный результат');
-    } catch (e) {
-      $('cdnBody').innerHTML = `<div class="empty-note">${escapeHtml(e.message)}</div>`;
-      showToast('ASN-скан: ' + e.message, 'error');
-    }
-    this._asnPolling = false;
-    $('asnScanBtn').disabled = false;
-    $('cdnScanBtn').disabled = false;
-    $('cdnProgress').hidden = true;
-  },
-
-  _renderAsn(probes) {
-    const cls = s => s === 'OK' ? 'st-ok' : (s === 'DETECTED' ? 'st-err' : 'st-warn');
-    const okN = probes.filter(x => x.status === 'OK').length;
-    const detN = probes.filter(x => x.status === 'DETECTED').length;
-    const sum = `<div class="cdn-summary">
-      <span>проб: <b>${probes.length}</b></span>
-      <span>чисто: <b class="st-ok">${okN}</b></span>
-      <span>stateful DPI: <b class="bad">${detN}</b></span>
-      <span class="meta">белый SNI на конкретный IP. SYN DROP подтверждается повтором — но в мобильной сети картинка может меняться от часа к часу: перед выводами перепройдите</span>
-    </div>`;
-    const rows = probes.map(x => `
-      <tr class="${x.status === 'OK' ? '' : 'list-tr-bad'}">
-        <td class="mono">${escapeHtml(x.id)}</td>
-        <td class="mono">${escapeHtml(x.asn)}</td>
-        <td>${escapeHtml(x.provider)}</td>
-        <td class="${cls(x.status)}"><b>${escapeHtml(x.status)}</b></td>
-        <td class="meta">${escapeHtml(x.detail || '')}</td>
-      </tr>`).join('');
-    $('cdnBody').innerHTML = sum + `
-      <table class="list-table"><thead><tr>
-        <th>ID</th><th>ASN</th><th>Провайдер</th><th>Статус</th><th>Детали</th>
-      </tr></thead><tbody>${rows}</tbody></table>`;
   },
 
   _render(fr) {
@@ -1322,6 +1262,81 @@ const CdnStab = {
       btn.textContent = (ipsetMode && action === 'general') ? 'В ipset-включения' : (action === 'general' ? 'В обход' : 'В стоп-лист');
       showToast('Ошибка: ' + err.message, 'error');
     }
+  },
+};
+
+const AsnPage = {
+  _polling: false,
+  _bound: false,
+
+  init() {
+    if (this._bound) return;
+    this._bound = true;
+    $('asnScanBtn').addEventListener('click', () => this.scan());
+  },
+
+  async scan() {
+    if (this._polling) return;
+    this._polling = true;
+    $('asnScanBtn').disabled = true;
+    $('asnProgress').hidden = false;
+    $('asnProgress').textContent = '';
+    $('asnBody').innerHTML = '<div class="empty-note">ASN-пробы при выключенном обходе — меряем ТСПУ напрямую. Защита вернётся автоматически…</div>';
+    try {
+      const r = await apiPost('/asn-scan', {});
+      if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
+      const deadline = Date.now() + 10 * 60 * 1000;
+      let final = null;
+      while (!final && Date.now() < deadline) {
+        await new Promise(res => setTimeout(res, 700));
+        const st = await apiGet('/tester/status');
+        if (st.error && !st.running) throw new Error(st.error);
+        if (st.progress) $('asnProgress').textContent = `${st.progress.message || ''} (${st.progress.percent ?? 0}%)`;
+        if (!st.running) final = st.final_result;
+      }
+      if (!final) throw new Error('скан не завершился вовремя');
+      if (final.type === 'asn_scan') this._render(final.probes || [], final.restored || '');
+      else throw new Error('неожиданный результат');
+    } catch (e) {
+      $('asnBody').innerHTML = `<div class="empty-note">${escapeHtml(e.message)}</div>`;
+      showToast('ASN-скан: ' + e.message, 'error');
+    }
+    this._polling = false;
+    $('asnScanBtn').disabled = false;
+    $('asnProgress').hidden = true;
+  },
+
+  _render(probes, restored) {
+    const cls = s => s === 'OK' ? 'st-ok' : (s === 'DETECTED' ? 'st-err' : 'st-warn');
+    const okN = probes.filter(x => x.status === 'OK').length;
+    const detN = probes.filter(x => x.status === 'DETECTED').length;
+    const synN = probes.filter(x => x.status === 'SYN DROP').length;
+    const sum = `<div class="cdn-summary">
+      <span>проб: <b>${probes.length}</b></span>
+      <span>чисто: <b class="st-ok">${okN}</b></span>
+      <span>stateful DPI: <b class="bad">${detN}</b></span>
+      <span>SYN DROP: <b>${synN}</b></span>
+      ${restored ? `<span class="meta">защита восстановлена: ${escapeHtml(restored)}</span>` : ''}
+    </div>`;
+    const rows = probes.map(x => `
+      <tr class="${x.status === 'OK' ? '' : 'list-tr-bad'}">
+        <td class="mono">${escapeHtml(x.id)}</td>
+        <td class="mono">${escapeHtml(x.asn)}</td>
+        <td>${escapeHtml(x.provider)}</td>
+        <td class="${cls(x.status)}"><b>${escapeHtml(x.status)}</b></td>
+        <td class="meta">${escapeHtml(x.detail || '')}</td>
+      </tr>`).join('');
+    const guide = `<div class="panel" style="margin-top:10px">
+      <div class="panel-title">Что делать с результатом</div>
+      <div class="verdict-msg">Если большинство проб <b>OK</b> и сайты работают — <b>ничего делать не нужно</b>: 100% «OK» не требуется, с нашими пресетами доступно ~99% сайтов.
+      ${detN > 0 ? `<br>«DETECTED» (${detN}) — stateful DPI режет CDN-класс: лечится кнопками на вкладке «CDN-стабилизация».` : ''}
+      ${synN > 0 ? `<br>«SYN DROP» (${synN}) — диапазоны режутся целиком или IP списка протухли; десинк против этого не поможет.` : ''}
+      <br>Мобильная сеть меняет картину от часа к часу: перед выводами прогоните скан повторно через паузу.</div>
+    </div>`;
+    $('asnBody').innerHTML = sum + `
+      <table class="list-table"><thead><tr>
+        <th>ID</th><th>ASN</th><th>Провайдер</th><th>Статус</th><th>Детали</th>
+      </tr></thead><tbody>${rows}</tbody></table>` + guide;
   },
 };
 
