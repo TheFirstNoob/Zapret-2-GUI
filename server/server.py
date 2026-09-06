@@ -148,6 +148,20 @@ def get_tester() -> Zapret2Tester:
     return _tester
 
 
+def _checkers_busy() -> Optional[str]:
+    """Сообщение о занятости другой проверки, или None, если всё свободно.
+
+    Тестер (стратегии/CDN/ASN/blob) и диагностика — взаимно исключающие;
+    запуск/остановка обхода и службы во время проверки тоже запрещены."""
+    with _tester_state.lock:
+        if _tester_state.running:
+            return "Тестер занят — завершите текущую проверку"
+    with _diag_lock:
+        if _diag_state.get("running"):
+            return "Диагностика выполняется — дождитесь завершения"
+    return None
+
+
 def init(root_dir: Path, token: str = "") -> None:
     global _root_dir, _controller, _tester, _config_manager, _app_token
     _root_dir = root_dir
@@ -1321,6 +1335,10 @@ class ZapretHandler(BaseHTTPRequestHandler):
         self._send_json({"status": "ok", "message": "Путь сохранён"})
 
     def _handle_zapret1_start(self, data: dict) -> None:
+        busy = _checkers_busy()
+        if busy:
+            self._send_json({"status": "error", "message": busy})
+            return
         strategy = data.get("strategy", "").strip()
         if not strategy:
             self._send_json({"status": "error", "message": "Стратегия не указана"})
@@ -1358,6 +1376,10 @@ class ZapretHandler(BaseHTTPRequestHandler):
             self._send_json({"status": "error", "message": str(e)})
 
     def _handle_start_zapret(self, data: dict) -> None:
+        busy = _checkers_busy()
+        if busy:
+            self._send_json({"status": "error", "message": busy})
+            return
         z1 = _scan_winws_exe()
         if z1["running"]:
             self._send_json({"status": "error", "message": "Zapret 1 (winws.exe) запущен. Остановите его перед запуском Zapret 2."})
@@ -1378,6 +1400,10 @@ class ZapretHandler(BaseHTTPRequestHandler):
         self._send_json({"status": "ok" if ok else "error", "message": msg})
 
     def _handle_stop_zapret(self) -> None:
+        busy = _checkers_busy()
+        if busy:
+            self._send_json({"status": "error", "message": busy})
+            return
         get_controller().stop()
         _kill_never_hang(["winws2.exe", "winws.exe"])
         self._send_json({"status": "ok", "message": "Все процессы zapret остановлены"})
@@ -1427,6 +1453,10 @@ class ZapretHandler(BaseHTTPRequestHandler):
         return args, ""
 
     def _handle_service_install(self, data: dict) -> None:
+        busy = _checkers_busy()
+        if busy:
+            self._send_json({"status": "error", "message": busy})
+            return
         args, err = self._prepare_service_args(data)
         if err:
             self._send_json({"status": "error", "message": f"Установка отменена — {err}"})
@@ -1435,10 +1465,18 @@ class ZapretHandler(BaseHTTPRequestHandler):
         self._send_json({"status": "ok" if ok else "error", "message": msg})
 
     def _handle_service_remove(self) -> None:
+        busy = _checkers_busy()
+        if busy:
+            self._send_json({"status": "error", "message": busy})
+            return
         ok, msg = svc_remove()
         self._send_json({"status": "ok" if ok else "error", "message": msg})
 
     def _handle_service_start(self) -> None:
+        busy = _checkers_busy()
+        if busy:
+            self._send_json({"status": "error", "message": busy})
+            return
         # Refresh binPath with the current args: direct-exe services bake
         # them in, a stale cmdline would silently run an old strategy.
         args, err = self._prepare_service_args({})
@@ -1449,6 +1487,10 @@ class ZapretHandler(BaseHTTPRequestHandler):
         self._send_json({"status": "ok" if ok else "error", "message": msg})
 
     def _handle_service_stop(self) -> None:
+        busy = _checkers_busy()
+        if busy:
+            self._send_json({"status": "error", "message": busy})
+            return
         ok, msg = svc_stop()
         self._send_json({"status": "ok" if ok else "error", "message": msg})
 
@@ -1456,6 +1498,12 @@ class ZapretHandler(BaseHTTPRequestHandler):
         import threading as _th
         import time as _time
         from core.diagnostics import run_diagnostics, format_report_text
+        # Диагностика и тестер — взаимно исключающие проверки: во время прогона
+        # тестера отчёт был бы смесью «стабильно/перезапускается».
+        busy = _checkers_busy()
+        if busy:
+            self._send_json({"status": "error", "message": busy})
+            return
         # Атомарная отметка «занято» — закрывает окно для параллельного POST.
         with _diag_lock:
             if _diag_state.get("running"):
@@ -1550,6 +1598,10 @@ class ZapretHandler(BaseHTTPRequestHandler):
             self._send_json({"status": "error", "message": path_or_err})
 
     def _handle_asn_scan(self, data: dict) -> None:
+        busy = _checkers_busy()
+        if busy:
+            self._send_json({"status": "error", "message": busy}, HTTPStatus.CONFLICT)
+            return
         with _tester_state.lock:
             if _tester_state.running:
                 self._send_json({"status": "error", "message": "Тестер занят"}, HTTPStatus.CONFLICT)
@@ -1560,6 +1612,10 @@ class ZapretHandler(BaseHTTPRequestHandler):
         self._send_json({"status": "ok"})
 
     def _handle_blob_probe(self, data: dict) -> None:
+        busy = _checkers_busy()
+        if busy:
+            self._send_json({"status": "error", "message": busy}, HTTPStatus.CONFLICT)
+            return
         with _tester_state.lock:
             if _tester_state.running:
                 self._send_json({"status": "error", "message": "Тестер занят"}, HTTPStatus.CONFLICT)
@@ -1576,6 +1632,10 @@ class ZapretHandler(BaseHTTPRequestHandler):
             with _tester_state.lock:
                 _tester_state.cancelled = True
             self._send_json({"status": "ok", "action": "cancelled"})
+            return
+        busy = _checkers_busy()
+        if busy:
+            self._send_json({"status": "error", "message": busy}, HTTPStatus.CONFLICT)
             return
         # Решение «занят/свободен» принимаем атомарно под локом: отметка
         # running=True здесь же закрывает окно для второго параллельного POST.
