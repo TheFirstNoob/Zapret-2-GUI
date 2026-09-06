@@ -447,6 +447,57 @@ def _check_lan_peers() -> Check:
                      f"не удалось проверить: {e}")
 
 
+_IP_RE = re.compile(r"\b(\d{1,3}(?:\.\d{1,3}){3})\b")
+
+
+def _check_dns_spoof_servers() -> Check:
+    """Какие публичные DNS-серверы подменяют ответы для заблокированных
+    доменов (метод dpi-detector): эталон берём через DoH Google, ответы
+    серверов — через nslookup (UDP 53 проходит через ТСПУ и может
+    перехватываться). Отвечает на вопрос пользователя «какой DNS
+    включить, чтобы сайт открылся»."""
+    test_domain = "rutor.info"
+    servers = [("8.8.8.8", "Google"), ("1.1.1.1", "Cloudflare"),
+               ("77.88.8.8", "Яндекс"), ("9.9.9.9", "Quad9")]
+    try:
+        import json as _json
+        r = subprocess.run(
+            ["curl.exe", "-4", "-s", "-m", "8",
+             "https://dns.google/resolve?name=%s&type=A" % test_domain],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=12, creationflags=subprocess.CREATE_NO_WINDOW)
+        clean = {a for a in _IP_RE.findall(r.stdout or "")
+                 if not a.startswith(("127.", "10.", "192.168."))}
+        if not clean:
+            return Check("dns_spoof", "DNS-подмена по серверам", "skip",
+                         "эталонный ответ не получен (DoH недоступен)")
+        spoofed, clean_srv = [], []
+        for ip, name in servers:
+            r2 = subprocess.run(
+                ["nslookup", "-type=A", test_domain, ip],
+                capture_output=True, text=True, encoding="oem", errors="replace",
+                timeout=8, creationflags=subprocess.CREATE_NO_WINDOW)
+            answers = {a for a in _IP_RE.findall(r2.stdout or "")
+                       if a != ip and not a.startswith(("127.", "10.", "192.168."))}
+            if not answers:
+                clean_srv.append(name + " — не отвечает")
+            elif answers & clean:
+                clean_srv.append(name + " — чисто")
+            else:
+                spoofed.append(name + " (" + ", ".join(sorted(answers))[:40] + ")")
+        if spoofed:
+            return Check("dns_spoof", "DNS-подмена по серверам", "warn",
+                         "подмену ответов ловят: " + "; ".join(spoofed)
+                         + " — эти DNS включать не стоит; чистые: "
+                         + "; ".join(clean_srv),
+                         tech="clean=" + str(sorted(clean)))
+        return Check("dns_spoof", "DNS-подмена по серверам", "ok",
+                     "проверенные серверы отвечают корректно: " + "; ".join(clean_srv))
+    except (subprocess.TimeoutExpired, OSError) as e:
+        return Check("dns_spoof", "DNS-подмена по серверам", "skip",
+                     "не удалось проверить: " + str(e))
+
+
 def run_diagnostics(root_dir: Path, cfg: AppConfig, progress_cb=None) -> dict:
     root_dir = Path(root_dir)
 
@@ -505,6 +556,9 @@ def run_diagnostics(root_dir: Path, cfg: AppConfig, progress_cb=None) -> dict:
 
     # LAN-соседи (информационно; см. _check_lan_peers — кейс «два ПК глушили друг друга»)
     _add(_check_lan_peers())
+
+    # DNS-серверы, которые подменяют ответы для заблокированных доменов
+    _add(_check_dns_spoof_servers())
 
     # TCP timestamps (ts-fooling silently dead when disabled)
     try:
