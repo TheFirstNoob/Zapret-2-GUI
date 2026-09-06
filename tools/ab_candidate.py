@@ -44,10 +44,6 @@ def warp(action: str) -> str:
     return _run(["warp-cli", action]).strip()[:120]
 
 
-def sc_service(action: str) -> str:
-    return _run(["sc", action, "zapret2"], timeout=15).strip().splitlines()[0:2].__str__()
-
-
 def serialize(res) -> dict:
     return {
         "profile": res.profile_name,

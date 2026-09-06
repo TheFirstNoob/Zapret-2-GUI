@@ -460,7 +460,6 @@ def _check_dns_spoof_servers() -> Check:
     servers = [("8.8.8.8", "Google"), ("1.1.1.1", "Cloudflare"),
                ("77.88.8.8", "Яндекс"), ("9.9.9.9", "Quad9")]
     try:
-        import json as _json
         r = subprocess.run(
             ["curl.exe", "-4", "-s", "-m", "8",
              "https://dns.google/resolve?name=%s&type=A" % test_domain],
