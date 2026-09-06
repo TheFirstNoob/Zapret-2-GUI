@@ -512,6 +512,7 @@ label.opt-line:has(input:disabled):hover { background: var(--field); }
 .list-table td { padding: 6px 8px; border-top: 1px solid var(--line); font-size: 12.5px; }
 .list-table tr:first-child td { border-top: none; }
 .list-table tr.bad { background: var(--err-bg); }
+.list-table tr.list-tr-bad td { background: var(--err-bg); }
 
 .col-strat { width: 35%; }
 .col-state { width: 20%; }
