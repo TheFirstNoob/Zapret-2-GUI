@@ -1075,7 +1075,6 @@ const CdnStab = {
     const modeTxt = fr.ipset_mode
       ? '<span class="meta">прогон в ipset-режиме (тоггл «Общий IP-обход» включён) — правки идут в ipset-включения/исключения</span>'
       : '<span class="meta">прогон в hostlist-режиме (тоггл «Общий IP-обход» выключен) — правки идут в list-general / list-exclude</span>';
-    const actionable = sum('fix') + sum('break');
     const abFixed = v.filter(x => x.ipset === 'чинит').length;
     const abBroken = v.filter(x => x.ipset === 'ломает').length;
     const abRan = abFixed + abBroken > 0;
@@ -1086,8 +1085,11 @@ const CdnStab = {
         : (abFixed > abBroken ? 'рекомендация: «Общий IP-обход» можно <b>держать включённым</b>' : 'эффект неоднозначный — решайте по тому, какие хосты вам нужны');
       abRec = `<div class="verdict-msg" style="margin:6px 0 2px"><b>IP-обход A/B:</b> чинит <b>${abFixed}</b>, ломает <b class="bad">${abBroken}</b> — ${verdictTxt}.</div>`;
     }
+    // Кнопки есть у строк с IP-действиями: «чинит» (точечный ipset-обход
+    // хоста), «ломает» при ipset-режиме (исключить IP), fix/break — доменные.
+    const actionable = sum('fix') + sum('break') + (fr.ipset_mode ? abBroken : 0) + (!fr.ipset_mode ? abFixed : 0);
     const guide = actionable
-      ? '<div class="verdict-msg" style="margin:8px 0 2px"><b>Что делать:</b> нажмите кнопку в строке — правка применится к спискам, и обход перезапустится автоматически.</div>'
+      ? '<div class="verdict-msg" style="margin:8px 0 2px"><b>Что делать:</b> нажмите кнопку в строке — правка применится к спискам, и обход перезапустится автоматически. «чинит» = точечный IP-обход хоста; «ломает» = исключить его IP из IP-обхода.</div>'
       : (abRan
         ? '<div class="verdict-msg" style="margin:8px 0 2px">Точечных правок списков не требуется — смотрите итог по IP-обходу выше.</div>'
         : '<div class="verdict-msg" style="margin:8px 0 2px"><b>Что делать: ничего.</b> Живые хосты отвечают, stateful DPI не обнаружен, а мёртвые не отвечают и без защиты — это не блокировка. Проверять больше нечего.</div>');
@@ -1105,14 +1107,24 @@ const CdnStab = {
       const vd = this.VERDICTS[x.verdict] || this.VERDICTS.unknown;
       const applied = this._applied.has(x.domain);
       let btn = '';
-      // «ломает» ipset — предохранитель: стоп-лист, чтобы включение тоггла
-      // позже не убило живой хост
-      const abBtn = (!applied && !vd.btn && x.ipset === 'ломает')
-        ? { action: 'exclude', text: 'В стоп-лист' } : null;
-      const act = vd.btn || abBtn;
+      // A/B-действия IP-based: домен тестового хоста ничего не чинит —
+      // работаем адресами. «чинит» в hostlist-режиме -> ipset-включения
+      // (точечный обход; в ipset-режиме хост и так жив — кнопки нет).
+      // «ломает» в ipset-режиме -> IP в исключения (ipset остаётся для
+      // остальных); в hostlist-режиме хост жив и так — кнопки нет.
+      let act = vd.btn || null;
+      let actText = act ? act.text : '';
+      if (!act && x.ipset === 'чинит' && !fr.ipset_mode && (x.ips || []).length) {
+        act = { action: 'ipset-include' };
+        actText = 'В ipset-включения';
+      }
+      if (!act && x.ipset === 'ломает' && fr.ipset_mode && (x.ips || []).length) {
+        act = { action: 'ipset-exclude' };
+        actText = 'Исключить IP';
+      }
       if (!applied && act) {
         const text = (fr.ipset_mode && act.action === 'general')
-          ? 'В ipset-включения' : act.text;
+          ? 'В ipset-включения' : actText;
         btn = `<button class="btn btn-sm" data-cdn-act="${act.action}" data-cdn-domain="${escapeHtml(x.domain)}">${text}</button>`;
       } else if (applied) {
         btn = '<span class="meta">применено</span>';

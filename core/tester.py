@@ -1037,6 +1037,16 @@ class Zapret2Tester:
                     ipset=ipset_eff,
                 ))
             result.ab_fixed, result.ab_broken = ab_fixed, ab_broken
+            # IP для точечных действий по A/B-эффекту: «чинит» -> ipset-включения,
+            # «ломает» -> ipset-исключения. Действия IP-based по определению —
+            # домен тестового хоста ничего не чинит.
+            need_ips = [v.domain for v in result.verdicts if v.ipset in ("чинит", "ломает")]
+            if need_ips and not self.shutdown_event.is_set():
+                progress_cb(95, f"Резолв IP для точечных действий ({len(need_ips)})...")
+                ip_by_domain = {d: self._resolve_ips(d) for d in need_ips}
+                for v in result.verdicts:
+                    if v.ipset in ("чинит", "ломает"):
+                        v.ips = ip_by_domain.get(v.domain, [])
             progress_cb(100, "Готово")
         except _TestAbort as e:
             if e.result is not None and getattr(e.result, "error", None):
