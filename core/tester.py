@@ -1128,6 +1128,20 @@ class Zapret2Tester:
         sni = self.ASN_SNI
 
         def probe_one(p: dict) -> dict:
+            # Мобильные сети теряют SYN рывками: «не отвечает» подтверждаем
+            # повтором, иначе результат — снимок на одну минуту.
+            first = _probe_once(p)
+            if first.get("status") in ("SYN DROP", "TIMEOUT"):
+                time.sleep(1.2)
+                second = _probe_once(p)
+                if second.get("status") not in ("SYN DROP", "TIMEOUT"):
+                    second["detail"] = (second.get("detail", "") + " | отвеч со 2-й попытки").strip(" |")
+                    return second
+                first["detail"] = (first.get("detail", "") + " | подтверждено повтором").strip(" |")
+                return first
+            return first
+
+        def _probe_once(p: dict) -> dict:
             start = time.time()
             ip, pid = p.get("ip", ""), p.get("id", "?")
             try:

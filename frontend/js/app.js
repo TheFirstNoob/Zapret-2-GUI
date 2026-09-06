@@ -1187,7 +1187,7 @@ const CdnStab = {
       <span>проб: <b>${probes.length}</b></span>
       <span>чисто: <b class="st-ok">${okN}</b></span>
       <span>stateful DPI: <b class="bad">${detN}</b></span>
-      <span class="meta">белый SNI на конкретный IP — показывает, где ТСПУ режет поток независимо от домена</span>
+      <span class="meta">белый SNI на конкретный IP. SYN DROP подтверждается повтором — но в мобильной сети картинка может меняться от часа к часу: перед выводами перепройдите</span>
     </div>`;
     const rows = probes.map(x => `
       <tr class="${x.status === 'OK' ? '' : 'list-tr-bad'}">
