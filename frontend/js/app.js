@@ -1205,6 +1205,7 @@ const CdnStab = {
 
   _render(fr) {
     const v = fr.verdicts || [];
+    this._lastVerdicts = v;
     const counts = {};
     v.forEach(x => { counts[x.verdict] = (counts[x.verdict] || 0) + 1; });
     const sum = (k) => counts[k] || 0;
@@ -1296,9 +1297,16 @@ const CdnStab = {
     btn.textContent = '…';
     try {
       // apiPost уже добавляет /api — путь без префикса
+      // working_domains: живые в основном прогоне (кроме самой цели) — сервер
+      // резолвит их в protection-множество и расширяет правки до наибольшего
+      // чистого префикса (anycast сам вырождается в /32).
+      const workingDomains = (this._lastVerdicts || [])
+        .filter(x => x.alive === 'A' && x.domain !== domain)
+        .map(x => x.domain);
       const r = await apiPost('/cdn/recommendation', {
         domain, action,
         ips: ips ? ips.split(',') : [],
+        working_domains: workingDomains,
       });
       if (r.status === 'ok') {
         this._applied.add(domain);

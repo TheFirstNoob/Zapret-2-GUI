@@ -269,6 +269,21 @@ def _svc_was_running() -> bool:
         return False
 
 
+def _resolve_many(domains: list[str], concurrency: int = 8) -> set[str]:
+    """Параллельный резолв набора доменов — protection-множество для
+    «какой префикс трогать безопасно» при ipset-правках CDN."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    out: set[str] = set()
+    try:
+        with ThreadPoolExecutor(max_workers=concurrency) as pool:
+            futs = [pool.submit(Zapret2Tester._resolve_ips, d) for d in domains]
+            for f in as_completed(futs):
+                out.update(f.result())
+    except Exception:
+        pass
+    return out
+
+
 def _restore_protection_after_naked(z2_was: bool, z1_was: bool, state, svc_was: bool = False) -> str:
     """Restart the protection that was active before the naked test.
 
@@ -1613,6 +1628,19 @@ class ZapretHandler(BaseHTTPRequestHandler):
             except ValueError:
                 self._send_json({"status": "error", "message": "Некорректный IP в запросе"})
                 return
+            # «Какая сеть?» — наибольший чистый префикс, не пересекающийся с
+            # рабочими IP. working_domains присылает фронт (домены, живые в
+            # нужном прогоне A/B); anycast-адреса сами вырождаются в /32.
+            working_domains = [str(d).strip().lower().rstrip(".")
+                               for d in (data.get("working_domains") or []) if str(d).strip()]
+            protection: set[str] = set()
+            if working_domains:
+                protection = _resolve_many(working_domains)
+            prefixes = Zapret2Tester._safe_prefixes(ip_list, protection)
+            if not prefixes:
+                self._send_json({"status": "error",
+                                 "message": f"{domain}: все адреса пересекаются с рабочими IP — пропускаем"})
+                return
             if action == "ipset-include":
                 # Не включать то, что пользователь уже исключил.
                 excl_path = get_root_dir() / "lists" / "ipset-exclude.txt"
@@ -1627,8 +1655,8 @@ class ZapretHandler(BaseHTTPRequestHandler):
                                     excl_networks.append(ipaddress.ip_network(l, strict=False))
                                 except ValueError:
                                     pass
-                blocked = [ip for ip in ip_list
-                           if any(ipaddress.ip_address(ip) in n for n in excl_networks)]
+                blocked = [p for p in prefixes
+                           if any(ipaddress.ip_network(p, strict=False).overlaps(n) for n in excl_networks)]
                 if blocked:
                     self._send_json({"status": "error",
                                      "message": f"Наложение: {domain} ({', '.join(blocked)}) уже в ipset-исключениях — пропускаем"})
@@ -1636,7 +1664,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
             existing = set()
             if path.exists():
                 existing = {l.strip() for l in path.read_text(encoding="utf-8").splitlines() if l.strip()}
-            new_ips = [ip for ip in ip_list if ip not in existing]
+            new_ips = [p for p in prefixes if p not in existing]
             if new_ips:
                 with path.open("a", encoding="utf-8") as f:
                     f.write("\n".join(new_ips) + "\n")
@@ -1653,10 +1681,10 @@ class ZapretHandler(BaseHTTPRequestHandler):
             )
             if ok:
                 self._send_json({"status": "ok",
-                                 "message": f"{domain}: {len(new_ips) or 'все'} IP -> {fname}, пресет {profile} перезапущен"})
+                                 "message": f"{domain}: {len(new_ips) or 'все'} сети -> {fname}, пресет {profile} перезапущен"})
             else:
                 self._send_json({"status": "error",
-                                 "message": f"{domain}: IP записаны в {fname}, но перезапуск не удался: {msg}"})
+                                 "message": f"{domain}: префиксы записаны в {fname}, но перезапуск не удался: {msg}"})
             return
         if action == "exclude":
             fname = "list-exclude.txt"
