@@ -14,6 +14,7 @@ class AppConfig:
     zapret1_last_strategy: str = ""
     game_filter_mode: str = "off"
     discord_voice: bool = False
+    discord_voice_mode: str = "off"  # off | fake | udplen
     winws2_debug: bool = False
     autohostlist: bool = False
     ipset_catchall: bool = False
@@ -22,7 +23,7 @@ class AppConfig:
 DEFAULT_PROFILE = "default"
 
 # Application version.
-VERSION = "Pre-Release 0.5"
+VERSION = "Pre-Release 0.6"
 
 
 class ConfigManager:
@@ -46,6 +47,9 @@ class ConfigManager:
                 self._config = AppConfig(root_dir=str(self.root_dir))
         else:
             self._config = AppConfig(root_dir=str(self.root_dir))
+        # Миграция старых конфигов (bool discord_voice без discord_voice_mode).
+        if "discord_voice_mode" not in known and self._config.discord_voice:
+            self._config.discord_voice_mode = "fake"
         return self._config
 
     def save(self, config: AppConfig) -> bool:

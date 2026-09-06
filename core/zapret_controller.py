@@ -49,7 +49,7 @@ class ZapretController:
                 return p
         return None
 
-    def start(self, profile: str, game_filter_mode: str = "off", discord_voice: bool = False, winws2_debug: bool = False, autohostlist: bool = False, ipset_catchall: bool = False) -> tuple[bool, str]:
+    def start(self, profile: str, game_filter_mode: str = "off", discord_voice: bool = False, discord_voice_mode: str = "", winws2_debug: bool = False, autohostlist: bool = False, ipset_catchall: bool = False) -> tuple[bool, str]:
         if not isinstance(profile, str):
             return False, "Profile must be a preset name string"
 
@@ -66,6 +66,7 @@ class ZapretController:
             debug=winws2_debug,
             game_filter_mode=game_filter_mode,
             discord_voice=discord_voice,
+            discord_voice_mode=discord_voice_mode,
             autohostlist=autohostlist,
             ipset_catchall=ipset_catchall,
         )
@@ -109,16 +110,26 @@ class ZapretController:
 
         return False
 
-    def restart(self, profile: Optional[str] = None) -> bool:
+    def restart(self, profile: Optional[str] = None, **toggles) -> bool:
         self.stop()
         time.sleep(0.5)
-        if profile is not None:
-            ok, _ = self.start(profile)
-            return ok
-        if self.current_strategy is not None:
-            ok, _ = self.start(self.current_strategy)
-            return ok
-        return False
+        profile = profile or self.current_strategy
+        if profile is None:
+            return False
+        # Без явных тогглов берём сохранённые, чтобы restart не сбрасывал
+        # настройки пользователя в off.
+        if not toggles and self._config_manager is not None:
+            cfg = self._config_manager.load()
+            toggles = dict(
+                game_filter_mode=cfg.game_filter_mode,
+                discord_voice=cfg.discord_voice,
+                discord_voice_mode=cfg.discord_voice_mode,
+                winws2_debug=cfg.winws2_debug,
+                autohostlist=cfg.autohostlist,
+                ipset_catchall=cfg.ipset_catchall,
+            )
+        ok, _ = self.start(profile, **toggles)
+        return ok
 
     def status(self) -> ZapretStatus:
         result = ZapretStatus()

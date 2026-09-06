@@ -19,9 +19,18 @@ def relaunch_as_admin() -> bool:
         args = " ".join(
             f'"{a}"' if " " in a else a for a in sys.argv[1:]
         )
-        ctypes.windll.shell32.ShellExecuteW(
+        # ShellExecuteW возвращает код ошибки (<32) при отказе в UAC —
+        # без проверки «Нет» в диалоге выглядело бы как успешный запуск.
+        ret = ctypes.windll.shell32.ShellExecuteW(
             None, "runas", sys.executable, f'"{sys.argv[0]}" {args}', None, 1
         )
+        if ret <= 32:
+            ctypes.windll.user32.MessageBoxW(
+                0,
+                "Запуск отменён: не выданы права администратора.\n"
+                "Zapret 2 требует права администратора для работы WinDivert.",
+                "Zapret2 — требуются права администратора", 0x30)
+            return False
         return True
     except (AttributeError, OSError):
         return False

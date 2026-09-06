@@ -895,6 +895,12 @@ class Zapret2Tester:
             return self._build_result(profile_name, all_results, cdn_results, provider_hop, provider_ip, tier, _logged_progress)
 
         except _TestAbort as e:
+            # Отмена/сбой посреди прогона: winws2 с параметрами пресета может
+            # остаться жив и перехватывать трафик — гасим обязательно.
+            try:
+                self._ensure_winws2_dead()
+            except Exception:
+                pass
             return e.result if e.result is not None else self._build_result(profile_name, all_results, [], provider_hop, provider_ip, tier, _logged_progress)
 
     def scan_cdn_recommendations(self, progress_cb, result_cb=None, naked_check: bool = True,

@@ -40,8 +40,11 @@ function formatTime(ms) {
   return n < 1000 ? n.toFixed(0) + 'ms' : (n / 1000).toFixed(1) + 's';
 }
 
+// Локальный backend может задуматься (запуск winws2, sc query) — но не навсегда.
+const API_TIMEOUT_MS = 30000;
+
 async function apiGet(path) {
-  const r = await fetch('/api' + path);
+  const r = await fetch('/api' + path, { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
   if (!r.ok) throw new Error('HTTP ' + r.status);
   return r.json();
 }
@@ -51,23 +54,40 @@ async function apiPost(path, body) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body || {}),
+    signal: AbortSignal.timeout(API_TIMEOUT_MS),
   });
   if (!r.ok) throw new Error('HTTP ' + r.status);
   return r.json();
 }
 
-let _toastTimer = null;
-function showToast(msg, type) {
+let _toastTimer = null, _toastHideTimer = null;
+function showToast(msg, type, action) {
   const t = $('toast');
-  t.textContent = msg;
+  // action: {label, onClick} — кнопка внутри тоста (например «Перезапустить сейчас»)
+  t.textContent = '';
+  const span = document.createElement('span');
+  span.textContent = msg;
+  t.appendChild(span);
+  if (action && action.label) {
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-sm';
+    btn.textContent = action.label;
+    btn.addEventListener('click', () => { hideToast(); action.onClick(); });
+    t.appendChild(btn);
+  }
   t.className = 'toast' + (type ? ' ' + type : '');
   t.hidden = false;
+  clearTimeout(_toastHideTimer);
   requestAnimationFrame(() => { t.style.opacity = '1'; });
   clearTimeout(_toastTimer);
-  _toastTimer = setTimeout(() => {
-    t.style.opacity = '0';
-    setTimeout(() => { t.hidden = true; }, 250);
-  }, 3600);
+  _toastTimer = setTimeout(hideToast, 3600);
+}
+
+function hideToast() {
+  const t = $('toast');
+  t.style.opacity = '0';
+  clearTimeout(_toastHideTimer);
+  _toastHideTimer = setTimeout(() => { t.hidden = true; }, 250);
 }
 
 function rateClass(v) {
@@ -143,7 +163,21 @@ const Status = {
 
 const App = {
   currentPage: 'main',
-  pages: ['main', 'tester', 'lists', 'diagnostics'],
+  pages: ['main', 'tester', 'lists', 'diagnostics', 'cdn'],
+  testActive: false,
+
+  // Идёт подбор стратегии: обходом управляет тестер — блокируем ручной
+  // запуск/остановку с других вкладок и показываем бейдж на «Подборе».
+  setTestActive(active) {
+    if (this.testActive === active) return;
+    this.testActive = active;
+    const badge = $('testerBadge');
+    if (badge) badge.hidden = !active;
+    if (active && this.currentPage !== 'tester') {
+      showToast('Идёт подбор стратегии — обход перезапускается тестером', 'warn');
+    }
+    if (Status.last) MainPage.renderStatus(Status.last);
+  },
 
   async init() {
     this.bindNav();
@@ -176,10 +210,14 @@ const App = {
       l.classList.toggle('active', l.dataset.page === hash));
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     $('page-' + hash).classList.add('active');
-    const titles = { main: 'Главная', tester: 'Подбор стратегии', lists: 'Списки', diagnostics: 'Проверка системы' };
+    // Смена вкладки — наверх: скролл не должен переезжать между страницами
+    const content = document.querySelector('.content');
+    if (content) content.scrollTop = 0;
+    const titles = { main: 'Главная', tester: 'Подбор стратегии', lists: 'Списки', diagnostics: 'Проверка системы', cdn: 'CDN-стабилизация' };
     $('pageTitle').textContent = titles[hash];
     if (hash === 'main') MainPage.onShow();
     if (hash === 'lists') ListsPage.onShow();
+    if (hash === 'cdn') CdnStab.init();
     if (hash === 'diagnostics') DiagnosticsPage.onShow();
     if (hash === 'tester') TesterPage.onShow();
   },
@@ -211,6 +249,8 @@ const MainPage = {
   _z2Running: false,
   _z2Strategy: '',
   _loaded: false,
+  _runningToggles: null,  // тогглы, с которыми реально запущен обход
+  _configLoaded: false,
 
   onShow() {
     if (!this._loaded) {
@@ -247,7 +287,8 @@ const MainPage = {
       $('toggleGameFilter').value = c.game_filter_mode || 'off';
       $('toggleAutoHostlist').checked = !!c.autohostlist;
       $('toggleIpFilter').checked = !!c.ipset_catchall;
-      $('toggleDiscordVoice').checked = !!c.discord_voice;
+      $('toggleDiscordVoice').value = c.discord_voice_mode || (c.discord_voice ? 'fake' : 'off');
+      this._updateVoiceHint();
       $('toggleWinws2Debug').checked = !!c.winws2_debug;
       $('z1DirPath').value = c.zapret1_dir || '';
       if (c.last_profile) {
@@ -257,6 +298,13 @@ const MainPage = {
       }
       if (c.zapret1_last_strategy) this._z1SavedStrategy = c.zapret1_last_strategy;
       if (c.zapret1_dir) this.scanZ1Strategies();
+      this._configLoaded = true;
+      // Обход уже был запущен до загрузки конфига — снимок тогглов делаем
+      // только теперь, когда DOM показывает сохранённые значения.
+      if (this._z2Running && !this._runningToggles) {
+        this._runningToggles = this._collectToggles();
+        this._updateApplyHint();
+      }
     } catch (e) { /* ignore */ }
   },
 
@@ -317,11 +365,35 @@ const MainPage = {
 
     this._z2Running = z2.running;
     this._z2Strategy = z2.strategy || '';
+    // Снимок тогглов запущенного процесса: до loading конфига не снимаем.
+    if (!this._z2Running) this._runningToggles = null;
+    else if (!this._runningToggles && this._configLoaded) this._runningToggles = this._collectToggles();
+
     const btn = $('btnZ2Toggle');
-    if (!this._busy) {
-      btn.textContent = z2.running ? 'Остановить' : 'Запустить';
-      btn.classList.toggle('btn-primary', !z2.running);
+    if (!this._busy && !App.testActive) {
+      const sel = $('strategySelect');
+      const strategyChanged = this._z2Running && sel.value && this._z2Strategy && sel.value !== this._z2Strategy;
+      if (!this._z2Running) {
+        btn.textContent = 'Запустить';
+        btn.classList.add('btn-primary');
+      } else if (strategyChanged) {
+        // Выбор расходится с запущенной стратегией: кнопка применяет выбор.
+        btn.textContent = 'Применить «' + sel.value + '»';
+        btn.classList.add('btn-primary');
+      } else {
+        btn.textContent = 'Остановить';
+        btn.classList.remove('btn-primary');
+      }
       btn.disabled = false;
+    } else if (App.testActive) {
+      btn.disabled = true;
+    }
+    const hint = $('strategyApplyHint');
+    const selNow = $('strategySelect').value;
+    const strategyChangedNow = this._z2Running && selNow && this._z2Strategy && selNow !== this._z2Strategy;
+    hint.hidden = !strategyChangedNow;
+    if (strategyChangedNow) {
+      hint.textContent = 'Запущена «' + this._z2Strategy + '» — нажатие кнопки перезапустит обход с выбранной.';
     }
 
     $('conflictBanner').hidden = !(z2.running && z1.running);
@@ -334,9 +406,11 @@ const MainPage = {
     zs.querySelector('.dot').className = 'dot ' + (z1Conflict ? 'dot-warn' : z1.running ? 'dot-ok' : 'dot-off');
     z1Text.className = 'state-text ' + (z1Conflict ? 'st-warn' : z1.running ? 'st-ok' : 'st-mute');
     z1Text.textContent = z1.running ? 'Работает' : 'Выключен';
+    // Запасной инструмент — нейтральная кнопка: синий primary только у Zapret 2.
     const z1btn = $('btnZ1Toggle');
     z1btn.textContent = z1.running ? 'Остановить' : 'Запустить';
-    z1btn.classList.toggle('btn-primary', !z1.running);
+    z1btn.classList.remove('btn-primary');
+    z1btn.disabled = App.testActive;
 
     // перезапуск по изменённым тогглам — только когда что-то изменено и запущено
     this._updateApplyHint();
@@ -386,7 +460,7 @@ const MainPage = {
       async () => {
         const r = await apiPost('/service/install', {
           profile: $('strategySelect').value,
-          game_filter: t.game_filter_mode, discord_voice: t.discord_voice,
+          game_filter: t.game_filter_mode, discord_voice_mode: t.discord_voice_mode,
           debug: t.winws2_debug, autohostlist: t.autohostlist,
           ipset_catchall: t.ipset_catchall,
         });
@@ -408,6 +482,7 @@ const MainPage = {
   },
 
   svcRemove() {
+    if (!window.confirm('Удалить службу Zapret 2? Автозапуск обхода после перезагрузки отключится (сам обход это не затронет).')) return;
     this._svcAction(async () => {
       if (Status.svc && Status.svc.running) await apiPost('/service/stop', {}).catch(() => {});
       return apiPost('/service/remove', {});
@@ -417,47 +492,79 @@ const MainPage = {
   _collectToggles() {
     return {
       game_filter_mode: $('toggleGameFilter').value,
-      discord_voice: $('toggleDiscordVoice').checked,
+      discord_voice: $('toggleDiscordVoice').value !== 'off',
+      discord_voice_mode: $('toggleDiscordVoice').value,
       winws2_debug: $('toggleWinws2Debug').checked,
       autohostlist: $('toggleAutoHostlist').checked,
       ipset_catchall: $('toggleIpFilter').checked,
     };
   },
 
+  _VOICE_HINTS: {
+    off: 'Голос идёт без обхода — этого хватает большинству',
+    fake: 'Стандарт: подмена QUIC-пакетов на голосовых портах Discord',
+    udplen: 'Сдвиг длины каждого голосового пакета — если стандарт не берёт голос',
+  },
+
+  _updateVoiceHint() {
+    const el = $('voiceModeHint');
+    if (el) el.textContent = this._VOICE_HINTS[$('toggleDiscordVoice').value] || '';
+  },
+
   async saveToggles() {
+    this._updateVoiceHint();
     const t = this._collectToggles();
     try {
       await apiPost('/config', t);
-      if (this._z2Running) showToast('Сохранено. Перезапустите, чтобы применить', 'warn');
-      else showToast('Сохранено', 'ok');
+      // Без тоста на каждый чекбокс: факт «есть неприменённые изменения»
+      // показывает кнопка «Перезапустить с новыми параметрами».
     } catch (e) {
       showToast('Не удалось сохранить: ' + e.message, 'error');
     }
     this._updateApplyHint();
   },
 
+  _togglesEqual(a, b) {
+    return !!a && !!b &&
+      a.game_filter_mode === b.game_filter_mode &&
+      (a.discord_voice_mode || (a.discord_voice ? 'fake' : 'off')) === (b.discord_voice_mode || (b.discord_voice ? 'fake' : 'off')) &&
+      !!a.winws2_debug === !!b.winws2_debug &&
+      !!a.autohostlist === !!b.autohostlist &&
+      !!a.ipset_catchall === !!b.ipset_catchall;
+  },
+
   _updateApplyHint() {
     const btn = $('btnApplyToggles');
     const hint = $('applyTogglesHint');
-    if (this._z2Running) {
-      btn.hidden = false;
-      hint.textContent = 'Параметры применяются после перезапуска';
-    } else {
-      btn.hidden = true;
-      hint.textContent = '';
-    }
+    // Кнопка только когда обход запущен и сохранённые тогглы расходятся
+    // с тем, с чем процесс реально стартовал.
+    const pending = this._z2Running && !this._togglesEqual(this._runningToggles, this._collectToggles());
+    btn.hidden = !pending;
+    hint.textContent = pending
+      ? 'Параметры изменены — применятся после перезапуска'
+      : (this._z2Running ? '' : '');
   },
 
   async toggleZ2() {
-    if (this._z2Running) return this.stop();
-    const profile = $('strategySelect').value;
-    if (!profile) { showToast('Выберите стратегию', 'warn'); return; }
+    const sel = $('strategySelect');
+    if (this._z2Running) {
+      // Выбор расходится с запущенной стратегией — кнопка применяет его.
+      if (sel.value && this._z2Strategy && sel.value !== this._z2Strategy) {
+        return this.applyStrategy(sel.value);
+      }
+      return this.stop();
+    }
+    if (!sel.value) { showToast('Выберите стратегию', 'warn'); return; }
     this._setBusy(true);
     try {
-      await apiPost('/config', Object.assign({ last_profile: profile }, this._collectToggles()));
-      const r = await apiPost('/start', { profile });
-      if (r.status === 'ok') showToast('Обход запущен: ' + profile, 'ok');
-      else showToast('Не удалось запустить: ' + (r.message || 'ошибка'), 'error');
+      await apiPost('/config', Object.assign({ last_profile: sel.value }, this._collectToggles()));
+      const r = await apiPost('/start', { profile: sel.value });
+      if (r.status === 'ok') {
+        this._runningToggles = this._collectToggles();
+        showToast('Обход запущен: ' + sel.value, 'ok');
+      } else {
+        showToast('Не удалось запустить: ' + (r.message || 'ошибка'), 'error');
+      }
     } catch (e) {
       showToast('Ошибка запуска: ' + e.message, 'error');
     }
@@ -486,12 +593,42 @@ const MainPage = {
       await apiPost('/stop', {});
       await new Promise(r => setTimeout(r, 1200));
       const r = await apiPost('/start', { profile: strategy });
-      showToast(r.status === 'ok' ? 'Перезапущено: ' + strategy : ('Ошибка: ' + r.message),
-        r.status === 'ok' ? 'ok' : 'error');
+      if (r.status === 'ok') {
+        this._runningToggles = this._collectToggles();
+        showToast('Перезапущено: ' + strategy, 'ok');
+      } else {
+        showToast('Ошибка: ' + r.message, 'error');
+      }
     } catch (e) {
       showToast('Ошибка перезапуска: ' + e.message, 'error');
     }
     btn.disabled = false;
+    this._updateApplyHint();
+    Status.refresh();
+  },
+
+  // Запуск стратегии (из вердикта тестера, из тостов списков, с Главной).
+  // gotoMain=false — остаться на текущей вкладке.
+  async applyStrategy(profile, gotoMain = true) {
+    if (!profile || this._busy || App.testActive) return;
+    this._setBusy(true);
+    try {
+      const sel = $('strategySelect');
+      if (sel && Array.from(sel.options).some(o => o.value === profile)) sel.value = profile;
+      await apiPost('/config', Object.assign({ last_profile: profile }, this._collectToggles()));
+      const r = await apiPost('/start', { profile });
+      if (r.status === 'ok') {
+        this._runningToggles = this._collectToggles();
+        showToast('Обход запущен: ' + profile, 'ok');
+        if (gotoMain) window.location.hash = 'main';
+      } else {
+        showToast('Не удалось запустить: ' + (r.message || 'ошибка'), 'error');
+      }
+    } catch (e) {
+      showToast('Ошибка запуска: ' + e.message, 'error');
+    }
+    this._setBusy(false);
+    this._updateApplyHint();
     Status.refresh();
   },
 
@@ -542,6 +679,9 @@ const MainPage = {
   },
 
   async toggleZ1() {
+    if (this._z1Busy) return;
+    this._z1Busy = true;
+    $('btnZ1Toggle').disabled = true;
     const running = Status.last && Status.last.zapret1 && Status.last.zapret1.running;
     try {
       if (running) {
@@ -556,6 +696,8 @@ const MainPage = {
           r.status === 'ok' ? 'ok' : 'error');
       }
     } catch (e) { showToast('Ошибка: ' + e.message, 'error'); }
+    this._z1Busy = false;
+    $('btnZ1Toggle').disabled = false;
     Status.refresh();
   },
 
@@ -592,8 +734,12 @@ const DiagnosticsPage = {
       const started = await apiPost('/diagnose/action', {});
       if (started.status !== 'ok') throw new Error(started.message || 'ошибка');
       let report = null;
+      // Страховка от вечного цикла: диагностика на бэкенде не живёт дольше
+      // трёх минут — если статус не пришёл, считаем backend зависшим.
+      const deadline = Date.now() + 3 * 60 * 1000;
       while (report === null) {
         await new Promise(res => setTimeout(res, 300));
+        if (Date.now() > deadline) throw new Error('backend не отвечает');
         const st = await apiGet('/diagnose/status');
         if (st.error) throw new Error(st.error);
         const cur = $('diagCurrent');
@@ -601,7 +747,7 @@ const DiagnosticsPage = {
         if (!st.running) report = st.report;
       }
       if (!report) throw new Error('нет результата');
-      localStorage.setItem('z2_diag_done', '1');
+      localStorage.setItem('z2_diag_done', String(Date.now()));
       const note = $('diagDoneNote');
       if (note) note.hidden = false;
       this.render(report);
@@ -666,6 +812,7 @@ const DiagnosticsPage = {
 const ListsPage = {
   _loaded: false,
   saved: {},
+  _bundled: null,   // Set доменов из наших включений (для проверки приоритетов)
 
   editors: {
     domInc: { api: '/include-list', kind: 'domain' },
@@ -679,13 +826,15 @@ const ListsPage = {
       this._loaded = true;
       document.querySelectorAll('[data-save]').forEach(btn =>
         btn.addEventListener('click', () => this.save(btn.dataset.save)));
+      apiGet('/bundled-domains')
+        .then(r => { this._bundled = new Set(r.domains || []); })
+        .catch(() => {});
       Object.keys(this.editors).forEach(key => {
         const ta = $(key + 'Textarea');
         ta.addEventListener('input', () => this.validate(key));
         ta.addEventListener('scroll', () => this._syncNums(key));
         this.load(key);
       });
-      CdnStab.init();
     }
   },
 
@@ -739,6 +888,19 @@ const ListsPage = {
     return bad.length === 0;
   },
 
+  // Пересечение пользовательского списка с нашими включениями
+  _bundledOverlap(key) {
+    if (!this._bundled || !this._bundled.size) return [];
+    if (key !== 'domInc' && key !== 'domExc') return [];
+    return $(key + 'Textarea').value.split('\n')
+      .map(l => l.trim().toLowerCase())
+      .filter(l => l && !l.startsWith('#') && this._bundled.has(l));
+  },
+
+  _fmtList(items) {
+    return items.slice(0, 3).join(', ') + (items.length > 3 ? ` +${items.length - 3}` : '');
+  },
+
   _validDomain(s) {
     if (/\s|,|;|\//.test(s) || s.startsWith('.') || s.endsWith('.')) return false;
     return /^[A-Za-z0-9А-Яа-яЁё]([A-Za-z0-9А-Яа-яЁё_-]*[A-Za-z0-9А-Яа-яЁё])?(\.[A-Za-z0-9А-Яа-яЁё]([A-Za-z0-9А-Яа-яЁё_-]*[A-Za-z0-9А-Яа-яЁё])?)+\.?$/.test(s);
@@ -775,7 +937,28 @@ const ListsPage = {
       if (r.status === 'ok') {
         el.textContent = 'сохранено';
         this.saved[key] = $(key + 'Textarea').value;
-        showToast('Список сохранён', 'ok');
+        // Списки читаются winws2 при старте: если обход запущен — предлагаем
+        // перезапуск прямо из тоста, иначе изменение «висит» до ручного.
+        const z2 = Status.last && Status.last.zapret;
+        let msg = z2 && z2.running ? 'Список сохранён — применится при перезапуске обхода'
+                                   : 'Список сохранён — применится при запуске обхода';
+        let type = 'ok';
+        const overlap = this._bundledOverlap(key);
+        if (key === 'domExc' && overlap.length) {
+          // Исключение сильнее включения (hostlist.c: exclude проверяется
+          // первым) — пользователь должен знать, что обход на домен отключится.
+          msg = 'Приоритет у исключения: обход отключится для ' + this._fmtList(overlap) + '. ' + msg;
+          type = 'warn';
+        } else if (key === 'domInc' && overlap.length) {
+          msg += ' (уже в стандартных списках — дубль безвреден: ' + this._fmtList(overlap) + ')';
+        }
+        if (z2 && z2.running) {
+          const strat = z2.strategy || $('strategySelect').value || '';
+          showToast(msg, type,
+            strat ? { label: 'Перезапустить сейчас', onClick: () => MainPage.applyStrategy(strat, false) } : null);
+        } else {
+          showToast(msg, type);
+        }
         this.validate(key);
       } else {
         el.textContent = 'ошибка';
@@ -805,7 +988,11 @@ const CdnStab = {
     unknown: { label: 'не проверено', cls: '', btn: null },
   },
 
+  _bound: false,
+
   init() {
+    if (this._bound) return;
+    this._bound = true;
     $('cdnScanBtn').addEventListener('click', () => this.scan());
   },
 
@@ -976,10 +1163,19 @@ const TesterPage = {
       this._bound = true;
       $('btnStartTest').addEventListener('click', () => this.startTest());
       $('btnDiagCheck').addEventListener('click', () => { location.hash = 'diagnostics'; });
+      // IPSets — подпункт проверки CDN: без неё недоступны
+      $('cdnCheck').addEventListener('change', () => this._syncIpsetSub());
+      this._syncIpsetSub();
       $('btnCancelTest').addEventListener('click', () => this.cancelTest());
-      if (localStorage.getItem('z2_diag_done')) $('diagDoneNote').hidden = false;
+      if (this._diagDoneRecently()) $('diagDoneNote').hidden = false;
       this.bindModals();
     }
+  },
+
+  // «выполнена» у шага 1 — только если диагностика реально была за сутки
+  _diagDoneRecently() {
+    const ts = +localStorage.getItem('z2_diag_done') || 0;
+    return ts && (Date.now() - ts) < 24 * 60 * 60 * 1000;
   },
 
   // ── таблица стратегий ──
@@ -991,6 +1187,9 @@ const TesterPage = {
   },
 
   _resetTable() {
+    // Гасим отложенную очередь _addHostRow: «долётелившие» строки прошлого
+    // теста не должны влиться в таблицу нового запуска.
+    this._addHostRow.resetQueue();
     $('stratTbody').innerHTML =
       '<tr class="strat-empty"><td colspan="6">Ожидание первых результатов…</td></tr>';
     this.state.rows = new Map();
@@ -1020,8 +1219,13 @@ const TesterPage = {
     $('stratTbody').appendChild(detail);
     if (key === '__naked__' || key === '__current__') tr.classList.add('row-baseline');
 
-    tr.addEventListener('click', () => {
-      detail.hidden = !detail.hidden;
+    const toggleDetail = () => { detail.hidden = !detail.hidden; tr.setAttribute('aria-expanded', detail.hidden ? 'false' : 'true'); };
+    tr.addEventListener('click', toggleDetail);
+    tr.tabIndex = 0;
+    tr.setAttribute('role', 'button');
+    tr.setAttribute('aria-expanded', 'false');
+    tr.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleDetail(); }
     });
 
     r = {
@@ -1069,13 +1273,19 @@ const TesterPage = {
 
   _addHostRow: (function (processFn, delayMs) {
     let queue = [], timer = null;
-    return function (item) {
+    const fn = function (item) {
       queue.push(item);
       if (!timer) timer = setTimeout(() => {
         const batch = queue; queue = []; timer = null;
         processFn(batch);
       }, delayMs);
     };
+    // Полный сброс очереди (новый тест — старые отложенные строки не нужны).
+    fn.resetQueue = function () {
+      if (timer) { clearTimeout(timer); timer = null; }
+      queue = [];
+    };
+    return fn;
   })(function (batch) { for (const b of batch) TesterPage._addHostImmediate(b); }, 90),
 
   _addHostImmediate(data) {
@@ -1187,6 +1397,7 @@ const TesterPage = {
       started = true;
     }).catch(() => {
       pollActive = false;
+      App.setTestActive(false);
       if (onError) onError();
     });
 
@@ -1203,8 +1414,7 @@ const TesterPage = {
           return;
         }
         if (state.progress) {
-          $('testProgressFill').style.width =
-            Math.min(100, startPercent + (state.progress.percent || 0) * scalePercent) + '%';
+          this._setProgress(startPercent + (state.progress.percent || 0) * scalePercent);
           if (state.progress.message) {
             if (textTemplate) $('testProgressMsg').textContent = textTemplate.replace('{msg}', state.progress.message);
             this._handleProgressMessage(state.progress.message);
@@ -1264,6 +1474,8 @@ const TesterPage = {
           pollActive = false; clearInterval(pollId);
           if (onError) onError();
         }
+        // Опрос умер — не держим блокировку «идёт тест» навсегда.
+        if (pollActive) { pollActive = false; clearInterval(pollId); App.setTestActive(false); }
       });
     }, 350);
     return pollId;
@@ -1271,9 +1483,17 @@ const TesterPage = {
 
   // ── запуск ──
 
+  // IPSets имеет смысл только вместе с проверкой CDN
+  _syncIpsetSub() {
+    const cdn = $('cdnCheck').checked;
+    const ip = $('cdnIpsetCheck');
+    ip.disabled = !cdn;
+    if (!cdn) ip.checked = false;
+  },
+
   startTest() {
     this.state.cdnTest = $('cdnCheck').checked;
-    this.state.ipsetTest = $('cdnIpsetCheck').checked;
+    this.state.ipsetTest = $('cdnCheck').checked && $('cdnIpsetCheck').checked;
     this.state.advancedTest = $('extendedCheck').checked;
     this.state.collectLogs = $('logCheck').checked;
     this.resetAllState();
@@ -1310,16 +1530,30 @@ const TesterPage = {
   },
 
   runPipeline() {
+    App.setTestActive(true);
     $('vpnOverlay').classList.remove('open');
     $('testerIntro').hidden = true;
     $('testRun').hidden = false;
     $('testCurrentPhase').textContent = 'Подготовка…';
-    $('testProgressFill').style.width = '0%';
+    this._setProgress(0);
     $('testProgressMsg').textContent = '';
     $('btnStartTest').disabled = true;
+    // Скелетон: строки известных участников видны сразу («в очереди»),
+    // таблица не выглядит замершей до первых результатов.
+    const planned = this.state.advancedTest
+      ? ['__current__', '__naked__', ...PROFILES]
+      : ['__naked__', ...PROFILES];
+    planned.forEach(p => this._rowFor(p));
     this.startElapsedTimer();
     if (this.state.advancedTest) this.runFullPipelinePhase0();
     else this.runBasicPhase2();
+  },
+
+  _setProgress(pct) {
+    const fill = $('testProgressFill');
+    fill.style.width = Math.min(100, Math.max(0, pct)) + '%';
+    // Кот на краю заливки имеет смысл только когда заливка уже видна.
+    fill.parentElement.classList.toggle('has-cat', pct >= 5);
   },
 
   runBasicPhase2() {
@@ -1396,11 +1630,22 @@ const TesterPage = {
   },
 
   _finishAdvancedPhase4() {
-    $('testProgressFill').style.width = '95%';
+    this._setProgress(95);
     this.finalizePipeline('full');
   },
 
   // ── заполнение таблицы финальными числами ──
+
+  _markUntested() {
+    // Скелетон-строки, до которых прогон не дошёл (например «custom» не
+    // собралась) — переводим из «в очереди» в честное «—».
+    for (const row of this.state.rows.values()) {
+      if (row.stateText && row.stateText.textContent === 'в очереди') {
+        row.stateText.textContent = '—';
+        row.stateDot.className = 'dot dot-idle';
+      }
+    }
+  },
 
   _fillTable(allResults) {
     for (const r of allResults) {
@@ -1433,11 +1678,13 @@ const TesterPage = {
   // ── финал ──
 
   finalizePipeline(mode) {
+    App.setTestActive(false);
     this.clearElapsedTimer();
-    $('testProgressFill').style.width = '100%';
+    this._setProgress(100);
     $('testCurrentPhase').textContent = 'Готово';
     $('btnStartTest').disabled = false;
     $('testRun').hidden = true;
+    this._markUntested();
 
     const el = $('testSummary');
     let html = '';
@@ -1515,6 +1762,11 @@ const TesterPage = {
     el.hidden = false;
     if ($('btnShowCollect')) $('btnShowCollect').addEventListener('click', () => this.showCollectForm());
     $('btnBackToIntro').addEventListener('click', () => this.resetToIntro());
+    const recBtn = $('btnApplyRec');
+    const bestProfile = (mode === 'basic' && rec && rec.best_profile) ? rec.best_profile : null;
+    if (recBtn && bestProfile) {
+      recBtn.addEventListener('click', () => MainPage.applyStrategy(bestProfile));
+    }
   },
 
   _renderVerdict(rec) {
@@ -1606,6 +1858,23 @@ const TesterPage = {
     const dz = $('collectBatZone');
     dz.addEventListener('dragover', e => e.preventDefault());
     dz.addEventListener('drop', (e) => { e.preventDefault(); this.handleCollectDrop(e); });
+
+    // Escape и клик по фону закрывают модалки (как «Отмена»).
+    const closeModal = (id, onCancel) => {
+      const ov = $(id);
+      ov.addEventListener('mousedown', (e) => {
+        if (e.target === ov) onCancel();
+      });
+    };
+    closeModal('vpnOverlay', () => $('vpnCancelBtn').click());
+    closeModal('needZapret1Overlay', () => $('needZ1CancelBtn').click());
+    closeModal('collectFormOverlay', () => this.closeCollectForm());
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      if ($('collectFormOverlay').classList.contains('open')) this.closeCollectForm();
+      else if ($('vpnOverlay').classList.contains('open')) $('vpnCancelBtn').click();
+      else if ($('needZapret1Overlay').classList.contains('open')) $('needZ1CancelBtn').click();
+    });
   },
 
   cancelTest() {
@@ -1618,12 +1887,13 @@ const TesterPage = {
   },
 
   resetToIntro() {
+    App.setTestActive(false);
     this.clearElapsedTimer();
     $('testRun').hidden = true;
     $('testSummary').hidden = true;
     $('testerIntro').hidden = false;
     $('btnStartTest').disabled = false;
-    if (localStorage.getItem('z2_diag_done')) $('diagDoneNote').hidden = false;
+    if (this._diagDoneRecently()) $('diagDoneNote').hidden = false;
   },
 
   // ── сбор отчёта ──

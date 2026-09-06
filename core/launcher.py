@@ -107,6 +107,7 @@ def build_args_from_preset(
     debug: bool = False,
     game_filter_mode: str = "off",
     discord_voice: bool = False,
+    discord_voice_mode: str = "",
     autohostlist: bool = False,
     ipset_catchall: bool = False,
 ) -> list[str]:
@@ -143,6 +144,10 @@ def build_args_from_preset(
     short_lists = short_path(lists_dir)
     lines = preset_path.read_text(encoding="utf-8-sig").strip().splitlines()
     game_on = game_filter_mode != "off"
+    # Discord Voice режим: legacy bool + новый селект. Неизвестное значение -> off.
+    voice_mode = (discord_voice_mode or ("fake" if discord_voice else "off")).strip().lower()
+    if voice_mode not in ("off", "fake", "udplen"):
+        voice_mode = "off"
     tokens: list[str] = []
 
     auto_file = lists_dir / "zapret-auto.txt"
@@ -165,6 +170,21 @@ def build_args_from_preset(
         if has_entry:
             ipset_inc_path = str(short_path(ipset_inc_file))
 
+    # User IP-exclude list: exclude always wins over include (ipset.c checks
+    # ips_exclude first), so an empty file must simply not change the args —
+    # same rule as the include list above.  Without this wiring the GUI's
+    # «IP-сети — исключения» editor wrote to a file winws2 never received.
+    ipset_excl_file = lists_dir / "ipset-exclude-user.txt"
+    ipset_excl_path = ""
+    if ipset_excl_file.exists():
+        try:
+            has_entry = any(l.strip() and not l.strip().startswith("#")
+                            for l in ipset_excl_file.read_text(encoding="utf-8-sig").splitlines())
+        except OSError:
+            has_entry = False
+        if has_entry:
+            ipset_excl_path = str(short_path(ipset_excl_file))
+
     for line in lines:
         line = line.strip()
         if not line or line.startswith("#") or line.startswith("--comment"):
@@ -178,6 +198,11 @@ def build_args_from_preset(
                 # ipsets allowed") — user subnets are always desynced too.
                 tokens.append(f"--ipset={ipset_inc_path}")
             tokens.append(f"--ipset-exclude={short_lists}\\ipset-exclude.txt")
+            if ipset_excl_path:
+                # Multiple exclude collections supported (ipset.c iterates a
+                # list): user networks win over ipset-all — IpsetCheck_ checks
+                # excludes first.
+                tokens.append(f"--ipset-exclude={ipset_excl_path}")
             continue
         if "@lists/" in line:
             line = line.replace("@lists/", str(short_lists) + "\\")
@@ -195,6 +220,34 @@ def build_args_from_preset(
         # Inject --autohostlist into list-general filter blocks
         if autohostlist and "--hostlist=" in line and "list-general" in line:
             tokens.append(f"--hostlist-auto={auto_path}")
+    # ── Discord Voice udplen: переписать инлайн голосовой блок ──
+    # Гипотеза (STRATEGY_ROADMAP §1): UDP-сегментации нет, DPI с жёсткой
+    # привязкой к длине/сигнатуре голосовых пакетов промахивается при сдвиге
+    # длины. Блок независим (сегментация --new) — переписывается на месте:
+    # без --payload/--out-range (медиа-поток непрерывный), udplen вместо fake.
+    if voice_mode == "udplen":
+        segs: list[list[str]] = [[]]
+        for t in tokens:
+            if t == "--new":
+                segs.append([])
+            else:
+                segs[-1].append(t)
+        rebuilt: list[str] = []
+        for si, seg in enumerate(segs):
+            if si > 0:
+                rebuilt.append("--new")
+            is_voice = any("19294-19344,50000-50100" in t for t in seg)
+            for t in seg:
+                if is_voice:
+                    if t == "--payload" or t == "--out-range":
+                        continue  # пары (option, value) выкидываем с ключом
+                    if t == "discord_ip_discovery" or t == "-d10":
+                        continue
+                    if t.startswith("--lua-desync=") and "fake:blob=quic_google" in t:
+                        rebuilt.append("--lua-desync=udplen:increment=5:pattern=0xDEADBEEF")
+                        continue
+                rebuilt.append(t)
+        tokens = rebuilt
     # CRITICAL: --lua-init @path in SEPARATE-arg form kills winws2's option
     # parsing when the path contains NO spaces (a real winws2 bug, see
     # AGENTS.md §23): everything after the option is silently dropped, only
@@ -273,7 +326,14 @@ def build_args_from_preset(
         tokens.append("-d10")
         tokens.append("--lua-desync=fake:blob=quic_google:repeats=10")
     # ── Discord Voice UDP fix ──
-    if discord_voice:
+    # fake — стандартный блок; udplen — вариант для пресетов без инлайн
+    # голосового блока (у default блок уже переписан трансформацией выше).
+    if voice_mode == "udplen":
+        tokens.append("--new")
+        tokens.append("--filter-udp=19294-19344,50000-50100")
+        tokens.append("--filter-l7=discord,stun")
+        tokens.append("--lua-desync=udplen:increment=5:pattern=0xDEADBEEF")
+    elif voice_mode == "fake":
         tokens.append("--new")
         tokens.append("--filter-udp=19294-19344,50000-50100")
         tokens.append("--filter-l7=discord,stun")
@@ -302,6 +362,8 @@ def build_args_from_preset(
                 if t.startswith("--hostlist=") and "list-general.txt" in t:
                     dup.append(f"--ipset={ipset_inc_path}")
                     dup.append(f"--ipset-exclude={short_lists}\\ipset-exclude.txt")
+                    if ipset_excl_path:
+                        dup.append(f"--ipset-exclude={ipset_excl_path}")
                 elif t.startswith("--hostlist=") or t.startswith("--hostlist-auto="):
                     continue  # SNI-based includes are meaningless in an IP-matched dup
                 else:

@@ -9,6 +9,7 @@ host).  Every check has a hard timeout and never raises.
 from __future__ import annotations
 
 import json
+import re
 import socket
 import subprocess
 from datetime import datetime
@@ -117,7 +118,8 @@ def _check_preset(root_dir: Path, cfg: AppConfig) -> Check:
     args = build_args_from_preset(
         root_dir, root_dir / "lua", root_dir / "blobs", preset,
         debug=cfg.winws2_debug, game_filter_mode=cfg.game_filter_mode,
-        discord_voice=cfg.discord_voice, autohostlist=cfg.autohostlist,
+        discord_voice=cfg.discord_voice, discord_voice_mode=cfg.discord_voice_mode,
+        autohostlist=cfg.autohostlist,
         ipset_catchall=cfg.ipset_catchall,
     )
     ok, err = validate_args(exe, args, cwd=root_dir)
@@ -403,6 +405,48 @@ def _check_dns_poison() -> Check:
                  tech=f"system == DoH for {checked} domains")
 
 
+def _check_lan_peers() -> Check:
+    """Информационный чек: другие активные хосты в LAN (по ARP-кэшу).
+
+    Локальные машины WinDivert друг друга не перехватывают, но ТСПУ видит
+    их как одного абонента (один публичный IP за NAT): агрессивные фейки
+    с двух ПК складываются в общую пер-IP статистику DPI. Известный кейс
+    (Zapret 1): два ПК на одной Wi-Fi — «стратегии глушили друг друга»,
+    приходилось включать разные. Заплатка — подсказка в диагностике,
+    стратегию выбирает пользователь.
+    """
+    try:
+        r = subprocess.run(
+            ["arp", "-a"],
+            capture_output=True, text=True, encoding="oem", errors="replace",
+            timeout=5, creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+        macs: set[str] = set()
+        for m in re.finditer(r"\b([0-9a-f]{2}(?:-[0-9a-f]{2}){5})\b", r.stdout, re.IGNORECASE):
+            mac = m.group(1).lower()
+            if mac in ("ff-ff-ff-ff-ff-ff", "00-00-00-00-00-00"):
+                continue  # broadcast / незавершённая запись
+            if int(mac[:2], 16) & 0x01:
+                continue  # multicast-адресации
+            macs.add(mac)
+        # Виртуальные адаптеры (WSL/VirtualBox) дают 1-2 лишних MAC —
+        # поэтому чек всегда ok и только информирует.
+        if len(macs) >= 2:
+            return Check(
+                "lan_peers", "Другие устройства в сети", "ok",
+                f"в сети есть другие активные устройства ({len(macs)} MAC). "
+                "Прямо обходу они не мешают. Но если обход нестабилен и на других "
+                "ПК тоже запущен zapret/VPN — включите на всех одну и ту же стратегию: "
+                "для провайдера это один адрес, и агрессивные фейки с двух машин "
+                "суммируются в общую статистику",
+                tech=f"arp macs: {', '.join(sorted(macs))}")
+        return Check("lan_peers", "Другие устройства в сети", "ok",
+                     "дополнительных хостов в ARP не видно")
+    except (subprocess.TimeoutExpired, OSError) as e:
+        return Check("lan_peers", "Другие устройства в сети", "skip",
+                     f"не удалось проверить: {e}")
+
+
 def run_diagnostics(root_dir: Path, cfg: AppConfig, progress_cb=None) -> dict:
     root_dir = Path(root_dir)
 
@@ -458,6 +502,9 @@ def run_diagnostics(root_dir: Path, cfg: AppConfig, progress_cb=None) -> dict:
             _add(Check("env", "Окружение", "ok", "конфликтов нет"))
     except Exception as e:
         _add(Check("env", "Окружение", "skip", f"не удалось проверить: {e}"))
+
+    # LAN-соседи (информационно; см. _check_lan_peers — кейс «два ПК глушили друг друга»)
+    _add(_check_lan_peers())
 
     # TCP timestamps (ts-fooling silently dead when disabled)
     try:

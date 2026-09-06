@@ -283,6 +283,7 @@ def _restore_protection_after_naked(z2_was: bool, z1_was: bool, state) -> str:
                 profile,
                 game_filter_mode=cfg.game_filter_mode,
                 discord_voice=cfg.discord_voice,
+                discord_voice_mode=cfg.discord_voice_mode,
                 winws2_debug=cfg.winws2_debug,
                 autohostlist=cfg.autohostlist,
                 ipset_catchall=cfg.ipset_catchall,
@@ -531,6 +532,13 @@ def _recheck_contested(tester, best, rec: dict, progress) -> dict:
 def _run_tester_action(data: dict) -> None:
     action = data.get("action", "")
     state = _tester_state
+    known = ("test", "test_profiles", "current", "naked", "cdn_scan",
+             "check-winws", "check_vpn", "full_analysis")
+    if action not in known:
+        with state.lock:
+            state.error = f"Неизвестное действие тестера: {action!r}"
+            state.running = False
+        return
     with state.lock:
         state.running = True
         state.reset()
@@ -700,17 +708,30 @@ def _run_tester_action(data: dict) -> None:
                             # --wf-tcp-in).  Real 1.5s smoke launch.
                             if ok:
                                 try:
-                                    from core.launcher import write_run_bat, launch_winws2_bat
                                     import time as _time
                                     bat = get_root_dir() / "_zapret_custom_smoke.bat"
                                     write_run_bat(get_root_dir(), bat,
                                                   get_root_dir() / "bin" / "winws2.exe", args)
-                                    launched = launch_winws2_bat(bat, get_root_dir(), timeout=5.0)
+                                    # Запускаем батник сами, чтобы знать PID и гасить
+                                    # только дерево smoke-процесса: blanket taskkill
+                                    # по имени убил бы и чужой/сервисный winws2.
+                                    proc = subprocess.Popen(
+                                        ["cmd", "/c", str(bat)],
+                                        cwd=str(get_root_dir()),
+                                        creationflags=subprocess.CREATE_NO_WINDOW,
+                                    )
                                     _time.sleep(1.5)
-                                    alive = launched and tester.is_running()
-                                    subprocess.run(["taskkill", "/F", "/IM", "winws2.exe"],
-                                                   capture_output=True, timeout=5,
-                                                   creationflags=subprocess.CREATE_NO_WINDOW)
+                                    alive = tester.is_running()
+                                    try:
+                                        subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                                                       capture_output=True, timeout=5,
+                                                       creationflags=subprocess.CREATE_NO_WINDOW)
+                                    except (subprocess.TimeoutExpired, OSError):
+                                        pass
+                                    # Страховка: winws2 мог отцепиться от cmd-дерева —
+                                    # в этот момент любой живой winws2 только наш.
+                                    if tester.is_running():
+                                        tester._ensure_winws2_dead()
                                     if not alive:
                                         custom["valid"] = False
                                         custom["error"] = ("custom не стартует на реальном запуске "
@@ -948,6 +969,8 @@ class ZapretHandler(BaseHTTPRequestHandler):
                 self._handle_get_list("list-exclude-user.txt")
             elif path == "/api/include-list":
                 self._handle_get_list("list-include-user.txt")
+            elif path == "/api/bundled-domains":
+                self._handle_bundled_domains()
             elif path == "/api/ipset-exclude-list":
                 self._handle_get_list("ipset-exclude.txt")
             elif path == "/api/ipset-include-list":
@@ -987,6 +1010,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
             "zapret1_last_strategy": cfg.zapret1_last_strategy,
             "game_filter_mode": cfg.game_filter_mode,
             "discord_voice": cfg.discord_voice,
+            "discord_voice_mode": cfg.discord_voice_mode,
             "winws2_debug": cfg.winws2_debug,
             "autohostlist": cfg.autohostlist,
             "ipset_catchall": cfg.ipset_catchall,
@@ -1023,6 +1047,23 @@ class ZapretHandler(BaseHTTPRequestHandler):
         if path.exists():
             content = path.read_text(encoding="utf-8")
         self._send_json({"status": "ok", "content": content})
+
+    def _handle_bundled_domains(self) -> None:
+        """Домены из наших (не пользовательских) включений — для клиентского
+        guard'а приоритетов список/исключение на странице «Списки»."""
+        domains: set[str] = set()
+        for name in ("list-general.txt", "list-google.txt", "list-discord.txt"):
+            f = get_root_dir() / "lists" / name
+            if not f.exists():
+                continue
+            try:
+                for line in f.read_text(encoding="utf-8", errors="replace").splitlines():
+                    line = line.strip().lower()
+                    if line and not line.startswith("#"):
+                        domains.add(line)
+            except OSError:
+                pass
+        self._send_json({"status": "ok", "domains": sorted(domains)})
 
     def _handle_service_status(self) -> None:
         self._send_json({
@@ -1131,6 +1172,11 @@ class ZapretHandler(BaseHTTPRequestHandler):
         if "zapret1_dir" in data: cfg.zapret1_dir = data["zapret1_dir"]
         if "game_filter_mode" in data: cfg.game_filter_mode = data["game_filter_mode"]
         if "discord_voice" in data: cfg.discord_voice = bool(data["discord_voice"])
+        if "discord_voice_mode" in data:
+            mode = str(data["discord_voice_mode"]).lower()
+            if mode in ("off", "fake", "udplen"):
+                cfg.discord_voice_mode = mode
+                cfg.discord_voice = mode != "off"  # совместимость со старыми сборками
         if "winws2_debug" in data: cfg.winws2_debug = bool(data["winws2_debug"])
         if "autohostlist" in data: cfg.autohostlist = bool(data["autohostlist"])
         if "ipset_catchall" in data: cfg.ipset_catchall = bool(data["ipset_catchall"])
@@ -1196,6 +1242,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
             profile_name,
             game_filter_mode=cfg.game_filter_mode,
             discord_voice=cfg.discord_voice,
+            discord_voice_mode=cfg.discord_voice_mode,
             winws2_debug=cfg.winws2_debug,
             autohostlist=cfg.autohostlist,
             ipset_catchall=cfg.ipset_catchall,
@@ -1225,7 +1272,10 @@ class ZapretHandler(BaseHTTPRequestHandler):
         cfg = get_config_manager().load()
         profile = data.get("profile") or cfg.last_profile or DEFAULT_PROFILE
         game_filter = data.get("game_filter") or cfg.game_filter_mode or "off"
-        discord_voice = bool(data.get("discord_voice", cfg.discord_voice))
+        voice_mode = (str(data.get("discord_voice_mode") or "").strip().lower()
+                      or cfg.discord_voice_mode
+                      or ("fake" if data.get("discord_voice", cfg.discord_voice) else "off"))
+        discord_voice = voice_mode != "off"
         debug = bool(data.get("debug", cfg.winws2_debug))
         autohostlist = bool(data.get("autohostlist", cfg.autohostlist))
         ipset_catchall = bool(data.get("ipset_catchall", cfg.ipset_catchall))
@@ -1239,6 +1289,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
         args = build_args_from_preset(root, root / "lua", root / "blobs", preset, debug=debug,
                                        game_filter_mode=game_filter,
                                        discord_voice=discord_voice,
+                                       discord_voice_mode=voice_mode,
                                        autohostlist=autohostlist,
                                        ipset_catchall=ipset_catchall)
         ok, err = validate_args(exe, args, cwd=root)
@@ -1276,11 +1327,13 @@ class ZapretHandler(BaseHTTPRequestHandler):
         import threading as _th
         import time as _time
         from core.diagnostics import run_diagnostics, format_report_text
-        if _diag_state.get("running"):
-            self._send_json({"status": "error", "message": "Проверка уже выполняется"})
-            return
-        _diag_state.update({"running": True, "progress": "", "report": None,
-                            "error": None, "started": _time.time()})
+        # Атомарная отметка «занято» — закрывает окно для параллельного POST.
+        with _diag_lock:
+            if _diag_state.get("running"):
+                self._send_json({"status": "error", "message": "Проверка уже выполняется"})
+                return
+            _diag_state.update({"running": True, "progress": "", "report": None,
+                                "error": None, "started": _time.time()})
 
         def _worker():
             try:
@@ -1375,11 +1428,14 @@ class ZapretHandler(BaseHTTPRequestHandler):
                 _tester_state.cancelled = True
             self._send_json({"status": "ok", "action": "cancelled"})
             return
+        # Решение «занят/свободен» принимаем атомарно под локом: отметка
+        # running=True здесь же закрывает окно для второго параллельного POST.
         with _tester_state.lock:
             if _tester_state.running:
                 self._send_json({"status": "error", "message": "Тестер уже занят — дождитесь завершения"},
                                 HTTPStatus.CONFLICT)
                 return
+            _tester_state.running = True
         t = threading.Thread(target=_run_tester_action, args=(data,), daemon=True)
         t.start()
         self._send_json({"status": "ok", "action": "started"})
@@ -1457,6 +1513,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
             profile,
             game_filter_mode=cfg.game_filter_mode,
             discord_voice=cfg.discord_voice,
+            discord_voice_mode=cfg.discord_voice_mode,
             winws2_debug=cfg.winws2_debug,
             autohostlist=cfg.autohostlist,
             ipset_catchall=cfg.ipset_catchall,
