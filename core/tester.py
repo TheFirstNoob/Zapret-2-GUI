@@ -1090,6 +1090,118 @@ class Zapret2Tester:
             self._ensure_winws2_dead()
         return out
 
+    # ── ASN-скан (110 IP-проб из dpi-detector): белый SNI на конкретный IP,
+    # загрузка ~32KB, классификация обрыва — как в оригинальном инструменте ──
+    ASN_SNI = "hcaptcha.com"          # белый SNI из whitelist-sni.txt
+    ASN_BODY = 32 * 1024
+
+    def asn_scan(self, progress_cb, result_cb=None) -> list[dict]:
+        """IP-пробы по ASN: подключение к IP:443 с белым SNI и загрузкой ~32KB.
+        Статусы: OK / DETECTED (обрыв на N КБ — stateful DPI) / TCP RST /
+        SYN DROP / TIMEOUT / ERROR. Работает под текущей защитой, ничего
+        не перезапускает. Возвращает список для таблицы."""
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        import subprocess
+        self.shutdown_event.clear()
+        # Конкурентность низкая: пачка SYN в один ASN с одного источника
+        # будит анти-скан фильтры хостера и даёт ложные SYN DROP.
+        concurrency = 4
+        probes = []
+        probe_file = self.root_dir / "lists" / "cdn-asn-probes.json"
+        try:
+            import json
+            probes = json.loads(probe_file.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as e:
+            return [{"id": "—", "asn": "—", "provider": "—", "status": "ERROR",
+                     "detail": f"не читается {probe_file.name}: {e}"}]
+        if not probes:
+            return [{"id": "—", "asn": "—", "provider": "—", "status": "ERROR",
+                     "detail": "список проб пуст"}]
+
+        body_file = self.root_dir / "asn_probe_body.bin"
+        try:
+            body_file.write_bytes(os.urandom(self.ASN_BODY))
+        except OSError:
+            return [{"id": "—", "asn": "—", "provider": "—", "status": "ERROR",
+                     "detail": "не удалось создать тестовое тело"}]
+
+        sni = self.ASN_SNI
+
+        def probe_one(p: dict) -> dict:
+            start = time.time()
+            ip, pid = p.get("ip", ""), p.get("id", "?")
+            try:
+                r = subprocess.run(
+                    ["curl.exe", "-4", "-k", "-sS", "-m", "10",
+                     "--resolve", f"{sni}:443:{ip}",
+                     "-w", "%{http_code} %{size_upload} %{time_total}",
+                     "-o", "NUL",
+                     "--data-binary", f"@{body_file}",
+                     f"https://{sni}/"],
+                    capture_output=True, text=True, encoding="oem", errors="replace",
+                    timeout=15, creationflags=subprocess.CREATE_NO_WINDOW,
+                )
+                elapsed = round(time.time() - start, 1)
+                err = (r.stderr or "").lower()
+                out = (r.stdout or "").split()
+                code = out[0] if out and out[0].isdigit() else ""
+                uploaded = int(out[1]) if len(out) > 1 and out[1].isdigit() else 0
+                kb = uploaded // 1024
+                status, detail = "", ""
+                if code and uploaded >= 28 * 1024:
+                    status, detail = "OK", f"{elapsed}s"
+                elif uploaded:
+                    status = "DETECTED"
+                    detail = f"обрыв на {kb} КБ | {elapsed}s"
+                elif "reset by peer" in err or "recv failure" in err:
+                    status, detail = "TCP RST", f"{elapsed}s"
+                elif "connection timed out" in err and "connect" in err:
+                    status, detail = "SYN DROP", "TCP SYN timeout | 8.0s"
+                elif "timed out" in err:
+                    status, detail = "TIMEOUT", f"{elapsed}s"
+                elif "ssl" in err and ("handshake" in err or "alert" in err):
+                    status, detail = "TLS RST", f"{elapsed}s"
+                elif r.returncode == 28 or "timed out" in err:
+                    # таймаут: SYN-фаза (соединение не установилось) или поток
+                    status = "TIMEOUT"
+                    if "connection timed out" in err:
+                        status = "SYN DROP"
+                    detail = (err.strip().split("curl:")[-1].strip()[:50] or "10s") + f" | {elapsed}s"
+                else:
+                    status, detail = "ERROR", (err.strip()[:60] or f"код {r.returncode} | {elapsed}s")
+                res = {"id": pid, "asn": str(p.get("asn", "")), "provider": p.get("provider", ""),
+                       "status": status, "detail": detail, "code": code}
+            except subprocess.TimeoutExpired:
+                res = {"id": pid, "asn": str(p.get("asn", "")), "provider": p.get("provider", ""),
+                       "status": "SYN DROP", "detail": "TCP SYN timeout"}
+            except OSError as e:
+                res = {"id": pid, "asn": str(p.get("asn", "")), "provider": p.get("provider", ""),
+                       "status": "ERROR", "detail": str(e)[:60]}
+            if result_cb:
+                result_cb(res)
+            return res
+
+        out: list[dict] = []
+        total = len(probes)
+        with ThreadPoolExecutor(max_workers=concurrency) as pool:
+            futures = {pool.submit(probe_one, p): i for i, p in enumerate(probes)}
+            done = 0
+            for fut in as_completed(futures):
+                if self.shutdown_event.is_set():
+                    break
+                out.append(fut.result())
+                done += 1
+                progress_cb(int(done * 95 / total), f"ASN-пробы {done}/{total}...")
+        try:
+            body_file.unlink()
+        except OSError:
+            pass
+        order = {p["id"]: i for i, p in enumerate(probes)}
+        out.sort(key=lambda x: order.get(x["id"], 999))
+        ok_n = sum(1 for x in out if x["status"] == "OK")
+        progress_cb(100, f"Готово: {ok_n}/{total} OK")
+        return out
+
     def _verify_with_desync(self, domains: list[str], result_cb,
                             ipset_catchall: bool = False) -> dict[str, str]:
         """Пробный прогон с десинком кандидатов: вердикт fix/hard по факту.

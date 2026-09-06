@@ -543,6 +543,39 @@ def _recheck_contested(tester, best, rec: dict, progress) -> dict:
     return rec
 
 
+def _run_asn_scan() -> None:
+    """ASN-пробы (110 IP): мериют ТСПУ напрямую, БЕЗ нашего десинка в пути.
+
+    Обязателен чистый путь: под десинком замер показывает смесь «ТСПУ +
+    наш обман» — SYN DROP могли вызывать мы сами. Защита останавливается
+    на время скана и восстанавливается (сервис-осведомлённо)."""
+    state = _tester_state
+    tester = get_tester()
+    svc_was = _svc_was_running()
+    z2_was = tester.is_running()
+    z1_was = tester._any_winws_running()
+    try:
+        with state.lock:
+            state.reset()
+            state.action_type = "asn_scan"
+        if z2_was or z1_was:
+            state.set_progress(2, "Останавливаем обход (замер чистого пути к ТСПУ)...")
+            _kill_never_hang(["winws.exe", "winws2.exe"])
+        results = _run_tester(lambda: tester.asn_scan(_make_progress_cb(state)))
+        note = ""
+        if z2_was or svc_was:
+            note = _restore_protection_after_naked(z2_was, z1_was, state, svc_was)
+        with state.lock:
+            state.final_result = {"type": "asn_scan", "probes": results, "restored": note}
+            state.running = False
+    except Exception as e:
+        with state.lock:
+            state.error = str(e)
+    finally:
+        with state.lock:
+            state.running = False
+
+
 def _run_blob_probe(data: dict) -> None:
     """Перебор TLS-фейк-блобов на короткой батарее. Защита на время прогона
     перезапускается по одному разу на блоб — восстановление сервис-осведомлённое."""
@@ -1229,6 +1262,8 @@ class ZapretHandler(BaseHTTPRequestHandler):
                 self._handle_diagnose_status()
             elif path == "/api/export-report":
                 self._handle_export_report(data)
+            elif path == "/api/asn-scan":
+                self._handle_asn_scan(data)
             elif path == "/api/blob-probe":
                 self._handle_blob_probe(data)
             elif path == "/api/tester/action":
@@ -1503,6 +1538,16 @@ class ZapretHandler(BaseHTTPRequestHandler):
             self._send_json({"status": "ok", "file": path_or_err})
         else:
             self._send_json({"status": "error", "message": path_or_err})
+
+    def _handle_asn_scan(self, data: dict) -> None:
+        with _tester_state.lock:
+            if _tester_state.running:
+                self._send_json({"status": "error", "message": "Тестер занят"}, HTTPStatus.CONFLICT)
+                return
+            _tester_state.running = True
+        t = threading.Thread(target=_run_asn_scan, daemon=True)
+        t.start()
+        self._send_json({"status": "ok"})
 
     def _handle_blob_probe(self, data: dict) -> None:
         with _tester_state.lock:

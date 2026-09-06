@@ -1069,10 +1069,11 @@ const CdnStab = {
     if (this._bound) return;
     this._bound = true;
     $('cdnScanBtn').addEventListener('click', () => this.scan());
+    $('asnScanBtn').addEventListener('click', () => this.asnScan());
   },
 
   async scan() {
-    if (this._polling) return;
+    if (this._polling || this._asnPolling) return;
     this._applied = new Set();
     $('cdnScanBtn').disabled = true;
     $('cdnProgress').hidden = false;
@@ -1140,6 +1141,66 @@ const CdnStab = {
     this._polling = false;
     $('cdnScanBtn').disabled = false;
     $('cdnProgress').hidden = true;
+  },
+
+  // ── ASN-скан: 110 IP-проб с белым SNI, под текущей защитой ──
+  _asnPolling: false,
+
+  async asnScan() {
+    if (this._polling || this._asnPolling) return;
+    this._asnPolling = true;
+    $('asnScanBtn').disabled = true;
+    $('cdnScanBtn').disabled = true;
+    $('cdnProgress').hidden = false;
+    $('cdnProgress').textContent = '';
+    $('cdnBody').innerHTML = '<div class="empty-note">ASN-пробы при выключенном обходе — меряем ТСПУ напрямую. Защита вернётся автоматически…</div>';
+    try {
+      const r = await apiPost('/asn-scan', {});
+      if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
+      const deadline = Date.now() + 4 * 60 * 1000;
+      let final = null;
+      while (!final && Date.now() < deadline) {
+        await new Promise(res => setTimeout(res, 700));
+        const st = await apiGet('/tester/status');
+        if (st.error && !st.running) throw new Error(st.error);
+        if (st.progress) $('cdnProgress').textContent = `${st.progress.message || ''} (${st.progress.percent ?? 0}%)`;
+        if (!st.running) final = st.final_result;
+      }
+      if (!final) throw new Error('скан не завершился вовремя');
+      if (final.type === 'asn_scan') this._renderAsn(final.probes || []);
+      else throw new Error('неожиданный результат');
+    } catch (e) {
+      $('cdnBody').innerHTML = `<div class="empty-note">${escapeHtml(e.message)}</div>`;
+      showToast('ASN-скан: ' + e.message, 'error');
+    }
+    this._asnPolling = false;
+    $('asnScanBtn').disabled = false;
+    $('cdnScanBtn').disabled = false;
+    $('cdnProgress').hidden = true;
+  },
+
+  _renderAsn(probes) {
+    const cls = s => s === 'OK' ? 'st-ok' : (s === 'DETECTED' ? 'st-err' : 'st-warn');
+    const okN = probes.filter(x => x.status === 'OK').length;
+    const detN = probes.filter(x => x.status === 'DETECTED').length;
+    const sum = `<div class="cdn-summary">
+      <span>проб: <b>${probes.length}</b></span>
+      <span>чисто: <b class="st-ok">${okN}</b></span>
+      <span>stateful DPI: <b class="bad">${detN}</b></span>
+      <span class="meta">белый SNI на конкретный IP — показывает, где ТСПУ режет поток независимо от домена</span>
+    </div>`;
+    const rows = probes.map(x => `
+      <tr class="${x.status === 'OK' ? '' : 'list-tr-bad'}">
+        <td class="mono">${escapeHtml(x.id)}</td>
+        <td class="mono">${escapeHtml(x.asn)}</td>
+        <td>${escapeHtml(x.provider)}</td>
+        <td class="${cls(x.status)}"><b>${escapeHtml(x.status)}</b></td>
+        <td class="meta">${escapeHtml(x.detail || '')}</td>
+      </tr>`).join('');
+    $('cdnBody').innerHTML = sum + `
+      <table class="list-table"><thead><tr>
+        <th>ID</th><th>ASN</th><th>Провайдер</th><th>Статус</th><th>Детали</th>
+      </tr></thead><tbody>${rows}</tbody></table>`;
   },
 
   _render(fr) {
