@@ -233,6 +233,7 @@ tls_handshake → sending_data → reading_data) через httpx event hooks;
 
 ### Задача 1 (ОБЯЗАТЕЛЬНО перед релизом 0.6): пересборка дистрибутивов
 0.6 **не релизился**. С последней сборки (`fbe3868`, делала нейронка) накопились изменения: фикс custom-smoke бага (write_run_bat), tcp16-20 v2 (size_upload), safe_prefixes + working_domains, ASN-вкладка (page-asn), busy-блокировки (_checkers_busy), скорость asn_scan (--connect-timeout 3, concurrency 8), ASN_SNI=example.com, 2 новых блоба (sferum_ru, sochi_park).
+- **Заодно: bump бандла winws2.exe v1.0.2 → v1.0.5** (04.09 вышел; разбор: критичного/ломающего нет — SSID/NLM, filter-mark, luaexec, blockcheck2 — мимо нас; единственное поведенческое на нашем пути = tcp-опции padding/EOL в reconstruct/dissect). Валидация после смены: dry-run, custom-smoke --intercept=0, один прогон RATED (контроль регресса). Урок из blockcheck2: тестовое ограничение подсетей — через `--wf-raw-filter` (kernel mode), не через --ipset.
 - Команды: `python build_lite.py`, `python build_portable.py`, `python build.py` (затем zip dist/Zapret2GUI.exe → Windows build/Zapret2GUI.zip).
 - После: commit + push zips + sync зеркала. Тэг/релиз — по решению пользователя.
 
