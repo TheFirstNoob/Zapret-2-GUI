@@ -267,7 +267,15 @@ def _kill_never_hang(image_names: list[str]) -> None:
         _run_with_timeout_quiet(["taskkill", "/F", "/IM", name], timeout=6.0)
 
 
-def _restore_protection_after_naked(z2_was: bool, z1_was: bool, state) -> str:
+def _svc_was_running() -> bool:
+    try:
+        from core.service_manager import status as svc_status
+        return svc_status() == "running"
+    except Exception:
+        return False
+
+
+def _restore_protection_after_naked(z2_was: bool, z1_was: bool, state, svc_was: bool = False) -> str:
     """Restart the protection that was active before the naked test.
 
     The naked test kills winws/winws2 — leaving the user silently
@@ -276,6 +284,18 @@ def _restore_protection_after_naked(z2_was: bool, z1_was: bool, state) -> str:
     """
     try:
         if z2_was:
+            # Если обход жил в службе — поднимаем службу (sc start с её же
+            # binPath), а не голый процесс: иначе после скана служба остаётся
+            # «остановлена», хотя winws2 работает вручную.
+            if svc_was:
+                try:
+                    from core.service_manager import start as svc_start
+                    ok_s, msg_s = svc_start(None)
+                    if ok_s:
+                        state.set_progress(99, "Восстанавливаем Zapret 2 (через службу)...")
+                        return "Zapret 2 восстановлен через службу"
+                except Exception:
+                    pass
             cfg = get_config_manager().load()
             profile = cfg.last_profile or DEFAULT_PROFILE
             state.set_progress(99, f"Восстанавливаем Zapret 2 ({profile})...")
@@ -568,12 +588,17 @@ def _run_tester_action(data: dict) -> None:
                 progress = _make_progress_cb(state)
                 result_cb = _make_result_cb(state)
                 cfg = get_config_manager().load()
+                svc_was = _svc_was_running()
                 scan = _run_tester(lambda: tester.scan_cdn_recommendations(
                     progress, result_cb=result_cb,
-                    ipset_mode=bool(cfg.ipset_catchall)))
+                    ipset_mode=bool(cfg.ipset_catchall),
+                    ab_ipset=True,
+                    profile_name=cfg.last_profile or DEFAULT_PROFILE))
                 note = ""
-                if scan.naked_done:
-                    note = _restore_protection_after_naked(scan.z2_was, scan.z1_was, state)
+                # Скан сам перезапускает защиту (A/B-прогон, naked, верификация) —
+                # восстанавливаем всегда, причём через службу, если она жила.
+                if scan.naked_done or scan.protection_touched:
+                    note = _restore_protection_after_naked(scan.z2_was, scan.z1_was, state, svc_was)
                 state.set_final({
                     "type": "cdn_scan",
                     "verdicts": [v.__dict__ for v in scan.verdicts],
@@ -821,6 +846,7 @@ def _run_tester_action(data: dict) -> None:
                 # Remember what protected the user so we can restore it after
                 z2_was_running = get_controller().status().running
                 z1_was_running = _scan_winws_exe()["running"]
+                svc_was_running = _svc_was_running()
                 state.set_progress(1, "Останавливаем zapret...")
                 _kill_never_hang(["winws.exe", "winws2.exe"])
                 state.set_progress(3, "Защита остановлена. Запуск голого теста...")
@@ -830,7 +856,7 @@ def _run_tester_action(data: dict) -> None:
                         result_cb=result_cb, skip_cdn=data.get("skip_cdn", False))
                 )
                 restore_note = _restore_protection_after_naked(
-                    z2_was_running, z1_was_running, state)
+                    z2_was_running, z1_was_running, state, svc_was_running)
                 final = {"type": "naked_result", **_serialize_result(naked_result)}
                 if restore_note:
                     final["restored"] = restore_note
