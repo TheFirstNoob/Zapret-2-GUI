@@ -1073,8 +1073,24 @@ const CdnStab = {
     v.forEach(x => { counts[x.verdict] = (counts[x.verdict] || 0) + 1; });
     const sum = (k) => counts[k] || 0;
     const modeTxt = fr.ipset_mode
-      ? '<span class="meta">режим: ipset (list-general заменён ipset-all — правки идут в ipset-включения/исключения)</span>'
-      : '<span class="meta">режим: hostlist (правки идут в list-general / list-exclude)</span>';
+      ? '<span class="meta">прогон в ipset-режиме (тоггл «Общий IP-обход» включён) — правки идут в ipset-включения/исключения</span>'
+      : '<span class="meta">прогон в hostlist-режиме (тоггл «Общий IP-обход» выключен) — правки идут в list-general / list-exclude</span>';
+    const actionable = sum('fix') + sum('break');
+    const abFixed = v.filter(x => x.ipset === 'чинит').length;
+    const abBroken = v.filter(x => x.ipset === 'ломает').length;
+    const abRan = abFixed + abBroken > 0;
+    let abRec = '';
+    if (abRan) {
+      const verdictTxt = abBroken > abFixed
+        ? 'рекомендация: держите «Общий IP-обход» <b>выключенным</b>'
+        : (abFixed > abBroken ? 'рекомендация: «Общий IP-обход» можно <b>держать включённым</b>' : 'эффект неоднозначный — решайте по тому, какие хосты вам нужны');
+      abRec = `<div class="verdict-msg" style="margin:6px 0 2px"><b>IP-обход A/B:</b> чинит <b>${abFixed}</b>, ломает <b class="bad">${abBroken}</b> — ${verdictTxt}.</div>`;
+    }
+    const guide = actionable
+      ? '<div class="verdict-msg" style="margin:8px 0 2px"><b>Что делать:</b> нажмите кнопку в строке — правка применится к спискам, и обход перезапустится автоматически.</div>'
+      : (abRan
+        ? '<div class="verdict-msg" style="margin:8px 0 2px">Точечных правок списков не требуется — смотрите итог по IP-обходу выше.</div>'
+        : '<div class="verdict-msg" style="margin:8px 0 2px"><b>Что делать: ничего.</b> Живые хосты отвечают, stateful DPI не обнаружен, а мёртвые не отвечают и без защиты — это не блокировка. Проверять больше нечего.</div>');
     const head = `
       <div class="cdn-summary">
         <span>режет DPI, лечится: <b class="bad">${sum('fix')}</b></span>
@@ -1084,15 +1100,20 @@ const CdnStab = {
         <span>обход ломает: <b class="bad">${sum('break')}</b></span>
         <span>мёртвые: <b>${sum('dead')}</b></span>
         ${modeTxt}
-      </div>`;
+      </div>${abRec}${guide}`;
     const rows = v.map(x => {
       const vd = this.VERDICTS[x.verdict] || this.VERDICTS.unknown;
       const applied = this._applied.has(x.domain);
       let btn = '';
-      if (!applied && vd.btn) {
-        const text = (fr.ipset_mode && vd.btn.action === 'general')
-          ? 'В ipset-включения' : vd.btn.text;
-        btn = `<button class="btn btn-sm" data-cdn-act="${vd.btn.action}" data-cdn-domain="${escapeHtml(x.domain)}">${text}</button>`;
+      // «ломает» ipset — предохранитель: стоп-лист, чтобы включение тоггла
+      // позже не убило живой хост
+      const abBtn = (!applied && !vd.btn && x.ipset === 'ломает')
+        ? { action: 'exclude', text: 'В стоп-лист' } : null;
+      const act = vd.btn || abBtn;
+      if (!applied && act) {
+        const text = (fr.ipset_mode && act.action === 'general')
+          ? 'В ipset-включения' : act.text;
+        btn = `<button class="btn btn-sm" data-cdn-act="${act.action}" data-cdn-domain="${escapeHtml(x.domain)}">${text}</button>`;
       } else if (applied) {
         btn = '<span class="meta">применено</span>';
       }
@@ -1105,12 +1126,13 @@ const CdnStab = {
         <td>${x.dpi === 'DET' ? '<span class="bad">режет</span>' : (x.dpi === 'ok' ? 'не режет' : '—')}</td>
         <td>${x.naked === '—' ? '—' : (x.naked === 'A' ? 'жив' : 'мёртв')}</td>
         <td>${vd.label}${ips}</td>
+        <td class="${x.ipset === 'ломает' ? 'st-err' : (x.ipset === 'чинит' ? 'st-ok' : 'st-mute')}">${escapeHtml(x.ipset || '—')}</td>
         <td>${btn}</td>
       </tr>`;
     }).join('');
     $('cdnBody').innerHTML = head + `
       <table class="list-table"><thead><tr>
-        <th>Хост</th><th>CDN</th><th>Под защитой</th><th>Stateful DPI</th><th>Без защиты</th><th>Вердикт</th><th></th>
+        <th>Хост</th><th>CDN</th><th>Под защитой</th><th>Stateful DPI</th><th>Без защиты</th><th>Вердикт</th><th>IPset A/B</th><th></th>
       </tr></thead><tbody>${rows}</tbody></table>`;
     $('cdnBody').querySelectorAll('[data-cdn-act]').forEach(b =>
       b.addEventListener('click', () => this.apply(b, fr.ipset_mode)));

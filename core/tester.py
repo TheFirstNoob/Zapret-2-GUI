@@ -218,6 +218,7 @@ class CdnScanVerdict:
     verdict: str          # fix / ok / break / dead / unknown / hard / covered
     ips: list[str] = field(default_factory=list)   # IP кандидата (для ipset-включений)
     covered: bool = False  # все IP уже внутри ipset-all — наложения нет
+    ipset: str = "—"       # A/B: чинит | ломает | — (эффект IP-обхода для хоста)
 
 
 @dataclass
@@ -228,6 +229,10 @@ class CdnScanResult:
     z1_was: bool = False
     error: str = ""
     ipset_mode: bool = False
+    protection_touched: bool = False  # скан сам перезапускал защиту — рестор обязателен
+    ab_done: bool = False             # A/B-прогон (второй режим ipset) состоялся
+    ab_fixed: int = 0                 # хостов, которые чинит IP-обход
+    ab_broken: int = 0                # хостов, которые IP-обход ломает
 
 
 class Zapret2Tester:
@@ -904,7 +909,8 @@ class Zapret2Tester:
             return e.result if e.result is not None else self._build_result(profile_name, all_results, [], provider_hop, provider_ip, tier, _logged_progress)
 
     def scan_cdn_recommendations(self, progress_cb, result_cb=None, naked_check: bool = True,
-                                 ipset_mode: bool = False) -> CdnScanResult:
+                                 ipset_mode: bool = False, ab_ipset: bool = True,
+                                 profile_name: str = "default") -> CdnScanResult:
         """CDN-стабилизация: вердикты по CDN-хостам для полу-автономного ведения списков.
 
         Три фазы:
@@ -939,12 +945,43 @@ class Zapret2Tester:
                 progress_cb(25, "Проверка stateful DPI (TCP 16-20)...")
                 for r in self._run_tcp1620_tests(alive):
                     dpi_map[r.domain] = "DET" if r.status == "TCP16_20" else "ok"
-            dead = [r.domain for r in protected if r.status != "OK"]
+            # ── A/B: второй прогон в противоположном режиме ipset ──
+            # Включение/выключение IP-обхода меняет картину «пробило/сломало»:
+            # ipset-all чинит одних хостов и ломает других — один прогон этого
+            # не видит. Сканер сам перезапускает защиту, поэтому вызывающий
+            # обязан её восстановить (protection_touched).
+            alive2_map: dict[str, bool] = {}
+            det2_map: dict[str, str] = {}
+            if ab_ipset and not self.shutdown_event.is_set():
+                result.z2_was = result.z2_was or self._any_winws2_running()
+                result.z1_was = result.z1_was or self._any_winws_running()
+                result.protection_touched = True
+                mode2 = "IP-обход ВКЛ" if not ipset_mode else "IP-обход ВЫКЛ"
+                progress_cb(30, f"A/B-прогон: {mode2}...")
+                self._ensure_winws2_dead()
+                if self._run_profile(profile_name, ipset_catchall=not ipset_mode)                         and self._any_winws2_running():
+                    result.ab_done = True
+                    battery2 = self._run_domain_tests(CDN_HOSTS, concurrency=15,
+                                                      http_only=True, result_cb=result_cb)
+                    for r in battery2:
+                        alive2_map[r.domain] = (r.status == "OK")
+                    alive2 = [r.domain for r in battery2 if r.status == "OK"]
+                    if alive2 and not self.shutdown_event.is_set():
+                        progress_cb(42, "Проверка stateful DPI во втором прогоне...")
+                        for r in self._run_tcp1620_tests(alive2):
+                            det2_map[r.domain] = "DET" if r.status == "TCP16_20" else "ok"
+                else:
+                    progress_cb(48, "A/B-прогон не состоялся (пресет не стартовал)")
+                self._ensure_winws2_dead()
+            # мёртвые в первом прогоне: naked перепроверка нужна только тем,
+            # кого A/B не спас (во втором прогоне они тоже мертвы)
+            dead = [r.domain for r in protected
+                    if r.status != "OK" and alive2_map.get(r.domain) is not True]
             naked_map: dict[str, str] = {}
             if naked_check and dead:
-                result.z2_was = self._any_winws2_running()
-                result.z1_was = self._any_winws_running()
-                progress_cb(45, "Перепроверка мёртвых хостов без защиты...")
+                result.z2_was = result.z2_was or self._any_winws2_running()
+                result.z1_was = result.z1_was or self._any_winws_running()
+                progress_cb(52, "Перепроверка мёртвых хостов без защиты...")
                 self._ensure_winws2_dead()
                 result.naked_done = True
                 for r in self._run_domain_tests(dead, concurrency=8, http_only=True, result_cb=result_cb):
@@ -976,6 +1013,7 @@ class Zapret2Tester:
                     cover_map[d] = bool(ips) and all(
                         any(ipaddress.ip_address(ip) in n for n in nets) for ip in ips)
             progress_cb(90, "Сборка вердиктов...")
+            ab_fixed = ab_broken = 0
             for r in protected:
                 dpi = dpi_map.get(r.domain, "—")
                 naked = naked_map.get(r.domain, "—")
@@ -993,6 +1031,22 @@ class Zapret2Tester:
                     verdict = "dead"
                 else:
                     verdict = "unknown"
+                # Эффект IP-обхода: сравнение A/B-прогонов (противоположные
+                # режимы). Жив в hostlist и мёртв в ipset -> ipset ломает;
+                # мёртв в hostlist и жив в ipset -> ipset чинит.
+                ipset_eff = "—"
+                if result.ab_done:
+                    a1 = (r.status == "OK")
+                    a2 = alive2_map.get(r.domain)
+                    if a2 is not None:
+                        hostlist_alive = a1 if not ipset_mode else a2
+                        ipset_alive = a2 if not ipset_mode else a1
+                        if hostlist_alive and not ipset_alive:
+                            ipset_eff = "ломает"
+                            ab_broken += 1
+                        elif not hostlist_alive and ipset_alive:
+                            ipset_eff = "чинит"
+                            ab_fixed += 1
                 result.verdicts.append(CdnScanVerdict(
                     domain=r.domain,
                     provider=CDN_PROVIDERS.get(r.domain, "—"),
@@ -1000,7 +1054,9 @@ class Zapret2Tester:
                     dpi=dpi, naked=naked, verdict=verdict,
                     ips=ip_map.get(r.domain, []),
                     covered=cover_map.get(r.domain, False),
+                    ipset=ipset_eff,
                 ))
+            result.ab_fixed, result.ab_broken = ab_fixed, ab_broken
             progress_cb(100, "Готово")
         except _TestAbort as e:
             if e.result is not None and getattr(e.result, "error", None):
