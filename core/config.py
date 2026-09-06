@@ -15,6 +15,7 @@ class AppConfig:
     game_filter_mode: str = "off"
     discord_voice: bool = False
     discord_voice_mode: str = "off"  # off | fake | udplen
+    fake_blob: str = ""                # ключ tls_clienthello_<key>.bin; пусто = как в пресете (google)
     winws2_debug: bool = False
     autohostlist: bool = False
     ipset_catchall: bool = False

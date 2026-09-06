@@ -433,7 +433,8 @@ class Zapret2Tester:
         """Kill process, never hang. Delegates to multi-method kill."""
         Zapret2Tester._kill_never_hang(image_name)
 
-    def _run_profile(self, profile_name: str, ipset_catchall: bool = False) -> bool:
+    def _run_profile(self, profile_name: str, ipset_catchall: bool = False,
+                     fake_blob: str = "") -> bool:
         exe_path = self.bin_dir / "winws2.exe"
         if not exe_path.exists():
             exe_path = self.root_dir / "winws2.exe"
@@ -447,7 +448,7 @@ class Zapret2Tester:
         self._wait_windivert_free()
 
         args = build_args_from_preset(self.root_dir, self.lua_dir, self.blobs_dir, preset,
-                                      ipset_catchall=ipset_catchall)
+                                      ipset_catchall=ipset_catchall, fake_blob=fake_blob)
         bat = self.root_dir / "_zapret_run.bat"
         write_run_bat(self.root_dir, bat, exe_path, args)
 
@@ -1054,6 +1055,40 @@ class Zapret2Tester:
             else:
                 result.error = "прервано"
         return result
+
+    # Короткая батарея для подбора блоба: ключевые сервисы, ~10-15 с на блоб.
+    BLOB_PROBE_HOSTS = [
+        "discord.com", "www.youtube.com", "www.google.com",
+        "gateway.discord.gg", "cdn.discordapp.com", "i.ytimg.com",
+    ]
+
+    def probe_blobs(self, progress_cb, blob_keys: list[str],
+                    profile_name: str = "default") -> list[dict]:
+        """Перебор TLS-фейк-блобов: для каждого — перезапуск защиты с
+        подменённым блобом и короткая батарея. Возвращает [{blob, ok, total,
+        rate}]. Защиту не восстанавливает — задача вызывающего."""
+        self.shutdown_event.clear()
+        out: list[dict] = []
+        try:
+            self._ensure_winws2_dead()
+            total = max(1, len(blob_keys))
+            for i, key in enumerate(blob_keys):
+                if self.shutdown_event.is_set():
+                    break
+                progress_cb(int(i * 90 / total), f"Блоб «{key}» ({i + 1}/{total})...")
+                if not self._run_profile(profile_name, fake_blob=key)                         or not self._any_winws2_running():
+                    out.append({"blob": key, "ok": 0, "total": len(self.BLOB_PROBE_HOSTS), "rate": -1.0})
+                    continue
+                time.sleep(0.8)
+                res = self._run_domain_tests(self.BLOB_PROBE_HOSTS, concurrency=6,
+                                             http_only=False, result_cb=None)
+                ok = sum(1 for r in res if r.status in ("OK", "OK_BLOCKED", "QUIC_OK"))
+                out.append({"blob": key, "ok": ok, "total": len(res),
+                            "rate": round(ok / len(res) * 100, 1) if res else 0.0})
+            progress_cb(95, "Восстановление защиты...")
+        finally:
+            self._ensure_winws2_dead()
+        return out
 
     def _verify_with_desync(self, domains: list[str], result_cb,
                             ipset_catchall: bool = False) -> dict[str, str]:

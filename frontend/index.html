@@ -129,6 +129,15 @@
                   </td>
                 </tr>
                 <tr>
+                  <td class="opt-name">Блоб фейка<span class="opt-id">TLS fake</span></td>
+                  <td class="opt-desc">Чем подменять TLS-фейк: у каждого «белого» домена своя живучесть на разных провайдерах — Google пробивают чаще, редкие держатся дольше.<span class="opt-mode-hint" id="fakeBlobHint"></span></td>
+                  <td class="opt-ctl">
+                    <select class="input input-sm" id="fakeBlobSelect">
+                      <option value="">Пресет (Google)</option>
+                    </select>
+                  </td>
+                </tr>
+                <tr>
                   <td class="opt-name">Авто-список<span class="opt-id">Auto Hostlist</span></td>
                   <td class="opt-desc">Zapret сам добавит домен в обход, когда заметит блокировку. Держите включённым.</td>
                   <td class="opt-ctl"><label class="switch"><input type="checkbox" id="toggleAutoHostlist"><span class="switch-track"><span class="switch-knob"></span></span></label></td>
@@ -146,6 +155,7 @@
               </table>
 
               <div class="panel-foot">
+                <button class="btn btn-sm" id="btnBlobProbe">Подобрать блоба</button>
                 <span class="meta" id="applyTogglesHint"></span>
                 <button class="btn btn-warnline btn-sm" id="btnApplyToggles" hidden>Перезапустить с новыми параметрами</button>
               </div>
