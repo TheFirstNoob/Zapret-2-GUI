@@ -24,6 +24,7 @@
         <a href="#tester" data-page="tester" class="nav-link">Подбор стратегии<span class="nav-badge" id="testerBadge" hidden>идёт тест</span></a>
         <a href="#lists" data-page="lists" class="nav-link">Списки</a>
         <a href="#cdn" data-page="cdn" class="nav-link">CDN-стабилизация</a>
+        <a href="#asn" data-page="asn" class="nav-link">ASN-скан</a>
       </nav>
 
       <div class="sidebar-foot">
@@ -405,12 +406,42 @@
               </div>
               <div class="diag-actions">
                 <button class="btn btn-primary" id="cdnScanBtn">Сканировать CDN</button>
-                <button class="btn" id="asnScanBtn">ASN-скан (110 IP)</button>
               </div>
             </div>
             <div class="cdn-progress" id="cdnProgress" hidden></div>
             <div class="cdn-body" id="cdnBody">
               <div class="empty-note">Двойной прогон занимает 2–4 минуты. Запустите обход на «Главной», затем сканируйте.</div>
+            </div>
+          </div>
+        </section>
+
+        <section id="page-asn" class="page">
+          <div class="panel lists-help">
+            <div class="lh-title">Что это и зачем</div>
+            <div class="lh-note"><b>Диагностика сети, а не «лечение».</b> Скан делает 110 проб к IP-диапазонам разных хостинг-провайдеров (Hetzner, DigitalOcean, OVH, Cloudflare, AWS и др.) с «белым» SNI и загрузкой ~32 КБ. Так проверяется ТСПУ напрямую: какой диапазон режется целиком, где stateful DPI режет поток на середине, что отвечает нормально.</div>
+            <div class="lh-note">На время скана обход останавливается (меряем чистый путь, без нашего десинка) и возвращается автоматически — вместе со службой, если она была запущена.</div>
+            <div class="lh-note"><b>Когда запускать:</b> сайты/игры не работают при живом обходе и вы хотите понять «почему»; при обращениях в поддержку. Это редкий диагностический инструмент.</div>
+            <div class="lh-note" style="margin-top:8px"><b>Не паникуйте из-за статусов.</b> 100% «OK» тут добиваться не нужно: с нашими пресетами и так работает ~99% сайтов. Скан лишь объясняет, где и что режется на вашей сети. Если большинство проб «OK» и сайты открываются — делать ничего не надо. Для выводов по мобильной сети прогоните 2 раза с паузой: картина меняется от часа к часу.</div>
+            <div class="lh-row" style="margin-top:8px"><code>OK</code><span>диапазон отвечает: соединение, TLS и загрузка 32 КБ прошли без обрыва.</span></div>
+            <div class="lh-row"><code>DETECTED</code><span>поток обрезан на N КБ — stateful DPI. Характерно для CDN-класса: десинк его лечит (см. «CDN-стабилизация»), голый путь — режется.</span></div>
+            <div class="lh-row"><code>SYN DROP</code><span>нет ответа на SYN — режется диапазон целиком (иногда это устаревшие IP: список протухает). Подтверждается повтором.</span></div>
+            <div class="lh-row"><code>TCP RST / TLS RST</code><span>соединение рвётся на этапе TCP или TLS — точечный блок.</span></div>
+            <div class="lh-row"><code>TIMEOUT / ERROR</code><span>не дождались ответа / ошибка проверки.</span></div>
+          </div>
+
+          <div class="panel cdn-panel">
+            <div class="list-head">
+              <div>
+                <div class="panel-title">Скан диапазонов (110 IP)</div>
+                <div class="panel-desc">Защита временно останавливается и возвращается автоматически.</div>
+              </div>
+              <div class="diag-actions">
+                <button class="btn btn-primary" id="asnScanBtn">Запустить ASN-скан</button>
+              </div>
+            </div>
+            <div class="cdn-progress" id="asnProgress" hidden></div>
+            <div class="cdn-body" id="asnBody">
+              <div class="empty-note">Скан занимает 3–8 минут. После завершения — таблица статусов и что делать.</div>
             </div>
           </div>
         </section>
