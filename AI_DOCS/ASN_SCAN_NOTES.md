@@ -64,6 +64,14 @@ OK / DETECTED / TCP RST / TLS RST / SYN DROP / TIMEOUT и DNS-таблицей
 - CDN77 (169.150.x, 37.19.202.x) — флапает часами: OK → DROP → OK.
   Домен cdn.eso.org при этом резолвится в живые IP (в A/B «чинит»).
 
+**Теория пользователя (НЕ проверена):** вечерняя деградация (97 → 18 OK
+за один вечер) может быть реакцией ТСПУ на саму активность сканирования —
+за вечер десятки проб в одни и те же диапазоны (CDN A/B + ASN-скан ×2 +
+dpich-прогоны пользователя). Практические выводы: (а) не сканить часто
+подряд; (б) после жирного скана первые замеры пессимистичны — делать
+паузу час-два; (в) если утром всё вернётся к ~90 OK — теория
+подтверждена, записать в ISP_NOTES как «ТСПУ временно режет сканеров».
+
 ## 4. Что внедрено из dpi-detector
 
 - **Список проб**: `lists/cdn-asn-probes.json` (110 × {id, asn, provider,
@@ -85,20 +93,67 @@ OK / DETECTED / TCP RST / TLS RST / SYN DROP / TIMEOUT и DNS-таблицей
   эталон через DoH Google (dns.google/resolve), ответы серверов через
   nslookup UDP; Google/Cloudflare/Яндекс/Quad9 на Т2 — чисто (2026-09-06).
 
-## 5. Как устроен их инструмент (для будущего сравнения)
+## 5. dpi-detector (Runnin4ik/dpi-detector 4.2.4) — что это и как пользоваться
 
-- `config.yml`: TCP_BLOCK_MIN_KB=12 / MAX=36 (полоса детекта),
-  FAT_DEFAULT_SNI=example.com, connect 8s / read 12s, MAX_CONCURRENT=50.
-- `tcp16_scanner.py`: FAT-проба — chunked keep-alive (10×4KB), детект по
-  первому чанку за порогом; классификация фаз (tcp_connect → tls_handshake
-  → sending_data → reading_data) через httpx event hooks.
-- `utils/error_classifier.py`: таксономия статусов + Windows errno
-  (WSAECONNRESET и т.п.).
-- Тест 4 их меню: **перебор белых SNI (188) для заблокированных ASN** —
-  фаза 2 «Параллельный перебор SNI, топ-3» (на Т2 06.09: для AS396982
-  белый SNI не найден — все заблокированы).
-- Слабое место их списка: пиннед-IP протухают (наш чистый замер: 26 SYN
-  DROP; их домен-резолв-подход из dpich живучее).
+Python-тулза (httpx + rich TUI). Это «та самая программа со скриншотов»
+(таблица 110 ASN + DNS-таблица). Позиционируется как анализатор
+блокировок: показывает, ГДЕ и КАК режется трафик (по ASN, по DNS), но
+ничего не чинит — для нас это эталонный внешний зонд и источник данных.
+
+### Установка и запуск
+- Готовый exe: `github.com/Runnin4ik/dpi-detector/releases`
+  (распакованный 4.2.4 лежал в Downloads; запускается `dpi_detector.py`).
+- Из исходников: `pip install "httpx[socks,http2]==0.28.1" h2 hpack
+  socksio rich PyYAML` (см. requirements.txt репо), затем из папки
+  программы:
+  `python dpi_detector.py -t 34 --batch -o report.txt -c 30`
+- Флаги CLI (app/args.py): `-t <цифры>` — какие тесты гнать (пропускает
+  меню), `--batch` — без пауз/вопросов, `-o файл` — автосохранение
+  отчёта, `-c N` — конкурентность (дефолт 50), `-p прокси`, `-d домен`
+  (точечная проверка домена, можно несколько раз), `-v` — debug.
+- Запускать НОРМАЛЬНЫМ python (не pythonw); TUI рисует rich-таблицы,
+  отчёт пишется в `-o` файл.
+
+### Тесты (цифры для -t, cli/input.py:38-45)
+- `0` — инфо о сети/системе
+- `1` — доступность DNS-серверов
+- `2` — доступность доменов (TLS/HTTP) из domains.txt
+- `3` — **TCP 16-20KB по 110 IP из tcp16.json** (та самая ASN-таблица)
+- `4` — **белые SNI для ASN**: перебор whitelist_sni.txt (188 SNI) по
+  заблокированным ASN; фаза 2 — «топ-3» найденных (на Т2 06.09 для
+  AS396982 белый SNI не найден — все заблокированы)
+- `5` — Telegram
+- `6` — легенда статусов
+
+### Ключевые параметры config.yml
+TCP_BLOCK_MIN_KB=12 / TCP_BLOCK_MAX_KB=36 (полоса детекта обрыва),
+FAT_DEFAULT_SNI=example.com, CONNECT_TIMEOUT=8 / READ_TIMEOUT=8
+(FAT_READ_TIMEOUT=12), MAX_CONCURRENT=50; DNS_CHECK_DOMAINS и ~40
+серверов UDP/DoH/DoT (их DNS_CHECK_DOMAINS: rutor.info, flibusta.is...).
+
+### Методология пробы (tcp16_scanner.py)
+Подключение к IP:443, chunked keep-alive 10×4KB, детект по первому чанку
+за порогом (TCP_BLOCK_MIN_KB); классификация фаз (tcp_connect →
+tls_handshake → sending_data → reading_data) через httpx event hooks;
+ошибки — utils/error_classifier.py (Windows errno: WSAECONNRESET...).
+
+### Файлы-данные (протухают!)
+- `tcp16.json` — 110 IP-проб. IP, опубликованные на GitHub, нулятся/
+  фильтруются хостерами за недели (наш чистый замер 06.09: 26 SYN DROP).
+  Обновление: `cdn.jsdelivr.net/gh/Runnin4ik/dpi-detector@main/tcp16.json`.
+- `whitelist_sni.txt` — 188 белых SNI (экосистема VK/2GIS/банки) —
+  источник блобов для нас (см. make_blob.py).
+- `domains.txt` — пул заблокированных ресурсов для теста 2.
+
+### Наши копии и наш аналог
+- `lists/cdn-asn-probes.json` (= их tcp16.json, скачан 06.09),
+  `lists/whitelist-sni.txt`.
+- Наш ASN-скан (кнопка на вкладке CDN) — упрощённый аналог их теста 3:
+  один белый SNI (hcaptcha.com), один POST 32KB, конкурентность 4,
+  чистый путь (защита останавливается). Их плюсы, которых нам не хватает:
+  chunked-детект с фазами, перебор SNI по ASN (тест 4), DNS-таблица.
+- Их слабое место: пиннед-IP протухают; их доменный подход из dpich
+  живучее — см. §3-4.
 
 ## 6. Статус и что дальше
 
