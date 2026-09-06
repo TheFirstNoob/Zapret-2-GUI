@@ -35,6 +35,7 @@ zapret2_gui/
 ├── presets/                8 .txt стратегий + custom (генерируется тестером)
 ├── lua/ blobs/ lists/ bin/ windivert/
 └── AI_DOCS/                AGENTS.md (критично!), rules, PROJECT_MAP, STRATEGY_GUIDE,
+                            STRATEGY_TRIALS, STRATEGY_ROADMAP, ASN_SCAN_NOTES,
                             TESTER_AUDIT, ISP_NOTES
 ```
 
