@@ -1180,10 +1180,13 @@ const CdnStab = {
     // хоста), «ломает» при ipset-режиме (исключить IP), fix/break — доменные.
     const actionable = sum('fix') + sum('break') + (fr.ipset_mode ? abBroken : 0) + (!fr.ipset_mode ? abFixed : 0);
     const guide = actionable
-      ? '<div class="verdict-msg" style="margin:8px 0 2px"><b>Что делать:</b> нажмите кнопку в строке — правка применится к спискам, и обход перезапустится автоматически. «чинит» = точечный IP-обход хоста; «ломает» = исключить его IP из IP-обхода.</div>'
+      ? '<div class="verdict-msg" style="margin:8px 0 2px"><b>Что делать:</b> нажмите кнопку в строке — правка применится к спискам, и обход перезапустится автоматически. «чинит» = точечный IP-обход хоста; «ломает» = исключить его IP из IP-обхода. Либо примените всё сразу кнопкой ниже.</div>'
       : (abRan
         ? '<div class="verdict-msg" style="margin:8px 0 2px">Точечных правок списков не требуется — смотрите итог по IP-обходу выше.</div>'
         : '<div class="verdict-msg" style="margin:8px 0 2px"><b>Что делать: ничего.</b> Живые хосты отвечают, stateful DPI не обнаружен, а мёртвые не отвечают и без защиты — это не блокировка. Проверять больше нечего.</div>');
+    const applyAllBtn = actionable
+      ? `<div style="margin:6px 0 2px"><button id="cdnApplyAll" class="btn">Применить все правки (${actionable})</button>
+         <span class="meta" id="cdnApplyAllNote"></span></div>` : '';
     const head = `
       <div class="cdn-summary">
         <span>режет DPI, лечится: <b class="bad">${sum('fix')}</b></span>
@@ -1193,7 +1196,7 @@ const CdnStab = {
         <span>обход ломает: <b class="bad">${sum('break')}</b></span>
         <span>мёртвые: <b>${sum('dead')}</b></span>
         ${modeTxt}
-      </div>${abRec}${guide}`;
+      </div>${abRec}${guide}${applyAllBtn}`;
     const rows = v.map(x => {
       const vd = this.VERDICTS[x.verdict] || this.VERDICTS.unknown;
       const applied = this._applied.has(x.domain);
@@ -1239,7 +1242,58 @@ const CdnStab = {
       </tr></thead><tbody>${rows}</tbody></table>`;
     $('cdnBody').querySelectorAll('[data-cdn-act]').forEach(b =>
       b.addEventListener('click', () => this.apply(b, fr.ipset_mode)));
+    const ab = $('cdnApplyAll');
+    if (ab) ab.addEventListener('click', () => this.applyAll(fr));
     $('cdnBody').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  },
+
+  // Собрать список правок из вердиктов (та же логика, что в apply()).
+  _collectActions(fr) {
+    const out = [];
+    (this._lastVerdicts || []).forEach(x => {
+      let action = null;
+      if (x.verdict === 'fix') action = 'general';
+      else if (x.verdict === 'break') action = 'exclude';
+      else if (x.ipset === 'чинит' && !fr.ipset_mode && (x.ips || []).length) action = 'ipset-include';
+      else if (x.ipset === 'ломает' && fr.ipset_mode && (x.ips || []).length) action = 'ipset-exclude';
+      if (action && !this._applied.has(x.domain)) {
+        out.push({ domain: x.domain, action, ips: x.ips || [] });
+      }
+    });
+    return out;
+  },
+
+  async applyAll(fr) {
+    const actions = this._collectActions(fr);
+    if (!actions.length) return;
+    const workingDomains = (this._lastVerdicts || [])
+      .filter(x => x.alive === 'A')
+      .map(x => x.domain);
+    const preview = actions.map(a => `  ${a.domain} — ${a.action}`).join('\n');
+    if (!confirm(`Применить все правки по матрице?\n\n${preview}\n\nОдин перезапуск обхода. Пропуски (наложения/нет IP) будут показаны.`)) return;
+    const btn = $('cdnApplyAll');
+    if (btn) { btn.disabled = true; btn.textContent = 'Применяю…'; }
+    try {
+      const r = await apiPost('/cdn/apply-all', {
+        actions,
+        working_domains: workingDomains,
+      });
+      if (r.status === 'ok') {
+        (r.applied || []).forEach(d => this._applied.add(d));
+        const skipped = r.skipped && r.skipped.length
+          ? ` Пропущено: ${r.skipped.map(s => `${s.domain} (${s.reason})`).join('; ')}` : '';
+        showToast(r.message, 'ok');
+        const note = $('cdnApplyAllNote');
+        if (note) note.textContent = skipped ? `⚠ ${skipped}` : '✓ всё применено';
+        this._render(fr);
+      } else {
+        showToast('Ошибка: ' + (r.message || ''), 'error');
+        if (btn) { btn.disabled = false; btn.textContent = `Применить все правки (${actions.length})`; }
+      }
+    } catch (err) {
+      showToast('Ошибка: ' + err.message, 'error');
+      if (btn) { btn.disabled = false; btn.textContent = `Применить все правки (${actions.length})`; }
+    }
   },
 
   async apply(btn, ipsetMode) {
