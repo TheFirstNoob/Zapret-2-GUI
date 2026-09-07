@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import PyInstaller.__main__
 from pathlib import Path
 
@@ -8,11 +9,24 @@ ROOT = Path(__file__).resolve().parent
 DIST = ROOT / "dist"
 NAME = "Zapret2GUI"
 
+# Экспериментальные пресеты не попадают в дистрибутив (остаются в git).
+RELEASE_PRESETS = lambda name: not name.startswith(("exp-", "cand-", "test-"))
+
+# presets попадают в onefile отфильтрованными через build/presets_release.
+REL_PRESETS = ROOT / "build" / "presets_release"
+if REL_PRESETS.exists():
+    shutil.rmtree(REL_PRESETS)
+REL_PRESETS.mkdir(parents=True)
+for pf in sorted((ROOT / "presets").glob("*.txt")):
+    if RELEASE_PRESETS(pf.stem):
+        shutil.copy2(pf, REL_PRESETS / pf.name)
+
 ADD_DATA = []
-for d in ("bin", "blobs", "lua", "presets", "lists", "windivert", "frontend"):
+for d in ("bin", "blobs", "lua", "lists", "windivert", "frontend"):
     src = str(ROOT / d)
     dst = d
     ADD_DATA.append(f"{src}{os.pathsep}{dst}")
+ADD_DATA.append(f"{str(REL_PRESETS)}{os.pathsep}presets")
 
 # Packages not needed at runtime – pulled in by PyInstaller hooks/build-time deps
 EXCLUDE = [

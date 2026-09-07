@@ -22,6 +22,9 @@ LITE = ROOT / "lite"
 
 COPY_DIRS = ("bin", "lua", "blobs", "lists", "presets", "windivert")
 
+# Экспериментальные пресеты не попадают в дистрибутив (остаются в git).
+RELEASE_PRESETS = lambda name: not name.startswith(("exp-", "cand-", "test-"))
+
 Z1_CHECK_BLOCK = (
     'tasklist /FI "IMAGENAME eq winws.exe" /NH 2>nul | findstr /I "winws.exe" >nul\r\n'
     'if not errorlevel 1 (\r\n'
@@ -171,9 +174,15 @@ def main() -> None:
         src = ROOT / d
         if src.is_dir():
             shutil.copytree(src, LITE / d)
+    # экспериментальные пресеты не попадают в дистрибутив
+    for p in list((LITE / "presets").glob("*.txt")):
+        if not RELEASE_PRESETS(p.stem):
+            p.unlink()
 
     # one start-<preset>.bat per strategy (portable %~dp0 paths)
     for pf in sorted((LITE / "presets").glob("*.txt")):
+        if not RELEASE_PRESETS(pf.stem):
+            continue
         args = build_args_from_preset(LITE, LITE / "lua", LITE / "blobs", pf)
         portable = _portable_args(args, str(LITE), short_path(LITE))
         _write_start_bat(f"start-{pf.stem}.bat", portable)
