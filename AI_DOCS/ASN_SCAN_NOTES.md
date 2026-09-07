@@ -237,8 +237,11 @@ tls_handshake → sending_data → reading_data) через httpx event hooks;
 - Команды: `python build_lite.py`, `python build_portable.py`, `python build.py` (затем zip dist/Zapret2GUI.exe → Windows build/Zapret2GUI.zip).
 - После: commit + push zips + sync зеркала. Тэг/релиз — по решению пользователя.
 
-### Задача 2 (по желанию, фича из плана): автоприменение из A/B-вердиктов
-Одна кнопка «применить всё по матрице» на вкладке CDN: из вердиктов скана собрать предлагаемый набор правок (fix→list-general / ipset-include-user, break→list-exclude / ipset-exclude-user с `_safe_prefixes` и working_domains) и применить с подтверждением. Backend-основа готова (`_handle_cdn_recommendation` уже умеет все 4 действия + safe-prefixes; фронт `CdnStab.apply` шлёт working_domains). Осталось: сборка списка правок из вердиктов + кнопка + подтверждение + перезапуск.
+### Задача 2 (СДЕЛАНО, fcfdbc6, 08.09): автоприменение из A/B-вердиктов
+Кнопка **«Применить все правки (N)»** на CDN-вкладке: батч вердиктов за ОДИН перезапуск.
+- `server.py`: чистый планировщик `_plan_cdn_action()` (+ `_read_lines`/`_read_networks`), `/api/cdn/apply-all` — дедуп по файлам, наложения пропускаются с причиной, отчёт `{applied, skipped}`.
+- `app.js`: `CdnStab._collectActions()` (та же логика, что и одиночные кнопки), `applyAll()` с `confirm` и предпросмотром.
+- Проверено мок-тестами (префиксы /24, наложения, дубли, «нечего применять»). pyflakes/compile/node — чисто. Дистрибутивы пересобраны (portable + exe; lite не содержит GUI).
 
 ### Осознанно НЕ делаем (обоснование выше)
 - HTTP/2 vs 1.1 проба (ожидаемо нулевой эффект, как клиент).
