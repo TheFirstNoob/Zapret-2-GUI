@@ -109,6 +109,10 @@ def main() -> None:
     for d in COPY_DIRS:
         shutil.copytree(ROOT / d, APP / d)
     shutil.copy2(ROOT / "main.py", APP / "main.pyw")
+    # экспериментальные пресеты не попадают в дистрибутив
+    for p in list((APP / "presets").glob("*.txt")):
+        if p.stem.startswith(("exp-", "cand-", "test-")):
+            p.unlink()
 
     # 4. trim runtime (caches, tests, pip scripts)
     for junk in (PY / "Scripts", PY / "Lib" / "site-packages" / "pip" / "_vendor" / "cache"):
