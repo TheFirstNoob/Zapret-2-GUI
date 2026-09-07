@@ -145,23 +145,36 @@ SVC_REMOVE_BAT = (
     'pause\r\n'
 )
 
-README_TXT = """Zapret 2 GUI — lite-версия (без Python, на .bat)
+README_TXT = """Zapret 2 lite - обход блокировок без GUI (Windows)
 
-Отличается от полной версии только способом запуска: здесь нет GUI и
-сборщика — только winws2, списки и батники (как в Zapret 1). Защитник
-Windows к этой версии относится заметно спокойнее.
+Это простая версия Zapret 2: без установки Python и без графического окна.
+Всё делается через .bat-файлы. Запускать от имени администратора.
 
-Использование (от имени администратора):
-  start.bat                — запустить обход (пресет default.txt)
-  stop.bat                 — остановить обход
-  service-install.bat      — установить и запустить службу (автозапуск)
-  service-remove.bat       — удалить службу
+Как пользоваться:
 
-Настройка стратегии: редактируйте presets\\default.txt (как в полной версии)
-или другие .txt в presets\\ — затем замените имя пресета в start.bat
-(строка --запуск по умолчанию использует default).
+  Шаг 1. Просто включить обход:
+         двойной клик по start-default.bat
+         (чтобы остановить - stop.bat)
 
-Пресет по умолчанию: default.txt (универсальная стратегия).
+  Шаг 2. Если что-то не открывается - запусти test.bat.
+         Он сам проверит связь, найдёт проблемные сайты и спросит:
+         "Применить фикс? Y/N" - ответьте Y, и он сам всё поправит.
+         После этого обход перезапустится с улучшенными списками.
+
+  Шаг 3. Автозапуск после перезагрузки (по желанию):
+         service.bat -> пункт 3 (установить службу).
+         Удаление службы - service.bat -> пункт 4.
+
+Что за файлы:
+  start-default.bat   обычный обход (все списки)
+  start-ipset.bat     обход для всех сайтов сразу (если списки не помогли)
+  test.bat            проверка связи и автофикс списков
+  stop.bat            остановить обход
+  service.bat         меню службы (автозапуск)
+
+Настройка под себя: списки лежат в папке lists\\ (list-general.txt -
+что обходить, list-exclude.txt - что не трогать). Файлы можно
+редактировать обычным блокнотом, по одной записи на строку.
 """
 
 
@@ -186,6 +199,13 @@ def main() -> None:
         args = build_args_from_preset(LITE, LITE / "lua", LITE / "blobs", pf)
         portable = _portable_args(args, str(LITE), short_path(LITE))
         _write_start_bat(f"start-{pf.stem}.bat", portable)
+
+    # ipset (catch-all) variant of default — used by test.ps1 stabilizer A/B
+    ipset_args = build_args_from_preset(LITE, LITE / "lua", LITE / "blobs",
+                                        LITE / "presets" / "default.txt",
+                                        ipset_catchall=True)
+    ipset_portable = _portable_args(ipset_args, str(LITE), short_path(LITE))
+    _write_start_bat("start-ipset.bat", ipset_portable)
 
     # default preset for the service
     args = build_args_from_preset(LITE, LITE / "lua", LITE / "blobs",

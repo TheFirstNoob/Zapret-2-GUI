@@ -256,3 +256,9 @@ tls_handshake → sending_data → reading_data) через httpx event hooks;
 - **hosts.txt**: в порядке (UTF-8 без BOM, битым казался из-за PS cp866) — без правок.
 - **lite**: факты — служба (service*.bat), переключение стратегий (start-*.bat, 10 шт), тестер (test.ps1) ЕСТЬ. Нет только CDN-стабилизатора/ASN-тестера (Python-фичи).
 - **⚠️ lite-тестер (test_lite.ps1) УСТАРЕЛ**: 12 хостов (google/cloudflare), а GUI = RATED(11)+CONTROL(16)=27, нет tcp16-20. TODO: синхронизировать test_lite.ps1 с tester.py.
+
+## LITE-СТАБИЛИЗАТОР (08.09): сделано
+- `test_lite.ps1` полностью переписан: naked → default (hostlist) → ipset (catch-all) A/B на CDN_HOSTS (36), вердикты «чинит/ломает/не лечится/мёртвые», **«Применить фиксы? Y/N»** → запись в ipset-include-user / list-exclude → перезапуск → контроль RATED. Без таблиц/отчётов (lite = найти проблему → фикс, подробности в full/portable).
+- `build_lite.py`: генерирует `start-ipset.bat` (default + ipset_catchall=True) для A/B; README lite — краткая инструкция «Шаг 1/2/3» для простого пользователя.
+- ASN-скан и tcp16-20 в lite **сознательно НЕ портированы** (диагностика без actionable фикса; tcp16-20 — сигнатура, не фикс списками).
+- PS-синтаксис проверен (Parser: 0 ошибок). Живой прогон на сети — по желанию.
