@@ -7,6 +7,9 @@ build/
 dist/
 *.spec
 
+# Dev test harnesses (not part of releases)
+_test_*.py
+
 # Runtime-generated files
 *.log
 _zapret_run.bat
