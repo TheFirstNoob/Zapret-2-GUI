@@ -36,6 +36,7 @@ class ConfigManager:
     def load(self) -> AppConfig:
         if self._config is not None:
             return self._config
+        known = {}
         if self.config_path.exists():
             try:
                 data = json.loads(self.config_path.read_text(encoding="utf-8"))

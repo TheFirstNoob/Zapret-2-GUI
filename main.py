@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+import os
 import secrets
 import shutil
 import socket
@@ -8,6 +9,14 @@ import sys
 import threading
 import time
 from pathlib import Path
+
+# Embeddable Python (portable build) uses a ._pth file that disables the
+# automatic addition of the script directory to sys.path — without this
+# import core would fail with ModuleNotFoundError on the portable build.
+if not getattr(sys, "frozen", False):
+    _app_dir = os.path.dirname(os.path.abspath(__file__))
+    if _app_dir not in sys.path:
+        sys.path.insert(0, _app_dir)
 
 from core.admin import is_admin, relaunch_as_admin
 from core.config import VERSION
