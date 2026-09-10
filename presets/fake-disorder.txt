@@ -37,8 +37,8 @@ tls
 -d10
 --payload
 tls_client_hello
---lua-desync=fake:blob=google_tls:tcp_ts=-1000:nodrop
---lua-desync=multisplit:pos=1:seqovl=681:seqovl_pattern=google_tls:nodrop
+--lua-desync=fake:blob=google_tls:tcp_ts=-1000:repeats=7:nodrop
+--lua-desync=multisplit:pos=1:seqovl=681:seqovl_pattern=google_tls:repeats=7:nodrop
 --new
 
 --comment=Discord TCP
