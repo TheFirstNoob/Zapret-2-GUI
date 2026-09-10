@@ -138,3 +138,10 @@ python build_lite.py            :: lite на .bat     -> Windows build\Zapret2GU
 - [zapret](https://github.com/bol-van/zapret2) — bol-van, оригинальный проект
 - Сообществу Windows-порта winws и движка winws2 (lua-desync)
 - [WinDivert](https://github.com/basil00/WinDivert) — Graham Cleus
+
+## Справочные материалы
+
+- [tspu-docs](https://github.com/DanielLavrushin/tspu-docs) — документация по
+  архитектуре и настройке ТСПУ (DPI-движок EcoFilter, двухстадийная блокировка,
+  деградация протоколов, обфускация). Полезно для понимания, как работают
+  блокировки и какие механизмы обхода уязвимы.
