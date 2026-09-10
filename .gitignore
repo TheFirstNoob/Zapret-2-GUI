@@ -10,6 +10,9 @@ dist/
 # Dev test harnesses (not part of releases)
 _test_*.py
 
+# Local reference clones (tspu-docs etc.) — kept out of repo, link in README
+_tspu-docs/
+
 # Runtime-generated files
 *.log
 _zapret_run.bat
