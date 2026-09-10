@@ -35,8 +35,8 @@ tls
 -d10
 --payload
 tls_client_hello
---lua-desync=multisplit:pos=2:seqovl=652:seqovl_pattern=google_tls
---lua-desync=multisplit:pos=2,midsld:nodrop
+--lua-desync=multisplit:pos=2:seqovl=652:seqovl_pattern=google_tls:repeats=7
+--lua-desync=multisplit:pos=2,midsld:repeats=7:nodrop
 --new
 
 --comment=Discord Media TCP
@@ -49,7 +49,7 @@ tls
 -d10
 --payload
 tls_client_hello
---lua-desync=multisplit:pos=1:seqovl=681:seqovl_pattern=google_tls:nodrop
+--lua-desync=multisplit:pos=1:seqovl=681:seqovl_pattern=google_tls:repeats=7:nodrop
 --new
 
 --comment=Google TCP
