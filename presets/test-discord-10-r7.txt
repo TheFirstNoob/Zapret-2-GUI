@@ -13,18 +13,6 @@ quic_google:@blobs/quic_initial_www_google_com.bin
 --lua-gc
 60
 
---comment=Discord Voice
---filter-udp
-19294-19344,50000-50100
---filter-l7
-discord,stun
---payload
-discord_ip_discovery
---out-range
--d10
---lua-desync=fake:blob=quic_google
---new
-
 --comment=Discord Media TCP
 --filter-tcp
 2053,2083,2087,2096,8443
@@ -107,4 +95,3 @@ quic_initial
 --out-range
 -d10
 --lua-desync=fake:blob=quic_google
-

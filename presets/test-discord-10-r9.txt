@@ -13,18 +13,6 @@ quic_google:@blobs/quic_initial_www_google_com.bin
 --lua-gc
 60
 
---comment=Discord Voice
---filter-udp
-19294-19344,50000-50100
---filter-l7
-discord,stun
---payload
-discord_ip_discovery
---out-range
--d10
---lua-desync=fake:blob=quic_google
---new
-
 --comment=Discord Media TCP
 --filter-tcp
 2053,2083,2087,2096,8443
@@ -35,8 +23,8 @@ tls
 -d10
 --payload
 tls_client_hello
---lua-desync=fake:blob=google_tls:tcp_ts=-1000:repeats=7:nodrop
---lua-desync=multisplit:pos=1:seqovl=681:seqovl_pattern=google_tls:repeats=7:nodrop
+--lua-desync=fake:blob=google_tls:tcp_ts=-1000:repeats=9:nodrop
+--lua-desync=multisplit:pos=1:seqovl=681:seqovl_pattern=google_tls:repeats=9:nodrop
 --new
 
 --comment=Discord TCP tls
@@ -49,8 +37,8 @@ tls
 -d10
 --payload
 tls_client_hello
---lua-desync=fake:blob=google_tls:tcp_ts=-1000:repeats=7:nodrop
---lua-desync=multisplit:pos=1:seqovl=681:seqovl_pattern=google_tls:repeats=7:nodrop
+--lua-desync=fake:blob=google_tls:tcp_ts=-1000:repeats=9:nodrop
+--lua-desync=multisplit:pos=1:seqovl=681:seqovl_pattern=google_tls:repeats=9:nodrop
 --new
 
 --comment=Google TCP tls
@@ -107,4 +95,3 @@ quic_initial
 --out-range
 -d10
 --lua-desync=fake:blob=quic_google
-
