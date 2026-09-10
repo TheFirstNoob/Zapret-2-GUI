@@ -38,6 +38,8 @@ _Пусто — `cand-autottl` прогнан (см. сетку ниже)._
 | **`cand-fakeddisorder-md5`** (фейк-часть+MD5) | Т2 СПб | 2026-08-31 | 84.6% (ютуб×2 в окне) | MD5 на фейках подтверждён (16 пакетов); на Т2 не лучше default |
 | **`default` с repeats=8 на Discord** | Т2 СПб | 2026-09-10 | **100% (4/4: discord 200, gateway 404, cdn 403, updates 404)** | после углубления SNI-блока Discord (TSDPU) дефолт без repeats → 000; ALT-11 (1.9.6, repeats=8) пробил → добавлены repeats |
 | **`default` repeats=7 (мёртвая точка)** | Т2 СПб | 2026-09-10 | **100% (4/4)** стабильно ×3 | 6 → 000, 7 → 200 жёсткая граница, воспроизводится 3/3 |
+| **`default` general: снят nodrop, fake repeats=8** | Т2 СПб | 2026-09-10 | **github 200, raw 301, api 403 (TLS ок), codeload 301**; discord/yt/google 200 | nodrop на SNI-блоках ломал github (DPI видел реальный SNI за фейком) — тот же класс, что youtube в 4d16a19; фикс = перенос ALT11-обвязки general (drop+repeats=8). Блоб не влияет (google_tls/max_ru/web_max_ru = одинаково) |
+| **3 блоба в general (google/max_ru/web_max_ru)** | Т2 СПб | 2026-09-10 | все 3 дают **github 200 + discord/yt/google 200** | блоб фейка на пробиваемость SNI-блока не влияет — решает только nodrop/repeats; в пресете оставлен google_tls (GUI-тоггл «Блоб фейка» меняет без потери) |
 
 ## Ориентиры для новых кандидатов
 

@@ -17,13 +17,20 @@
 - `--payload quic_initial` для QUIC
 - `--payload discord_ip_discovery` для Discord voice
 
-## 0a. `repeats=N` — не ставить везде
+## 0a. `repeats=N` и `nodrop` — не ставить везде
 
 - `nodrop` + `repeats=1` — достаточно (для большинства DPI)
 - QUIC: `repeats=6-11`
 - **НЕ увеличивать «на всякий случай»**
 - **Т2 (с 2026-09-10): Discord требует `repeats=7` минимум (6 → 000, 7 → 200).**
   YouTube уже требовал `repeats=6`. Мёртвая точка подбирается перебором.
+- **`nodrop` на SNI-блоках ломает цель** (2026-09-10, github): при `nodrop`
+  оригинал с РЕАЛЬНЫМ SNI идёт сразу за фейком → DPI видит оба и блочит.
+  Тот же урок уже был зафиксирован 4d16a19 для youtube (google-блок), но
+  тогда general-блок не трогали. Фикс: fake БЕЗ `nodrop` + `repeats=8`
+  (оригинал дропается), multisplit без `nodrop`/`tcp_ts`. Проверено: github
+  200/raw 301 при discord/yt/google 200. Блоб фейка на результат не влияет
+  (google_tls == max_ru == web_max_ru).
 
 ## 0b. Debug режим
 

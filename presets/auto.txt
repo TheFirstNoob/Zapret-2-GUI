@@ -100,10 +100,10 @@ tls,http
 --payload
 tls_client_hello,http_req
 --lua-desync=circular:fails=3:retrans=2
---lua-desync=fake:blob=google_tls:tcp_ts=-1000:nodrop:strategy=1
---lua-desync=multisplit:pos=1:seqovl=681:seqovl_pattern=google_tls:nodrop:strategy=1
---lua-desync=fake:blob=google_tls:tcp_ts=-1000:nodrop:strategy=2
---lua-desync=multisplit:pos=1:seqovl=681:seqovl_pattern=google_tls:nodrop:strategy=3
+--lua-desync=fake:blob=google_tls:tcp_ts=-1000:repeats=8:strategy=1
+--lua-desync=multisplit:pos=1:seqovl=681:seqovl_pattern=google_tls:strategy=1
+--lua-desync=fake:blob=google_tls:tcp_ts=-1000:repeats=8:strategy=2
+--lua-desync=multisplit:pos=1:seqovl=681:seqovl_pattern=google_tls:strategy=3
 --new
 
 --comment=QUIC Google
