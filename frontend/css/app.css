@@ -787,3 +787,6 @@ label.opt-line:has(input:disabled):hover { background: var(--field); }
 .probe-sec-title { font-weight: 600; margin: 8px 0 2px; color: var(--ink); }
 .probe-dns { font-size: 12px; color: var(--muted); line-height: 1.5; }
 .probe-report { white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace; font-size: 12px; max-height: 400px; overflow: auto; }
+
+/* Диагностика: панели с отступом (не прилипают друг к другу) */
+#page-diagnostics > .panel + .panel { margin-top: 14px; }

@@ -1531,9 +1531,19 @@ class ZapretHandler(BaseHTTPRequestHandler):
     # ── Process probe (game/app network analysis) ─────────────
     def _handle_probe_scan(self) -> None:
         """Список процессов с сетью — ТОЛЬКО по явной кнопке (AV-safe)."""
-        from core.process_probe import list_processes
-        procs = list_processes()
-        self._send_json({"status": "ok", "processes": procs})
+        print("[probe] scan: запрос получен", flush=True)
+        try:
+            from core.process_probe import list_processes
+            procs = list_processes()
+            print(f"[probe] scan: {len(procs)} процессов "
+                  f"({', '.join(p['name'] for p in procs[:6])}{'…' if len(procs) > 6 else ''})",
+                  flush=True)
+            self._send_json({"status": "ok", "processes": procs})
+        except Exception as e:  # noqa: BLE001
+            import traceback
+            traceback.print_exc()
+            print(f"[probe] scan: ОШИБКА {e}", flush=True)
+            self._send_json({"status": "error", "message": str(e)})
 
     def _handle_probe_start(self, data: dict) -> None:
         proc = str(data.get("process") or "").strip()
@@ -1545,11 +1555,16 @@ class ZapretHandler(BaseHTTPRequestHandler):
             duration = max(10, min(int(data.get("duration") or 60), 300))
         except (TypeError, ValueError):
             duration = 60
+        print(f"[probe] start: process='{proc}' duration={duration}", flush=True)
         ok, msg = get_process_probe().start(proc, duration)
+        print(f"[probe] start: {'OK' if ok else 'FAIL'} — {msg}", flush=True)
         self._send_json({"status": "ok" if ok else "error", "message": msg})
 
     def _handle_probe_stop(self) -> None:
+        print("[probe] stop: запрос", flush=True)
         st = get_process_probe().stop()
+        print(f"[probe] stop: phase={st.get('phase')} tcp={len(st.get('tcp', {}))}",
+              flush=True)
         self._send_json({"status": "ok", "state": st})
 
     def _handle_probe_status(self) -> None:
@@ -1558,6 +1573,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
     def _handle_probe_report(self) -> None:
         probe = get_process_probe()
         path = probe.save_report()
+        print(f"[probe] report: сохранён в {path}", flush=True)
         self._send_json({"status": "ok", "report": probe.report_text(),
                          "path": str(path)})
 
