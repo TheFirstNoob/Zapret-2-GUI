@@ -491,6 +491,17 @@ Discord грузит файлы на `discord-attachments-uploads-prd.storage.go
 `sc start zapret2` может дать 1053 (служба не успела ответить) — повторить.
 Комментарии в list-файлы НЕ писать — только домены.
 
+**⚠️ ОТМЕНЕНО (2026-09-11): `amazonaws.com` УБРАН из list-general.** 🚨
+Наш десинк (fake+multisplit, General TCP) **ЛОМАЕТ AWS-API**: DynamoDB и S3
+дают 000 с обходом, но 200/307 В ГОЛУЮ (проверено на Т2: ddb=200, s3=307
+голые; с default — 000). Игра (Wardogs) и NVIDIA App, ходящие на AWS
+(DynamoDB в 11 регионах), падали. Пресет auto пробивал (circular
+переключает на strategy=2/3 — не ломающие). Фикс: убрать amazonaws.com
+из list-general — AWS живёт в голую на Т2 и не нуждается в десинке
+(cloudfront.net/amplifon десинк терпят — остались). Если на других сетях
+S3 реально режется — возвращать ТОЧЕЧНО (конкретные s3-домены через
+list-include-user), а не родителем.
+
 ### Проверка загрузки без Discord-клиента
 ```
 curl.exe -4 -s -m 8 -o NUL -w "%{http_code}" https://discord-attachments-uploads-prd.storage.googleapis.com/
