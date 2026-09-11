@@ -9,6 +9,8 @@ dist/
 
 # Dev test harnesses (not part of releases)
 _test_*.py
+/_*.py
+presets/test-*.txt
 
 # Local reference clones (tspu-docs etc.) — kept out of repo, link in README
 _tspu-docs/
