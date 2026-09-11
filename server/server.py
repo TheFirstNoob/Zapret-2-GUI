@@ -618,6 +618,57 @@ def _build_recommendation(all_results, naked, sanity: dict) -> dict:
     }
 
 
+# Ручной приоритет блобов — по живучести на Т2 (STRATEGY_TRIALS батарея блобов
+# 2026-09-11, все ниже проверены 6/6 на discord с repeats=7). Ключи = имена
+# файлов blobs/tls_clienthello_<key>.bin. www_google_com — эталон (пустой
+# fake_blob в конфиге = как в пресете = google). Новые блобы добавлять сюда
+# ПОСЛЕ проверки.
+_BLOB_PRIORITY = [
+    "www_google_com",        # эталон, по умолчанию
+    "mail_ru",               # реальный браузерный hello
+    "vk_com",                # реальный, 18 расширений, SNI pos 4 — работает
+    "iana_org",              # реальный, 13 расширений
+    "hcaptcha_com",          # реальный
+    "alfabank_ru",           # реальный
+    "www_cloudflare_com",    # синтетика make_blob, реальный домен
+    "max_ru",                # большой (664), работал в general
+    "web_max_ru",            # мелкий, работал в general
+    "sochi_park",            # SNI pos 1 — работает с repeats
+]
+# Проверенно НЕ пробивающие (Т2): example_com — RFC-заглушка, нереальный домен;
+# sni2gis/snimail — тестовые артефакты скрещиваний, не для пользователей.
+_BLOB_STOPLIST = {"example_com", "sni2gis", "snimail"}
+
+
+def _recommended_blob_keys() -> list[str]:
+    """Рекомендованные TLS-фейк-блобы: проверенные на Т2 — в РУЧНОМ порядке
+    _BLOB_PRIORITY (живучесть на Т2, батарея блобов). Фильтры: размер ≤700,
+    без _kyber, без имени с цифры (баг winws2, AGENTS правило 2), без стоп-листа.
+    Неизвестные блобы (не в приоритете) — в конец по алфавиту, не рекомендованы."""
+    blobs_dir = get_root_dir() / "blobs"
+    known: dict[str, int] = {}
+    others: list[str] = []
+    if blobs_dir.is_dir():
+        for f in blobs_dir.glob("tls_clienthello_*.bin"):
+            key = f.stem.removeprefix("tls_clienthello_")
+            if not key or key.endswith("_kyber") or key[0].isdigit():
+                continue
+            if key in _BLOB_STOPLIST:
+                continue
+            try:
+                if f.stat().st_size > 700:
+                    continue
+            except OSError:
+                continue
+            if key in _BLOB_PRIORITY:
+                known[key] = _BLOB_PRIORITY.index(key)
+            else:
+                others.append(key)
+    keys = [k for k in sorted(known, key=known.get)]
+    keys += sorted(others)
+    return keys
+
+
 def _recheck_contested(tester, best, rec: dict, progress) -> dict:
     """Речек спорных доменов (§29): вердикт «заблокирован» vs «временно недоступен».
 
@@ -626,6 +677,11 @@ def _recheck_contested(tester, best, rec: dict, progress) -> dict:
     стратегией: один общий повтор в конце прогона (naked) отличает транзиентный
     спайк/флак от реального блока. Ожившие на речеке уходят из «не пробито»
     и помечаются «временно недоступен — ретест»; стабильные 000 — «заблокирован».
+
+    Этап 2 (2026-09-11): подтверждённо «заблокированные» домены перепроверяем
+    с АЛЬТЕРНАТИВНЫМИ блобами (рекомендованный список, ≤3 попытки) — блоб
+    фейка влияет на живучесть на разных провайдерах (STRATEGY_TRIALS: батарея
+    блобов). Пробитые так — «домен пробит с блобом X» (подсказка пользователю).
     """
     best_failed = {r.domain for r in best.results
                    if r.test_type != "ping" and r.status != "OK"}
@@ -657,6 +713,49 @@ def _recheck_contested(tester, best, rec: dict, progress) -> dict:
     # Ожившие на речеке уходят из чипов «не пробито».
     rec["blocked_domains"] = [d for d in (rec.get("blocked_domains") or [])
                               if d not in temporary]
+    # ── Этап 2: перепроверка подтверждённо заблокированных с другим блобом ──
+    blob_saves: dict[str, str] = {}
+    if confirmed and not tester.shutdown_event.is_set():
+        progress(99, "Пробуем альтернативные блобы для заблокированных...")
+        blob_keys = _recommended_blob_keys()
+        # текущий блоб пропускаем — он уже не сработал
+        cfg = get_config_manager().load()
+        current = cfg.fake_blob or ""
+        tried = 0
+        for key in blob_keys:
+            if key == current or tried >= 3 or tester.shutdown_event.is_set():
+                continue
+            tried += 1
+            ok_domains: list[str] = []
+            try:
+                tester._ensure_winws2_dead()
+                if not tester._run_profile(best.profile_name, fake_blob=key) \
+                        or not tester._any_winws2_running():
+                    continue
+                time.sleep(0.8)
+                for r in tester._run_domain_tests(confirmed, concurrency=6,
+                                                  expand_www=False):
+                    if r.status == "OK":
+                        ok_domains.append(r.domain)
+            except Exception:
+                continue
+            finally:
+                tester._ensure_winws2_dead()
+            if ok_domains:
+                for d in ok_domains:
+                    blob_saves[d] = key
+                remaining = [d for d in confirmed if d not in ok_domains]
+                if not remaining:
+                    break
+                confirmed = remaining
+    if blob_saves:
+        saved = ["%s → блоб «%s»" % (d, k) for d, k in blob_saves.items()]
+        note.append("пробит с блобом: " + "; ".join(saved))
+        rec["blocked_domains"] = [d for d in (rec.get("blocked_domains") or [])
+                                  if d not in blob_saves]
+        rec["blob_saves"] = blob_saves
+        rec["recheck"]["blocked"] = [d for d in rec["recheck"]["blocked"]
+                                     if d not in blob_saves]
     if note:
         rec["message"] = ((rec.get("message") or "").rstrip() + " — " + "; ".join(note))
     return rec
@@ -1259,15 +1358,30 @@ class ZapretHandler(BaseHTTPRequestHandler):
         self._send_json({"status": "ok", "content": content})
 
     def _handle_fake_blobs(self) -> None:
-        """Ключи доступных TLS-фейк-блобов (blobs/tls_clienthello_<key>.bin)."""
+        """Ключи доступных TLS-фейк-блобов (blobs/tls_clienthello_<key>.bin).
+
+        Порядок — РУЧНОЙ приоритет _BLOB_PRIORITY (живучесть на Т2, батарея
+        блобов 2026-09-11); остальные после по алфавиту. Огромные (>700:
+        снижают долю google-фейков, см. STRATEGY_TRIALS) — помечаются.
+        Имена с цифры в начале — через префикс (баг winws2, AGENTS правило 2)."""
         blobs_dir = get_root_dir() / "blobs"
-        keys = []
+        items = []
         if blobs_dir.is_dir():
-            for f in sorted(blobs_dir.glob("tls_clienthello_*.bin")):
+            for f in blobs_dir.glob("tls_clienthello_*.bin"):
                 key = f.stem.removeprefix("tls_clienthello_")
-                if key and not key.endswith("_kyber"):
-                    keys.append(key)
-        self._send_json({"status": "ok", "blobs": keys})
+                if not key or key.endswith("_kyber") or key in _BLOB_STOPLIST:
+                    continue
+                size = f.stat().st_size if f.exists() else 0
+                safe = key if not key[0].isdigit() else "blob_" + key
+                recommended = key in _BLOB_PRIORITY and size <= 700
+                items.append({"key": safe, "size": size, "recommended": recommended,
+                              "rank": _BLOB_PRIORITY.index(key) if key in _BLOB_PRIORITY else 999})
+        # recommended (по ручному приоритету) → остальные по алфавиту
+        items.sort(key=lambda it: (it["rank"] if it["recommended"] else 1000, it["key"]))
+        self._send_json({"status": "ok",
+                         "blobs": [it["key"] for it in items],
+                         "sizes": {it["key"]: it["size"] for it in items},
+                         "recommended": [it["key"] for it in items if it["recommended"]]})
 
     def _handle_bundled_domains(self) -> None:
         """Домены из наших (не пользовательских) включений — для клиентского
