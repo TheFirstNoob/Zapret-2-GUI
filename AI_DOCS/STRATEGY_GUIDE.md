@@ -1,6 +1,6 @@
 # Strategy Guide — как искать и тестировать обход DPI
 >
-> **Обновлено: 2026-07-29 (Pre-release 0.1)**
+> **Обновлено: 2026-09-11 (Pre-release 0.6)**
 
 ---
 
@@ -19,7 +19,8 @@
 
 ## 0a. `repeats=N` и `nodrop` — не ставить везде
 
-- `nodrop` + `repeats=1` — достаточно (для большинства DPI)
+- `nodrop` + `repeats=1` — достаточно (для большинства DPI; **УСТАРЕЛО для
+  Т2: там Discord требует repeats=7 даже с nodrop** — см. §0a ниже)
 - QUIC: `repeats=6-11`
 - **НЕ увеличивать «на всякий случай»**
 - **Т2 (с 2026-09-10): Discord требует `repeats=7` минимум (6 → 000, 7 → 200).**
@@ -172,7 +173,7 @@ repeats=N         # кол-во повторов
 ## Файлы, необходимые для работы
 
 ```
-bin/winws2.exe                          # v1.0.2
+bin/winws2.exe                          # v1.0.5
 lua/zapret-lib.lua                      # основная библиотека
 lua/zapret-antidpi.lua                  # anti-DPI функции
 blobs/tls_clienthello_www_google_com.bin # TLS ClientHello Google

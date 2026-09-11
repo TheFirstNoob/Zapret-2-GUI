@@ -1,8 +1,9 @@
 # AGENTS.md — Критические находки (чтение обязательно перед любыми изменениями)
 >
-> **Последнее обновление: 2026-08-30 (Pre-Release 0.5)**
-> **Размер EXE:** 18.4 MB
+> **Последнее обновление: 2026-09-11 (Pre-Release 0.6)**
+> **Размер EXE:** 18.5 MB
 > **Статус:** `default.txt` — универсальная стратегия, работает у всех протестированных провайдеров
+> **Свежие находки 09-10/09-11:** Discord требует repeats=7 (мёртвая точка); general-блок без nodrop (github-fix); default-alt (rnd,dupsid); баг имени блоба с цифры; механика ТСПУ раскрыта pktmon-захватом (см. STRATEGY_TRIALS).
 
 > **Эта информация теряется при сжатии контекста ИИ.**
 > Новый агент ДОЛЖЕН прочитать этот файл перед редактированием кода или тестированием.
@@ -11,21 +12,29 @@
 
 ## ⚡ СЕССИЯ-СНАПШОТ (читать первым после сжатия контекста) 🚨
 
-### Текущее состояние (2026-08-30)
-- **VERSION = "Pre-Release 0.5"** (config.py + VERSION-файл + version_info 0.5.0.0).
+### Текущее состояние (2026-09-11)
+- **VERSION = "Pre-Release 0.6"** (config.py + VERSION-файл).
 - **Три дистрибутива** (`Windows build/`):
-  - `Zapret2GUI.zip` — классический EXE (PyInstaller onefile, 18.4 MB)
-  - `Zapret2GUI-portable.zip` (16.5 MB) — GUI на официальном Python embeddable
+  - `Zapret2GUI.zip` — классический EXE (PyInstaller onefile, 18.5 MB)
+  - `Zapret2GUI-portable.zip` (16.6 MB) — GUI на официальном Python embeddable
     (pythonw.exe подписан PSF) — без паковщика, меньше детектов Защитника
   - `Zapret2GUI-lite.zip` (1.7 MB) — батники без Python (start-<preset>.bat,
     service.bat меню, test.bat/ps1 тестер)
 - **Сборщики:** build.py (exe), build_portable.py (portable), build_lite.py (lite).
   Все три пересобирать при изменении кода/пресетов/списков. `lite/` и
   `portable/` в .gitignore (генерируются сборщиками).
-- **Пресеты: 9** (default, auto + 7 тестовых). `lists/`: list-general содержит
-  cloudflare-ECH + discord-uploads + github-семейство; list-exclude синхронен
-  с Zapret 1 (steam и т.п.); ipset-all.txt.gz (32126 CIDR, gzip по магии);
-  ipset-exclude.txt (приватные).
+- **Пресеты: 11 release** (default, default-alt, auto, fake-only, fakedsplit,
+  fake-disorder, fake-multidisorder, hostfakesplit, multisplit-pure,
+  multisplit-seqovl, tcpmd5-fake) + exp-/cand- стенды (скрыты из GUI).
+  `lists/`: list-general содержит cloudflare-ECH + discord-uploads + github-
+  семейство; list-exclude синхронен с Zapret 1 (steam и т.п.);
+  ipset-all.txt.gz (32126 CIDR, gzip по магии); ipset-exclude.txt (приватные).
+- **bin/winws2.exe = v1.0.5** (bump с v1.0.2 выполнен, задача из ASN_NOTES).
+- **Тестер: 18 хостов** (RATED 11 + CONTROL 7). Заведомо-мёртвые (telegram/
+  x/fb/inst/linkedin/whatsapp/fcm/apple — глубокий IP-блок) УБРАНЫ 09-11.
+- **Блобы:** селектор «Блоб фейка» + ручной приоритет (google → sochi_park →
+  проверенные), автопрефикс цифровых имён, стоп-лист; тестер перепроверяет
+  заблокированные домены альтернативными блобами (до 3, отчёт «пробит с X»).
 - **Служба zapret2 = winws2.exe НАПРЯМУЮ** (как Zapret 1, binPath =
   "\"...\winws2.exe\" args", start=auto). БЕЗ cmd/bat обёртки (она триггерила
   Защитника). Args обновляются через sc config при каждом старте
@@ -224,13 +233,19 @@ for dir_name, dir_path in [("@lua/", lua_dir), ("@blobs/", blobs_dir)]:
 
 ## 6. `repeats=N` — перегрузка, не нужен везде ⚠️
 
-### Правило
-- **Для `multisplit`**: `repeats=1` или вообще без repeats — достаточно
-- **Для `fake`**: `repeats=6-8` только если fake без nodrop, иначе 1
-- **QUIC**: `repeats=6-11` (QUIC Initial требует больше повторов)
-- **Если `nodrop` указан**: repeats=1 (оригинал не дропается, фейк уже есть)
+### Правило (обновлено 2026-09-11 — старая версия «nodrop→repeats=1» УСТАРЕЛА)
+- **Т2 (мёртвая точка, 2026-09-10): Discord требует repeats=7 минимум**
+  (6 → 000, 7 → 200, воспроизводится). **Работает и с nodrop, и без** —
+  repeats создаёт «долю google-фейков» в потоке (механика раскрыта pktmon:
+  ТСПУ классифицирует по доминирующему SNI, 14 google : 1 discord = пропуск).
+- **YouTube (google-блок)**: repeats=6 (без nodrop, drop+repeats).
+- **General TCP (github-fix)**: repeats=8 без nodrop.
+- **QUIC-блоки в default**: repeats НЕ указан (работает; при регрессе первый
+  рычаг — repeats=6-11, как в Zapret 1).
+- Для остальных пресетов/сетей: НЕ увеличивать repeats «на всякий случай».
 
-**НЕ увеличивать repeats «на всякий случай».**
+**Не путать:** правило «nodrop → repeats=1» было верно для сетей, где фейк
+работает сам по себе; на Т2 оно ложно — повтор обязателен даже с nodrop.
 
 ---
 
@@ -242,14 +257,18 @@ for dir_name, dir_path in [("@lua/", lua_dir), ("@blobs/", blobs_dir)]:
 
 ---
 
-## 8. `nodrop` и `repeats` — совместное использование
+## 8. `nodrop` и `repeats` — совместное использование (обновлено 2026-09-11)
 
 `nodrop` = не удалять оригинальный пакет. Когда `nodrop` активен:
-- Оригинал уходит как есть, фейк отправляется отдельно
-- `repeats=1` достаточно
+- Оригинал уходит как есть, фейк отправляется отдельно.
+- **На Т2 (Discord) repeats=7 НУЖЕН даже с nodrop** (старое «repeats=1
+  достаточно» устарело): повтор создаёт долю google-фейков в потоке, иначе
+  DPI видит реальный discord-SNI и дропает. Проверено: default (nodrop+
+  repeats=7) = 200; без repeats = 000.
 
 Если `nodrop` НЕ указан:
-- Оригинал дропается, repeats=N отправляет N копий фейка
+- Оригинал дропается, repeats=N отправляет N копий фейка (тоже работает:
+  A3-батарея 2026-09-11 — без nodrop 200).
 
 ---
 

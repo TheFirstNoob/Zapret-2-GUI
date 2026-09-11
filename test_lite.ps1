@@ -29,9 +29,7 @@ $RATED = @(
 )
 $CONTROL = @(
     "www.google.com", "www.gstatic.com", "www.cloudflare.com", "cdnjs.cloudflare.com",
-    "web.telegram.org", "api.telegram.org", "x.com", "www.facebook.com",
-    "www.instagram.com", "www.linkedin.com", "web.whatsapp.com",
-    "fcm.googleapis.com", "api.push.apple.com", "vk.ru", "ya.ru", "www.gosuslugi.ru"
+    "vk.ru", "ya.ru", "www.gosuslugi.ru"
 )
 # CDN candidates for the hostlist-vs-ipset A/B (GUI CDN_HOSTS)
 $CDN = @(
