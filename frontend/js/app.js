@@ -185,6 +185,7 @@ const App = {
 
   async init() {
     this.bindNav();
+    this.bindProbeButtons();
     this.handleHash();
     window.addEventListener('hashchange', () => this.handleHash());
     this.loadVersion();
@@ -195,6 +196,21 @@ const App = {
     } catch (e) { PROFILES = ['default']; }
     Status.start();
     if (this.currentPage === 'main') MainPage.onShow();
+  },
+
+  bindProbeButtons() {
+    const scan = $('probeScanBtn');
+    if (scan) scan.addEventListener('click', () => this.scanProbeProcesses());
+    const start = $('probeStartBtn');
+    if (start) start.addEventListener('click', () => this.startProbe());
+    const stop = $('probeStopBtn');
+    if (stop) stop.addEventListener('click', () => this.stopProbe());
+    const report = $('probeReportBtn');
+    if (report) report.addEventListener('click', () => this.saveProbeReport());
+    const sel = $('probeProcSelect');
+    if (sel) sel.addEventListener('change', () => {
+      $('probeProcInput').value = sel.value;
+    });
   },
 
   bindNav() {
@@ -803,13 +819,6 @@ const DiagnosticsPage = {
       this._bound = true;
       $('diagRunBtn').addEventListener('click', () => this.run());
       $('diagCopyBtn').addEventListener('click', () => this.copyReport());
-      $('probeScanBtn').addEventListener('click', () => App.scanProbeProcesses());
-      $('probeStartBtn').addEventListener('click', () => App.startProbe());
-      $('probeStopBtn').addEventListener('click', () => App.stopProbe());
-      $('probeReportBtn').addEventListener('click', () => App.saveProbeReport());
-      $('probeProcSelect').addEventListener('change', () => {
-        $('probeProcInput').value = $('probeProcSelect').value;
-      });
     }
   },
 
@@ -2277,6 +2286,8 @@ const TesterPage = {
 
   async scanProbeProcesses() {
     const btn = $('probeScanBtn');
+    const statusEl = $('probeStatus');
+    if (statusEl) statusEl.textContent = 'Сканирование процессов…';
     btn.disabled = true;
     try {
       const r = await apiPost('/process-probe/scan', {});
@@ -2298,8 +2309,10 @@ const TesterPage = {
         o.textContent = name + suffix + title;
         sel.appendChild(o);
       }
+      if (statusEl) statusEl.textContent = `Найдено процессов: ${(r.processes || []).length}`;
       showToast(`Найдено процессов: ${(r.processes || []).length}`, 'ok');
     } catch (e) {
+      if (statusEl) statusEl.textContent = 'Ошибка: ' + (e.message || e);
       showToast('Сканирование: ' + (e.message || e), 'error');
     }
     btn.disabled = false;
