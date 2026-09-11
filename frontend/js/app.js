@@ -1199,8 +1199,10 @@ const CdnStab = {
         ? '<div class="verdict-msg" style="margin:8px 0 2px">Точечных правок списков не требуется — смотрите итог по IP-обходу выше.</div>'
         : '<div class="verdict-msg" style="margin:8px 0 2px"><b>Что делать: ничего.</b> Живые хосты отвечают, stateful DPI не обнаружен, а мёртвые не отвечают и без защиты — это не блокировка. Проверять больше нечего.</div>');
     const applyAllBtn = actionable
-      ? `<div style="margin:6px 0 2px"><button id="cdnApplyAll" class="btn">Применить все правки (${actionable})</button>
-         <span class="meta" id="cdnApplyAllNote"></span></div>` : '';
+      ? `<div style="margin:8px 0 4px; padding:8px 10px; border:1px solid var(--line); border-radius:8px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; background:var(--panel)">
+           <button id="cdnApplyAll" class="btn btn-primary">Применить все правки (${actionable})</button>
+           <span class="meta" id="cdnApplyAllNote"></span>
+         </div>` : '';
     const head = `
       <div class="cdn-summary">
         <span>режет DPI, лечится: <b class="bad">${sum('fix')}</b></span>
@@ -2281,13 +2283,22 @@ const TesterPage = {
       if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
       const sel = $('probeProcSelect');
       sel.innerHTML = '<option value="">— выберите процесс —</option>';
+      const groups = {};
       for (const p of (r.processes || [])) {
+        if (!groups[p.name]) groups[p.name] = { count: 0, title: p.title || '' };
+        groups[p.name].count++;
+        if (!groups[p.name].title && p.title) groups[p.name].title = p.title;
+      }
+      for (const name of Object.keys(groups).sort()) {
+        const g = groups[name];
+        const suffix = g.count > 1 ? ` (${g.count} процесса)` : '';
+        const title = g.title ? ` — ${g.title}` : '';
         const o = document.createElement('option');
-        o.value = p.name;
-        o.textContent = `${p.name} (PID ${p.pid})`;
+        o.value = name;
+        o.textContent = name + suffix + title;
         sel.appendChild(o);
       }
-      showToast(`Найдено процессов с сетью: ${(r.processes || []).length}`, 'ok');
+      showToast(`Найдено процессов: ${(r.processes || []).length}`, 'ok');
     } catch (e) {
       showToast('Сканирование: ' + (e.message || e), 'error');
     }
