@@ -142,6 +142,12 @@ def main_gui() -> None:
                 _tester.signal_shutdown()
         except Exception:
             pass
+        try:
+            from core.utils import run_quiet
+            run_quiet(["pktmon", "stop"])
+            run_quiet(["pktmon", "filter", "remove"])
+        except Exception:
+            pass
 
     window = webview.create_window(
         "Zapret2 Manager",

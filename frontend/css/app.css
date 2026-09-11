@@ -780,9 +780,14 @@ label.opt-line:has(input:disabled):hover { background: var(--field); }
 ::-webkit-scrollbar-thumb:hover { background: var(--faint); background-clip: padding-box; }
 ::-webkit-scrollbar-corner { background: transparent; }
 /* ── Анализ процесса ── */
-.probe-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 0 4px; }
-.probe-controls .input { flex: 0 1 auto; }
-#probeProcInput { flex: 1 1 220px; }
+.probe-controls { display: flex; flex-direction: column; gap: 10px; padding: 10px 0 6px; }
+.probe-row { display: flex; flex-direction: column; gap: 6px; }
+.probe-row-scan { flex-direction: column; }
+.probe-label { font-size: 12px; font-weight: 600; color: var(--muted); }
+.probe-hint { font-size: 11.5px; color: var(--faint); }
+.probe-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+#probeProcInput { width: 100%; }
+#probeProcSelect { width: 100%; }
 .probe-status { min-height: 18px; color: var(--faint); font-size: 12px; padding: 4px 0; }
 .probe-sec-title { font-weight: 600; margin: 8px 0 2px; color: var(--ink); }
 .probe-dns { font-size: 12px; color: var(--muted); line-height: 1.5; }

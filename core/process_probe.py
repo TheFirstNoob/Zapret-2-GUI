@@ -154,7 +154,14 @@ def _dns_map(remote_ips: set[str]) -> dict[str, list[str]]:
 
 def _run_pktmon(pids: list[int], etl: Path, txt: Path) -> Optional[dict]:
     """UDP-захват через pktmon (headers only). Возвращает {ip:port: count}."""
+    # сброс возможного висящего захвата (GUI могли закрыть посреди анализа)
+    utils.run_quiet(["pktmon", "stop"])
     utils.run_quiet(["pktmon", "filter", "remove"])
+    if etl.exists():
+        try:
+            etl.unlink()
+        except OSError:
+            pass
     ports = _udp_ports(pids)
     if ports:
         for p in ports:
