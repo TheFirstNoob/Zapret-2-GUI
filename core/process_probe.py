@@ -58,15 +58,16 @@ def list_processes() -> list[dict]:
         "$pids = @($c + $u) | Sort-Object -Unique; "
         "if (-not $pids) { '[]'; exit }; "
         "Get-Process -Id $pids -ErrorAction SilentlyContinue | "
-        "Select-Object ProcessName,Id | Sort-Object ProcessName | "
+        "Select-Object ProcessName,Id,MainWindowTitle | Sort-Object ProcessName | "
         "ConvertTo-Json -Compress"
     )
     out: list[dict] = []
     for item in _ps_json(script):
         name = str(item.get("ProcessName") or "").strip()
         pid = item.get("Id")
+        title = str(item.get("MainWindowTitle") or "").strip()
         if name and pid is not None:
-            out.append({"name": name, "pid": int(pid)})
+            out.append({"name": name, "pid": int(pid), "title": title})
     # дедуп по (name,pid)
     seen = set()
     uniq = []
