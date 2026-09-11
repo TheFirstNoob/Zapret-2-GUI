@@ -67,7 +67,7 @@ function Write-Log([string[]]$lines) {
 }
 
 function Format-Report {
-    param($status, $elapsed, $procName, $pids, $ipv6, $tcp, $udp, $udpCapture, $tcpCheck, $captureNote, $dnsMap)
+    param($status, $elapsed, $procName, $pids, $ipv6, $tcp, $udp, $udpCapture, $tcpCheck, $captureNote, $dnsMap, $sysTcp)
     $lines = New-Object System.Collections.Generic.List[string]
     $lines.Add("=== game_probe: $Process ===")
     $now = Get-Date -Format 'HH:mm:ss'
@@ -124,6 +124,12 @@ function Format-Report {
     $lines.Add("")
     $lines.Add("--- Summary ---")
     $lines.Add("TCP: $($tcp.Count), UDP (system): $($udp.Count), UDP (capture): $(if ($udpCapture) { $udpCapture.Count } else { 0 })")
+    if ($null -ne $sysTcp) { $lines.Add("System TCP connections (all processes): $sysTcp") }
+    if ($tcp.Count -eq 0 -and $udp.Count -eq 0 -and (-not $udpCapture -or $udpCapture.Count -eq 0)) {
+        $lines.Add("")
+        $lines.Add("NOTE: no game connections were seen. Make sure the game is actually")
+        $lines.Add("trying to connect (reproduce the problem) while the probe is running.")
+    }
     return ,$lines
 }
 
@@ -133,8 +139,9 @@ function Parse-UdpCapture([string]$file, $knownPorts) {
     foreach ($line in (Get-Content -Path $file -ErrorAction SilentlyContinue)) {
         if ($line -match '(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\.(\d+) > (\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\.(\d+)') {
             $a = $matches[1]; $ap = [int]$matches[2]; $b = $matches[3]; $bp = [int]$matches[4]
-            # only packets related to the game ports
-            if (($knownPorts -contains $ap) -or ($knownPorts -contains $bp)) {
+            # only packets related to the game ports (empty list = accept all)
+            $portMatch = ($knownPorts.Count -eq 0) -or ($knownPorts -contains $ap) -or ($knownPorts -contains $bp)
+            if ($portMatch) {
                 foreach ($p in @(@($a, $ap), @($b, $bp))) {
                     $ip = $p[0]; $port = [int]$p[1]
                     if ($ip -notmatch '^(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.|127\.|0\.|169\.254\.|224\.|239\.|255\.)') {
@@ -221,6 +228,7 @@ Write-Host ""
 $tcp = @{}
 $udp = @{}
 $ipv6 = $false
+$sysTcp = $null
 $start = Get-Date
 $lastPortRefresh = Get-Date
 
@@ -231,7 +239,9 @@ try {
         if (-not $current) { break }
         $cpids = @($current | Select-Object -ExpandProperty Id)
 
-        foreach ($e in (Get-NetTCPConnection -ErrorAction SilentlyContinue)) {
+        $allTcp = @(Get-NetTCPConnection -ErrorAction SilentlyContinue)
+        $sysTcp = $allTcp.Count
+        foreach ($e in $allTcp) {
             if ($cpids -contains $e.OwningProcess) {
                 $ra = [string]$e.RemoteAddress
                 if ($ra -and $ra -ne '0.0.0.0' -and $ra -ne '::' -and $ra -ne '::1' -and $ra -ne '127.0.0.1') {
@@ -266,7 +276,7 @@ try {
             }
         }
         $elapsed = [int]((Get-Date) - $start).TotalSeconds
-        $live = Format-Report "RUNNING" $elapsed $procName $pidList $ipv6 $tcp $udp $null $null $captureNote $null
+        $live = Format-Report "RUNNING" $elapsed $procName $pidList $ipv6 $tcp $udp $null $null $captureNote $null $sysTcp
         Write-Log $live
         Start-Sleep -Seconds $IntervalSec
     }
@@ -305,7 +315,7 @@ try {
     if ($udpCapture) { foreach ($k in $udpCapture.Keys) { [void]$remoteIps.Add($k.Substring(0, $k.LastIndexOf(':'))) } }
     $dnsMap = Get-DnsMap $remoteIps
 
-    $final = Format-Report "FINISHED" $elapsed $procName $pidList $ipv6 $tcp $udp $udpCapture $tcpCheck $captureNote $dnsMap
+    $final = Format-Report "FINISHED" $elapsed $procName $pidList $ipv6 $tcp $udp $udpCapture $tcpCheck $captureNote $dnsMap $sysTcp
     Write-Log $final
 
     Write-Host ""
