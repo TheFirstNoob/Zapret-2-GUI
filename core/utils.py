@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import ctypes
+import subprocess
+import tempfile
 from pathlib import Path
 
 
@@ -17,3 +19,20 @@ def short_path(path: Path) -> Path:
     except Exception:
         pass
     return path
+
+
+def get_temp_dir() -> Path:
+    """Stable temp dir for probe artifacts (probe etl/txt, reports)."""
+    d = Path(tempfile.gettempdir()) / "zapret2_probe"
+    d.mkdir(exist_ok=True)
+    return d
+
+
+def run_quiet(cmd: list[str], timeout: int = 30) -> None:
+    """Run a command silently; failures are ignored (best-effort helpers)."""
+    try:
+        subprocess.run(cmd, capture_output=True, text=True, encoding="oem",
+                       errors="replace", timeout=timeout,
+                       creationflags=subprocess.CREATE_NO_WINDOW)
+    except Exception:
+        pass

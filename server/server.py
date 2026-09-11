@@ -109,6 +109,17 @@ class TesterState:
 
 _tester_state = TesterState()
 
+# Process network probe (game/app analysis) — singleton
+_process_probe = None
+
+
+def get_process_probe():
+    global _process_probe
+    if _process_probe is None:
+        from core.process_probe import ProcessProbe
+        _process_probe = ProcessProbe()
+    return _process_probe
+
 # Update-check result cache: one check per application session.
 _update_check_cache: Optional[dict] = None
 
@@ -1292,6 +1303,8 @@ class ZapretHandler(BaseHTTPRequestHandler):
                 self._handle_tester_status()
             elif path == "/api/update-check":
                 self._handle_update_check()
+            elif path == "/api/process-probe/status":
+                self._handle_probe_status()
             else:
                 self._handle_static(path)
         except RuntimeError as e:
@@ -1500,12 +1513,53 @@ class ZapretHandler(BaseHTTPRequestHandler):
                 self._handle_cdn_recommendation(data)
             elif path == "/api/cdn/apply-all":
                 self._handle_cdn_apply_all(data)
+            elif path == "/api/process-probe/scan":
+                self._handle_probe_scan()
+            elif path == "/api/process-probe/start":
+                self._handle_probe_start(data)
+            elif path == "/api/process-probe/stop":
+                self._handle_probe_stop()
+            elif path == "/api/process-probe/report":
+                self._handle_probe_report()
             else:
                 self._send_json({"error": "Not found"}, HTTPStatus.NOT_FOUND)
         except RuntimeError as e:
             self._send_json({"status": "error", "message": str(e)}, HTTPStatus.SERVICE_UNAVAILABLE)
         except Exception as e:
             self._send_json({"status": "error", "message": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    # ── Process probe (game/app network analysis) ─────────────
+    def _handle_probe_scan(self) -> None:
+        """Список процессов с сетью — ТОЛЬКО по явной кнопке (AV-safe)."""
+        from core.process_probe import list_processes
+        procs = list_processes()
+        self._send_json({"status": "ok", "processes": procs})
+
+    def _handle_probe_start(self, data: dict) -> None:
+        proc = str(data.get("process") or "").strip()
+        if not proc:
+            self._send_json({"status": "error",
+                             "message": "Укажите имя процесса или PID"})
+            return
+        try:
+            duration = max(10, min(int(data.get("duration") or 60), 300))
+        except (TypeError, ValueError):
+            duration = 60
+        ok, msg = get_process_probe().start(proc, duration)
+        self._send_json({"status": "ok" if ok else "error", "message": msg})
+
+    def _handle_probe_stop(self) -> None:
+        st = get_process_probe().stop()
+        self._send_json({"status": "ok", "state": st})
+
+    def _handle_probe_status(self) -> None:
+        self._send_json({"status": "ok", "state": get_process_probe().get_status()})
+
+    def _handle_probe_report(self) -> None:
+        probe = get_process_probe()
+        path = probe.save_report()
+        self._send_json({"status": "ok", "report": probe.report_text(),
+                         "path": str(path)})
 
     def _handle_save_config(self, data: dict) -> None:
         cfg = get_config_manager().load()
