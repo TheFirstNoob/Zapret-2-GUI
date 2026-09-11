@@ -1533,6 +1533,8 @@ class ZapretHandler(BaseHTTPRequestHandler):
                 self._handle_probe_stop()
             elif path == "/api/process-probe/report":
                 self._handle_probe_report()
+            elif path == "/api/frontend-log":
+                self._handle_probe_debug(data)
             else:
                 self._send_json({"error": "Not found"}, HTTPStatus.NOT_FOUND)
         except RuntimeError as e:
@@ -1578,6 +1580,13 @@ class ZapretHandler(BaseHTTPRequestHandler):
         st = get_process_probe().stop()
         _probe_debug(f"stop: phase={st.get('phase')} tcp={len(st.get('tcp', {}))}")
         self._send_json({"status": "ok", "state": st})
+
+    def _handle_probe_debug(self, data: dict) -> None:
+        """Frontend-логи (клики, ошибки JS) — в тот же probe_debug.log."""
+        msg = str(data.get("msg") or "")
+        if msg:
+            _probe_debug(f"frontend: {msg}")
+        self._send_json({"status": "ok"})
 
     def _handle_probe_status(self) -> None:
         self._send_json({"status": "ok", "state": get_process_probe().get_status()})
