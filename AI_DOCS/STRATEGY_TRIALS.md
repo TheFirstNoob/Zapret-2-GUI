@@ -103,8 +103,9 @@ discord без repeats. Все 5 кандидатов = default, но discord-б
 | `test-disc-md5` | fake + `tcp_md5` + repeats=7 | 000 | ❌ tcp_md5 на discord-блоке мешает (в tcpmd5-fake на других блоках работает) |
 
 **Вывод:** `tls_mod=rnd,dupsid` совместим с repeats и улучшает фейк —
-кандидат на встраивание в default (discord-блоки). Остальные комбинации
-не работают на discord.
+**встроено в новый пресет `default-alt.txt`** (discord-блоки с rnd,dupsid;
+валиден, discord 200 стабильно 3/3). default остаётся эталоном, default-alt —
+улучшенный вариант для Discord. Остальные комбинации не работают на discord.
 
 ## Полигон проверки пакетов (tools/pkt_verify.py, 2026-08-31)
 
