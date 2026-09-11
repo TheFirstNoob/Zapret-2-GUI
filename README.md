@@ -93,6 +93,7 @@ GUI-обёртка для **Zapret 2** (winws2 / lua-desync) — обход DPI/
 | Пресет | Подход |
 |---|---|
 | `default` | **Универсальная** — fake (drop + repeats) + multisplit |
+| `default-alt` | То же, но discord-фейки с **`tls_mod=rnd,dupsid`** (случайные поля + session_id из реального hello) — DPI не может зафиксировать «всегда одинаковый фейк». Попробуйте, если `default` флакает на Discord |
 | `auto` | То же, но с **автопереключением стратегий** при неудачах (circular). Попробуйте, если `default` не пробивает ваш провайдер |
 | `fake-only` | Только fake |
 | `fakedsplit` | Fake + fakedsplit |
