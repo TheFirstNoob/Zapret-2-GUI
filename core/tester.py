@@ -44,13 +44,13 @@ RATED_HOSTS = [
 # Probed but NOT counted in network_rate: excluded / not-covered hosts.
 # Shows the raw network state (RF-blocked sites, excluded services) without
 # distorting the strategy comparison.
+# Чистка 2026-09-11: убраны заведомо-мёртвые (глубокий IP-блок, не лечится
+# движком — telegram/x/fb/inst/linkedin/whatsapp/fcm/apple всегда 000, шум
+# в отчёте и +50с к прогону). Оставлены живые канарейки (google/cloudflare)
+# и РФ-домены (vk/ya/gosuslugi — «сеть жива»).
 CONTROL_HOSTS = [
     "www.google.com", "www.gstatic.com",
     "www.cloudflare.com", "cdnjs.cloudflare.com",
-    "web.telegram.org", "api.telegram.org",
-    "x.com", "www.facebook.com", "www.instagram.com",
-    "www.linkedin.com", "web.whatsapp.com",
-    "fcm.googleapis.com", "api.push.apple.com",
     "vk.ru", "ya.ru", "www.gosuslugi.ru",
 ]
 
@@ -82,15 +82,6 @@ HOST_TEST: dict[str, str] = {
     "www.gstatic.com":          "tls",
     "www.cloudflare.com":       "http",
     "cdnjs.cloudflare.com":     "tls",
-    "web.telegram.org":         "http",
-    "api.telegram.org":         "http",
-    "x.com":                    "http",
-    "www.facebook.com":         "http",
-    "www.instagram.com":        "http",
-    "www.linkedin.com":         "http",
-    "web.whatsapp.com":         "http",
-    "fcm.googleapis.com":       "tls",
-    "api.push.apple.com":       "tls",
     "vk.ru":                    "http",
     "ya.ru":                    "http",
     "www.gosuslugi.ru":         "http",
