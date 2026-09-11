@@ -297,6 +297,34 @@
               <div class="empty-note">Нажмите «Проверить», чтобы диагностировать окружение.</div>
             </div>
           </div>
+
+          <div class="panel">
+            <div class="diag-head">
+              <div>
+                <div class="panel-title">Анализ приложения / игры</div>
+                <div class="panel-sub">Не работает игра или программа? Посмотрите её сеть: куда она ходит и отвечают ли соединения. Процесс можно указать заранее — анализатор дождётся его запуска.</div>
+              </div>
+            </div>
+            <div class="probe-controls">
+              <input class="input" id="probeProcInput" placeholder="Имя процесса или PID (напр. WardogsClient)" />
+              <select class="input input-sm" id="probeProcSelect">
+                <option value="">— список процессов (по кнопке) —</option>
+              </select>
+              <button class="btn" id="probeScanBtn" title="Показать запущенные процессы с сетью">Сканировать процессы</button>
+              <select class="input input-sm" id="probeDurSelect">
+                <option value="30">30 сек</option>
+                <option value="60" selected>60 сек</option>
+                <option value="120">120 сек</option>
+              </select>
+              <button class="btn btn-primary" id="probeStartBtn">Начать анализ</button>
+              <button class="btn" id="probeStopBtn" hidden>Стоп</button>
+              <button class="btn" id="probeReportBtn" hidden>Сохранить отчёт</button>
+            </div>
+            <div class="probe-status" id="probeStatus"></div>
+            <div class="diag-body" id="probeResults">
+              <div class="empty-note">Впишите имя процесса (или выберите из списка) и нажмите «Начать анализ». Если процесс ещё не запущен — анализатор будет ждать его появления до 2 минут.</div>
+            </div>
+          </div>
         </section>
 
         <!-- ═══ Списки ═══ -->

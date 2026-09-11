@@ -803,6 +803,13 @@ const DiagnosticsPage = {
       this._bound = true;
       $('diagRunBtn').addEventListener('click', () => this.run());
       $('diagCopyBtn').addEventListener('click', () => this.copyReport());
+      $('probeScanBtn').addEventListener('click', () => App.scanProbeProcesses());
+      $('probeStartBtn').addEventListener('click', () => App.startProbe());
+      $('probeStopBtn').addEventListener('click', () => App.stopProbe());
+      $('probeReportBtn').addEventListener('click', () => App.saveProbeReport());
+      $('probeProcSelect').addEventListener('change', () => {
+        $('probeProcInput').value = $('probeProcSelect').value;
+      });
     }
   },
 
@@ -2261,6 +2268,152 @@ const TesterPage = {
       clearInterval(this.state.elapsedInterval);
       this.state.elapsedInterval = null;
     }
+  },
+
+  // ── Анализ процесса (game/app network probe) ──────────────
+  _probePollTimer: null,
+
+  async scanProbeProcesses() {
+    const btn = $('probeScanBtn');
+    btn.disabled = true;
+    try {
+      const r = await apiPost('/process-probe/scan', {});
+      if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
+      const sel = $('probeProcSelect');
+      sel.innerHTML = '<option value="">— выберите процесс —</option>';
+      for (const p of (r.processes || [])) {
+        const o = document.createElement('option');
+        o.value = p.name;
+        o.textContent = `${p.name} (PID ${p.pid})`;
+        sel.appendChild(o);
+      }
+      showToast(`Найдено процессов с сетью: ${(r.processes || []).length}`, 'ok');
+    } catch (e) {
+      showToast('Сканирование: ' + (e.message || e), 'error');
+    }
+    btn.disabled = false;
+  },
+
+  async startProbe() {
+    if (this._probePollTimer) return;
+    const process = ($('probeProcInput').value || '').trim()
+      || ($('probeProcSelect').value || '').trim();
+    if (!process) {
+      showToast('Впишите имя процесса или PID', 'error');
+      return;
+    }
+    const duration = $('probeDurSelect').value || 60;
+    const r = await apiPost('/process-probe/start', { process, duration });
+    if (r.status !== 'ok') {
+      showToast('Анализ: ' + (r.message || 'ошибка'), 'error');
+      return;
+    }
+    $('probeStartBtn').disabled = true;
+    $('probeStopBtn').hidden = false;
+    $('probeReportBtn').hidden = true;
+    $('probeResults').innerHTML = '<div class="empty-note">Наблюдение…</div>';
+    this._probePollTimer = setInterval(() => this.pollProbe(), 2000);
+    this.pollProbe();
+  },
+
+  async pollProbe() {
+    let r;
+    try {
+      r = await apiGet('/process-probe/status');
+    } catch (e) {
+      this._stopProbePolling();
+      return;
+    }
+    if (r.status !== 'ok') {
+      this._stopProbePolling();
+      return;
+    }
+    const st = r.state || {};
+    const stEl = $('probeStatus');
+    if (stEl) stEl.textContent = st.phase || '';
+    this.renderProbe(st);
+    if (st.phase === 'завершено' || st.error) {
+      this._stopProbePolling();
+      $('probeStartBtn').disabled = false;
+      $('probeStopBtn').hidden = true;
+      $('probeReportBtn').hidden = false;
+      if (st.error) showToast('Анализ: ' + st.error, 'error');
+    }
+  },
+
+  _stopProbePolling() {
+    if (this._probePollTimer) {
+      clearInterval(this._probePollTimer);
+      this._probePollTimer = null;
+    }
+  },
+
+  async stopProbe() {
+    await apiPost('/process-probe/stop', {});
+    this._stopProbePolling();
+    $('probeStartBtn').disabled = false;
+    $('probeStopBtn').hidden = true;
+    $('probeReportBtn').hidden = false;
+  },
+
+  async saveProbeReport() {
+    const r = await apiPost('/process-probe/report', {});
+    if (r.status === 'ok' && r.report) {
+      const el = $('probeResults');
+      el.innerHTML = '<pre class="probe-report">' + escapeHtml(r.report) + '</pre>';
+      showToast('Отчёт сохранён: ' + r.path, 'ok');
+    } else {
+      showToast('Не удалось сохранить отчёт', 'error');
+    }
+  },
+
+  renderProbe(st) {
+    const box = $('probeResults');
+    if (!box) return;
+    const tcp = st.tcp || {};
+    const udp = st.udp || {};
+    const cap = st.udp_capture || {};
+    const dns = st.dns || {};
+    let html = '';
+    if (st.error) {
+      html += `<div class="st-err">Ошибка: ${escapeHtml(st.error)}</div>`;
+    }
+    if (st.verdict) {
+      html += `<div class="verdict-msg">${escapeHtml(st.verdict)}</div>`;
+    }
+    if (Object.keys(tcp).length) {
+      html += '<div class="probe-sec-title">TCP</div><table class="check-table"><tbody>';
+      for (const [k, v] of Object.entries(tcp).sort((a, b) => b[1].n - a[1].n)) {
+        const bad = v.state === 'SynSent' ? ' class="st-err"' : '';
+        html += `<tr><td class="mono"${bad}>${escapeHtml(k)}</td>` +
+          `<td${bad}>${escapeHtml(v.state)}</td>` +
+          `<td class="mono">×${v.n}</td></tr>`;
+      }
+      html += '</tbody></table>';
+    }
+    if (Object.keys(udp).length) {
+      html += '<div class="probe-sec-title">UDP</div><table class="check-table"><tbody>';
+      for (const [k, v] of Object.entries(udp).sort((a, b) => b[1] - a[1])) {
+        html += `<tr><td class="mono">${escapeHtml(k)}</td><td class="mono">×${v}</td></tr>`;
+      }
+      html += '</tbody></table>';
+    }
+    if (Object.keys(cap).length) {
+      html += '<div class="probe-sec-title">UDP (захват)</div><table class="check-table"><tbody>';
+      for (const [k, v] of Object.entries(cap).sort((a, b) => b[1] - a[1])) {
+        html += `<tr><td class="mono">${escapeHtml(k)}</td><td class="mono">пакетов ${v}</td></tr>`;
+      }
+      html += '</tbody></table>';
+    }
+    if (Object.keys(dns).length) {
+      html += '<div class="probe-sec-title">Домены</div><div class="probe-dns">';
+      for (const [ip, doms] of Object.entries(dns)) {
+        html += `<div class="mono">${escapeHtml(ip)} → ${escapeHtml(doms.join(', '))}</div>`;
+      }
+      html += '</div>';
+    }
+    if (!html) html = '<div class="empty-note">Наблюдение…</div>';
+    box.innerHTML = html;
   },
 };
 

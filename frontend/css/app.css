@@ -779,3 +779,11 @@ label.opt-line:has(input:disabled):hover { background: var(--field); }
 ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 5px; border: 2px solid transparent; background-clip: padding-box; }
 ::-webkit-scrollbar-thumb:hover { background: var(--faint); background-clip: padding-box; }
 ::-webkit-scrollbar-corner { background: transparent; }
+/* ── Анализ процесса ── */
+.probe-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 0 4px; }
+.probe-controls .input { flex: 0 1 auto; }
+#probeProcInput { flex: 1 1 220px; }
+.probe-status { min-height: 18px; color: var(--faint); font-size: 12px; padding: 4px 0; }
+.probe-sec-title { font-weight: 600; margin: 8px 0 2px; color: var(--ink); }
+.probe-dns { font-size: 12px; color: var(--muted); line-height: 1.5; }
+.probe-report { white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace; font-size: 12px; max-height: 400px; overflow: auto; }
