@@ -231,11 +231,13 @@ tls_handshake → sending_data → reading_data) через httpx event hooks;
 **Последний коммит: `bc80d8f` (origin main, зеркало синхронизировано).**
 **Состояние машины после тестов:** winws2 поднят (default, google blob, ipset OFF), WARP Connected, служба zapret2 остановлена, конфиг не менялся (fake_blob='', discord_voice_mode=off). temp-артефакты: `%TEMP%\opencode\client_ab.txt`, `dpidet_report*.txt`, `our_asn*.json` — результаты прогонов.
 
-### Задача 1 (ОБЯЗАТЕЛЬНО перед релизом 0.6): пересборка дистрибутивов
-0.6 **не релизился**. С последней сборки (`fbe3868`, делала нейронка) накопились изменения: фикс custom-smoke бага (write_run_bat), tcp16-20 v2 (size_upload), safe_prefixes + working_domains, ASN-вкладка (page-asn), busy-блокировки (_checkers_busy), скорость asn_scan (--connect-timeout 3, concurrency 8), ASN_SNI=example.com, 2 новых блоба (sferum_ru, sochi_park).
-- **Заодно: bump бандла winws2.exe v1.0.2 → v1.0.5** (04.09 вышел; разбор: критичного/ломающего нет — SSID/NLM, filter-mark, luaexec, blockcheck2 — мимо нас; единственное поведенческое на нашем пути = tcp-опции padding/EOL в reconstruct/dissect). Валидация после смены: dry-run, custom-smoke --intercept=0, один прогон RATED (контроль регресса). Урок из blockcheck2: тестовое ограничение подсетей — через `--wf-raw-filter` (kernel mode), не через --ipset.
-- Команды: `python build_lite.py`, `python build_portable.py`, `python build.py` (затем zip dist/Zapret2GUI.exe → Windows build/Zapret2GUI.zip).
-- После: commit + push zips + sync зеркала. Тэг/релиз — по решению пользователя.
+### Задача 1 (СДЕЛАНО 09-11): пересборка дистрибутивов
+0.6 собран многократно (портабл/лит/экс пересобираются при каждом изменении
+кода/пресетов). **winws2.exe bumped v1.0.2 → v1.0.5** (в bin/ — `--version`
+показывает v1.0.5; задача выполнена). После смены движка проводились
+dry-run + RATED-прогоны (регресса нет). Изменения с 08.09: portable-fix
+(sys.path + config-first-run), default-alt, github-fix (general без nodrop),
+блоб-приоритет, тестер-хосты 26→18.
 
 ### Задача 2 (СДЕЛАНО, fcfdbc6, 08.09): автоприменение из A/B-вердиктов
 Кнопка **«Применить все правки (N)»** на CDN-вкладке: батч вердиктов за ОДИН перезапуск.
@@ -255,7 +257,8 @@ tls_handshake → sending_data → reading_data) через httpx event hooks;
 - **Блобы**: оставлены все (селектор + эксперименты + запасные).
 - **hosts.txt**: в порядке (UTF-8 без BOM, битым казался из-за PS cp866) — без правок.
 - **lite**: факты — служба (service*.bat), переключение стратегий (start-*.bat, 10 шт), тестер (test.ps1) ЕСТЬ. Нет только CDN-стабилизатора/ASN-тестера (Python-фичи).
-- **⚠️ lite-тестер (test_lite.ps1) УСТАРЕЛ**: 12 хостов (google/cloudflare), а GUI = RATED(11)+CONTROL(16)=27, нет tcp16-20. TODO: синхронизировать test_lite.ps1 с tester.py.
+- **lite-тестер (test_lite.ps1) СИНХРОНИЗИРОВАН 09-11**: CONTROL 16→7
+  (заведомо-мёртвые убраны, как в GUI tester.py). RATED совпадает (11).
 
 ## LITE-СТАБИЛИЗАТОР (08.09): сделано
 - `test_lite.ps1` полностью переписан: naked → default (hostlist) → ipset (catch-all) A/B на CDN_HOSTS (36), вердикты «чинит/ломает/не лечится/мёртвые», **«Применить фиксы? Y/N»** → запись в ipset-include-user / list-exclude → перезапуск → контроль RATED. Без таблиц/отчётов (lite = найти проблему → фикс, подробности в full/portable).

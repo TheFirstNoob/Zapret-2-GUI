@@ -1,4 +1,7 @@
-# ISP-специфичные наблюдения (обновлено 2026-07-29, Pre-release 0.1)
+# ISP-специфичные наблюдения (обновлено 2026-09-11, Pre-release 0.6)
+
+> Исторические данные (Zapret 1, 2026-07) — ниже. Актуальная механика Т2 —
+> STRATEGY_TRIALS (repeats=7, доля фейков, батареи 09-11).
 
 ## ⚠️ ВАЖНО: `default.txt` — универсальная стратегия
 
@@ -17,24 +20,20 @@
 Google TCP tls, General TCP, QUIC Google, QUIC General
 ```
 
-### Известный изъян
-Один маленький — будет описан позднее.
-
 ---
 
-## Доступные блобы (blobs/)
+## Доступные блобы (blobs/) — актуально 2026-09-11
 
-| Блоб | Размер | Использование |
-|------|--------|---------------|
-| `tls_clienthello_www_google_com.bin` | 681 | Google TLS, универсальный |
-| `tls_clienthello_max_ru.bin` | 664 | Для неизвестных доменов |
-| `tls_clienthello_4pda_to.bin` | 284 | 4pda |
-| `tls_clienthello_vk_com.bin` | 517 | VK |
-| `tls_clienthello_iana_org.bin` | 517 | IANA |
-| `tls_clienthello_rutracker_org_kyber.bin` | 1787 | Rutracker (с Kyber) |
-| `stun.bin` | 100 | STUN |
+Полный список генерируется селектором GUI (ручной приоритет, автопрефикс
+цифровых имён, стоп-лист — см. AGENTS снапшот). Ключевые:
+| Блоб | Размер | Статус на Т2 |
+|------|--------|--------------|
+| `tls_clienthello_www_google_com.bin` | 681 | эталон, по умолчанию |
+| `tls_clienthello_sochi_park.bin` | 244 | боевой запасной (проверен 09-10) |
+| `tls_clienthello_mail_ru.bin` / `vk_com` / `iana_org` / `hcaptcha_com` / `alfabank_ru` | 235-517 | проверены 6/6 (09-11) |
+| `tls_clienthello_max_ru.bin` | 664 | работал в general |
+| `tls_clienthello_rutracker_org_kyber.bin` | 1787 | НЕ использовать для fake (огромный, доля фейков падает) |
 | `quic_initial_www_google_com.bin` | 1200 | QUIC Google |
-| `quic_initial_dbankcloud_ru.bin` | 1357 | QUIC dbankcloud |
 
 ---
 
@@ -78,15 +77,20 @@ Google TCP tls, General TCP, QUIC Google, QUIC General
 
 ---
 
-## Доступные пресеты (presets/)
+## Доступные пресеты (presets/) — актуально 2026-09-11 (11 release)
 
 | Пресет | Описание |
 |--------|----------|
 | `default.txt` | **Универсальная стратегия** — 7 блоков, все порты |
+| `default-alt.txt` | default + discord-фейки с `tls_mod=rnd,dupsid` (стабилен 3/3) |
+| `auto.txt` | default + автопереключение стратегий (circular) |
+| `tcpmd5-fake.txt` | fake + tcp_md5 (кандидат №1 для сетей с фингерпринтом) |
 | `fake-only.txt` | Pure fake Google TLS для тестов |
 | `fakedsplit.txt` | Fake + fakedsplit |
 | `hostfakesplit.txt` | Hostname fake + split |
-| `fake-disorder.txt` | Fake + disorder |
+| `fake-disorder.txt` | Fake + disorder (кастомная lua) |
 | `fake-multidisorder.txt` | Fake + multidisorder |
 | `multisplit-pure.txt` | Чистый multisplit |
 | `multisplit-seqovl.txt` | Multisplit с seqovl |
+
+> exp-/cand- стенды (скрыты из GUI и дистрибутивов) — не для пользователей.

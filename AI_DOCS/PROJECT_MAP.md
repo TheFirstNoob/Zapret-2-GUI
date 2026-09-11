@@ -1,4 +1,4 @@
-# Zapret 2 GUI — Карта проекта (2026-08-30, Pre-Release 0.6)
+# Zapret 2 GUI — Карта проекта (обновлено 2026-09-11, Pre-Release 0.6)
 
 ## Что делает программа
 
@@ -32,7 +32,8 @@ zapret2_gui/
 │                           test_logger, admin, utils
 ├── server/server.py        HTTP backend + tester-action runner (threading)
 ├── frontend/               SPA: index.html, css/app.css, js/app.js
-├── presets/                8 .txt стратегий + custom (генерируется тестером)
+├── presets/                11 release .txt стратегий + exp-/cand- стенды
+│                           (скрыты из GUI) + custom (генерируется тестером)
 ├── lua/ blobs/ lists/ bin/ windivert/
 └── AI_DOCS/                AGENTS.md (критично!), rules, PROJECT_MAP, STRATEGY_GUIDE,
                             STRATEGY_TRIALS, STRATEGY_ROADMAP, ASN_SCAN_NOTES,
