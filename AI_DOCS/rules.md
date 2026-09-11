@@ -113,6 +113,9 @@ gateway.discord.gg, cdn.discordapp.com, i.ytimg.com,
 redirector.googlevideo.com, www.gstatic.com,
 www.cloudflare.com, cdnjs.cloudflare.com
 ```
+Контроль (не влияет на счёт): google/gstatic/cloudflare + РФ (vk.ru, ya.ru,
+gosuslugi.ru). Заведомо-мёртвые (telegram/x/fb/inst/linkedin/whatsapp/fcm/
+apple — глубокий IP-блок) из теста УБРАНЫ (2026-09-11) — только шум в отчёте.
 
 ### Методология
 1. Запустить default.txt
