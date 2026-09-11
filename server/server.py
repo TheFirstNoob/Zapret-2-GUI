@@ -625,6 +625,7 @@ def _build_recommendation(all_results, naked, sanity: dict) -> dict:
 # ПОСЛЕ проверки.
 _BLOB_PRIORITY = [
     "www_google_com",        # эталон, по умолчанию
+    "sochi_park",            # проверен в бою 2026-09-10 (отвалы) — стабилен как google
     "mail_ru",               # реальный браузерный hello
     "vk_com",                # реальный, 18 расширений, SNI pos 4 — работает
     "iana_org",              # реальный, 13 расширений
@@ -633,7 +634,6 @@ _BLOB_PRIORITY = [
     "www_cloudflare_com",    # синтетика make_blob, реальный домен
     "max_ru",                # большой (664), работал в general
     "web_max_ru",            # мелкий, работал в general
-    "sochi_park",            # SNI pos 1 — работает с repeats
 ]
 # Проверенно НЕ пробивающие (Т2): example_com — RFC-заглушка, нереальный домен;
 # sni2gis/snimail — тестовые артефакты скрещиваний, не для пользователей.
