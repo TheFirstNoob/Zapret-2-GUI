@@ -321,17 +321,24 @@ const MainPage = {
   },
 
   // Список доступных TLS-фейк-блобов (blobs/tls_clienthello_*.bin).
+  // Рекомендованные (проверенные, ≤700 байт) — первыми, с меткой ★.
   async populateFakeBlobs() {
     try {
       const r = await apiGet('/fake-blobs');
       const sel = $('fakeBlobSelect');
       if (!sel || this._blobsLoaded) return;
       this._blobsLoaded = true;
+      const rec = new Set(r.recommended || []);
+      const sizes = r.sizes || {};
       for (const key of r.blobs || []) {
         if (Array.from(sel.options).some(o => o.value === key)) continue;
         const o = document.createElement('option');
         o.value = key;
-        o.textContent = key.replace(/_/g, '.');
+        const label = key.replace(/_/g, '.');
+        const sz = sizes[key] || 0;
+        o.textContent = rec.has(key)
+          ? `★ ${label} (${sz} B)`
+          : (sz > 700 ? `⚠ ${label} (${sz} B) — большой` : `${label} (${sz} B)`);
         sel.appendChild(o);
       }
       sel.value = this._pendingFakeBlob || '';
