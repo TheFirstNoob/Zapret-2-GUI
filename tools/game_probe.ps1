@@ -136,7 +136,7 @@ function Format-Report {
 function Parse-UdpCapture([string]$file, $knownPorts) {
     $remote = @{}
     if (-not (Test-Path $file)) { return $remote }
-    foreach ($line in (Get-Content -Path $file -ErrorAction SilentlyContinue)) {
+    foreach ($line in [System.IO.File]::ReadLines($file)) {
         if ($line -match '(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\.(\d+) > (\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\.(\d+)') {
             $a = $matches[1]; $ap = [int]$matches[2]; $b = $matches[3]; $bp = [int]$matches[4]
             # only packets related to the game ports (empty list = accept all)
@@ -202,7 +202,7 @@ if (-not $NoCapture -and $isAdmin) {
     } else {
         pktmon filter add game -t UDP 2>&1 | Out-Null
     }
-    pktmon start --capture --pkt-size 0 --file-name $etlFile 2>&1 | Out-Null
+    pktmon start --capture --pkt-size 64 --file-name $etlFile 2>&1 | Out-Null
     if (Test-Path $etlFile) {
         $captureActive = $true
         $captureNote = "running (pktmon, UDP, ports: $($knownPorts.Count))"

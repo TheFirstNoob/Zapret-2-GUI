@@ -134,6 +134,24 @@ sni, oob без входящих, rst без badsum). Перетестирова
 > Прошлые прогоны через _run_one.py (с авто-восстановлением default) могли
 > быть скомпрометированы конфликтом winws2 — теперь данные чистые.
 
+## AWS-баг: десинк ломал DynamoDB/S3 (Т2, 2026-09-11) 🚨
+
+| Проверка | Результат |
+|---|---|
+| Голый: dynamodb.*.amazonaws.com | **200** (все регионы) |
+| Голый: s3.amazonaws.com | **307** |
+| Голый: storage.googleapis.com | 400 (жив) |
+| С default (amazonaws.com в list-general): ddb/s3 | **000 — наш десинк ЛОМАЕТ** |
+| С default (после удаления amazonaws.com из списка) | ddb 200, s3 307 — стабильно 3/3 |
+| С auto (circular): ddb | 200/000/200 — переключается, нестабильно |
+| CloudFront (amplifon.com) с default | 301 — десинк терпит |
+
+**Вывод:** fake+multisplit (General TCP) ломает AWS-API (DynamoDB/S3), но
+живёт в голую на Т2. `amazonaws.com` УБРАН из list-general (2026-09-11).
+Реальный кейс: игра Wardogs + NVIDIA App (ходят на DynamoDB в 11 регионах)
+падали при default; auto пробивал (strategy=2/3 без мультисплита).
+CloudFront десинк терпит — остался в списке. Детали: AGENTS §15-корректировка.
+
 ## Батарея A: изоляция компонентов discord-блока (Т2, 2026-09-11)
 
 Каждый = default, меняются ТОЛЬКО discord-блоки. Все 3× прогоны (стабильно).
