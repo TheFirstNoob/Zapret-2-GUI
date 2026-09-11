@@ -23,7 +23,21 @@ window.fetch = function (url, opts) {
 
 window.onerror = function (msg, url, line) {
   console.error('JS ERROR line ' + line + ': ' + msg);
+  frontendLog('JS ERROR line ' + line + ': ' + msg);
 };
+
+// fire-and-forget лог на сервер (виден в probe_debug.log)
+function frontendLog(msg) {
+  try {
+    fetch('/api/frontend-log', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ msg: msg })
+    }).catch(() => {});
+  } catch (e) { /* noop */ }
+}
+
+frontendLog('app.js loaded');
 
 // ── utils ──
 
@@ -184,29 +198,33 @@ const App = {
   },
 
   async init() {
+    frontendLog('init: start');
     this.bindNav();
     this.bindProbeButtons();
     this.handleHash();
     window.addEventListener('hashchange', () => this.handleHash());
     this.loadVersion();
     this.checkUpdate();
+    frontendLog('init: after sync part');
     try {
       const data = await apiGet('/profiles');
       PROFILES = (data.profiles || []).map(p => p.name);
     } catch (e) { PROFILES = ['default']; }
     Status.start();
     if (this.currentPage === 'main') MainPage.onShow();
+    frontendLog('init: end');
   },
 
   bindProbeButtons() {
     const scan = $('probeScanBtn');
-    if (scan) scan.addEventListener('click', () => this.scanProbeProcesses());
     const start = $('probeStartBtn');
-    if (start) start.addEventListener('click', () => this.startProbe());
+    frontendLog('bind: scanBtn=' + !!scan + ' startBtn=' + !!start);
+    if (scan) scan.addEventListener('click', () => TesterPage.scanProbeProcesses());
     const stop = $('probeStopBtn');
-    if (stop) stop.addEventListener('click', () => this.stopProbe());
+    if (start) start.addEventListener('click', () => TesterPage.startProbe());
+    if (stop) stop.addEventListener('click', () => TesterPage.stopProbe());
     const report = $('probeReportBtn');
-    if (report) report.addEventListener('click', () => this.saveProbeReport());
+    if (report) report.addEventListener('click', () => TesterPage.saveProbeReport());
     const sel = $('probeProcSelect');
     if (sel) sel.addEventListener('change', () => {
       $('probeProcInput').value = sel.value;
@@ -2283,8 +2301,10 @@ const TesterPage = {
 
   // ── Анализ процесса (game/app network probe) ──────────────
   _probePollTimer: null,
+  _probeStarting: false,
 
   async scanProbeProcesses() {
+    frontendLog('scan clicked');
     const btn = $('probeScanBtn');
     const statusEl = $('probeStatus');
     if (statusEl) statusEl.textContent = 'Сканирование процессов…';
@@ -2319,25 +2339,34 @@ const TesterPage = {
   },
 
   async startProbe() {
-    if (this._probePollTimer) return;
+    if (this._probePollTimer || this._probeStarting) return;
+    this._probeStarting = true;
+    const btn = $('probeStartBtn');
+    btn.disabled = true;
     const process = ($('probeProcInput').value || '').trim()
       || ($('probeProcSelect').value || '').trim();
     if (!process) {
       showToast('Впишите имя процесса или PID', 'error');
+      btn.disabled = false;
+      this._probeStarting = false;
       return;
     }
     const duration = $('probeDurSelect').value || 60;
-    const r = await apiPost('/process-probe/start', { process, duration });
-    if (r.status !== 'ok') {
-      showToast('Анализ: ' + (r.message || 'ошибка'), 'error');
-      return;
+    try {
+      const r = await apiPost('/process-probe/start', { process, duration });
+      if (r.status !== 'ok') {
+        showToast('Анализ: ' + (r.message || 'ошибка'), 'error');
+        btn.disabled = false;
+        return;
+      }
+      $('probeStopBtn').hidden = false;
+      $('probeReportBtn').hidden = true;
+      $('probeResults').innerHTML = '<div class="empty-note">Наблюдение…</div>';
+      this._probePollTimer = setInterval(() => this.pollProbe(), 2000);
+      this.pollProbe();
+    } finally {
+      this._probeStarting = false;
     }
-    $('probeStartBtn').disabled = true;
-    $('probeStopBtn').hidden = false;
-    $('probeReportBtn').hidden = true;
-    $('probeResults').innerHTML = '<div class="empty-note">Наблюдение…</div>';
-    this._probePollTimer = setInterval(() => this.pollProbe(), 2000);
-    this.pollProbe();
   },
 
   async pollProbe() {
