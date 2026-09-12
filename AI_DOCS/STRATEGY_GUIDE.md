@@ -1,45 +1,24 @@
 # Strategy Guide — как искать и тестировать обход DPI
->
-> **Обновлено: 2026-09-11 (Pre-release 0.6)**
 
----
+> **Обновлено: 2026-09-13 (Pre-Release 0.7.1)**
 
 > **⚠️ `default.txt` — универсальная стратегия. Работает у всех протестированных провайдеров.**
-> **Размер EXE:** 18.0 MB (было 43.9 MB)
+> Детали механик и правил — AGENTS.md; результаты испытаний — STRATEGY_TRIALS.md.
 
-## 0. `--payload` — обязателен, без него ничего не работает
+## 0. Ключевые правила (кратко)
 
-`--payload` говорит lua-desync *где в потоке* искать данные. Без → 000.
-
-**Всегда указывать:**
-- `--payload tls_client_hello` для TLS
-- `--payload http_req` для HTTP
-- `--payload quic_initial` для QUIC
-- `--payload discord_ip_discovery` для Discord voice
-
-## 0a. `repeats=N` и `nodrop` — не ставить везде
-
-- `nodrop` + `repeats=1` — достаточно (для большинства DPI; **УСТАРЕЛО для
-  Т2: там Discord требует repeats=7 даже с nodrop** — см. §0a ниже)
-- QUIC: `repeats=6-11`
-- **НЕ увеличивать «на всякий случай»**
-- **Т2 (с 2026-09-10): Discord требует `repeats=7` минимум (6 → 000, 7 → 200).**
-  YouTube уже требовал `repeats=6`. Мёртвая точка подбирается перебором.
-- **`nodrop` на SNI-блоках ломает цель** (2026-09-10, github): при `nodrop`
-  оригинал с РЕАЛЬНЫМ SNI идёт сразу за фейком → DPI видит оба и блочит.
-  Тот же урок уже был зафиксирован 4d16a19 для youtube (google-блок), но
-  тогда general-блок не трогали. Фикс: fake БЕЗ `nodrop` + `repeats=8`
-  (оригинал дропается), multisplit без `nodrop`/`tcp_ts`. Проверено: github
-  200/raw 301 при discord/yt/google 200. Блоб фейка на результат не влияет
-  (google_tls == max_ru == web_max_ru).
-
-## 0b. Debug режим
-
-- `--debug=@debug_winws2.log` — каждый пакет, пинг +50-150ms, CPU +15-30%
-- `--debug=1` — ломает захват пакетов → 000
-- Только для диагностики
-
----
+- **`--payload` обязателен** — без него lua-desync не знает где искать: 000.
+  Всегда: `tls_client_hello` (TLS), `http_req` (HTTP), `quic_initial` (QUIC),
+  `discord_ip_discovery` (Discord voice).
+- **`repeats=N` — не ставить везде**: Discord на Т2 = 8 минимум (порог плавает,
+  8 = запас), YouTube (google-блок) = 6, General TCP = 8, QUIC — без repeats.
+  Для прочих сетей не увеличивать «на всякий случай». (2026-09-12: старое
+  «nodrop + repeats=1» устарело — на Т2 повтор обязателен даже с nodrop.)
+- **`nodrop` на SNI-блоках ломает цель** (2026-09-10, github; тот же класс, что
+  youtube 4d16a19): оригинал с реальным SNI идёт следом за фейком → DPI видит
+  оба и блочит. Фикс: fake БЕЗ nodrop + repeats, multisplit без nodrop/tcp_ts.
+- **Debug**: `--debug=@debug_winws2.log` — пинг +50-150ms, CPU +15-30% (только
+  диагностика); `--debug=1` — ломает захват → 000.
 
 ## default.txt — универсальная стратегия
 
@@ -52,19 +31,11 @@
 --blob google_tls:@blobs/tls_clienthello_www_google_com.bin
 --blob quic_google:@blobs/quic_initial_www_google_com.bin
 --lua-gc 60
-
---comment=Discord Voice                   # UDP voice fix (19294-19344,50000-50100)
---comment=Discord Media TCP               # TCP 2053,2083,2087,2096,8443
---comment=Discord TCP tls                 # TCP 443 + hostlist discord
---comment=Google TCP tls                  # TCP 443 + hostlist google
---comment=General TCP                     # TCP 80,443 + hostlist general
---comment=QUIC Google                     # UDP 443 + hostlist google
---comment=QUIC General                    # UDP 443 + hostlist general
+--comment=Discord Voice / Discord Media TCP / Discord TCP tls
+--comment=Google TCP tls / General TCP / QUIC Google / QUIC General
 ```
 
-**Проверено на:** Новороссийск (Новый Интернет), Ижевск (Марк-ИТТ), Воронеж (JustLan), СПб (Т2)
-
----
+**Проверено на:** Новороссийск (Новый Интернет), Ижевск (Марк-ИТТ), Воронеж (JustLan), СПб (Т2).
 
 ## Как тестировать (проверенная методика)
 
@@ -86,15 +57,11 @@ Google.com всегда 200 — НЕЛЬЗЯ использовать как к�
 
 ### Важные curl-флаги
 ```
--4              # только IPv4
--s              # silent
--m 8            # таймаут 8 секунд
--H "User-Agent: ..." # реалистичный браузерный UA
--o NUL          # вывод тела в никуда
--w "%{http_code}"  # только HTTP код
+-4              # только IPv4 (aiohttp/IPv6 дают ложные TIMEOUT — только curl)
+-s -m 8         # silent, таймаут 8с
+-H "User-Agent: ..."  # реалистичный браузерный UA
+-o NUL -w "%{http_code}"  # только HTTP код
 ```
-
----
 
 ## Справочник параметров winws2
 
@@ -102,12 +69,12 @@ Google.com всегда 200 — НЕЛЬЗЯ использовать как к�
 ```
 --wf-tcp-out PORT,...    # перехват TCP портов
 --wf-udp-out PORT,...    # перехват UDP портов
---lua-init @file.lua     # загрузка Lua
+--lua-init @file.lua     # загрузка Lua (только =форма, см. AGENTS §1)
 ```
 
 ### Блобы
 ```
---blob NAME:@path/file.bin   # из файла
+--blob NAME:@path/file.bin   # из файла; имя НЕ с цифры (AGENTS правило 2)
 ```
 
 ### Профили
@@ -116,32 +83,26 @@ Google.com всегда 200 — НЕЛЬЗЯ использовать как к�
 --filter-tcp PORT  # TCP порты
 --filter-udp PORT  # UDP порты
 --filter-l7 PROTO  # L7 протокол
---hostlist=file    # include: только эти домены
+--hostlist=file    # include: только эти домены (в профиле объединяются)
 --hostlist-exclude # exclude: все кроме этих
 --out-range=-dN    # N байт исходящих обрабатывать
 --payload=TYPE     # тип данных
 ```
 
-### Lua-desync функции
+### Lua-desync функции и параметры
 ```
 fake              # подмена пакета фейковым
 multisplit        # разрыв на части с перекрытием
 multidisorder     # разрыв + перестановка
 fakedsplit        # фейк + разрыв
-```
 
-### Параметры lua-desync
-```
 blob=NAME         # блоб для подмены
-tcp_ts=N          # +/- к timestamp
-pos=N             # позиция разрыва
-pos=midsld        # разрыв в середине SNI
+tcp_ts=N          # +/- к timestamp (только на fake! PAWS, AGENTS §7)
+pos=N             # позиция разрыва (zero-based!); pos=midsld — в середине SNI
 seqovl=N          # перекрытие последовательности
-nodrop            # не дропать оригинал
-repeats=N         # кол-во повторов
+nodrop            # не дропать оригинал (не ставить на SNI-блоки!)
+repeats=N         # кол-во повторов (см. правила выше)
 ```
-
----
 
 ## OLD_LOGS — исторические стратегии (Zapret 1)
 
@@ -156,8 +117,6 @@ repeats=N         # кол-во повторов
 
 **Сейчас `default.txt` работает у всех — универсальная стратегия найдена.**
 
----
-
 ## Что НЕ сработало (но может работать у других)
 
 | Стратегия | Причина |
@@ -167,8 +126,6 @@ repeats=N         # кол-во повторов
 | C hostlist=include | Домен не в списке |
 | Без `--payload` | Payload не матчится |
 | Без `--out-range -d10` | Без ограничения диапазона |
-
----
 
 ## Файлы, необходимые для работы
 

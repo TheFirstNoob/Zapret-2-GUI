@@ -8,9 +8,8 @@ from pathlib import Path
 
 
 def short_path(path: Path) -> Path:
-    """Return the Windows short (8.3) path for an existing file/directory.
-    Falls back to the original path if short names are disabled or unavailable.
-    """
+    """Windows short (8.3) path; falls back to the original when short
+    names are disabled or unavailable."""
     try:
         long_name = str(path.resolve())
         buf = ctypes.create_unicode_buffer(260)
@@ -30,11 +29,11 @@ def get_temp_dir() -> Path:
 
 
 def known_desktop_dir() -> Path:
-    """Реальный рабочий стол через официальный SHGetKnownFolderPath
-    (учитывает OneDrive-редирект Known Folder). Фолбэк — профиль\\Desktop.
+    """Реальный рабочий стол через SHGetKnownFolderPath (учитывает
+    OneDrive-редирект Known Folder). Фолбэк — профиль\\Desktop.
 
-    Явные argtypes/restype — best practice ctypes на x64 (по умолчанию
-    HRESULT = int подходит, но сигнатуры снимают все вопросы)."""
+    Явные argtypes/restype — best practice ctypes на x64 (сигнатуры
+    снимают вопросы по умолчанию)."""
     try:
         import ctypes
 

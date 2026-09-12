@@ -24,7 +24,6 @@ class AppConfig:
 
 DEFAULT_PROFILE = "default"
 
-# Application version.
 VERSION = "Pre-Release 0.7.1"
 
 
@@ -41,8 +40,8 @@ class ConfigManager:
         if self.config_path.exists():
             try:
                 data = json.loads(self.config_path.read_text(encoding="utf-8"))
-                # Отбрасываем ключи, которых нет в AppConfig (старые/чужие поля),
-                # иначе TypeError валит всю загрузку и теряется last_profile.
+                # Отбрасываем ключи вне AppConfig (старые/чужие поля),
+                # иначе TypeError валит загрузку и теряется last_profile.
                 known = {k: v for k, v in data.items()
                          if k in AppConfig.__dataclass_fields__}
                 self._config = AppConfig(**known)
@@ -57,7 +56,7 @@ class ConfigManager:
 
     def save(self, config: AppConfig) -> bool:
         try:
-            # атомарная запись (L5): kill/обрыв посреди write_text делал конфиг
+            # атомарная запись (L5): обрыв посреди write_text делал конфиг
             # битым json — сбрасывался в дефолт
             tmp = self.config_path.with_suffix(".tmp")
             tmp.write_text(
@@ -73,5 +72,3 @@ class ConfigManager:
             except OSError:
                 pass
             return False
-
-

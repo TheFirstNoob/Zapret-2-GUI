@@ -381,8 +381,8 @@ def _plan_cdn_action(domain: str, action: str, ips: list[str],
     значения, которые НУЖНО дописать в списки (дедуп по текущему
     содержимому выполнен).  Проверки наложений — как в ручном хендлере:
     ipset-include не включает сети из ipset-exclude[-user], general в
-    ipset-режиме пишет сырые IP (как раньше), ipset-include — префиксы
-    _safe_prefixes относительно protection.
+    ipset-режиме пишет сырые IP, ipset-include — префиксы _safe_prefixes
+    относительно protection.
     """
     values: list[str] = []
     if action in ("ipset-include", "ipset-exclude"):
@@ -560,11 +560,9 @@ def _build_recommendation(all_results, naked, sanity: dict) -> dict:
     best = max(all_results, key=lambda r: (r.network_rate, r.net_ok_count))
     # «Не пробито» — провалы ЛУЧШЕЙ стратегии, а не объединение по всем
     # пресетам: домен, который пробила другая стратегия, не должен выглядеть
-    # нерабочим (union по всем профилям вводил в заблуждение).
-    # QUIC-хосты (youtube-класс) вне оценки: их 000 — свойство TCP-пробы
-    # сторонним клиентом, а не работа стратегии (браузер идёт через QUIC).
-    # Control-хосты (канарейки сети: google/vk/ya/gosuslugi) — тоже вне
-    # «не пробито»: их провал = «сеть мёртвая», а не «стратегия плохая».
+    # нерабочим (union вводил в заблуждение). QUIC-хосты (youtube-класс) и
+    # control-канарейки (google/vk/ya/gosuslugi) вне «не пробито»: их 000 —
+    # свойство TCP-пробы сторонним клиентом или мёртвая сеть, не стратегия.
     blocked = sorted({r.domain for r in best.results
                       if r.test_type != "ping" and r.status not in ("OK", "QUIC")
                       and r.domain not in QUIC_QUIRK_DOMAINS
@@ -695,11 +693,11 @@ def _build_recommendation(all_results, naked, sanity: dict) -> dict:
     }
 
 
-# Ручной приоритет блобов — по живучести на Т2 (STRATEGY_TRIALS батарея блобов
-# 2026-09-11, все ниже проверены 6/6 на discord с repeats=7). Ключи = имена
-# файлов blobs/tls_clienthello_<key>.bin. www_google_com — эталон (пустой
-# fake_blob в конфиге = как в пресете = google). Новые блобы добавлять сюда
-# ПОСЛЕ проверки.
+# Ручной приоритет блобов — по живучести на Т2 (STRATEGY_TRIALS батарея
+# блобов 2026-09-11, все ниже проверены 6/6 на discord с repeats=7). Ключи =
+# имена файлов blobs/tls_clienthello_<key>.bin. www_google_com — эталон
+# (пустой fake_blob в конфиге = как в пресете = google). Новые блобы
+# добавлять сюда ПОСЛЕ проверки.
 _BLOB_PRIORITY = [
     "www_google_com",        # эталон, по умолчанию
     "sochi_park",            # проверен в бою 2026-09-10 (отвалы) — стабилен как google
@@ -712,16 +710,16 @@ _BLOB_PRIORITY = [
     "max_ru",                # большой (664), работал в general
     "web_max_ru",            # мелкий, работал в general
 ]
-# Проверенно НЕ пробивающие (Т2): example_com — RFC-заглушка, нереальный домен;
-# sni2gis/snimail — тестовые артефакты скрещиваний, не для пользователей.
+# Проверенно НЕ пробивающие (Т2): example_com — RFC-заглушка, нереальный
+# домен; sni2gis/snimail — тестовые артефакты скрещиваний.
 _BLOB_STOPLIST = {"example_com", "sni2gis", "snimail"}
 
 
 def _recommended_blob_keys() -> list[str]:
     """Рекомендованные TLS-фейк-блобы: проверенные на Т2 — в РУЧНОМ порядке
     _BLOB_PRIORITY (живучесть на Т2, батарея блобов). Фильтры: размер ≤700,
-    без _kyber, без имени с цифры (баг winws2, AGENTS правило 2), без стоп-листа.
-    Неизвестные блобы (не в приоритете) — в конец по алфавиту, не рекомендованы."""
+    без _kyber, без имени с цифры (баг winws2, AGENTS правило 2), без
+    стоп-листа. Неизвестные блобы — в конец по алфавиту, не рекомендованы."""
     blobs_dir = get_root_dir() / "blobs"
     known: dict[str, int] = {}
     others: list[str] = []
@@ -749,11 +747,12 @@ def _recommended_blob_keys() -> list[str]:
 def _recheck_contested(tester, best, rec: dict, progress) -> dict:
     """Речек спорных доменов (§29): вердикт «заблокирован» vs «временно недоступен».
 
-    Пер-хостовых ретраев в _curl_test нет — 000 фиксируется как есть. Спорно то,
-    что RATED-домен («популярный, должен работать») не пробился ЛУЧШЕЙ
-    стратегией: один общий повтор в конце прогона (naked) отличает транзиентный
-    спайк/флак от реального блока. Ожившие на речеке уходят из «не пробито»
-    и помечаются «временно недоступен — ретест»; стабильные 000 — «заблокирован».
+    Пер-хостовых ретраев в _curl_test нет — 000 фиксируется как есть. Спорно
+    то, что RATED-домен («популярный, должен работать») не пробился ЛУЧШЕЙ
+    стратегией: один общий повтор в конце прогона (naked) отличает
+    транзиентный спайк/флак от реального блока. Ожившие на речеке уходят из
+    «не пробито» и помечаются «временно недоступен — ретест»; стабильные
+    000 — «заблокирован».
 
     Этап 2 (2026-09-11): подтверждённо «заблокированные» домены перепроверяем
     с АЛЬТЕРНАТИВНЫМИ блобами (рекомендованный список, ≤3 попытки) — блоб
@@ -841,9 +840,9 @@ def _recheck_contested(tester, best, rec: dict, progress) -> dict:
 def _run_asn_scan() -> None:
     """ASN-пробы (110 IP): мериют ТСПУ напрямую, БЕЗ нашего десинка в пути.
 
-    Обязателен чистый путь: под десинком замер показывает смесь «ТСПУ +
-    наш обман» — SYN DROP могли вызывать мы сами. Защита останавливается
-    на время скана и восстанавливается (сервис-осведомлённо)."""
+    Обязателен чистый путь: под десинком замер показывает смесь «ТСПУ + наш
+    обман» — SYN DROP могли вызывать мы сами. Защита останавливается на
+    время скана и восстанавливается (сервис-осведомлённо)."""
     state = _tester_state
     tester = get_tester()
     svc_was = _svc_was_running()
@@ -875,7 +874,8 @@ def _run_asn_scan() -> None:
 
 def _run_blob_probe(data: dict) -> None:
     """Перебор TLS-фейк-блобов на короткой батарее. Защита на время прогона
-    перезапускается по одному разу на блоб — восстановление сервис-осведомлённое."""
+    перезапускается по одному разу на блоб — восстановление
+    сервис-осведомлённое."""
     state = _tester_state
     tester = get_tester()
     pause_recovery()  # SCM-перезапуск службового winws2 рушит перебор (H3)
@@ -940,9 +940,9 @@ def _run_tester_action(data: dict) -> None:
     try:
         # Длительные фазы гасят winws2 — SCM-recovery на это время выключается
         # (иначе перезапускает службовый winws2 посреди прогона: конфликт
-        # WinDivert, обрыв теста, «зависший» процесс — баг 2026-09-12).
-        # ВНУТРИ try: зависший sc.exe не должен уронить поток до входа в
-        # try и застревать running=True навсегда (H2).
+        # WinDivert, обрыв теста — баг 2026-09-12). ВНУТРИ try: зависший
+        # sc.exe не должен уронить поток до входа в try и застревать
+        # running=True навсегда (H2).
         if action in ("test", "test_profiles", "naked", "full_analysis", "cdn_scan"):
             try:
                 pause_recovery()
@@ -976,8 +976,9 @@ def _run_tester_action(data: dict) -> None:
                     ab_ipset=True,
                     profile_name=cfg.last_profile or DEFAULT_PROFILE))
                 note = ""
-                # Скан сам перезапускает защиту (A/B-прогон, naked, верификация) —
-                # восстанавливаем всегда, причём через службу, если она жила.
+                # Скан сам перезапускает защиту (A/B-прогон, naked,
+                # верификация) — восстанавливаем всегда, через службу, если
+                # она жила.
                 if scan.naked_done or scan.protection_touched:
                     note = _restore_protection_after_naked(scan.z2_was, scan.z1_was, state, svc_was)
                 state.set_final({
@@ -1030,21 +1031,19 @@ def _run_tester_action(data: dict) -> None:
                         return (2, p)
                     return (1, p)
                 profiles = sorted(profiles, key=_order_key)
-                # custom генерируется ЭТИМ же тестом: стухшая копия из прошлого
-                # запуска бессмысленна (и часто битая) — не тратим на неё прогон;
+                # custom генерируется ЭТИМ же тестом: стухшая копия из
+                # прошлого запуска бессмысленна — не тратим на неё прогон;
                 # свежая сборка получает одну проверочную сессию ниже.
                 profiles = [p for p in profiles if p != "custom"]
                 all_results = []
                 total = len(profiles)
                 _tier = data.get("tier", "critical")
-                # Галочка «Использовать IPSets для точности» форсирует ipset-режим
-                # на весь прогон независимо от глобального тумблера (A/B сравнение).
                 # Тестер гоняет стратегии в текущей конфигурации пользователя
                 # (глобальный тоггл «Общий IP-обход»); CDN-механика переехала
                 # в отдельную вкладку (скан с A/B по ipset).
                 ipset_mode = bool(get_config_manager().load().ipset_catchall)
 
-                # Защита, которая была у пользователя ДО прогона — захватывается
+                # Защита, которая была у пользователя ДО прогона, захватывается
                 # ДО naked-baseline: тот гасит winws2, и чтение после свеепа
                 # всегда даёт False (восстановление становилось мёртвым — H1)
                 z2_was = get_controller().status().running
@@ -1126,9 +1125,9 @@ def _run_tester_action(data: dict) -> None:
                                     bat = get_root_dir() / "_zapret_custom_smoke.bat"
                                     write_run_bat(get_root_dir(), bat,
                                                   get_root_dir() / "bin" / "winws2.exe", args)
-                                    # Запускаем батник сами, чтобы знать PID и гасить
-                                    # только дерево smoke-процесса: blanket taskkill
-                                    # по имени убил бы и чужой/сервисный winws2.
+                                    # Запускаем батник сами, чтобы знать PID и
+                                    # гасить только дерево smoke-процесса:
+                                    # blanket taskkill убил бы чужой/сервисный winws2.
                                     proc = subprocess.Popen(
                                         ["cmd", "/c", str(bat)],
                                         cwd=str(get_root_dir()),
@@ -1143,8 +1142,9 @@ def _run_tester_action(data: dict) -> None:
                                                        creationflags=subprocess.CREATE_NO_WINDOW)
                                     except (subprocess.TimeoutExpired, OSError):
                                         pass
-                                    # Страховка: winws2 мог отцепиться от cmd-дерева —
-                                    # в этот момент любой живой winws2 только наш.
+                                    # Страховка: winws2 мог отцепиться от
+                                    # cmd-дерева — в этот момент любой живой
+                                    # winws2 только наш.
                                     if tester.is_running():
                                         tester._ensure_winws2_dead()
                                     if not alive:
@@ -1168,8 +1168,8 @@ def _run_tester_action(data: dict) -> None:
                     except Exception as e:
                         final["custom"] = {"error": str(e), "preset": "custom"}
 
-                    # Собранная custom всегда заслуживает одной проверочной сессии,
-                    # прежде чем рекомендовать её (в прогоне её не было).
+                    # Собранная custom всегда заслуживает одной проверочной
+                    # сессии, прежде чем рекомендовать её (в прогоне её не было).
                     if final.get("custom", {}).get("valid") and not tester.shutdown_event.is_set():
                         progress(98, "Тестируем собранную стратегию custom...")
                         res = _run_tester(
@@ -1200,10 +1200,10 @@ def _run_tester_action(data: dict) -> None:
                             custom["rate"] = round(c_rate, 1)
 
                     # ── Речек спорных доменов (§29) ──
-                    # Пер-хостовых ретраев в _curl_test нет: 000 фиксируется как
-                    # есть, а «популярный домен, который должен работать» и не
-                    # пробился лучшей стратегией — спорен. Один общий повтор в
-                    # конце прогона отличает транзиентный спайк/флак от блока.
+                    # Пер-хостовых ретраев в _curl_test нет: 000 фиксируется
+                    # как есть, а «популярный домен, который должен работать»
+                    # и не пробился лучшей стратегией — спорен. Один общий
+                    # повтор в конце прогона отличает спайк/флак от блока.
                     rec = _recheck_contested(tester, best, rec, progress)
                     final["recommendation"] = rec
                     _ui_debug(f"tester: sweep done best={best.profile_name} "
@@ -1437,8 +1437,8 @@ class ZapretHandler(BaseHTTPRequestHandler):
             html = index_path.read_text(encoding="utf-8")
             token = params.get("token", [""])[0]
             html = html.replace("__APP_TOKEN__", token)
-            # Кэш-buster: версия по mtime app.js / app.css — WebView2 кэширует
-            # статику, свежие правки фронтенда не доходили (случай 2026-09-12)
+            # Кэш-buster: версия по mtime app.js / app.css — WebView2
+            # кэширует статику, свежие правки не доходили (случай 2026-09-12)
             try:
                 js_mtime = int((frontend / "js" / "app.js").stat().st_mtime)
                 html = html.replace("js/app.js", f"js/app.js?v={js_mtime}")
@@ -1505,8 +1505,8 @@ class ZapretHandler(BaseHTTPRequestHandler):
 
         Порядок — РУЧНОЙ приоритет _BLOB_PRIORITY (живучесть на Т2, батарея
         блобов 2026-09-11); остальные после по алфавиту. Огромные (>700:
-        снижают долю google-фейков, см. STRATEGY_TRIALS) — помечаются.
-        Имена с цифры в начале — через префикс (баг winws2, AGENTS правило 2)."""
+        снижают долю google-фейков) — помечаются. Имена с цифры в начале —
+        через префикс (баг winws2, AGENTS правило 2)."""
         blobs_dir = get_root_dir() / "blobs"
         items = []
         if blobs_dir.is_dir():
@@ -1597,7 +1597,6 @@ class ZapretHandler(BaseHTTPRequestHandler):
             return
 
         data = self._parse_body()
-
         try:
             if path == "/api/config":
                 self._handle_save_config(data)
@@ -2233,9 +2232,9 @@ class ZapretHandler(BaseHTTPRequestHandler):
         перезапуск.  actions = [{domain, action, ips}, ...]; working_domains
         — живые в основном прогоне (protection для safe_prefixes).
 
-        Каждая правка планируется как в ручном хендлере; наложения и
-        ошибки отдельных правок не валят батч — пропускаются с причиной.
-        Записи по каждому файлу дедуплицируются, затем один перезапуск.
+        Каждая правка планируется как в ручном хендлере; наложения и ошибки
+        отдельных правок не валят батч — пропускаются с причиной. Записи по
+        каждому файлу дедуплицируются, затем один перезапуск.
         """
         busy = _checkers_busy()
         if busy:

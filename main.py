@@ -12,9 +12,9 @@ import time
 import tempfile
 from pathlib import Path
 
-# Embeddable Python (portable build) uses a ._pth file that disables the
-# automatic addition of the script directory to sys.path — without this
-# import core would fail with ModuleNotFoundError on the portable build.
+# Embeddable Python (portable build) uses a ._pth file that disables
+# auto-adding the script dir to sys.path — without this, imports of core
+# would fail on the portable build.
 if not getattr(sys, "frozen", False):
     _app_dir = os.path.dirname(os.path.abspath(__file__))
     if _app_dir not in sys.path:
@@ -31,8 +31,7 @@ _DATA_DIRS = ["bin", "blobs", "lua", "presets", "lists", "windivert", "frontend"
 def _cleanup_stale_mei() -> None:
     """PyInstaller onefile unpacks into %TEMP%\\_MEIxxxxx on EVERY run; on
     abnormal exit the unpack dir stays behind (webview child still alive /
-    antivirus holds a file) and 'Failed to remove temporary directory' is
-    reported on shutdown.  Remove stale ones (older than 24h) — never our
+    antivirus holds a file).  Remove stale ones (older than 24h) — never our
     current _MEIPASS, never non-stale dirs (other apps' PyInstaller runs)."""
     if not getattr(sys, "frozen", False):
         return
@@ -52,7 +51,7 @@ def _cleanup_stale_mei() -> None:
 
 
 def _warn_if_bad_path(exe_dir: Path) -> bool:
-    """Return True when the install path is safe for winws2.
+    """True when the install path is safe for winws2.
 
     ASCII paths (spaces included) are safe — launchers quote them correctly.
     Non-ASCII paths only work while 8.3 short names are available (the .bat
@@ -84,9 +83,9 @@ def _ensure_data_dir() -> Path:
     exe_dir = Path(sys.executable).resolve().parent
     src = Path(sys._MEIPASS)
 
-    # Refresh bundled data only when the application version changes so user
-    # edits to bundled presets/lists survive regular launches.  copytree never
-    # deletes extra files — user-added presets and *-user.txt lists are safe.
+    # Refresh bundled data only when the version changes, so user edits to
+    # bundled presets/lists survive regular launches; copytree never deletes
+    # extra files — user presets and *-user.txt lists are safe.
     marker = exe_dir / "data_version.txt"
     try:
         current = marker.read_text(encoding="utf-8").strip() if marker.exists() else ""
@@ -117,9 +116,9 @@ def _ensure_data_dir() -> Path:
 
 def _check_launch_location(exe_dir: Path) -> None:
     """Проверка «болевых» мест запуска (0.8): из архива, Загрузки, Документы,
-    рабочий стол напрямую. Запуск из временной папки и рабочий стол — важные
-    предупреждения (данные во временной папке / замусоренный стол); Загрузки/
-    Документы — некритичные (в дополнение есть чек в «Проверке системы»)."""
+    рабочий стол напрямую. Временная папка и рабочий стол — важные
+    предупреждения; Загрузки/Документы — некритичные (есть чек в
+    «Проверке системы»)."""
     def show(msg: str) -> None:
         ctypes.windll.user32.MessageBoxW(
             0, msg, "Zapret2 — предупреждение", 0x30)
