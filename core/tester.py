@@ -107,8 +107,15 @@ PING_HOSTS: list[str] = [
 # Hosts probed WITHOUT protection before the profile sweep (naked baseline).
 # If every strategy yields the same result as this baseline, winws2 is
 # probably not altering traffic on this machine (or the DPI is extreme).
+# 2026-09-12: расширен с 4 до полного RATED-набора (без www-алиасов):
+# «Голый тест N/4» был слишком узким для same_as_naked — теперь сравнение
+# по всем rated-хостам, честный baseline. QUIC-класс НЕ включён (в голую
+# их TCP-проба всегда 000 — не показательно, браузер через QUIC).
+# + www.google.com — «сеть жива» канарейка.
 NAKED_BASELINE_HOSTS: list[str] = [
-    "discord.com", "www.youtube.com", "gateway.discord.gg", "i.ytimg.com",
+    "discord.com", "gateway.discord.gg", "cdn.discordapp.com", "updates.discord.com",
+    "github.com", "raw.githubusercontent.com",
+    "www.google.com",
 ]
 
 # TCP 16-20 test body size (64KB random — stateful DPI cuts the stream mid-transfer).
