@@ -1336,11 +1336,16 @@ class ZapretHandler(BaseHTTPRequestHandler):
             html = index_path.read_text(encoding="utf-8")
             token = params.get("token", [""])[0]
             html = html.replace("__APP_TOKEN__", token)
-            # Кэш-buster: версия по mtime app.js — WebView2 кэширует статику,
-            # свежие правки фронтенда не доходили (случай 2026-09-12)
+            # Кэш-buster: версия по mtime app.js / app.css — WebView2 кэширует
+            # статику, свежие правки фронтенда не доходили (случай 2026-09-12)
             try:
                 js_mtime = int((frontend / "js" / "app.js").stat().st_mtime)
                 html = html.replace("js/app.js", f"js/app.js?v={js_mtime}")
+            except OSError:
+                pass
+            try:
+                css_mtime = int((frontend / "css" / "app.css").stat().st_mtime)
+                html = html.replace("css/app.css", f"css/app.css?v={css_mtime}")
             except OSError:
                 pass
             self._send_html(html)
