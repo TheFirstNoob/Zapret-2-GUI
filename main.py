@@ -8,6 +8,7 @@ import socket
 import sys
 import threading
 import time
+import tempfile
 from pathlib import Path
 
 # Embeddable Python (portable build) uses a ._pth file that disables the
@@ -24,6 +25,29 @@ from core.utils import short_path
 
 
 _DATA_DIRS = ["bin", "blobs", "lua", "presets", "lists", "windivert", "frontend"]
+
+
+def _cleanup_stale_mei() -> None:
+    """PyInstaller onefile unpacks into %TEMP%\\_MEIxxxxx on EVERY run; on
+    abnormal exit the unpack dir stays behind (webview child still alive /
+    antivirus holds a file) and 'Failed to remove temporary directory' is
+    reported on shutdown.  Remove stale ones (older than 24h) — never our
+    current _MEIPASS, never non-stale dirs (other apps' PyInstaller runs)."""
+    if not getattr(sys, "frozen", False):
+        return
+    current = getattr(sys, "_MEIPASS", "")
+    now = time.time()
+    try:
+        for d in Path(tempfile.gettempdir()).glob("_MEI*"):
+            if str(d) == current:
+                continue
+            try:
+                if now - d.stat().st_mtime > 24 * 3600:
+                    shutil.rmtree(d, ignore_errors=True)
+            except OSError:
+                continue
+    except OSError:
+        pass
 
 
 def _warn_if_bad_path(exe_dir: Path) -> bool:
@@ -89,6 +113,8 @@ def main_gui() -> None:
     if not is_admin():
         relaunch_as_admin()
         return
+
+    _cleanup_stale_mei()
 
     try:
         import webview
