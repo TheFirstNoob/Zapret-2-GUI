@@ -600,18 +600,33 @@ def _build_recommendation(all_results, naked, sanity: dict) -> dict:
     # QUIC-хосты (youtube-класс) вне network_rate — ютуб-«прикол» не влияет
     # на вердикт и «не пробито»-чипсы.
 
-    # Равные проценты (2026-09-13): при 100/100/100 пользователь не понимает,
-    # кого выбирает тестер. Порядок прогона детерминирован (default первым),
-    # при полном равенстве побеждает первая протестированная — но это НЕ
-    # «эталон»: пресеты равнозначны, для разных сетей/провайдеров лучший
-    # бывает разный. Объясняем в вердикте честно.
-    ties = [r.profile_name for r in all_results
-            if abs(r.network_rate - net_rate) < 1e-9]
+    # Равные/почти равные проценты (2026-09-13): при 100/100/100 пользователь
+    # не понимает, кого выбирает тестер. Прогон детерминирован (default
+    # первым), при полном равенстве побеждает первая протестированная — но
+    # это НЕ «эталон»: пресеты равнозначны, для разных сетей лучший бывает
+    # разный. ПЛЮС погрешность флаков: 8 хостов — один случайный домен
+    # двигает рейтинг на ±12.5%, поэтому стратегии в пределах ±1 домена от
+    # лучшей считаются «практически равными» и объясняются так же.
+    ranked = sorted(all_results,
+                    key=lambda r: (r.network_rate, r.net_ok_count), reverse=True)
+    eps_pct = 100.0 / max(best.net_total, 1)
+    near_best = [r.profile_name for r in ranked
+                 if r.network_rate >= net_rate - eps_pct - 1e-9]
+    ties = near_best if len(near_best) > 1 else \
+        [r.profile_name for r in all_results
+         if abs(r.network_rate - net_rate) < 1e-9]
     tie_note = ""
     if len(ties) > 1:
-        tie_note = (f" Равный результат ({net_rate:.0f}%) у: {', '.join(ties)} — "
-                    f"стратегии равнозначны, рекомендуем {best.profile_name} "
-                    "(первая протестированная); если начнёт флакать — переключайтесь на другую из списка.")
+        tie_note = (f" Практически равный результат (с учётом погрешности "
+                    f"прогона ±1 домен) у: {', '.join(ties)} — стратегии "
+                    f"равнозначны, рекомендуем {best.profile_name} (первая "
+                    "протестированная); если начнёт флакать — переключайтесь "
+                    "на другую из списка.")
+
+    # Топ-3 для UI (пользователь видит лучших, а не только рекомендацию)
+    top3 = [{"name": r.profile_name, "rate": round(r.network_rate, 1),
+             "net_ok": r.net_ok_count, "net_total": r.net_total}
+            for r in ranked[:3]]
 
     if engine_broken:
         verdict = "engine_broken"
@@ -672,6 +687,8 @@ def _build_recommendation(all_results, naked, sanity: dict) -> dict:
         "quirk_skip": ["www.youtube.com", "redirector.googlevideo.com",
                        "i.ytimg.com", "youtu.be"],
         "key_hosts": key_hosts,
+        "top3": top3,
+        "near_best": ties,
         "naked_network_rate": naked.network_rate if naked else None,
         "provider_hop": best.provider_hop,
         "provider_ip": best.provider_ip,

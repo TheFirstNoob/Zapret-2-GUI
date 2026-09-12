@@ -2503,6 +2503,12 @@ const TesterPage = {
         </div>
       </div>
       ${chips}
+      ${rec.top3 && rec.top3.length > 1 ? `<div class="detail-section">
+        <span class="detail-head">Топ стратегий</span>
+        <p class="detail-text">${rec.top3.map((t, i) =>
+          `${i + 1}. <b>${escapeHtml(t.name)}</b> — ${t.rate.toFixed(0)}% (${t.net_ok}/${t.net_total})`
+        ).join('<br>')}<br><span class="st-quirk">разница в пределах ±1 домена — погрешность прогона, стратегии практически равнозначны</span></p>
+      </div>` : ''}
       <div class="verdict-actions">${actions}</div>
     </div>`;
   },
