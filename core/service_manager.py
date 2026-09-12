@@ -282,3 +282,33 @@ def stop():
     _sc(["stop", SERVICE_NAME])
     _taskkill_winws2()
     return True, "winws2 остановлен"
+
+
+# ── SCM-recovery pause/resume (2026-09-12) ─────────────────
+# Тестер/сканы гасят winws2 на весь прогон. Если SCM-recovery активен,
+# он через 60с ПЕРЕЗАПУСКАЕТ службовый winws2 посреди теста → конфликт
+# WinDivert, обрыв прогона, «зависший» процесс. На время управляемых
+# остановок recovery выключается и включается обратно после восстановления.
+_recovery_paused: bool = False
+_recovery_was_on: bool = False
+
+
+def pause_recovery() -> None:
+    global _recovery_paused, _recovery_was_on
+    if _recovery_paused:
+        return
+    _recovery_paused = True
+    code, out = _sc(["qfailure", SERVICE_NAME])
+    _recovery_was_on = ("restart" in (out or "").lower()
+                        or "перезапуск" in (out or "").lower())
+    _sc(["failure", SERVICE_NAME, "reset=", "0", "actions=", ""])
+
+
+def resume_recovery() -> None:
+    global _recovery_paused
+    if not _recovery_paused:
+        return
+    _recovery_paused = False
+    if _recovery_was_on:
+        _sc(["failure", SERVICE_NAME, "reset=", "86400",
+             "actions=", "restart/60000/restart/60000/restart/60000"])

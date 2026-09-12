@@ -274,6 +274,7 @@ if (start) start.addEventListener('click', () => TesterPage.startProbe());
     const hash = window.location.hash.replace('#', '') || 'main';
     if (!this.pages.includes(hash)) { window.location.hash = this.currentPage; return; }
     this.currentPage = hash;
+    frontendLog('nav: hash=' + hash);
     document.querySelectorAll('.nav-link').forEach(l =>
       l.classList.toggle('active', l.dataset.page === hash));
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -1992,10 +1993,12 @@ const TesterPage = {
     }
     h.tr.className = isOk ? 'hrow-ok'
       : data.status === 'QUIC' ? 'hrow-quirk'
+      : isPing ? 'hrow-quirk'
       : (data.status === 'TIMEOUT' || data.status === 'BLOCKED' || data.status === 'FAIL'
         ? 'hrow-err' : 'hrow-warn');
     const stIcon = isOk ? '<span class="st-ok">✓</span>'
       : data.status === 'QUIC' ? '<span class="st-quirk">≈ QUIC</span>'
+      : isPing ? '<span class="st-quirk">ping</span>'
       : data.status === 'TIMEOUT' || data.status === 'BLOCKED' || data.status === 'FAIL'
         ? '<span class="st-err">✗</span>'
         : '<span class="st-warn">•</span>';
@@ -2084,10 +2087,11 @@ const TesterPage = {
       apiGet('/tester/status').then(state => {
         if (!pollActive) return;
         if (state.cancelled) {
+          frontendLog('poll: cancelled');
           pollActive = false; clearInterval(pollId);
           $('testCurrentPhase').textContent = 'Тест отменён';
           this.clearElapsedTimer();
-          setTimeout(() => this.resetToIntro(), 1300);
+          setTimeout(() => this.resetToIntro('отменён пользователем'), 1300);
           return;
         }
         if (state.progress) {
@@ -2120,21 +2124,24 @@ const TesterPage = {
           }
           const fr = state.final_result;
           if (state.error) {
+            frontendLog('poll: finished with error: ' + state.error);
             pollActive = false; clearInterval(pollId);
             this.clearElapsedTimer();
             $('testCurrentPhase').textContent = 'Ошибка: ' + state.error;
             showToast('Тест прерван: ' + state.error, 'error');
-            setTimeout(() => this.resetToIntro(), 2500);
+            setTimeout(() => this.resetToIntro('ошибка теста'), 2500);
             return;
           }
           if (!fr) {
+            frontendLog('poll: finished WITHOUT result (known=' + known + ')');
             pollActive = false; clearInterval(pollId);
             this.clearElapsedTimer();
             $('testCurrentPhase').textContent = 'Тест завершился без результата';
             showToast('Тест завершился без результата — запустите подбор заново', 'warn');
-            setTimeout(() => this.resetToIntro(), 1800);
+            setTimeout(() => this.resetToIntro('тест без результата'), 1800);
             return;
           }
+          frontendLog('poll: finished OK (type=' + (fr.type || '?') + ')');
           pollActive = false; clearInterval(pollId);
           if (state.all_results && !fr.all_results) fr.all_results = state.all_results;
           if (fr.restored) showToast(fr.restored, /Не удалось|не восстановлен/.test(fr.restored) ? 'warn' : 'ok');
@@ -2169,6 +2176,7 @@ const TesterPage = {
   // ── запуск ──
 
   startTest() {
+    frontendLog('btn: Начать подбор (extended=' + $('extendedCheck').checked + ')');
     this.state.advancedTest = $('extendedCheck').checked;
     this.state.collectLogs = $('logCheck').checked;
     this.resetAllState();
@@ -2436,7 +2444,7 @@ const TesterPage = {
     el.innerHTML = html;
     el.hidden = false;
     if ($('btnShowCollect')) $('btnShowCollect').addEventListener('click', () => this.showCollectForm());
-    $('btnBackToIntro').addEventListener('click', () => this.resetToIntro());
+    $('btnBackToIntro').addEventListener('click', () => this.resetToIntro('кнопка назад'));
     const recBtn = $('btnApplyRec');
     const bestProfile = (mode === 'basic' && rec && rec.best_profile) ? rec.best_profile : null;
     if (recBtn && bestProfile) {
@@ -2565,6 +2573,7 @@ const TesterPage = {
   },
 
   cancelTest() {
+    frontendLog('btn: Отменить тест');
     fetch('/api/tester/action', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -2573,7 +2582,8 @@ const TesterPage = {
     $('testCurrentPhase').textContent = 'Отмена…';
   },
 
-  resetToIntro() {
+  resetToIntro(reason) {
+    frontendLog('resetToIntro: ' + (reason || 'без причины (кнопка)'));
     App.setTestActive(false);
     this.clearElapsedTimer();
     $('testRun').hidden = true;

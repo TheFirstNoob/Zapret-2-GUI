@@ -17,7 +17,10 @@ from core.config import ConfigManager, DEFAULT_PROFILE, VERSION
 from core.zapret_controller import ZapretController
 from core.tester import (Zapret2Tester, CDN_PROVIDERS, NAKED_BASELINE_HOSTS,
                           RATED_HOSTS, QUIC_QUIRK_DOMAINS, CONTROL_DOMAINS)
-from core.service_manager import SERVICE_NAME, is_installed as svc_installed, status as svc_status, install as svc_install, remove as svc_remove, start as svc_start, stop as svc_stop
+from core.service_manager import (SERVICE_NAME, is_installed as svc_installed,
+                                  status as svc_status, install as svc_install,
+                                  remove as svc_remove, start as svc_start,
+                                  stop as svc_stop, pause_recovery, resume_recovery)
 from core.collector import export_data_package
 from core.launcher import build_args_from_preset, validate_args
 from core.test_logger import TestLogger
@@ -130,6 +133,21 @@ def _probe_debug(msg: str) -> None:
         p = get_temp_dir() / "probe_debug.log"
         with open(p, "a", encoding="utf-8") as f:
             f.write(msg + "\n")
+    except Exception:
+        pass
+
+
+def _ui_debug(msg: str) -> None:
+    """UI/flow-логи (вкладки, кнопки, сбросы тестера) — ui_debug.log.
+
+    Всегда активный отладочный журнал: ловит «пользователя выкинуло на
+    главный блок посреди теста» и прочие неочевидные переходы."""
+    import datetime as _dt
+    try:
+        from core.utils import get_temp_dir
+        p = get_temp_dir() / "ui_debug.log"
+        with open(p, "a", encoding="utf-8") as f:
+            f.write(f"{_dt.datetime.now().strftime('%H:%M:%S.%f')[:-3]} {msg}\n")
     except Exception:
         pass
 
@@ -873,6 +891,12 @@ def _run_tester_action(data: dict) -> None:
 
     tester = get_tester()
     logger = None
+    _ui_debug(f"tester worker: start action={action!r} data={dict(data)}")
+    # Длительные фазы гасят winws2 — SCM-recovery на это время выключается
+    # (иначе перезапускает службовый winws2 посреди прогона: конфликт
+    # WinDivert, обрыв теста, «зависший» процесс — баг 2026-09-12)
+    if action in ("test", "test_profiles", "naked", "full_analysis", "cdn_scan"):
+        pause_recovery()
 
     try:
         if action in ("test", "test_profiles", "current", "naked", "cdn_scan",
@@ -1121,6 +1145,16 @@ def _run_tester_action(data: dict) -> None:
                     # конце прогона отличает транзиентный спайк/флак от блока.
                     rec = _recheck_contested(tester, best, rec, progress)
                     final["recommendation"] = rec
+                    _ui_debug(f"tester: sweep done best={best.profile_name} "
+                              f"rate={best.network_rate:.1f}")
+
+                    # Вернуть защиту, которая была у пользователя до теста
+                    # (было: после basic-прогона обход пропадал молча)
+                    if not tester.shutdown_event.is_set():
+                        z2_was = get_controller().status().running
+                        svc_was = _svc_was_running()
+                        final["restored"] = _restore_protection_after_naked(
+                            z2_was, False, state, svc_was)
 
                     _play_completion_sound()
                     state.set_final(final, [_serialize_result(r) for r in all_results])
@@ -1200,9 +1234,15 @@ def _run_tester_action(data: dict) -> None:
                     state.all_results = final_all
 
     except Exception as e:
+        _ui_debug(f"tester worker: EXCEPTION action={action!r}: {e}")
         with state.lock:
             state.error = str(e)
     finally:
+        with state.lock:
+            st_err = state.error
+            has_final = state.final_result is not None
+        _ui_debug(f"tester worker: end action={action!r} error={st_err!r} final={has_final}")
+        resume_recovery()
         with state.lock:
             state.running = False
         if logger:
@@ -1597,10 +1637,10 @@ class ZapretHandler(BaseHTTPRequestHandler):
         self._send_json({"status": "ok", "state": st})
 
     def _handle_probe_debug(self, data: dict) -> None:
-        """Frontend-логи (клики, ошибки JS) — в тот же probe_debug.log."""
+        """Frontend-логи (вкладки, кнопки, ошибки JS) — в ui_debug.log."""
         msg = str(data.get("msg") or "")
         if msg:
-            _probe_debug(f"frontend: {msg}")
+            _ui_debug(f"frontend: {msg}")
         self._send_json({"status": "ok"})
 
     def _handle_probe_status(self) -> None:

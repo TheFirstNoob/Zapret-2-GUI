@@ -936,14 +936,11 @@ class Zapret2Tester:
 
             # Пинг-фаза считает отдельно: tests_done включал curl-результаты,
             # из-за чего бар прыгал с 55% сразу на ~88%.
-            ping_total = len(domains) + len(PING_HOSTS)
+            # 2026-09-13: пинги ПО ДОМЕНАМ убраны — ICMP к discord/открытым
+            # сервисам всегда блокирован и краснил рабочие хосты. Пинги
+            # остались только на DNS-канарейках (IP) — «сеть жива».
+            ping_total = len(PING_HOSTS)
             ping_done = 0
-            for domain in domains:
-                if self.shutdown_event.is_set(): break
-                all_results.append(self._ping_test(domain))
-                if result_cb: result_cb(all_results[-1])
-                ping_done += 1
-                progress_cb(55 + int(ping_done * 20 / ping_total), f"ping {domain}")
 
             for host in PING_HOSTS:
                 if self.shutdown_event.is_set(): break
@@ -1414,17 +1411,9 @@ class Zapret2Tester:
                 return ProfileTestResult(profile_name=profile_name)
             all_results.append(r)
 
-        # Пинг-фаза считает отдельно (см. test_profile) — бар не прыгает.
-        ping_total = len(domains) + len(PING_HOSTS)
+        # Пинг-фаза (только DNS-канарейки, доменные пинги убраны 2026-09-13).
+        ping_total = len(PING_HOSTS)
         ping_done = 0
-        for domain in domains:
-            if self.shutdown_event.is_set():
-                return ProfileTestResult(profile_name=profile_name)
-            all_results.append(self._ping_test(domain))
-            if result_cb:
-                result_cb(all_results[-1])
-            ping_done += 1
-            progress_cb(55 + int(ping_done * 20 / ping_total), f"{profile_name} ping {domain}")
 
         for host in PING_HOSTS:
             if self.shutdown_event.is_set():
