@@ -1,1 +1,0 @@
-.els[] | select(.cls == "workflow-strip" or .cls == "table-head" or .cls == "service-block" or .cls == "service-row" or .id == "contestedProt") | .cls + " y=" + (.y|tostring)

@@ -1,1 +1,0 @@
-id="probePanel"|id="cdnPanel"|id="asnPanel"|id="diagPanel"|id="testerSetup"|id="contestedPanel"

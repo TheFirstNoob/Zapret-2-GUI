@@ -1,1 +1,0 @@
-.els[] | select(.cls == "diag-idle" or .cls == "diag-checklist" or .cls == "check-pill" or .cls == "card-head" or .id == "diagRunBtn") | .cls + " y=" + (.y|tostring)

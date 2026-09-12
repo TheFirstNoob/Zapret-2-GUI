@@ -1,1 +1,0 @@
-.els[] | select(.cls == "info-banner" or .cls == "banner-bar" or .cls == "card-head" or .cls == "idle-view" or .id == "cdnScanBtn" or .id == "asnScanBtn" or .id == "cdnPanel" or .id == "asnPanel") | .id + "|" + .cls + " y=" + (.y|tostring) + " w=" + (.w|tostring) + " h=" + (.h|tostring)

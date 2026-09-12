@@ -1,1 +1,0 @@
-.els[] | select(.id == "diagPanel" or .id == "probePanel" or .id == "cdnPanel" or .id == "asnPanel" or .id == "testerSetup" or .id == "contestedPanel") | .id + " y=" + (.y|tostring) + " w=" + (.w|tostring) + " h=" + (.h|tostring) + " bd=" + .bd + " br=" + .br + " pad=" + .pad + " pos=" + .pos
