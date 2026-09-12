@@ -41,6 +41,16 @@ RATED_HOSTS = [
     "github.com", "raw.githubusercontent.com", "storage.googleapis.com",
 ]
 
+# QUIC-класс (§15/§17/2026-09-12): браузер ходит к этим хостам через QUIC,
+# а тестер пробует «чужой» TLS-клиент (curl) сквозь движок — google-блок
+# (fake+multisplit) рвёт сторонний ClientHello → 000 ПРИ работающем у
+# пользователя браузере. Измеряют «чужого клиента», а не стратегию:
+# ИЗ network_rate исключены, статус при 000 — QUIC (не BLOCKED, не красный).
+QUIC_QUIRK_DOMAINS = frozenset({
+    "www.youtube.com", "youtu.be", "i.ytimg.com",
+    "redirector.googlevideo.com", "storage.googleapis.com",
+})
+
 # Probed but NOT counted in network_rate: excluded / not-covered hosts.
 # Shows the raw network state (RF-blocked sites, excluded services) without
 # distorting the strategy comparison.
@@ -97,8 +107,15 @@ PING_HOSTS: list[str] = [
 # Hosts probed WITHOUT protection before the profile sweep (naked baseline).
 # If every strategy yields the same result as this baseline, winws2 is
 # probably not altering traffic on this machine (or the DPI is extreme).
+# 2026-09-12: расширен с 4 до полного RATED-набора (без www-алиасов):
+# «Голый тест N/4» был слишком узким для same_as_naked — теперь сравнение
+# по всем rated-хостам, честный baseline. QUIC-класс НЕ включён (в голую
+# их TCP-проба всегда 000 — не показательно, браузер через QUIC).
+# + www.google.com — «сеть жива» канарейка.
 NAKED_BASELINE_HOSTS: list[str] = [
-    "discord.com", "www.youtube.com", "gateway.discord.gg", "i.ytimg.com",
+    "discord.com", "gateway.discord.gg", "cdn.discordapp.com", "updates.discord.com",
+    "github.com", "raw.githubusercontent.com",
+    "www.google.com",
 ]
 
 # TCP 16-20 test body size (64KB random — stateful DPI cuts the stream mid-transfer).
@@ -524,6 +541,10 @@ class Zapret2Tester:
         start = time.time()
         url = f"https://{domain}{path}"
         timeout = float(min(int(self.timeout), 6))
+        if domain in QUIC_QUIRK_DOMAINS:
+            # QUIC-класс: 000 неизбежен для стороннего TLS-клиента, статус
+            # всё равно QUIC — не тратим на ожидание полные 6с
+            timeout = 3.0
         try:
             # HEAD — быстрый, но не все серверы отвечают на него (#14: ложные
             # 403/418), поэтому при «000» есть GET-фолбэк.
@@ -538,7 +559,12 @@ class Zapret2Tester:
             if code is not None and code >= 100:
                 return TestResult(domain, test_type, "OK", code, elapsed)
             if code is not None:
-                # GET вернул «000» — нет HTTP-ответа, фиксируем как есть.
+                # GET вернул «000» — нет HTTP-ответа.
+                if domain in QUIC_QUIRK_DOMAINS:
+                    # QUIC-класс: браузер работает через QUIC, TCP-проба
+                    # сторонним клиентом под десинком не показательная —
+                    # нейтральный статус, не BLOCKED (не красный, не в rate).
+                    return TestResult(domain, test_type, "QUIC", code, elapsed)
                 return TestResult(domain, test_type, "BLOCKED", code, elapsed)
             if test_type == "tls:443" and rc == 0:
                 return TestResult(domain, test_type, "OK", time_ms=elapsed)
@@ -709,6 +735,7 @@ class Zapret2Tester:
         """
         net = [r for r in results
                if r.test_type != "ping" and r.domain not in CONTROL_DOMAINS
+               and r.domain not in QUIC_QUIRK_DOMAINS
                and not _is_control_alias(r.domain)]
         pings = [r for r in results if r.test_type == "ping"]
         net_ok = sum(1 for r in net if r.status == "OK")
@@ -849,7 +876,10 @@ class Zapret2Tester:
         net_ok, net_fail, net_total, network_rate, ping_ok, ping_total = self._net_stats(all_results)
         if self._logger:
             self._logger.result(profile_name, ok_count, fail_count, success_rate, provider_hop, provider_ip or "")
-        _logged_progress(100, f"Готово: {ok_count}/{total} OK ({success_rate:.0f}%)")
+        _logged_progress(
+            100,
+            f"Профиль завершён: сеть {net_ok}/{net_total} ({network_rate:.0f}%), "
+            f"всего проверок {total}")
         return ProfileTestResult(
             profile_name=profile_name, results=all_results,
             ok_count=ok_count, fail_count=fail_count, total_time=total_time,

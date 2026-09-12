@@ -15,7 +15,8 @@ from urllib.parse import urlparse, parse_qs
 
 from core.config import ConfigManager, DEFAULT_PROFILE, VERSION
 from core.zapret_controller import ZapretController
-from core.tester import Zapret2Tester, CDN_PROVIDERS, NAKED_BASELINE_HOSTS, RATED_HOSTS
+from core.tester import (Zapret2Tester, CDN_PROVIDERS, NAKED_BASELINE_HOSTS,
+                          RATED_HOSTS, QUIC_QUIRK_DOMAINS, CONTROL_DOMAINS)
 from core.service_manager import SERVICE_NAME, is_installed as svc_installed, status as svc_status, install as svc_install, remove as svc_remove, start as svc_start, stop as svc_stop
 from core.collector import export_data_package
 from core.launcher import build_args_from_preset, validate_args
@@ -187,7 +188,7 @@ def _checkers_busy() -> Optional[str]:
 
 def init(root_dir: Path, token: str = "") -> None:
     global _root_dir, _controller, _tester, _config_manager, _app_token
-    _root_dir = root_dir
+    _root_dir = Path(root_dir)
     _app_token = token
     _config_manager = ConfigManager(root_dir)
     _controller = ZapretController(root_dir, config_manager=_config_manager)
@@ -244,6 +245,13 @@ def _make_result_cb(state: TesterState, profile: Optional[str] = None) -> Callab
             "time_ms": r.time_ms,
             "error": r.error,
             "cdn_provider": CDN_PROVIDERS.get(r.domain, "") if is_cdn else "",
+            # фронт считает live-счётчики «Хосты» только по этим категориям —
+            # чтобы не прыгали (17/17 → 8/8) на финальном network_rate
+            "rated": (r.domain not in CONTROL_DOMAINS
+                      and r.domain not in QUIC_QUIRK_DOMAINS),
+            "control": (r.domain in CONTROL_DOMAINS
+                        or (r.domain.startswith("www.") and
+                            r.domain[4:] in CONTROL_DOMAINS)),
         }
         if profile:
             payload["profile"] = profile
@@ -524,14 +532,21 @@ def _build_recommendation(all_results, naked, sanity: dict) -> dict:
     if not all_results:
         return {"verdict": "no_data", "message": "Нет результатов тестов", "best_profile": ""}
 
-    best = max(all_results, key=lambda r: (r.network_rate, r.ok_count))
+    best = max(all_results, key=lambda r: (r.network_rate, r.net_ok_count))
     # «Не пробито» — провалы ЛУЧШЕЙ стратегии, а не объединение по всем
     # пресетам: домен, который пробила другая стратегия, не должен выглядеть
     # нерабочим (union по всем профилям вводил в заблуждение).
+    # QUIC-хосты (youtube-класс) вне оценки: их 000 — свойство TCP-пробы
+    # сторонним клиентом, а не работа стратегии (браузер идёт через QUIC).
+    # Control-хосты (канарейки сети: google/vk/ya/gosuslugi) — тоже вне
+    # «не пробито»: их провал = «сеть мёртвая», а не «стратегия плохая».
     blocked = sorted({r.domain for r in best.results
-                      if r.test_type != "ping" and r.status != "OK"})
+                      if r.test_type != "ping" and r.status not in ("OK", "QUIC")
+                      and r.domain not in QUIC_QUIRK_DOMAINS
+                      and r.domain not in CONTROL_DOMAINS
+                      and not (r.domain.startswith("www.")
+                               and r.domain[4:] in CONTROL_DOMAINS)})
     net_rate = best.network_rate
-    blocked_set = set(blocked)
 
     same_as_naked = False
     if naked is not None and naked.results:
@@ -557,22 +572,8 @@ def _build_recommendation(all_results, naked, sanity: dict) -> dict:
         miss_note = (f" (не покрыты списками: {doms} — стратегия к ним не применяется, "
                      "доступность может быть нестабильна)")
 
-    # YouTube over TCP fails on every tested setup due to a known TLS quirk
-    # (§17) — the browser reaches it via QUIC, so it is not a real outage.
-    # Verdicts are computed ONLY from the complete per-profile results
-    # (all domain tests finished), never from streaming rows — no async race.
-    youtube_tcp_quirk = blocked_set <= {"www.youtube.com", "redirector.googlevideo.com",
-                                        "i.ytimg.com", "youtu.be"}
-
-    # "YouTube works" inference: TCP page blocked, but the YouTube infra
-    # (i.ytimg.com thumbnails / youtu.be) is reachable through TLS on the
-    # SAME profile run.  On every working setup i.ytimg.com passed; on
-    # "nothing got through" setups it is blocked as well.
-    yt_tcp_blocked = any(r.domain == "www.youtube.com" and r.test_type != "ping" and r.status != "OK"
-                         for r in best.results)
-    yt_infra_ok = any(r.domain in ("i.ytimg.com", "youtu.be") and r.test_type != "ping" and r.status == "OK"
-                      for r in best.results)
-    youtube_quirk_ok = yt_tcp_blocked and yt_infra_ok
+    # QUIC-хосты (youtube-класс) вне network_rate — ютуб-«прикол» не влияет
+    # на вердикт и «не пробито»-чипсы.
 
     if engine_broken:
         verdict = "engine_broken"
@@ -590,11 +591,9 @@ def _build_recommendation(all_results, naked, sanity: dict) -> dict:
                    "Обход не применяется: либо winws2 не перехватывает трафик "
                    "(WinDivert/драйвер, антивирус, Killer NIC), либо DPI блокирует любые попытки. "
                    "Запустите «Диагностику» и сохраните отчёт.")
-    elif net_rate >= 100 or (youtube_tcp_quirk and net_rate >= 60):
+    elif net_rate >= 100:
         verdict = "ok"
-        extra = (" YouTube по TCP не доходит — известный TLS-прикол: в браузере "
-                 "YouTube работает через QUIC." if youtube_tcp_quirk else "")
-        message = f"✅ Лучшая стратегия: {best.profile_name} — {best.net_ok_count}/{best.net_total} доступно.{extra}{miss_note}"
+        message = f"✅ Лучшая стратегия: {best.profile_name} — {best.net_ok_count}/{best.net_total} доступно.{miss_note}"
     elif net_rate > 0:
         verdict = "partial"
         message = (f"⚠ Лучшая стратегия: {best.profile_name} — {best.net_ok_count}/{best.net_total} "
@@ -610,11 +609,11 @@ def _build_recommendation(all_results, naked, sanity: dict) -> dict:
             tr = min(trs, key=lambda r: r.time_ms or 0)
             status = tr.status
             note = ""
-            # YouTube TCP is a known false negative — mark it working via QUIC
-            # only when the inference holds on the FULL results of this profile.
-            if domain == "www.youtube.com" and status != "OK" and youtube_quirk_ok:
+            # QUIC-класс: TCP-проба сторонним клиентом под десинком не
+            # показательная — браузер идёт через QUIC; не красный крест.
+            if domain in QUIC_QUIRK_DOMAINS and status not in ("OK",):
                 status = "QUIC_OK"
-                note = "TCP-проверка неприменима — работает через QUIC"
+                note = "TCP-проверка неприменима — в браузере работает через QUIC"
             key_hosts.append({"domain": domain, "label": label,
                               "status": status, "time_ms": tr.time_ms, "note": note})
         else:
@@ -630,10 +629,10 @@ def _build_recommendation(all_results, naked, sanity: dict) -> dict:
         "best_total": best.net_total,
         "same_as_naked": same_as_naked,
         "blocked_domains": blocked,
-        # Домены, чей 000 — известный «прикол», а не блок (YouTube TCP/QUIC):
-        # речек спорных доменов (§29) их не перепроверяет и не помечает «заблокирован».
-        "quirk_skip": (["www.youtube.com", "redirector.googlevideo.com",
-                        "i.ytimg.com", "youtu.be"] if youtube_quirk_ok else []),
+        # Домены, чей 000 — свойство QUIC-пробы, а не блок: речек спорных
+        # доменов (§29) их не перепроверяет и не помечает «заблокирован».
+        "quirk_skip": ["www.youtube.com", "redirector.googlevideo.com",
+                       "i.ytimg.com", "youtu.be"],
         "key_hosts": key_hosts,
         "naked_network_rate": naked.network_rate if naked else None,
         "provider_hop": best.provider_hop,
@@ -1004,7 +1003,7 @@ def _run_tester_action(data: dict) -> None:
                         progress(int(6 + (idx + 1) / total * 94),
                                  f"Стратегия {profile_name}: не запустилась")
                 if all_results:
-                    best = max(all_results, key=lambda r: (r.network_rate, r.ok_count))
+                    best = max(all_results, key=lambda r: (r.network_rate, r.net_ok_count))
                     blocked = sorted({r.domain for r in best.results
                                       if r.test_type != "ping" and r.status != "OK"})
                     sanity = tester.collect_sanity_info(best.profile_name, blocked)
@@ -1096,7 +1095,7 @@ def _run_tester_action(data: dict) -> None:
                         )
                         if res is not None:
                             all_results.append(res)
-                            best = max(all_results, key=lambda r: (r.network_rate, r.ok_count))
+                            best = max(all_results, key=lambda r: (r.network_rate, r.net_ok_count))
                             blocked = sorted({r.domain for r in best.results
                                               if r.test_type != "ping" and r.status != "OK"})
                             sanity = tester.collect_sanity_info(best.profile_name, blocked)
@@ -1258,6 +1257,9 @@ class ZapretHandler(BaseHTTPRequestHandler):
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
+        # no-store: локальный HTTP — дёшево; иначе WebView2 кэширует и правки
+        # фронтенда не доходят до пользователя после обновления
+        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(body)
 
@@ -1307,6 +1309,8 @@ class ZapretHandler(BaseHTTPRequestHandler):
                 self._handle_get_list("ipset-exclude.txt")
             elif path == "/api/ipset-include-list":
                 self._handle_get_list("ipset-include-user.txt")
+            elif path == "/api/contested/status":
+                self._handle_contested_status()
             elif path == "/api/service/status":
                 self._handle_service_status()
             elif path == "/api/zapret1/strategies":
@@ -1322,6 +1326,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
         except RuntimeError as e:
             self._send_json({"status": "error", "message": str(e)}, HTTPStatus.SERVICE_UNAVAILABLE)
         except Exception as e:
+            _probe_debug(f"api 500 GET {path}: {e}")
             self._send_json({"status": "error", "message": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR)
 
     def _handle_index(self, params: dict) -> None:
@@ -1331,6 +1336,13 @@ class ZapretHandler(BaseHTTPRequestHandler):
             html = index_path.read_text(encoding="utf-8")
             token = params.get("token", [""])[0]
             html = html.replace("__APP_TOKEN__", token)
+            # Кэш-buster: версия по mtime app.js — WebView2 кэширует статику,
+            # свежие правки фронтенда не доходили (случай 2026-09-12)
+            try:
+                js_mtime = int((frontend / "js" / "app.js").stat().st_mtime)
+                html = html.replace("js/app.js", f"js/app.js?v={js_mtime}")
+            except OSError:
+                pass
             self._send_html(html)
         else:
             self._send_html("<html><body><h1>Frontend not found</h1></body></html>")
@@ -1501,6 +1513,10 @@ class ZapretHandler(BaseHTTPRequestHandler):
                 self._handle_save_list(data, "ipset-exclude.txt")
             elif path == "/api/ipset-include-list":
                 self._handle_save_list(data, "ipset-include-user.txt")
+            elif path == "/api/contested/toggle":
+                self._handle_contested_toggle(data)
+            elif path == "/api/contested/check":
+                self._handle_contested_check(data)
             elif path == "/api/service/install":
                 self._handle_service_install(data)
             elif path == "/api/service/remove":
@@ -1540,18 +1556,15 @@ class ZapretHandler(BaseHTTPRequestHandler):
         except RuntimeError as e:
             self._send_json({"status": "error", "message": str(e)}, HTTPStatus.SERVICE_UNAVAILABLE)
         except Exception as e:
+            _probe_debug(f"api 500 POST {path}: {e}")
             self._send_json({"status": "error", "message": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR)
 
     # ── Process probe (game/app network analysis) ─────────────
     def _handle_probe_scan(self) -> None:
         """Список процессов с сетью — ТОЛЬКО по явной кнопке (AV-safe)."""
-        _probe_debug("scan: запрос получен")
         try:
             from core.process_probe import list_processes
             procs = list_processes()
-            _probe_debug(f"scan: {len(procs)} процессов "
-                         f"({', '.join(p['name'] for p in procs[:6])}"
-                         f"{'…' if len(procs) > 6 else ''})")
             self._send_json({"status": "ok", "processes": procs})
         except Exception as e:  # noqa: BLE001
             import traceback
@@ -1569,16 +1582,13 @@ class ZapretHandler(BaseHTTPRequestHandler):
             duration = max(10, min(int(data.get("duration") or 60), 300))
         except (TypeError, ValueError):
             duration = 60
-        print(f"[probe] start: process='{proc}' duration={duration}", flush=True)
-        _probe_debug(f"start: process='{proc}' duration={duration}")
         ok, msg = get_process_probe().start(proc, duration)
-        _probe_debug(f"start: {'OK' if ok else 'FAIL'} — {msg}")
+        if not ok:
+            _probe_debug(f"start: FAIL — {msg}")
         self._send_json({"status": "ok" if ok else "error", "message": msg})
 
     def _handle_probe_stop(self) -> None:
-        _probe_debug("stop: запрос")
         st = get_process_probe().stop()
-        _probe_debug(f"stop: phase={st.get('phase')} tcp={len(st.get('tcp', {}))}")
         self._send_json({"status": "ok", "state": st})
 
     def _handle_probe_debug(self, data: dict) -> None:
@@ -1594,7 +1604,6 @@ class ZapretHandler(BaseHTTPRequestHandler):
     def _handle_probe_report(self) -> None:
         probe = get_process_probe()
         path = probe.save_report()
-        _probe_debug(f"report: сохранён в {path}")
         self._send_json({"status": "ok", "report": probe.report_text(),
                          "path": str(path)})
 
@@ -1714,6 +1723,78 @@ class ZapretHandler(BaseHTTPRequestHandler):
         except OSError as e:
             self._send_json({"status": "error", "message": str(e)})
 
+    # ── Спорные домены (нужен десинк одним, ломается у других — §15) ──
+    _CONTESTED = [
+        {"id": "aws", "domain": "amazonaws.com", "probe": "s3.amazonaws.com",
+         "title": "AWS (S3 / DynamoDB)",
+         "why": "Часть провайдеров режет AWS по SNI — нужен десинк. У других "
+                "AWS жив в голую, а наш десинк ломает DynamoDB/S3. Проверь "
+                "пробой и включай только если без десинка не живёт."},
+    ]
+
+    def _include_user_domains(self) -> set:
+        path = get_root_dir() / "lists" / "list-include-user.txt"
+        if not path.exists():
+            return set()
+        return {ln.strip().lower() for ln in
+                path.read_text(encoding="utf-8").splitlines()
+                if ln.strip()}
+
+    def _handle_contested_status(self) -> None:
+        items = []
+        enabled = self._include_user_domains()
+        for item in self._CONTESTED:
+            items.append({**item, "enabled": item["domain"] in enabled})
+        self._send_json({"status": "ok", "items": items,
+                         "protection_running": get_controller().status().running})
+
+    def _handle_contested_toggle(self, data: dict) -> None:
+        item_id = str(data.get("id") or "")
+        item = next((i for i in self._CONTESTED if i["id"] == item_id), None)
+        if not item:
+            self._send_json({"status": "error", "message": "Неизвестный домен"})
+            return
+        enable = bool(data.get("enabled"))
+        path = get_root_dir() / "lists" / "list-include-user.txt"
+        lines = [ln.strip() for ln in
+                 (path.read_text(encoding="utf-8").splitlines()
+                  if path.exists() else []) if ln.strip()]
+        domain = item["domain"].lower()
+        if enable and domain not in lines:
+            lines.append(domain)
+        elif not enable:
+            lines = [ln for ln in lines if ln != domain]
+        try:
+            path.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
+        except OSError as e:
+            self._send_json({"status": "error", "message": str(e)})
+            return
+        self._send_json({"status": "ok",
+                         "message": ("Добавлено в Включения — перезапусти обход, "
+                                     "чтобы применилось")
+                         if enable else "Убрано из Включений — перезапусти обход, "
+                                        "чтобы применилось"})
+
+    def _handle_contested_check(self, data: dict) -> None:
+        import subprocess as _sp
+        import time as _time
+        item_id = str(data.get("id") or "")
+        item = next((i for i in self._CONTESTED if i["id"] == item_id), None)
+        if not item:
+            self._send_json({"status": "error", "message": "Неизвестный домен"})
+            return
+        with_protection = get_controller().status().running
+        t0 = _time.time()
+        r = _sp.run(
+            ["curl.exe", "-4", "-s", "-o", "NUL", "-m", "10",
+             "-w", "%{http_code}", f"https://{item['probe']}/"],
+            capture_output=True, text=True, encoding="oem", errors="replace",
+            timeout=15, creationflags=subprocess.CREATE_NO_WINDOW)
+        code = (r.stdout or "").strip()
+        self._send_json({"status": "ok", "code": code,
+                         "elapsed": round(_time.time() - t0, 2),
+                         "with_protection": with_protection})
+
     def _prepare_service_args(self, data: dict) -> tuple[Optional[list[str]], str]:
         """Build + validate the winws2 args for the service (direct-exe style).
 
@@ -1759,6 +1840,15 @@ class ZapretHandler(BaseHTTPRequestHandler):
             self._send_json({"status": "error", "message": f"Установка отменена — {err}"})
             return
         ok, msg = svc_install(root_dir=get_root_dir(), args=args)
+        if ok:
+            # статус на главной показывал «стратегия «?»» — служба запускается
+            # вне controller, и тот не знал профиль
+            try:
+                profile = str(data.get("profile") or "").strip()
+                if profile:
+                    get_controller().current_strategy = profile
+            except Exception:
+                pass
         self._send_json({"status": "ok" if ok else "error", "message": msg})
 
     def _handle_service_remove(self) -> None:
@@ -1781,6 +1871,11 @@ class ZapretHandler(BaseHTTPRequestHandler):
             self._send_json({"status": "error", "message": f"Служба не запущена — {err}"})
             return
         ok, msg = svc_start(args)
+        if ok:
+            try:
+                get_controller().current_strategy = get_config_manager().load().last_profile
+            except Exception:
+                pass
         self._send_json({"status": "ok" if ok else "error", "message": msg})
 
     def _handle_service_stop(self) -> None:
@@ -1789,6 +1884,11 @@ class ZapretHandler(BaseHTTPRequestHandler):
             self._send_json({"status": "error", "message": busy})
             return
         ok, msg = svc_stop()
+        if ok:
+            try:
+                get_controller().current_strategy = None
+            except Exception:
+                pass
         self._send_json({"status": "ok" if ok else "error", "message": msg})
 
     def _handle_diagnose_action(self, data: dict) -> None:

@@ -19,12 +19,23 @@
       </div>
 
       <nav class="nav">
-        <a href="#main" data-page="main" class="nav-link active">Главная</a>
-        <a href="#diagnostics" data-page="diagnostics" class="nav-link">Проверка системы</a>
-        <a href="#tester" data-page="tester" class="nav-link">Подбор стратегии<span class="nav-badge" id="testerBadge" hidden>идёт проверка</span></a>
-        <a href="#lists" data-page="lists" class="nav-link">Списки</a>
-        <a href="#cdn" data-page="cdn" class="nav-link">CDN-стабилизация</a>
-        <a href="#asn" data-page="asn" class="nav-link">ASN-скан</a>
+        <div class="nav-group">
+          <div class="nav-group-label">Обход</div>
+          <a href="#main" data-page="main" class="nav-link active">Главная</a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Диагностика</div>
+          <a href="#diagnostics" data-page="diagnostics" class="nav-link">Проверка системы</a>
+          <a href="#probe" data-page="probe" class="nav-link">Анализ приложения</a>
+          <a href="#tester" data-page="tester" class="nav-link">Подбор стратегии<span class="nav-badge" id="testerBadge" hidden>идёт проверка</span></a>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Тонкая настройка</div>
+          <a href="#lists" data-page="lists" class="nav-link">Списки</a>
+          <a href="#contested" data-page="contested" class="nav-link">Спорные домены</a>
+          <a href="#cdn" data-page="cdn" class="nav-link">CDN-стабилизация</a>
+          <a href="#asn" data-page="asn" class="nav-link">ASN-скан</a>
+        </div>
       </nav>
 
       <div class="sidebar-foot">
@@ -83,14 +94,14 @@
               </div>
               <div class="meta" id="strategyApplyHint" hidden></div>
 
-              <div class="row tight">
+<div class="row tight">
                 <span class="row-label">Служба (автозапуск)</span>
                 <span class="meta" id="svcStatusText"></span>
                 <span class="svc-actions">
-                  <button class="btn btn-sm" id="btnSvcInstall" hidden>Установить службу</button>
-                  <button class="btn btn-sm" id="btnSvcStart" hidden>Запустить службу</button>
-                  <button class="btn btn-sm" id="btnSvcStop" hidden>Остановить службу</button>
-                  <button class="btn btn-sm btn-danger-text" id="btnSvcRemove" hidden>Удалить службу</button>
+                  <button class="btn" id="btnSvcInstall" hidden>Установить службу</button>
+                  <button class="btn" id="btnSvcStart" hidden>Запустить службу</button>
+                  <button class="btn" id="btnSvcStop" hidden>Остановить службу</button>
+                  <button class="btn btn-ghost-danger" id="btnSvcRemove" hidden>Удалить службу</button>
                 </span>
               </div>
             </div>
@@ -133,9 +144,12 @@
                   <td class="opt-name">Блоб фейка<span class="opt-id">TLS fake</span></td>
                   <td class="opt-desc">Чем подменять TLS-фейк: у каждого «белого» домена своя живучесть на разных провайдерах — Google пробивают чаще, редкие держатся дольше.<span class="opt-mode-hint" id="fakeBlobHint"></span></td>
                   <td class="opt-ctl">
-                    <select class="input input-sm" id="fakeBlobSelect">
-                      <option value="">Пресет (Google)</option>
-                    </select>
+                    <div class="opt-ctl-stack">
+                      <select class="input input-sm" id="fakeBlobSelect">
+                        <option value="">Пресет (Google)</option>
+                      </select>
+                      <button class="btn btn-sm" id="btnBlobProbe" title="Переберёт блобы и поставит лучший">Подобрать блоба</button>
+                    </div>
                   </td>
                 </tr>
                 <tr>
@@ -156,7 +170,6 @@
               </table>
 
               <div class="panel-foot">
-                <button class="btn btn-sm" id="btnBlobProbe">Подобрать блоба</button>
                 <span class="meta" id="applyTogglesHint"></span>
                 <button class="btn btn-warnline btn-sm" id="btnApplyToggles" hidden>Перезапустить с новыми параметрами</button>
               </div>
@@ -176,7 +189,7 @@
                   <span class="field-label">Папка Zapret 1</span>
                   <input class="input" id="z1DirPath" placeholder="C:\Zapret">
                 </label>
-                <button class="btn btn-sm" id="btnZ1SaveDir">Сохранить путь</button>
+                <button class="btn" id="btnZ1SaveDir">Сохранить путь</button>
               </div>
               <div class="row">
                 <label class="field grow">
@@ -217,18 +230,16 @@
   <label class="opt-line">
     <input type="checkbox" id="extendedCheck">
     <span class="opt-text">
-      <span class="opt-title">Расширенный режим</span>
+      <span class="opt-title">Расширенный режим <span class="opt-tag">Zapret 1 + анализ</span></span>
       <span class="opt-hint">сравнение с Zapret 1 и без обхода, полный анализ комбинаций</span>
     </span>
-    <span class="opt-tag">Zapret 1 + анализ</span>
   </label>
   <label class="opt-line">
     <input type="checkbox" id="logCheck">
     <span class="opt-text">
-      <span class="opt-title">Отчёт для поддержки</span>
+      <span class="opt-title">Отчёт для поддержки <span class="opt-tag">ZIP</span></span>
       <span class="opt-hint">ZIP с результатами теста и данными о системе</span>
     </span>
-    <span class="opt-tag">ZIP</span>
   </label>
 </div>
                     <button class="btn btn-primary" id="btnStartTest">Начать подбор</button>
@@ -284,7 +295,7 @@
           <div class="panel">
             <div class="diag-head">
               <div>
-                <div class="panel-title">Результаты проверки</div>
+                <div class="panel-title">Диагностика программы</div>
                 <div class="panel-sub">Права, конфликты, служба, пресет, связь и тип блокировки. Обычно 5–15 секунд.</div>
               </div>
               <div class="diag-actions">
@@ -294,10 +305,14 @@
             </div>
             <div class="diag-summary" id="diagSummary"></div>
             <div class="diag-body" id="diagResults">
-              <div class="empty-note">Нажмите «Проверить», чтобы диагностировать окружение.</div>
+              <div class="empty-note">Проверим: права администратора, конфликт Zapret 1, службу, валидность пресета, DNS и связь с Discord/YouTube/GitHub, тип блокировки. Нажмите «Проверить».</div>
             </div>
           </div>
 
+        </section>
+
+        <!-- ═══ Анализ приложения ═══ -->
+        <section id="page-probe" class="page">
           <div class="panel">
             <div class="diag-head">
               <div>
@@ -308,18 +323,17 @@
             <div class="probe-controls">
               <div class="probe-row">
                 <label class="probe-label" for="probeProcInput">Процесс (имя или PID)</label>
-                <input class="input" id="probeProcInput" placeholder="напр. WardogsClient" />
-              </div>
-              <div class="probe-row probe-row-scan">
-                <button class="btn" id="probeScanBtn" title="Показать запущенные процессы с сетью">Сканировать процессы</button>
-                <span class="probe-hint">или выберите из найденных:</span>
-                <select class="input" id="probeProcSelect">
-                  <option value="">— список процессов —</option>
-                </select>
+                <div class="probe-input-row">
+                  <input class="input" id="probeProcInput" placeholder="напр. WardogsClient или выберите из списка →" />
+                  <select class="input" id="probeProcSelect">
+                    <option value="">— список процессов —</option>
+                  </select>
+                  <button class="btn btn-sm" id="probeScanBtn" title="Обновить список процессов с сетью">🔄 Сканировать</button>
+                </div>
               </div>
               <div class="probe-row">
                 <label class="probe-label" for="probeDurSelect">Длительность анализа</label>
-                <div class="probe-actions">
+                <div class="probe-actions probe-actions-right">
                   <select class="input input-sm" id="probeDurSelect">
                     <option value="30">30 сек</option>
                     <option value="60" selected>60 сек</option>
@@ -422,26 +436,32 @@
           </div>
         </section>
 
+        <!-- ═══ Спорные домены ═══ -->
+        <section id="page-contested" class="page">
+          <div class="panel" id="contestedPanel">
+            <div class="list-head">
+              <div>
+                <div class="panel-title">Спорные домены</div>
+                <div class="panel-desc">Обход одним провайдерам нужен, у других ломается. Порядок: проба → тумблер → перезапуск обхода.</div>
+              </div>
+              <span class="meta" id="contestedProt"></span>
+            </div>
+            <table class="contested-table">
+              <thead>
+                <tr><th>Сервис</th><th>Проблема</th><th>Проба</th><th>Обход</th></tr>
+              </thead>
+              <tbody id="contestedBody"></tbody>
+            </table>
+          </div>
+        </section>
+
         <!-- ═══ CDN-стабилизация ═══ -->
         <section id="page-cdn" class="page">
-          <div class="panel lists-help">
-            <div class="lh-title">Что это и когда запускать</div>
-            <div class="lh-note">Сканер популярных CDN-хостов (Cloudflare, Akamai, AWS, Fastly, Google и др.). CDN обслуживают не только сайты: через них идут игровые загрузки и патчи, матчмейкинг, Discord-медиа, видео. Прогон выполняется <b>дважды</b> — в вашем текущем режиме и с противоположным состоянием «Общего IP-обхода», плюс сверка без защиты. Так видно главное: что чинит и что ломает IP-обход, и режет ли кто-то из CDN трафик stateful-методом.</div>
-            <div class="lh-row" style="margin-top:8px"><code>«В обход»</code><span>хост жив без защиты, но DPI режет его под обходом, и пробный точечный прогон подтвердил, что он лечится. Домен попадёт в «Домены — включения» (в режиме IP-обхода — его IP в ipset-включения), защита перезапустится.</span></div>
-            <div class="lh-row"><code>«В стоп-лист»</code><span>хост живой, но под обходом умирает. Домен попадёт в «Домены — исключения», защита перезапустится.</span></div>
-            <div class="lh-row"><code>«чинит»</code><span>в hostlist-режиме хост мёртв, а с IP-обходом жив — кнопка добавляет его IP в ipset-включения: точечный обход без включения тоггла.</span></div>
-            <div class="lh-row"><code>«ломает»</code><span>в hostlist-режиме жив, а с IP-обходом умирает. В ipset-режиме — кнопка «Исключить IP»: ipset остаётся для остальных, этот адрес без десинка.</span></div>
-            <div class="lh-row"><code>без кнопки</code><span>«чисто» — проблем нет; «уже в ipset» — уже покрыто IP-обходом; «не лечится» — режется, но точечный обход не помогает; «хост мёртв» — не отвечает даже без защиты, это не блокировка.</span></div>
-            <div class="lh-note"><b>Когда запускать:</b> тормозят или не открываются отдельные сайты, игры (загрузки/подключение), Discord-медиа при работающем обходе; после смены провайдера или пресета. Без повода — не чаще раза в пару недель: каждое «В обход» добавляет домен в постоянную обработку.</div>
-            <div class="lh-note"><b>Про IPSets:</b> включение и выключение «Общего IP-обхода» меняет картину — ipset чинит одних хостов и ломает других. Скан покажет и то и другое (колонка «IPset A/B») и даст рекомендацию по тогглу для вашей сети. Правки «В обход»/«В стоп-лист» идут в списки доменов (hostlist-режим) или в ipset-списки (ipset-режим) — по текущему положению тоггла.</div>
-            <div class="lh-note">Во время скана защита на короткое время выключается (перепроверка хостов без защиты) и включается обратно — это нормально.</div>
-          </div>
-
           <div class="panel cdn-panel">
             <div class="list-head">
               <div>
                 <div class="panel-title">Скан CDN-хостов</div>
-                <div class="panel-desc">Программа предлагает, вы подтверждаете одной кнопкой. Требуется работающий обход.</div>
+                <div class="panel-desc">Двойной прогон: текущий режим + противоположное состояние IP-обхода, плюс сверка без защиты. Требуется работающий обход.</div>
               </div>
               <div class="diag-actions">
                 <button class="btn btn-primary" id="cdnScanBtn">Сканировать CDN</button>
@@ -452,27 +472,32 @@
               <div class="empty-note">Двойной прогон занимает 2–4 минуты. Запустите обход на «Главной», затем сканируйте.</div>
             </div>
           </div>
+
+          <details class="panel panel-details lists-help">
+            <summary class="panel-summary">
+              <span class="panel-title">Справка: что это, когда запускать, расшифровка статусов</span>
+              <span class="meta">развернуть</span>
+            </summary>
+            <div>
+              <div class="lh-note">Сканер популярных CDN-хостов (Cloudflare, Akamai, AWS, Fastly, Google и др.). CDN обслуживают не только сайты: через них идут игровые загрузки и патчи, матчмейкинг, Discord-медиа, видео. Прогон выполняется <b>дважды</b> — в вашем текущем режиме и с противоположным состоянием «Общего IP-обхода», плюс сверка без защиты. Так видно главное: что чинит и что ломает IP-обход, и режет ли кто-то из CDN трафик stateful-методом.</div>
+              <div class="lh-row" style="margin-top:8px"><code>«В обход»</code><span>хост жив без защиты, но DPI режет его под обходом, и пробный точечный прогон подтвердил, что он лечится. Домен попадёт в «Домены — включения» (в режиме IP-обхода — его IP в ipset-включения), защита перезапустится.</span></div>
+              <div class="lh-row"><code>«В стоп-лист»</code><span>хост живой, но под обходом умирает. Домен попадёт в «Домены — исключения», защита перезапустится.</span></div>
+              <div class="lh-row"><code>«чинит»</code><span>в hostlist-режиме хост мёртв, а с IP-обходом жив — кнопка добавляет его IP в ipset-включения: точечный обход без включения тоггла.</span></div>
+              <div class="lh-row"><code>«ломает»</code><span>в hostlist-режиме жив, а с IP-обходом умирает. В ipset-режиме — кнопка «Исключить IP»: ipset остаётся для остальных, этот адрес без десинка.</span></div>
+              <div class="lh-row"><code>без кнопки</code><span>«чисто» — проблем нет; «уже в ipset» — уже покрыто IP-обходом; «не лечится» — режется, но точечный обход не помогает; «хост мёртв» — не отвечает даже без защиты, это не блокировка.</span></div>
+              <div class="lh-note"><b>Когда запускать:</b> тормозят или не открываются отдельные сайты, игры (загрузки/подключение), Discord-медиа при работающем обходе; после смены провайдера или пресета. Без повода — не чаще раза в пару недель: каждое «В обход» добавляет домен в постоянную обработку.</div>
+              <div class="lh-note"><b>Про IPSets:</b> включение и выключение «Общего IP-обхода» меняет картину — ipset чинит одних хостов и ломает других. Скан покажет и то и другое (колонка «IPset A/B») и даст рекомендацию по тогглу для вашей сети. Правки «В обход»/«В стоп-лист» идут в списки доменов (hostlist-режим) или в ipset-списки (ipset-режим) — по текущему положению тоггла.</div>
+              <div class="lh-note">Во время скана защита на короткое время выключается (перепроверка хостов без защиты) и включается обратно — это нормально.</div>
+            </div>
+          </details>
         </section>
 
         <section id="page-asn" class="page">
-          <div class="panel lists-help">
-            <div class="lh-title">Что это и зачем</div>
-            <div class="lh-note"><b>Диагностика сети, а не «лечение».</b> Скан делает 110 проб к IP-диапазонам разных хостинг-провайдеров (Hetzner, DigitalOcean, OVH, Cloudflare, AWS и др.) с «белым» SNI и загрузкой ~32 КБ. Так проверяется ТСПУ напрямую: какой диапазон режется целиком, где stateful DPI режет поток на середине, что отвечает нормально.</div>
-            <div class="lh-note">На время скана обход останавливается (меряем чистый путь, без нашего десинка) и возвращается автоматически — вместе со службой, если она была запущена.</div>
-            <div class="lh-note"><b>Когда запускать:</b> сайты/игры не работают при живом обходе и вы хотите понять «почему»; при обращениях в поддержку. Это редкий диагностический инструмент.</div>
-            <div class="lh-note" style="margin-top:8px"><b>Не паникуйте из-за статусов.</b> 100% «OK» тут добиваться не нужно: с нашими пресетами и так работает ~99% сайтов. Скан лишь объясняет, где и что режется на вашей сети. Если большинство проб «OK» и сайты открываются — делать ничего не надо. Для выводов по мобильной сети прогоните 2 раза с паузой: картина меняется от часа к часу.</div>
-            <div class="lh-row" style="margin-top:8px"><code>OK</code><span>диапазон отвечает: соединение, TLS и загрузка 32 КБ прошли без обрыва.</span></div>
-            <div class="lh-row"><code>DETECTED</code><span>поток обрезан на N КБ — stateful DPI. Характерно для CDN-класса: десинк его лечит (см. «CDN-стабилизация»), голый путь — режется.</span></div>
-            <div class="lh-row"><code>SYN DROP</code><span>нет ответа на SYN — режется диапазон целиком (иногда это устаревшие IP: список протухает). Подтверждается повтором.</span></div>
-            <div class="lh-row"><code>TCP RST / TLS RST</code><span>соединение рвётся на этапе TCP или TLS — точечный блок.</span></div>
-            <div class="lh-row"><code>TIMEOUT / ERROR</code><span>не дождались ответа / ошибка проверки.</span></div>
-          </div>
-
           <div class="panel cdn-panel">
             <div class="list-head">
               <div>
                 <div class="panel-title">Скан диапазонов (110 IP)</div>
-                <div class="panel-desc">Защита временно останавливается и возвращается автоматически.</div>
+                <div class="panel-desc">Защита временно останавливается и возвращается автоматически. Скан 3–8 минут, потом — таблица статусов и что делать.</div>
               </div>
               <div class="diag-actions">
                 <button class="btn btn-primary" id="asnScanBtn">Запустить ASN-скан</button>
@@ -483,6 +508,24 @@
               <div class="empty-note">Скан занимает 3–8 минут. После завершения — таблица статусов и что делать.</div>
             </div>
           </div>
+
+          <details class="panel panel-details lists-help">
+            <summary class="panel-summary">
+              <span class="panel-title">Справка: что это, когда запускать, расшифровка статусов</span>
+              <span class="meta">развернуть</span>
+            </summary>
+            <div>
+              <div class="lh-note"><b>Диагностика сети, а не «лечение».</b> Скан делает 110 проб к IP-диапазонам разных хостинг-провайдеров (Hetzner, DigitalOcean, OVH, Cloudflare, AWS и др.) с «белым» SNI и загрузкой ~32 КБ. Так проверяется ТСПУ напрямую: какой диапазон режется целиком, где stateful DPI режет поток на середине, что отвечает нормально.</div>
+              <div class="lh-note">На время скана обход останавливается (меряем чистый путь, без нашего десинка) и возвращается автоматически — вместе со службой, если она была запущена.</div>
+              <div class="lh-note"><b>Когда запускать:</b> сайты/игры не работают при живом обходе и вы хотите понять «почему»; при обращениях в поддержку. Это редкий диагностический инструмент.</div>
+              <div class="lh-note" style="margin-top:8px"><b>Не паникуйте из-за статусов.</b> 100% «OK» тут добиваться не нужно: с нашими пресетами и так работает ~99% сайтов. Скан лишь объясняет, где и что режется на вашей сети. Если большинство проб «OK» и сайты открываются — делать ничего не надо. Для выводов по мобильной сети прогоните 2 раза с паузой: картина меняется от часа к часу.</div>
+              <div class="lh-row" style="margin-top:8px"><code>OK</code><span>диапазон отвечает: соединение, TLS и загрузка 32 КБ прошли без обрыва.</span></div>
+              <div class="lh-row"><code>DETECTED</code><span>поток обрезан на N КБ — stateful DPI. Характерно для CDN-класса: десинк его лечит (см. «CDN-стабилизация»), голый путь — режется.</span></div>
+              <div class="lh-row"><code>SYN DROP</code><span>нет ответа на SYN — режется диапазон целиком (иногда это устаревшие IP: список протухает). Подтверждается повтором.</span></div>
+              <div class="lh-row"><code>TCP RST / TLS RST</code><span>соединение рвётся на этапе TCP или TLS — точечный блок.</span></div>
+              <div class="lh-row"><code>TIMEOUT / ERROR</code><span>не дождались ответа / ошибка проверки.</span></div>
+            </div>
+          </details>
         </section>
 
       </div>

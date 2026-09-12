@@ -29,13 +29,29 @@ DISCORD_UPLOAD_HOST = "discord-attachments-uploads-prd.storage.googleapis.com"
 # i.ytimg.com is checked BEFORE www.youtube.com so the YouTube TCP quirk
 # (§17: TCP blocked everywhere, browser works via QUIC) can be explained
 # using the CDN reachability result instead of showing a false red cross.
+#
+# Discord-аплоад-хост ВЫЧЕРСНУТ из списка чеков (2026-09-12): его путь —
+# клиентский QUIC (§15), curl-проба сквозь десинк всегда 000 и неинформативна
+# в обе стороны; постоянная серая строка в отчёте — только шум. Если файлы
+# в клиенте не отправляются — смотри «Анализ приложения» (UDP/захват).
 _NET_CHECKS = [
     ("www.google.com", "Интернет (канарейка)", "canary"),
     ("discord.com", "Discord", "any"),
-    (DISCORD_UPLOAD_HOST, "Discord — отправка файлов", "any"),
     ("i.ytimg.com", "YouTube CDN", "any"),
     ("www.youtube.com", "YouTube", "youtube"),
 ]
+
+# QUIC-класс (§15/§17): браузер и клиент Дискорда ходят к этим хостам через
+# QUIC/свой TLS, а диагностика пробует «чужой» TLS-клиент (curl/openssl)
+# сквозь движок обхода. google-блок (fake+multisplit, drop+repeats) ломает
+# сторонний ClientHello — пробы дают 000 при работающем у пользователя
+# интернете. Для таких хостов красный крест = ложный, это измерение чужого
+# клиента, а не реального опыта.
+_QUIC_QUIRK_HOSTS = {
+    "www.google.com",
+    "i.ytimg.com",
+    "www.youtube.com",
+}
 
 _DEBUG_LOG_WARN_BYTES = 50 * 1024 * 1024
 
@@ -76,13 +92,13 @@ def _pid_of(image_name: str) -> Optional[int]:
     return None
 
 
-def _curl_code(host: str, timeout: int = 6) -> Optional[int]:
+def _curl_code(host: str, timeout: int = 6, scheme: str = "https") -> Optional[int]:
     """HTTP status code via curl, None on timeout/transport error."""
     try:
         r = subprocess.run(
             ["curl.exe", "-4", "-s", "-m", str(timeout),
              "-H", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-             "-o", "NUL", "-w", "%{http_code}", f"https://{host}/"],
+             "-o", "NUL", "-w", "%{http_code}", f"{scheme}://{host}/"],
             capture_output=True, text=True, encoding="oem", errors="replace",
             timeout=timeout + 3, creationflags=subprocess.CREATE_NO_WINDOW,
         )
@@ -146,24 +162,76 @@ def _check_debug_log(root_dir: Path, debug_enabled: bool) -> Check:
 
 
 def _check_net() -> list[Check]:
+    # Все пробы параллельно: TLS-проба сквозь десинк доходит до таймаута
+    # (6с) и HTTP-фолбэк добавляет свои секунды — последовательный перебор
+    # растягивал этап связи до ~40с. Пары задач по хосту — один этап ~6-8с.
+    from concurrent.futures import ThreadPoolExecutor
+
+    executor = ThreadPoolExecutor(max_workers=10)
+    futures: dict = {}
+    try:
+        for host, _name, _kind in _NET_CHECKS:
+            futures[host] = {
+                "tls": executor.submit(_curl_code, host),
+                "http": executor.submit(_curl_code, host, 6, "http"),
+            }
+    finally:
+        executor.shutdown(wait=False)
+
     checks: list[Check] = []
     for host, name, kind in _NET_CHECKS:
-        code = _curl_code(host)
+        code = futures[host]["tls"].result(timeout=15)
+        http_code = futures[host]["http"].result(timeout=15)
         if code is None or code < 100:
-            # YouTube TCP quirk: the page is blackholed on EVERY tested setup,
-            # but the browser works via QUIC.  If the CDN (i.ytimg.com) is
-            # reachable, report the quirk instead of a false red cross.
-            if kind == "youtube" and any(c.id == "net_i.ytimg.com" and c.status == "ok"
-                                         for c in checks):
+            # Сторонний TLS-клиент (curl/openssl) сквозь движок ломается на
+            # google-классе (fake+multisplit рвёт «небраузерный» ClientHello),
+            # тогда как реальный опыт идёт через QUIC (браузер, клиент Discord).
+            # 1) HTTP (порт 80) фолбэк: живой HTTP = интернет жив.
+            # 2) QUIC-квирк-хосты: warn вместо красного креста.
+            # 3) Если HTTP тоже мёртв — classify_block (SNI-swap) отличает
+            #    «десинк ломает клиент/движок не берёт» от реального блока.
+            if http_code is not None and http_code >= 100:
                 checks.append(Check(f"net_{host}", name, "ok",
-                                    "YouTube работает через QUIC (в браузере), его CDN доступен — "
-                                    "TCP-проверка здесь неприменима",
-                                    tech="TCP blackholed; QUIC path assumed via reachable CDN"))
+                                    "сайт отвечает (HTTP) — интернет работает",
+                                    tech=f"TLS probe: no code (сторонний TLS-клиент "
+                                         f"под обходом не проходит, квирк google-класса); "
+                                         f"HTTP {http_code} — сеть жива"))
                 continue
-            checks.append(Check(f"net_{host}", name, "fail",
-                                "сайт не отвечает — соединение блокируется или обрывается",
-                                tech="curl: no HTTP code (timeout/transport)"))
-        elif kind == "canary":
+            quirk = host in _QUIC_QUIRK_HOSTS
+            if quirk:
+                if kind == "upload_check":
+                    # проба не измеряет клиентскую функцию: файлы Discord
+                    # шлёт через QUIC (§15) — curl-путь не показателен ни
+                    # в какую сторону, врать зелёным/пугать жёлтым нельзя
+                    checks.append(Check(f"net_{host}", name, "skip",
+                                        "автопроверка этот путь не измеряет: клиент Discord "
+                                        "отправляет файлы через QUIC. Проверьте отправкой файла "
+                                        "в клиенте — если работает, всё в порядке",
+                                        tech="curl TLS: no code (сторонний клиент под обходом); "
+                                             "этот чек неинформативен для QUIC-пути"))
+                else:
+                    checks.append(Check(f"net_{host}", name, "warn",
+                                        "сторонний TLS-клиент не проходит под обходом на этом хосте "
+                                        "(известный квирк google-класса). Реальные браузер/клиент идут "
+                                        "через QUIC — проверьте в браузере: если работает, всё в порядке",
+                                        tech="curl TLS: no code; HTTP also dead; "
+                                             "IPv4 forced (браузер может ходить по IPv6/QUIC)"))
+                continue
+            # не-квирк-хост: честно классифицируем, что за блок
+            kind_block = classify_block(host)
+            bkind = kind_block.get("kind", "")
+            if bkind == "sni_block":
+                checks.append(Check(f"net_{host}", name, "warn",
+                                    "IP живой, блокировка только по SNI — обход обязан брать этот хост. "
+                                    "Если сайт всё же не открывается — проблема в стратегии/списках, "
+                                    "проверьте её в «Подборе стратегии»",
+                                    tech=f"classify: {bkind}; {kind_block.get('tech', '')}"))
+            else:
+                checks.append(Check(f"net_{host}", name, "fail",
+                                    "сайт не отвечает — соединение блокируется или обрывается",
+                                    tech=f"curl: no HTTP code; classify: {bkind}"))
+            continue
+        if kind == "canary":
             if 200 <= code < 400:
                 checks.append(Check(f"net_{host}", name, "ok",
                                     "сайт отвечает — интернет работает",
@@ -182,17 +250,17 @@ def _check_net() -> list[Check]:
                 detail = "сайт отвечает — соединение работает"
             checks.append(Check(f"net_{host}", name, "ok", detail, tech=f"HTTP {code}"))
 
-    # Зеркальная сторона YouTube-прикола (§17/§22): i.ytimg.com по TCP режется
-    # точечно (DPI/DNS), но сам youtube.com доступен, а браузер ходит через
-    # QUIC — аватары/видео работают. Красный крест тут только пугает.
-    if any(c.id == "net_i.ytimg.com" and c.status == "fail" for c in checks) and any(
+    # Зеркальная сторона YouTube-прикола (§17/§22): i.ytimg.com по TCP не
+    # проходит (сторонний TLS-клиент под десинком), но youtube.com доступен,
+    # а браузер ходит через QUIC — аватары/видео работают.
+    if any(c.id == "net_i.ytimg.com" and c.status in ("fail", "warn") for c in checks) and any(
             c.id == "net_www.youtube.com" and c.status == "ok" for c in checks):
         for c in checks:
-            if c.id == "net_i.ytimg.com" and c.status == "fail":
+            if c.id == "net_i.ytimg.com" and c.status in ("fail", "warn"):
                 c.status = "ok"
-                c.detail = ("YouTube работает (аватары, видео, комментарии) — TCP-проба "
+                c.detail = ("YouTube работает (аватары, видео, комментарии) — сторонняя TLS-проба "
                             "к CDN не проходит, браузер ходит через QUIC, это не блокировка")
-                c.tech = "TCP to i.ytimg.com dropped; www.youtube.com reachable — QUIC path OK"
+                c.tech = "TLS probe dropped; www.youtube.com reachable — QUIC path OK"
     return checks
 
 

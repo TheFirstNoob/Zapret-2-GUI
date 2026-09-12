@@ -152,7 +152,7 @@ def main_gui() -> None:
     window = webview.create_window(
         "Zapret2 Manager",
         f"{base_url}/?token={app_token}",
-        width=1200, height=800, min_size=(900, 600),
+        width=1280, height=840, min_size=(900, 600),
     )
     try:
         window.events.closing += on_closing

@@ -9,6 +9,14 @@ const APP_TOKEN = window.APP_TOKEN || '__APP_TOKEN__';
 const SCORE_OK = 80;
 const SCORE_MID = 40;
 
+// QUIC-класс хостов (синхронно с core.tester QUIC_QUIRK_DOMAINS):
+// браузер идёт через QUIC, TCP-проба curl-ом под десинком не показательная —
+// вне «доступности» и нейтральный серый статус вместо красного креста.
+const QUIRK_HOSTS = new Set([
+  'www.youtube.com', 'youtu.be', 'i.ytimg.com',
+  'redirector.googlevideo.com', 'storage.googleapis.com',
+]);
+
 let PROFILES = [];
 
 // token-инъекция для /api/*
@@ -26,7 +34,7 @@ window.onerror = function (msg, url, line) {
   frontendLog('JS ERROR line ' + line + ': ' + msg);
 };
 
-// fire-and-forget лог на сервер (виден в probe_debug.log)
+// fire-and-forget лог ошибок на сервер (виден в probe_debug.log)
 function frontendLog(msg) {
   try {
     fetch('/api/frontend-log', {
@@ -36,8 +44,6 @@ function frontendLog(msg) {
     }).catch(() => {});
   } catch (e) { /* noop */ }
 }
-
-frontendLog('app.js loaded');
 
 // ── utils ──
 
@@ -177,7 +183,7 @@ const Status = {
 
 const App = {
   currentPage: 'main',
-  pages: ['main', 'tester', 'lists', 'diagnostics', 'cdn', 'asn'],
+  pages: ['main', 'tester', 'lists', 'contested', 'diagnostics', 'probe', 'cdn', 'asn'],
   testActive: false,
 
   // Идёт проверка (стратегии/CDN/ASN/blob/диагностика): обходом управляет
@@ -198,27 +204,23 @@ const App = {
   },
 
   async init() {
-    frontendLog('init: start');
     this.bindNav();
     this.bindProbeButtons();
     this.handleHash();
     window.addEventListener('hashchange', () => this.handleHash());
     this.loadVersion();
     this.checkUpdate();
-    frontendLog('init: after sync part');
     try {
       const data = await apiGet('/profiles');
       PROFILES = (data.profiles || []).map(p => p.name);
     } catch (e) { PROFILES = ['default']; }
     Status.start();
     if (this.currentPage === 'main') MainPage.onShow();
-    frontendLog('init: end');
   },
 
   bindProbeButtons() {
     const scan = $('probeScanBtn');
     const start = $('probeStartBtn');
-    frontendLog('bind: scanBtn=' + !!scan + ' startBtn=' + !!start);
     if (scan) scan.addEventListener('click', () => TesterPage.scanProbeProcesses());
     const stop = $('probeStopBtn');
     if (start) start.addEventListener('click', () => TesterPage.startProbe());
@@ -251,10 +253,11 @@ const App = {
     // Смена вкладки — наверх: скролл не должен переезжать между страницами
     const content = document.querySelector('.content');
     if (content) content.scrollTop = 0;
-    const titles = { main: 'Главная', tester: 'Подбор стратегии', lists: 'Списки', diagnostics: 'Проверка системы', cdn: 'CDN-стабилизация', asn: 'ASN-скан' };
+    const titles = { main: 'Главная', tester: 'Подбор стратегии', lists: 'Списки', contested: 'Спорные домены', diagnostics: 'Проверка системы', probe: 'Анализ приложения', cdn: 'CDN-стабилизация', asn: 'ASN-скан' };
     $('pageTitle').textContent = titles[hash];
     if (hash === 'main') MainPage.onShow();
     if (hash === 'lists') ListsPage.onShow();
+    if (hash === 'contested') ListsPage.onShow();
     if (hash === 'cdn') CdnStab.init();
     if (hash === 'asn') AsnPage.init();
     if (hash === 'diagnostics') DiagnosticsPage.onShow();
@@ -965,6 +968,100 @@ const ListsPage = {
         this.load(key);
       });
     }
+    this.loadContested();
+  },
+
+  // ── Спорные домены (AWS и др.: десинк одним нужен, других ломает) ──
+  async loadContested() {
+    const tbody = $('contestedBody');
+    const prot = $('contestedProt');
+    if (!tbody) return;
+    try {
+      const r = await apiGet('/contested/status');
+      if (prot) prot.textContent = r.protection_running
+        ? 'проба идёт через работающий обход' : 'обход не запущен — проба будет «в голую»';
+      tbody.innerHTML = '';
+      for (const it of (r.items || [])) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="ct-svc">
+            <div class="contested-title">${escapeHtml(it.title)}</div>
+            <code>${escapeHtml(it.domain)}</code>
+          </td>
+          <td class="ct-why">${escapeHtml(it.why)}</td>
+          <td class="ct-check"><button class="btn btn-sm btn-primary" data-ct-check="${escapeHtml(it.id)}">Проба</button></td>
+          <td class="ct-tgl">
+            <label class="contested-toggle">
+              <input type="checkbox" ${it.enabled ? 'checked' : ''} data-ct-id="${escapeHtml(it.id)}">
+              <span class="ct-track"></span>
+            </label>
+          </td>`;
+        tbody.appendChild(tr);
+        const trRes = document.createElement('tr');
+        trRes.innerHTML = `<td colspan="4" class="contested-result" data-ct-result="${escapeHtml(it.id)}"></td>`;
+        tbody.appendChild(trRes);
+      }
+      tbody.querySelectorAll('[data-ct-id]').forEach(cb =>
+        cb.addEventListener('change', () => this.toggleContested(cb.dataset.ctId, cb.checked, cb)));
+      tbody.querySelectorAll('[data-ct-check]').forEach(btn =>
+        btn.addEventListener('click', () => this.checkContested(btn.dataset.ctCheck, btn)));
+    } catch (err) {
+      frontendLog('contested: CATCH ' + (err.message || String(err)));
+      tbody.innerHTML = '<tr><td colspan="4"><div class="empty-note">Не удалось загрузить спорные домены: '
+        + escapeHtml(err.message || String(err)) + '</div></td></tr>';
+    }
+  },
+
+  async toggleContested(id, enabled, cb) {
+    cb.disabled = true;
+    try {
+      const r = await apiPost('/contested/toggle', { id, enabled });
+      if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
+      showToast(r.message, 'ok');
+      const res = document.querySelector(`[data-ct-result="${id}"]`);
+      if (res) res.textContent = '';
+      await this.load('domInc');
+    } catch (e) {
+      showToast('Спорные домены: ' + (e.message || e), 'error');
+      cb.checked = !enabled;
+    }
+    cb.disabled = false;
+  },
+
+  async checkContested(id, btn) {
+    btn.disabled = true;
+    const label = btn.textContent;
+    btn.textContent = 'Проба…';
+    const res = document.querySelector(`[data-ct-result="${id}"]`);
+    if (res) { res.textContent = 'Проверяю… (до 10 сек)'; res.className = 'contested-result'; }
+    try {
+      const r = await apiPost('/contested/check', { id });
+      if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
+      const code = parseInt(r.code, 10);
+      const alive = code >= 100 && code < 500 && code !== 0;
+      const verb = r.with_protection ? 'с обходом' : 'без обхода (в голую)';
+      let verdict;
+      if (!alive) {
+        verdict = r.with_protection
+          ? 'не отвечает С ОБХОДОМ. Если тумблер включён — наш десинк его ломает: выключи и перепроверь. Если выключен — IP/SNI-блок провайдера: включи тумблер; не поможет — WARP.'
+          : 'не отвечает и в голую. Включи тумблер (десинк), перезапусти обход и перепробуй. Если и с обходом нет — IP-блок, поможет только WARP.';
+      } else {
+        verdict = r.with_protection
+          ? `жив с обходом (${code}).`
+          : `жив в голую (${code}) — тумблер не нужен, держи выключенным.`;
+      }
+      const text = `${verb}: HTTP ${r.code || '—'} за ${r.elapsed}s — ${verdict}`;
+      if (res) {
+        res.textContent = text;
+        res.className = 'contested-result ' + (alive ? 'is-ok' : 'is-bad');
+      }
+      showToast(`Проба: HTTP ${r.code || '—'}`, alive ? 'ok' : 'error');
+    } catch (e) {
+      if (res) { res.textContent = 'Ошибка пробы: ' + (e.message || e); res.className = 'contested-result is-bad'; }
+      showToast('Проба: ' + (e.message || e), 'error');
+    }
+    btn.textContent = label;
+    btn.disabled = false;
   },
 
   async load(key) {
@@ -1596,6 +1693,13 @@ const TesterPage = {
     const mapKey = (data.domain || '') + '|' + (data.test_type || '');
     const isOk = data.status === 'OK' || data.status === 'OK_BLOCKED';
     const isPing = data.test_type === 'ping';
+    // QUIC-класс (youtube и др.): TCP-проба сторонним клиентом под десинком
+    // не показательная — нейтральный серый статус вместо красного креста.
+    const isQuirk = !isPing && QUIRK_HOSTS.has(data.domain);
+    const isQuicStatus = isQuirk && data.status === 'QUIC';
+    // rated/control — бэкендовая категория: live-счётчики «Хосты» считаются
+    // только по rated — иначе прыгают (17/17 → 8/8) на финальном network_rate
+    const isRated = data.rated === undefined ? (!isPing && !isQuirk) : !!data.rated;
     let h = row.hosts.get(mapKey);
     const wasOk = h ? h.ok : false;
     if (!h) {
@@ -1609,21 +1713,24 @@ const TesterPage = {
         '<td class="h-err"></td>';
       row.tbody.appendChild(h.tr);
       row.total++;
-      if (!isPing) row.netTotal++;
+      if (!isPing && isRated) row.netTotal++;
     }
     h.ok = isOk;
-    // считаем «доступность» и «хосты» вживую (сеть, без пингов — как финальный network_rate)
-    if (isOk && !wasOk) { row.ok++; if (!isPing) row.netOk++; }
-    if (!isOk && wasOk) { row.ok--; if (!isPing) row.netOk--; }
+    // считаем «доступность» и «хосты» вживую (сеть, без пингов — как финальный network_rate);
+    // quirk-хосты не входят ни в rate, ни в счётчики
+    if (isOk && !wasOk) { row.ok++; if (!isPing && isRated) row.netOk++; }
+    if (!isOk && wasOk) { row.ok--; if (!isPing && isRated) row.netOk--; }
     row.hostsCell.textContent = row.netOk + '/' + row.netTotal;
     if (row.netTotal) {
       const rate = row.netOk / row.netTotal * 100;
       row.rateCell.innerHTML = `<span class="${rateClass(rate)}">${rate.toFixed(0)}%</span>`;
     }
     h.tr.className = isOk ? 'hrow-ok'
+      : data.status === 'QUIC' ? 'hrow-quirk'
       : (data.status === 'TIMEOUT' || data.status === 'BLOCKED' || data.status === 'FAIL'
         ? 'hrow-err' : 'hrow-warn');
     const stIcon = isOk ? '<span class="st-ok">✓</span>'
+      : data.status === 'QUIC' ? '<span class="st-quirk">≈ QUIC</span>'
       : data.status === 'TIMEOUT' || data.status === 'BLOCKED' || data.status === 'FAIL'
         ? '<span class="st-err">✗</span>'
         : '<span class="st-warn">•</span>';
@@ -1640,7 +1747,9 @@ const TesterPage = {
     }
     if (data.domain === 'www.youtube.com' && !row._yt) {
       row._yt = true;
-      row.ytCell.innerHTML = isOk ? '<span class="st-ok">✓</span>' : '<span class="st-err">✗</span>';
+      row.ytCell.innerHTML = isOk ? '<span class="st-ok">✓</span>'
+        : data.status === 'QUIC' ? '<span class="st-quirk">QUIC</span>'
+        : '<span class="st-err">✗</span>';
     }
   },
 
@@ -1736,6 +1845,14 @@ const TesterPage = {
           }
         }
         if (!state.running) {
+          // финальная синхронизация: строка последней стратегии могла не
+          // получить своё «Стратегия X: N%» (progress перезаписался) —
+          // все «тестируется…» закрываем, иначе висят вечно
+          for (const [k, row] of this.state.rows) {
+            if (row.stateText && row.stateText.textContent === 'тестируется…') {
+              this._finishRow(k);
+            }
+          }
           const fr = state.final_result;
           if (state.error) {
             pollActive = false; clearInterval(pollId);
@@ -2304,7 +2421,6 @@ const TesterPage = {
   _probeStarting: false,
 
   async scanProbeProcesses() {
-    frontendLog('scan clicked');
     const btn = $('probeScanBtn');
     const statusEl = $('probeStatus');
     if (statusEl) statusEl.textContent = 'Сканирование процессов…';
@@ -2427,6 +2543,7 @@ const TesterPage = {
     const udp = st.udp || {};
     const cap = st.udp_capture || {};
     const dns = st.dns || {};
+    const name = (ip) => (dns[ip] ? ` → ${escapeHtml(dns[ip][0])}` : '');
     let html = '';
     if (st.error) {
       html += `<div class="st-err">Ошибка: ${escapeHtml(st.error)}</div>`;
@@ -2438,7 +2555,7 @@ const TesterPage = {
       html += '<div class="probe-sec-title">TCP</div><table class="check-table"><tbody>';
       for (const [k, v] of Object.entries(tcp).sort((a, b) => b[1].n - a[1].n)) {
         const bad = v.state === 'SynSent' ? ' class="st-err"' : '';
-        html += `<tr><td class="mono"${bad}>${escapeHtml(k)}</td>` +
+        html += `<tr><td class="mono"${bad}>${escapeHtml(k)}${name(k.split(':')[0])}</td>` +
           `<td${bad}>${escapeHtml(v.state)}</td>` +
           `<td class="mono">×${v.n}</td></tr>`;
       }
@@ -2447,14 +2564,14 @@ const TesterPage = {
     if (Object.keys(udp).length) {
       html += '<div class="probe-sec-title">UDP</div><table class="check-table"><tbody>';
       for (const [k, v] of Object.entries(udp).sort((a, b) => b[1] - a[1])) {
-        html += `<tr><td class="mono">${escapeHtml(k)}</td><td class="mono">×${v}</td></tr>`;
+        html += `<tr><td class="mono">${escapeHtml(k)}${name(k.split(':')[0])}</td><td class="mono">×${v}</td></tr>`;
       }
       html += '</tbody></table>';
     }
     if (Object.keys(cap).length) {
       html += '<div class="probe-sec-title">UDP (захват)</div><table class="check-table"><tbody>';
       for (const [k, v] of Object.entries(cap).sort((a, b) => b[1] - a[1])) {
-        html += `<tr><td class="mono">${escapeHtml(k)}</td><td class="mono">пакетов ${v}</td></tr>`;
+        html += `<tr><td class="mono">${escapeHtml(k)}${name(k.split(':')[0])}</td><td class="mono">пакетов ${v}</td></tr>`;
       }
       html += '</tbody></table>';
     }

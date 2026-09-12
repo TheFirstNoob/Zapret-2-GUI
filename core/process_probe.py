@@ -153,8 +153,11 @@ def _dns_map(remote_ips: set[str]) -> dict[str, list[str]]:
 
 
 def _run_pktmon(pids: list[int], etl: Path, txt: Path) -> Optional[dict]:
-    """UDP-захват через pktmon (headers only). Возвращает {ip:port: count}."""
-    # сброс возможного висящего захвата (GUI могли закрыть посреди анализа)
+    """UDP-захват через pktmon (headers only). Возвращает {ip:port: count}.
+
+    Без известных UDP-портов процесса захват НЕ запускается: pktmon не умеет
+    фильтровать по PID, и без фильтра ловится весь UDP-трафик машины
+    (браузер, Discord и т.д.) — шум и раздутый ETL."""
     utils.run_quiet(["pktmon", "stop"])
     utils.run_quiet(["pktmon", "filter", "remove"])
     if etl.exists():
@@ -163,6 +166,10 @@ def _run_pktmon(pids: list[int], etl: Path, txt: Path) -> Optional[dict]:
         except OSError:
             pass
     ports = _udp_ports(pids)
+    if not ports:
+        # нет связанных UDP-сокетов — фильтровать было бы нечем (ALL UDP =
+        # мусор со всей машины); TCP-наблюдение snapshot'ами этого покрывает
+        return None
     if ports:
         for p in ports:
             utils.run_quiet(["pktmon", "filter", "add", f"gp{p}", "-t", "UDP", "-p", str(p)])
@@ -176,8 +183,13 @@ def _run_pktmon(pids: list[int], etl: Path, txt: Path) -> Optional[dict]:
     return {"ports": ports, "etl": etl, "txt": txt}
 
 
-def _finish_pktmon(handle: dict) -> dict[str, int]:
-    """Остановка захвата и парсинг remote IP:port."""
+def _finish_pktmon(handle: dict) -> dict:
+    """Остановка захвата и парсинг remote IP:port + направления пакетов.
+
+    Направление определяется по порту НАШЕГО сокета (source.port in ports
+    = исходящий к серверу, destination.port in ports = входящий ответ) —
+    это позволяет вердикту отличить «шлём, но не получаем» (UDP глушится)
+    от нормального диалога."""
     etl = Path(handle["etl"])
     txt = Path(handle["txt"])
     ports = handle["ports"]
@@ -185,6 +197,8 @@ def _finish_pktmon(handle: dict) -> dict[str, int]:
     utils.run_quiet(["pktmon", "etl2txt", str(etl), "-o", str(txt)])
     utils.run_quiet(["pktmon", "filter", "remove"])
     result: dict[str, int] = {}
+    sent = 0
+    recv = 0
     try:
         if txt.exists():
             for line in txt.read_text(encoding="utf-8", errors="replace").splitlines():
@@ -200,26 +214,36 @@ def _finish_pktmon(handle: dict) -> dict[str, int]:
                     if not _PRIVATE_RE.match(ip):
                         key = f"{ip}:{port}"
                         result[key] = result.get(key, 0) + 1
+                # у исходящих НАШ порт в источнике, у входящих — в приёмнике
+                if ap in ports:
+                    sent += 1
+                elif bp in ports:
+                    recv += 1
     finally:
         for f in (etl, txt):
             try:
                 f.unlink(missing_ok=True)
             except OSError:
                 pass
-    return result
+    return {"ips": result, "sent": sent, "recv": recv}
 
 
-def _verdict(tcp: dict, udp: dict, udp_capture: dict, ipv6: bool, no_conn: bool) -> str:
+def _verdict(tcp: dict, udp: dict, udp_capture: dict, ipv6: bool, no_conn: bool,
+             dns: Optional[dict] = None) -> str:
     if no_conn:
         return ("Нет соединений — включите анализ и воспроизведите проблему "
                 "(зайдите в игру/попробуйте обновление) во время наблюдения.")
+    dns = dns or {}
     parts = []
     if ipv6:
         parts.append("обнаружен IPv6 — обход работает только по IPv4")
+    def _name(ip: str) -> str:
+        doms = dns.get(ip)
+        return f"{ip} ({', '.join(doms[:2])})" if doms else ip
     syn = [k for k, v in tcp.items() if v["state"] == "SynSent"]
     est = [k for k, v in tcp.items() if v["state"] == "Established"]
     if syn:
-        hint = ("SynSent к " + ", ".join(k.rsplit(":", 1)[0] for k in syn[:3])
+        hint = ("SynSent к " + ", ".join(_name(k.rsplit(":", 1)[0]) for k in syn[:3])
                 + " — SYN не получает ответа (возможен IP-блок провайдера). "
                 "Десинк SYN-дроп не лечит — попробуйте WARP.")
         if est:
@@ -229,7 +253,13 @@ def _verdict(tcp: dict, udp: dict, udp_capture: dict, ipv6: bool, no_conn: bool)
         parts.append("Соединения устанавливаются — сеть работает, проблема, "
                      "вероятно, на стороне приложения/сервиса.")
     if udp_capture:
-        parts.append(f"UDP-серверов в захвате: {len(udp_capture)}.")
+        sent = udp_capture.get("sent", 0)
+        recv = udp_capture.get("recv", 0)
+        if sent and not recv:
+            parts.append(f"UDP: отправлено {sent} пакетов, входящих 0 — UDP-трафик "
+                         "к серверу глушится (ТСПУ). Десинк бессилен — WARP.")
+        elif sent and recv:
+            parts.append(f"UDP-диалог: отправлено {sent}, получено {recv}.")
     return " ".join(parts) if parts else "Соединения не обнаружены."
 
 
@@ -307,17 +337,18 @@ class ProcessProbe:
                                         "ipv6": ipv6, "phase": "наблюдение"})
                 time.sleep(2)
             udp_capture = _finish_pktmon(handle) if handle else {}
+            cap_ips = (udp_capture or {}).get("ips", {})
             remote_ips = {k.rsplit(":", 1)[0] for k in
                           list(self._state.get("tcp", {})) +
-                          list(self._state.get("udp", {})) + list(udp_capture)}
+                          list(self._state.get("udp", {})) + list(cap_ips)}
             dns = _dns_map(remote_ips) if remote_ips else {}
             no_conn = not self._state.get("tcp") and not self._state.get("udp") \
-                and not udp_capture
+                and not cap_ips
             verdict = _verdict(self._state.get("tcp", {}),
                                self._state.get("udp", {}), udp_capture,
-                               self._state.get("ipv6", False), no_conn)
+                               self._state.get("ipv6", False), no_conn, dns)
             with self._lock:
-                self._state.update({"udp_capture": udp_capture, "dns": dns,
+                self._state.update({"udp_capture": cap_ips, "dns": dns,
                                     "verdict": verdict, "phase": "завершено",
                                     "elapsed": int(time.time() - start)})
         except Exception as e:  # noqa: BLE001
