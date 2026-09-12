@@ -1,0 +1,1 @@
+.els[] | select(.id == "probePanel" or .id == "cdnPanel" or .id == "asnPanel" or .cls == "card-head" or .cls == "probe-grid" or .cls == "probe-input-row" or .id == "probeStartBtn" or .id == "cdnScanBtn" or .id == "asnScanBtn" or .cls == "cdn-body") | .id + "|" + .cls + " y=" + (.y|tostring) + " x=" + (.x|tostring) + " w=" + (.w|tostring) + " h=" + (.h|tostring)

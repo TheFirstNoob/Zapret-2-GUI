@@ -439,38 +439,48 @@
 
         <!-- ═══ Анализ приложения ═══ -->
         <section id="page-probe" class="page">
-          <div class="panel">
-            <div class="diag-head">
-              <div>
-                <div class="panel-title">Анализ приложения / игры</div>
-                <div class="panel-sub">Не работает игра или программа? Посмотрите её сеть: куда она ходит и отвечают ли соединения. Процесс можно указать заранее — анализатор дождётся его запуска.</div>
+          <div class="panel" id="probePanel">
+            <div class="card-head">
+              <div class="head-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+              </div>
+              <div class="head-text">
+                <div class="head-title">Анализ приложения / игры</div>
+                <div class="head-desc">Не работает игра или программа? Посмотрите её сеть: куда она ходит и отвечают ли соединения. Процесс можно указать заранее — анализатор дождётся его запуска.</div>
               </div>
             </div>
-            <div class="probe-controls">
-              <div class="probe-row">
-                <label class="probe-label" for="probeProcInput">Процесс (имя или PID)</label>
-                <div class="probe-input-row">
-                  <input class="input" id="probeProcInput" placeholder="напр. WardogsClient или выберите из списка →" />
-                  <select class="input" id="probeProcSelect">
-                    <option value="">— список процессов —</option>
-                  </select>
-                  <button class="btn btn-sm" id="probeScanBtn" title="Обновить список процессов с сетью">🔄 Сканировать</button>
-                </div>
+
+            <div class="probe-grid">
+              <div class="grid-label">
+                <span class="grid-title">Процесс</span>
+                <span class="grid-tag">имя или PID</span>
               </div>
-              <div class="probe-row">
-                <label class="probe-label" for="probeDurSelect">Длительность анализа</label>
-                <div class="probe-actions probe-actions-right">
-                  <select class="input input-sm" id="probeDurSelect">
-                    <option value="30">30 сек</option>
-                    <option value="60" selected>60 сек</option>
-                    <option value="120">120 сек</option>
-                  </select>
-                  <button class="btn btn-primary" id="probeStartBtn">Начать анализ</button>
-                  <button class="btn" id="probeStopBtn" hidden>Стоп</button>
-                  <button class="btn" id="probeReportBtn" hidden>Сохранить отчёт</button>
-                </div>
+              <div class="probe-input-row">
+                <input class="input" id="probeProcInput" placeholder="напр. WardogsClient или выберите из списка →" />
+                <select class="input" id="probeProcSelect">
+                  <option value="">— список процессов —</option>
+                </select>
+                <button class="btn btn-sm" id="probeScanBtn" title="Обновить список процессов с сетью">🔄 Сканировать</button>
               </div>
             </div>
+
+            <div class="probe-grid">
+              <div class="grid-label">
+                <span class="grid-title">Длительность анализа</span>
+                <span class="grid-tag">сколько секунд слушать</span>
+              </div>
+              <div class="probe-actions probe-actions-right">
+                <select class="input input-sm" id="probeDurSelect">
+                  <option value="30">30 сек</option>
+                  <option value="60" selected>60 сек</option>
+                  <option value="120">120 сек</option>
+                </select>
+                <button class="btn btn-primary" id="probeStartBtn">Начать анализ</button>
+                <button class="btn btn-stop" id="probeStopBtn" hidden>Стоп</button>
+                <button class="btn" id="probeReportBtn" hidden>Сохранить отчёт</button>
+              </div>
+            </div>
+
             <div class="probe-status" id="probeStatus"></div>
             <div class="diag-body" id="probeResults">
               <div class="empty-note">Впишите имя процесса (или выберите из списка) и нажмите «Начать анализ». Если процесс ещё не запущен — анализатор будет ждать его появления до 2 минут.</div>
@@ -629,13 +639,16 @@
 
         <!-- ═══ CDN-стабилизация ═══ -->
         <section id="page-cdn" class="page">
-          <div class="panel cdn-panel">
-            <div class="list-head">
-              <div>
-                <div class="panel-title">Скан CDN-хостов</div>
-                <div class="panel-desc">Двойной прогон: текущий режим + противоположное состояние IP-обхода, плюс сверка без защиты. Требуется работающий обход.</div>
+          <div class="panel cdn-panel" id="cdnPanel">
+            <div class="card-head">
+              <div class="head-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
               </div>
-              <div class="diag-actions">
+              <div class="head-text">
+                <div class="head-title">Скан CDN-хостов</div>
+                <div class="head-desc">Двойной прогон: текущий режим + противоположное состояние IP-обхода, плюс сверка без защиты. Требуется работающий обход.</div>
+              </div>
+              <div class="head-right">
                 <button class="btn btn-primary" id="cdnScanBtn">Сканировать CDN</button>
               </div>
             </div>
@@ -665,13 +678,16 @@
         </section>
 
         <section id="page-asn" class="page">
-          <div class="panel cdn-panel">
-            <div class="list-head">
-              <div>
-                <div class="panel-title">Скан диапазонов (110 IP)</div>
-                <div class="panel-desc">Защита временно останавливается и возвращается автоматически. Скан 3–8 минут, потом — таблица статусов и что делать.</div>
+          <div class="panel cdn-panel" id="asnPanel">
+            <div class="card-head">
+              <div class="head-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
               </div>
-              <div class="diag-actions">
+              <div class="head-text">
+                <div class="head-title">Скан диапазонов (110 IP)</div>
+                <div class="head-desc">Защита временно останавливается и возвращается автоматически. Скан 3–8 минут, потом — таблица статусов и что делать.</div>
+              </div>
+              <div class="head-right">
                 <button class="btn btn-primary" id="asnScanBtn">Запустить ASN-скан</button>
               </div>
             </div>
