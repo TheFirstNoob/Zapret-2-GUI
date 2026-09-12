@@ -1468,7 +1468,9 @@ const CdnStab = {
       return;
     }
     if (st.running) {
-      if (st.action && st.action !== 'cdn_scan') {
+      // M4: гонка старта — worker проставляет action_type асинхронно; первые
+      // тики видят action прошлого прогона → ложное «другая задача»
+      if (st.action && st.action !== 'cdn_scan' && this._pollTicks > 3) {
         this._fail('Запущена другая задача тестера — сканирование CDN прервано.');
         return;
       }

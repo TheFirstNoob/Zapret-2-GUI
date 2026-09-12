@@ -1348,7 +1348,12 @@ class Zapret2Tester:
         if not all_ips:
             return result
         try:
-            inc_path.write_text("\n".join(sorted(all_ips)) + "\n", encoding="utf-8")
+            # атомарная запись (M5): смерть процесса посреди write_text
+            # затирала ipset-include-user.txt пробными IP навсегда
+            tmp = inc_path.with_suffix(".tmp")
+            tmp.write_text("\n".join(sorted(all_ips)) + "\n", encoding="utf-8")
+            import os as _os
+            _os.replace(tmp, inc_path)
             if not self._run_profile("default", ipset_catchall=True):
                 return result
             if not self._any_winws2_running():
