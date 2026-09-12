@@ -2769,8 +2769,10 @@ const TesterPage = {
     const s = Math.floor((Date.now() - this._probeStartAt) / 1000);
     const mm = String(Math.floor(s / 60)).padStart(2, '0');
     const ss = String(s % 60).padStart(2, '0');
-    const total = String(this._probeDuration).padStart(2, '0');
-    el.textContent = `${mm}:${ss} / 00:${total}`;
+    // total в mm:ss (L6: 120 сек писалось как «00:120»)
+    const totalMm = String(Math.floor(this._probeDuration / 60)).padStart(2, '0');
+    const totalSs = String(this._probeDuration % 60).padStart(2, '0');
+    el.textContent = `${mm}:${ss} / ${totalMm}:${totalSs}`;
   },
 
   // Живая подсказка по ручному вводу процесса: имя/PID из отсканированного

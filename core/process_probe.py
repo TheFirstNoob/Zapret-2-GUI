@@ -282,26 +282,34 @@ class ProcessProbe:
         """Запуск анализа. process — имя процесса (маска) или числовой PID.
         Если процесс ещё не запущен — ждём появления до wait_sec секунд
         (захват «с нуля»: пользователь запускает игру после старта анализа)."""
-        if self.running:
-            return False, "Анализ уже запущен"
-        if duration < 5:
-            duration = 30
-        self._thread = threading.Thread(
-            target=self._run, args=(process, duration, wait_sec), daemon=True)
-        self._stop_flag.clear()
         with self._lock:
+            # двойной POST: до старта потока is_alive()==False и второй старт
+            # перетирал _thread/_state (L8) — вся процедура под локом
+            if self._thread is not None and self._thread.is_alive():
+                return False, "Анализ уже запущен"
+            if duration < 5:
+                duration = 30
+            self._thread = threading.Thread(
+                target=self._run, args=(process, duration, wait_sec), daemon=True)
+            self._stop_flag.clear()
             self._state = {"process": process, "elapsed": 0,
                            "duration": duration, "tcp": {}, "udp": {},
                            "udp_capture": None, "dns": {}, "verdict": "",
                            "error": "", "phase": "старт"}
-        self._thread.start()
+            self._thread.start()
         return True, "Анализ запущен"
 
     def _find_pids(self, spec: str) -> list[int]:
         """spec: имя-маска ('WardogsClient') или числовой PID."""
-        if spec.strip().isdigit():
-            return [int(spec.strip())]
-        script = (f"Get-Process | Where-Object {{ $_.ProcessName -like '*{spec}*' }} "
+        spec = (spec or "").strip()
+        if spec.isdigit():
+            return [int(spec)]
+        # Из POST поле попадает в PowerShell-скрипт от имени администратора:
+        # валидация + экранирование кавычек (H4, инъекция от админа)
+        if not re.fullmatch(r"[\w .\-]+", spec, flags=re.UNICODE):
+            return []
+        safe = spec.replace("'", "''")
+        script = (f"Get-Process | Where-Object {{ $_.ProcessName -like '*{safe}*' }} "
                   "| Select-Object -ExpandProperty Id | ConvertTo-Json -Compress")
         data = _ps_json(script)
         return [int(p) for p in data]

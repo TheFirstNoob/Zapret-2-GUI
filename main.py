@@ -94,7 +94,18 @@ def _ensure_data_dir() -> Path:
     if current != VERSION:
         for d in _DATA_DIRS:
             target = exe_dir / d
-            shutil.copytree(src / d, target, dirs_exist_ok=True)
+            try:
+                shutil.copytree(src / d, target, dirs_exist_ok=True)
+            except OSError as e:
+                # файл под локом AV/OneDrive — молчаливая смерть pythonw
+                # недопустима (M3): показываем причину и выходим чисто
+                ctypes.windll.user32.MessageBoxW(
+                    0,
+                    "Не удалось подготовить данные программы:\n\n"
+                    f"{e}\n\nЗакройте антивирус/OneDrive, снимите залоченные "
+                    "файлы и запустите снова.",
+                    "Zapret2 — ошибка", 0x30)
+                return
         try:
             marker.write_text(VERSION, encoding="utf-8")
         except OSError:

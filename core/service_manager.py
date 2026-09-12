@@ -1,5 +1,6 @@
 import re
 import subprocess
+import threading
 import time
 from pathlib import Path
 from typing import Optional
@@ -291,24 +292,34 @@ def stop():
 # остановок recovery выключается и включается обратно после восстановления.
 _recovery_paused: bool = False
 _recovery_was_on: bool = False
+_recovery_lock = threading.Lock()
 
 
 def pause_recovery() -> None:
+    """Не бросает исключений: зависший sc.exe не должен ронять worker (L4)."""
     global _recovery_paused, _recovery_was_on
-    if _recovery_paused:
-        return
-    _recovery_paused = True
-    code, out = _sc(["qfailure", SERVICE_NAME])
-    _recovery_was_on = ("restart" in (out or "").lower()
-                        or "перезапуск" in (out or "").lower())
-    _sc(["failure", SERVICE_NAME, "reset=", "0", "actions=", ""])
+    with _recovery_lock:
+        if _recovery_paused:
+            return
+        try:
+            code, out = _sc(["qfailure", SERVICE_NAME])
+            _recovery_was_on = code == 0 and (
+                "restart" in (out or "").lower()
+                or "перезапуск" in (out or "").lower())
+            _sc(["failure", SERVICE_NAME, "reset=", "0", "actions=", ""])
+            _recovery_paused = True
+        except Exception:
+            pass
 
 
 def resume_recovery() -> None:
     global _recovery_paused
-    if not _recovery_paused:
-        return
-    _recovery_paused = False
-    if _recovery_was_on:
-        _sc(["failure", SERVICE_NAME, "reset=", "86400",
-             "actions=", "restart/60000/restart/60000/restart/60000"])
+    with _recovery_lock:
+        if not _recovery_paused:
+            return
+        try:
+            if _recovery_was_on:
+                _sc(["failure", SERVICE_NAME, "reset=", "86400",
+                     "actions=", "restart/60000/restart/60000/restart/60000"])
+        finally:
+            _recovery_paused = False

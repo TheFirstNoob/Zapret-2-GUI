@@ -125,16 +125,27 @@ def get_process_probe():
     return _process_probe
 
 
+def _debug_append(file_name: str, msg: str) -> None:
+    """append в debug-лог с ротацией (L7): >5MB — старый в .old, новый чистый"""
+    import datetime as _dt
+    try:
+        from core.utils import get_temp_dir
+        p = get_temp_dir() / file_name
+        if p.exists() and p.stat().st_size > 5 * 1024 * 1024:
+            try:
+                p.replace(p.with_suffix(".old.log"))
+            except OSError:
+                pass
+        with open(p, "a", encoding="utf-8") as f:
+            f.write(f"{_dt.datetime.now().strftime('%H:%M:%S.%f')[:-3]} {msg}\n")
+    except Exception:
+        pass
+
+
 def _probe_debug(msg: str) -> None:
     """Probe-логи: в консоль (если есть) + в файл (GUI без консоли)."""
     print(f"[probe] {msg}", flush=True)
-    try:
-        from core.utils import get_temp_dir
-        p = get_temp_dir() / "probe_debug.log"
-        with open(p, "a", encoding="utf-8") as f:
-            f.write(msg + "\n")
-    except Exception:
-        pass
+    _debug_append("probe_debug.log", msg)
 
 
 def _ui_debug(msg: str) -> None:
@@ -142,14 +153,7 @@ def _ui_debug(msg: str) -> None:
 
     Всегда активный отладочный журнал: ловит «пользователя выкинуло на
     главный блок посреди теста» и прочие неочевидные переходы."""
-    import datetime as _dt
-    try:
-        from core.utils import get_temp_dir
-        p = get_temp_dir() / "ui_debug.log"
-        with open(p, "a", encoding="utf-8") as f:
-            f.write(f"{_dt.datetime.now().strftime('%H:%M:%S.%f')[:-3]} {msg}\n")
-    except Exception:
-        pass
+    _debug_append("ui_debug.log", msg)
 
 # Update-check result cache: one check per application session.
 _update_check_cache: Optional[dict] = None
@@ -526,7 +530,10 @@ def _scan_winws_exe() -> dict:
         for line in r.stdout.splitlines():
             parts = [p.strip(' "') for p in line.split(",")]
             if len(parts) >= 2 and parts[0].lower() == "winws.exe":
-                pid = int(parts[1])
+                try:
+                    pid = int(parts[1])
+                except ValueError:
+                    continue  # нестандартный вывод tasklist (L1)
                 break
     except (OSError, subprocess.TimeoutExpired):
         pass
@@ -812,6 +819,7 @@ def _run_asn_scan() -> None:
     svc_was = _svc_was_running()
     z2_was = tester.is_running()
     z1_was = tester._any_winws_running()
+    pause_recovery()  # SCM-перезапуск службового winws2 посреди скана (H3)
     try:
         with state.lock:
             state.reset()
@@ -830,6 +838,7 @@ def _run_asn_scan() -> None:
         with state.lock:
             state.error = str(e)
     finally:
+        resume_recovery()
         with state.lock:
             state.running = False
 
@@ -839,6 +848,7 @@ def _run_blob_probe(data: dict) -> None:
     перезапускается по одному разу на блоб — восстановление сервис-осведомлённое."""
     state = _tester_state
     tester = get_tester()
+    pause_recovery()  # SCM-перезапуск службового winws2 рушит перебор (H3)
     try:
         with state.lock:
             state.reset()
@@ -870,6 +880,7 @@ def _run_blob_probe(data: dict) -> None:
         with state.lock:
             state.error = str(e)
     finally:
+        resume_recovery()
         with state.lock:
             state.running = False
 
@@ -888,17 +899,26 @@ def _run_tester_action(data: dict) -> None:
         state.running = True
         state.reset()
         state.action_type = action
+        # гонка cancel→start: cancelled остаётся True от прошлого прогона до
+        # reset() в потоке — первый poll (350мс) видел «Тест отменён» (M2)
+        state.cancelled = False
 
     tester = get_tester()
     logger = None
     _ui_debug(f"tester worker: start action={action!r} data={dict(data)}")
-    # Длительные фазы гасят winws2 — SCM-recovery на это время выключается
-    # (иначе перезапускает службовый winws2 посреди прогона: конфликт
-    # WinDivert, обрыв теста, «зависший» процесс — баг 2026-09-12)
-    if action in ("test", "test_profiles", "naked", "full_analysis", "cdn_scan"):
-        pause_recovery()
 
     try:
+        # Длительные фазы гасят winws2 — SCM-recovery на это время выключается
+        # (иначе перезапускает службовый winws2 посреди прогона: конфликт
+        # WinDivert, обрыв теста, «зависший» процесс — баг 2026-09-12).
+        # ВНУТРИ try: зависший sc.exe не должен уронить поток до входа в
+        # try и застревать running=True навсегда (H2).
+        if action in ("test", "test_profiles", "naked", "full_analysis", "cdn_scan"):
+            try:
+                pause_recovery()
+            except Exception as _pe:
+                _ui_debug(f"pause_recovery failed: {_pe}")
+
         if action in ("test", "test_profiles", "current", "naked", "cdn_scan",
                        "check-winws", "check_vpn", "full_analysis"):
 
@@ -993,6 +1013,12 @@ def _run_tester_action(data: dict) -> None:
                 # (глобальный тоггл «Общий IP-обход»); CDN-механика переехала
                 # в отдельную вкладку (скан с A/B по ipset).
                 ipset_mode = bool(get_config_manager().load().ipset_catchall)
+
+                # Защита, которая была у пользователя ДО прогона — захватывается
+                # ДО naked-baseline: тот гасит winws2, и чтение после свеепа
+                # всегда даёт False (восстановление становилось мёртвым — H1)
+                z2_was = get_controller().status().running
+                svc_was = _svc_was_running()
 
                 # Naked baseline first: detects "strategies do nothing" cases.
                 naked_baseline = _run_tester(lambda: tester.run_naked_baseline(
@@ -1154,10 +1180,10 @@ def _run_tester_action(data: dict) -> None:
                               f"rate={best.network_rate:.1f}")
 
                     # Вернуть защиту, которая была у пользователя до теста
-                    # (было: после basic-прогона обход пропадал молча)
+                    # (было: после basic-прогона обход пропадал молча).
+                    # z2_was/svc_was захвачены В НАЧАЛЕ прогона (до naked),
+                    # здесь они уже не читаются — winws2 к этому моменту гашен.
                     if not tester.shutdown_event.is_set():
-                        z2_was = get_controller().status().running
-                        svc_was = _svc_was_running()
                         final["restored"] = _restore_protection_after_naked(
                             z2_was, False, state, svc_was)
 
@@ -1699,6 +1725,12 @@ class ZapretHandler(BaseHTTPRequestHandler):
         if not strategy:
             self._send_json({"status": "error", "message": "Стратегия не указана"})
             return
+        # имя файла стратегии строится из клиентского значения (L2):
+        # без этой проверки '..'/'../..' запускали .bat вне папки Zapret 1
+        if Path(strategy).name != strategy or ".." in strategy or any(
+                c in strategy for c in "/\\:*?\"<>|"):
+            self._send_json({"status": "error", "message": "Недопустимое имя стратегии"})
+            return
         controller = get_controller()
         z2 = controller.status()
         if z2.running:
@@ -1723,6 +1755,11 @@ class ZapretHandler(BaseHTTPRequestHandler):
             self._send_json({"status": "error", "message": str(e)})
 
     def _handle_zapret1_stop(self) -> None:
+        busy = _checkers_busy()
+        if busy:
+            self._send_json({"status": "error", "message": busy},
+                            HTTPStatus.CONFLICT)
+            return
         try:
             subprocess.run(["taskkill", "/F", "/IM", "winws.exe"],
                            capture_output=True, timeout=8,
@@ -2011,7 +2048,8 @@ class ZapretHandler(BaseHTTPRequestHandler):
             # Клиент-контролируемое имя: только базовое имя, без разделителей —
             # иначе запись вне корня (path traversal).
             if Path(zapret1_filename).name != zapret1_filename or any(
-                    c in zapret1_filename for c in "/\\:?"):
+                    c in zapret1_filename for c in "/\\:*?\"<>|") or \
+                    ".." in zapret1_filename:
                 self._send_json({"status": "error", "message": "Недопустимое имя файла стратегии"})
                 return
             try:
@@ -2106,13 +2144,14 @@ class ZapretHandler(BaseHTTPRequestHandler):
         exclude         — домен -> list-exclude.txt (hostname-исключение
                           работает в обоих режимах).
         ipset-include   — IP кандидата -> ipset-include-user.txt: точечный
-                          IP-обход хоста, который чинится только ipset
-                          (A/B «чинит» в hostlist-режиме).
-        ipset-exclude   — IP кандидата -> ipset-exclude-user.txt: хост, который
-                          ipset ломает, остаётся живым при включённом тоггле
-                          (A/B «ломает» в ipset-режиме).
-        Затем перезапуск текущего пресета, чтобы изменение вступило в силу.
+        busy-чек: применение вердикта перезапускает обход — не во время теста
+        (M1: кнопки строк страницы CDN остаются активными во время прогона).
         """
+        busy = _checkers_busy()
+        if busy:
+            self._send_json({"status": "error", "message": busy},
+                            HTTPStatus.CONFLICT)
+            return
         domain = (data.get("domain") or "").strip().lower().rstrip(".")
         action = data.get("action", "")
         ips = [str(i).strip() for i in (data.get("ips") or []) if str(i).strip()]
@@ -2168,6 +2207,11 @@ class ZapretHandler(BaseHTTPRequestHandler):
         ошибки отдельных правок не валят батч — пропускаются с причиной.
         Записи по каждому файлу дедуплицируются, затем один перезапуск.
         """
+        busy = _checkers_busy()
+        if busy:
+            self._send_json({"status": "error", "message": busy},
+                            HTTPStatus.CONFLICT)
+            return
         actions = data.get("actions") or []
         if not isinstance(actions, list) or not actions:
             self._send_json({"status": "error", "message": "Нет правок в запросе"})

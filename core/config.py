@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Optional
@@ -56,13 +57,21 @@ class ConfigManager:
 
     def save(self, config: AppConfig) -> bool:
         try:
-            self.config_path.write_text(
+            # атомарная запись (L5): kill/обрыв посреди write_text делал конфиг
+            # битым json — сбрасывался в дефолт
+            tmp = self.config_path.with_suffix(".tmp")
+            tmp.write_text(
                 json.dumps(asdict(config), indent=2, ensure_ascii=False),
                 encoding="utf-8",
             )
+            os.replace(tmp, self.config_path)
             self._config = config
             return True
         except OSError:
+            try:
+                tmp.unlink(missing_ok=True)
+            except OSError:
+                pass
             return False
 
 
