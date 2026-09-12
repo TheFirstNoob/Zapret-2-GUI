@@ -20,7 +20,7 @@ from urllib import request as _urlreq
 from core.admin import is_admin
 from core.config import AppConfig, DEFAULT_PROFILE, VERSION
 from core.launcher import build_args_from_preset, validate_args
-from core.utils import short_path
+from core.utils import known_desktop_dir, short_path
 
 # Upload host: 403 from Google Storage means the connection is fine.
 DISCORD_UPLOAD_HOST = "discord-attachments-uploads-prd.storage.googleapis.com"
@@ -121,6 +121,44 @@ def _check_path(root_dir: Path) -> Check:
                  f"{s} — в пути кириллица, а короткие имена недоступны: winws2 не запустится. "
                  "Перенесите программу в папку без кириллицы.",
                  tech="no 8.3 names available")
+
+
+def _check_launch_spot(root_dir: Path) -> Check:
+    """Болевые места запуска (0.8): из архива (временная папка), Загрузки
+    (MOTW), Документы (синхронизация), рабочий стол напрямую (замусоривание)."""
+    s = str(root_dir)
+    low = s.lower() + "\\"
+    try:
+        import tempfile as _tempfile
+        in_temp = root_dir.resolve().is_relative_to(
+            Path(_tempfile.gettempdir()).resolve())
+    except OSError:
+        in_temp = False
+    if in_temp:
+        return Check("launch_spot", "Расположение программы", "fail",
+                     "программа запущена из архива (временная папка): данные будут "
+                     "потеряны при её очистке. Распакуйте ZIP в отдельную папку и "
+                     "запускайте оттуда",
+                     tech="exe_dir inside %TEMP%")
+    if "\\downloads\\" in low or low.rstrip("\\").endswith("\\downloads"):
+        return Check("launch_spot", "Расположение программы", "warn",
+                     "папка Загрузки: файлы несут пометку «из интернета» (антивирус "
+                     "агрессивнее) и часто чистятся — лучше отдельная папка, "
+                     "например C:\\Zapret2GUI\\",
+                     tech="exe_dir inside Downloads")
+    if "\\documents\\" in low or low.rstrip("\\").endswith("\\documents"):
+        return Check("launch_spot", "Расположение программы", "warn",
+                     "папка Документы может синхронизироваться (OneDrive) и "
+                     "блокировать файлы — лучше папка вне синхронизации",
+                     tech="exe_dir inside Documents")
+    desktop = known_desktop_dir()
+    if desktop and root_dir == desktop:
+        return Check("launch_spot", "Расположение программы", "warn",
+                     "программа лежит прямо на рабочем столе: при первом обновлении "
+                     "данных рядом появятся папки и файлы программы — стол замусорится. "
+                     "Перенесите в подпапку",
+                     tech="exe_dir == Desktop directly")
+    return Check("launch_spot", "Расположение программы", "ok", s)
 
 
 def _check_preset(root_dir: Path, cfg: AppConfig) -> Check:

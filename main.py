@@ -6,6 +6,7 @@ import secrets
 import shutil
 import socket
 import sys
+import tempfile
 import threading
 import time
 import tempfile
@@ -21,7 +22,7 @@ if not getattr(sys, "frozen", False):
 
 from core.admin import is_admin, relaunch_as_admin
 from core.config import VERSION
-from core.utils import short_path
+from core.utils import known_desktop_dir, short_path
 
 
 _DATA_DIRS = ["bin", "blobs", "lua", "presets", "lists", "windivert", "frontend"]
@@ -114,6 +115,56 @@ def _ensure_data_dir() -> Path:
     return exe_dir
 
 
+def _check_launch_location(exe_dir: Path) -> None:
+    """Проверка «болевых» мест запуска (0.8): из архива, Загрузки, Документы,
+    рабочий стол напрямую. Запуск из временной папки и рабочий стол — важные
+    предупреждения (данные во временной папке / замусоренный стол); Загрузки/
+    Документы — некритичные (в дополнение есть чек в «Проверке системы»)."""
+    def show(msg: str) -> None:
+        ctypes.windll.user32.MessageBoxW(
+            0, msg, "Zapret2 — предупреждение", 0x30)
+
+    s = str(exe_dir)
+    low = s.lower() + "\\"
+    try:
+        in_temp = exe_dir.resolve().is_relative_to(
+            Path(tempfile.gettempdir()).resolve())
+    except OSError:
+        in_temp = False
+    if in_temp:
+        show(
+            "Программа запущена из архива (временная папка):\n\n"
+            f"{s}\n\n"
+            "При запуске из архива Windows распаковывает программу во временную "
+            "папку — списки, пресеты и настройки будут потеряны при её очистке.\n\n"
+            "Распакуйте ZIP в отдельную папку (например C:\\Zapret2GUI\\) "
+            "и запускайте программу оттуда.")
+        return
+    desktop = known_desktop_dir()
+    if desktop and exe_dir == desktop:
+        show(
+            "Программа запущена прямо с рабочего стола.\n\n"
+            "При первом обновлении данных рядом с программой появятся папки "
+            "и файлы (bin, lua, presets...) — рабочий стол замусорится.\n\n"
+            "Создайте папку (например C:\\Zapret2GUI\\), перенесите программу "
+            "туда и запускайте из подпапки.")
+        return
+    if "\\downloads\\" in low or low.rstrip("\\").endswith("\\downloads"):
+        show(
+            "Программа запущена из папки Загрузки.\n\n"
+            "Файлы из браузера несут пометку «из интернета» — антивирус проверяет "
+            "их агрессивнее, а папка часто чистится. Рекомендуем перенести "
+            "программу в отдельную папку (например C:\\Zapret2GUI\\).")
+        return
+    if "\\documents\\" in low or low.rstrip("\\").endswith("\\documents"):
+        show(
+            "Программа запущена из папки Документы.\n\n"
+            "Папка может синхронизироваться (OneDrive) и блокировать файлы "
+            "программы во время записи. Рекомендуем отдельную папку вне "
+            "синхронизации (например C:\\Zapret2GUI\\).")
+        return
+
+
 def _find_free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("", 0))
@@ -147,6 +198,7 @@ def main_gui() -> None:
     if getattr(sys, "frozen", False):
         if not _warn_if_bad_path(root_dir):
             return
+        _check_launch_location(root_dir)
 
     app_token = secrets.token_hex(16)
     init(root_dir, app_token)
