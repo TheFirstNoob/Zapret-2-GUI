@@ -461,12 +461,15 @@
                 <span class="grid-title">Целевой процесс</span>
                 <span class="grid-tag">имя файла .exe или PID</span>
               </div>
-              <div class="probe-input-row">
-                <input class="input" id="probeProcInput" placeholder="напр. WardogsClient.exe или выберите из списка →" />
-                <select class="input" id="probeProcSelect">
-                  <option value="">— список процессов —</option>
-                </select>
-                <button class="btn" id="probeScanBtn" title="Обновить список процессов с сетью">Сканировать</button>
+              <div class="probe-proc-col">
+                <div class="probe-input-row">
+                  <input class="input" id="probeProcInput" placeholder="напр. WardogsClient.exe или выберите из списка →" />
+                  <select class="input" id="probeProcSelect">
+                    <option value="">— список процессов —</option>
+                  </select>
+                  <button class="btn" id="probeScanBtn" title="Обновить список процессов с сетью">Сканировать</button>
+                </div>
+                <div class="probe-proc-hint" id="probeProcHint" hidden></div>
               </div>
             </div>
 

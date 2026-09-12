@@ -225,19 +225,27 @@ const App = {
     if (this.currentPage === 'main') MainPage.onShow();
   },
 
-  bindProbeButtons() {
+bindProbeButtons() {
     const scan = $('probeScanBtn');
     const start = $('probeStartBtn');
     if (scan) scan.addEventListener('click', () => TesterPage.scanProbeProcesses());
-    const stop = $('probeStopBtn');
-    if (start) start.addEventListener('click', () => TesterPage.startProbe());
-    if (stop) stop.addEventListener('click', () => TesterPage.stopProbe());
-    const report = $('probeReportBtn');
-    if (report) report.addEventListener('click', () => TesterPage.saveProbeReport());
+    const procInput = $('probeProcInput');
+    if (procInput) {
+      let t = null;
+      procInput.addEventListener('input', () => {
+        clearTimeout(t);
+        t = setTimeout(() => TesterPage._hintProbeProcess(), 250);
+      });
+    }
     const sel = $('probeProcSelect');
     if (sel) sel.addEventListener('change', () => {
       $('probeProcInput').value = sel.value;
+      TesterPage._hintProbeProcess();
     });
+if (start) start.addEventListener('click', () => TesterPage.startProbe());
+    if (stop) stop.addEventListener('click', () => TesterPage.stopProbe());
+    const report = $('probeReportBtn');
+    if (report) report.addEventListener('click', () => TesterPage.saveProbeReport());
   },
 
   bindNav() {
@@ -2609,6 +2617,7 @@ const TesterPage = {
   _probeDuration: 60,
   _probeTimer: null,
   _probeScanned: false,
+  _probeProcesses: [],
 
   _setProbeState(text, cls) {
     const chip = $('probeState');
@@ -2650,8 +2659,10 @@ const TesterPage = {
       }
       const total = (r.processes || []).length;
       this._probeScanned = true;
+      this._probeProcesses = r.processes || [];
       if (statusEl) { statusEl.textContent = `Найдено процессов: ${total}`; statusEl.className = 'probe-status'; }
       if (!quiet) showToast(`Найдено процессов: ${total}`, 'ok');
+      this._hintProbeProcess();
     } catch (e) {
       if (statusEl) { statusEl.textContent = 'Ошибка: ' + (e.message || e); statusEl.className = 'probe-status st-err'; }
       if (!quiet) showToast('Сканирование: ' + (e.message || e), 'error');
@@ -2667,6 +2678,60 @@ const TesterPage = {
     const ss = String(s % 60).padStart(2, '0');
     const total = String(this._probeDuration).padStart(2, '0');
     el.textContent = `${mm}:${ss} / 00:${total}`;
+  },
+
+  // Живая подсказка по ручному вводу процесса: имя/PID из отсканированного
+  // списка, ближайшие совпадения по имени, режим ожидания для ещё не запущенных.
+  _hintProbeProcess() {
+    const box = $('probeProcHint');
+    const input = $('probeProcInput');
+    if (!box || !input) return;
+    const v = (input.value || '').trim();
+    if (!v) { box.hidden = true; return; }
+    const list = this._probeProcesses || [];
+    box.hidden = false;
+    box.innerHTML = '';
+    const esc = escapeHtml;
+    const add = (cls, html) => { box.insertAdjacentHTML('beforeend', `<span class="${cls}">${html}</span>`); };
+    const norm = s => s.toLowerCase().replace(/\.exe$/, '');
+
+    if (/^\d+$/.test(v)) {
+      const pid = parseInt(v, 10);
+      const hit = list.find(p => p.pid === pid);
+      if (hit) {
+        add('pp-hint-ok', `✓ PID ${pid} — ${esc(hit.name)}${hit.title ? ' · ' + esc(hit.title) : ''}`);
+      } else {
+        add('pp-hint-err', `PID ${pid} не найден среди процессов с сетью — если процесс ещё не запущен, анализатор дождётся его`);
+      }
+      return;
+    }
+
+    const vn = norm(v);
+    const exact = list.filter(p => norm(p.name) === vn);
+    if (exact.length) {
+      const names = [...new Set(exact.map(p => p.name))];
+      add('pp-hint-ok', `✓ найден: ${esc(names.join(', '))} — ${exact.length} процесс${exact.length > 1 ? 'а' : ''} с сетью`);
+      return;
+    }
+
+    const subs = [...new Set(list.map(p => norm(p.name)).filter(n => n.includes(vn)))].slice(0, 4);
+    if (subs.length) {
+      add('pp-hint-warn', 'Возможно, вы имели в виду: ');
+      subs.forEach(n => {
+        const b = document.createElement('span');
+        b.className = 'pp-sugg';
+        b.textContent = n;
+        b.addEventListener('click', () => {
+          $('probeProcInput').value = n;
+          this._hintProbeProcess();
+        });
+        box.appendChild(b);
+      });
+      return;
+    }
+
+    if (!list.length) add('pp-hint-mute', 'Список процессов ещё не загружен — нажмите «Сканировать»');
+    else add('pp-hint-err', 'не найден в списке — без активных соединений или ещё не запущен (анализатор дождётся его)');
   },
 
   async startProbe() {
