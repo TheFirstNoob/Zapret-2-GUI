@@ -122,8 +122,7 @@ def build_custom(
     # (circular-перебор) требует собственного lua (--lua-init zapret-auto.lua)
     # и «стратегии внутри стратегии» — это не сегмент, а режим. Притаскивание
     # circular-сегмента в custom ломало запуск (баг 2026-09-13: «desync
-    # function 'circular' does not exist»). auto остаётся отдельным пресетом
-    # — логика auto и custom разная.
+    # function 'circular' does not exist»). auto остаётся отдельным пресетом.
     profiles = [p for p in results_by_profile
                 if p and p not in ("custom", "auto")]
 

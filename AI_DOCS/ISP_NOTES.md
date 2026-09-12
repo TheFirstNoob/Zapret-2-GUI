@@ -1,26 +1,16 @@
-# ISP-специфичные наблюдения (обновлено 2026-09-11, Pre-release 0.6)
+# ISP-специфичные наблюдения (обновлено 2026-09-13, Pre-Release 0.7.1)
 
-> Исторические данные (Zapret 1, 2026-07) — ниже. Актуальная механика Т2 —
-> STRATEGY_TRIALS (repeats=7, доля фейков, батареи 09-11).
+> Актуальная механика Т2 (repeats=8, доля фейков, батареи) — STRATEGY_TRIALS.md.
+> Исторические данные (Zapret 1, 2026-07) — ниже.
 
 ## ⚠️ ВАЖНО: `default.txt` — универсальная стратегия
 
-**`default.txt` работает у ВСЕХ протестированных провайдеров/регионов:**
-- Новороссийск («Новый Интернет»)
-- Ижевск (Марк-ИТТ)
-- Воронеж (JustLan)
-- СПб (Т2 мобильный / Skynet дома)
+Работает у ВСЕХ протестированных провайдеров/регионов:
+- Новороссийск («Новый Интернет»), Ижевск (Марк-ИТТ), Воронеж (JustLan),
+  СПб (Т2 мобильный / Skynet дома).
 
-Ранее считалось, что разные DPI требуют разных стратегий (см. OLD_LOGS ниже).
-Это опровергнуто — `default.txt` универсален.
-
-### Структура default.txt
-```
-7 блоков: Discord Voice, Discord Media TCP, Discord TCP tls,
-Google TCP tls, General TCP, QUIC Google, QUIC General
-```
-
----
+Ранее считалось, что разные DPI требуют разных стратегий (см. OLD_LOGS ниже) —
+опровергнуто.
 
 ## Доступные блобы (blobs/) — актуально 2026-09-11
 
@@ -28,14 +18,16 @@ Google TCP tls, General TCP, QUIC Google, QUIC General
 цифровых имён, стоп-лист — см. AGENTS снапшот). Ключевые:
 | Блоб | Размер | Статус на Т2 |
 |------|--------|--------------|
-| `tls_clienthello_www_google_com.bin` | 681 | эталон, по умолчанию |
-| `tls_clienthello_sochi_park.bin` | 244 | боевой запасной (проверен 09-10) |
+| `tls_clienthello_www_google_com.bin` | 681 | эталон, по умолчанию (SNI-first) |
+| `tls_clienthello_sochi_park.bin` | 244 | боевой запасной (SNI pos 1 — не first, но работает) |
 | `tls_clienthello_mail_ru.bin` / `vk_com` / `iana_org` / `hcaptcha_com` / `alfabank_ru` | 235-517 | проверены 6/6 (09-11) |
-| `tls_clienthello_max_ru.bin` | 664 | работал в general |
+| `tls_clienthello_max_ru.bin` | 664 | работал в general (SNI-first) |
 | `tls_clienthello_rutracker_org_kyber.bin` | 1787 | НЕ использовать для fake (огромный, доля фейков падает) |
 | `quic_initial_www_google_com.bin` | 1200 | QUIC Google |
 
----
+Вывод (батарея блобов 09-11): SNI фейка почти не важен — любой реальный
+браузерный hello с repeats≥7 доминирует. Провалы: имя с цифры (баг), огромные
+блобы, example.com (не разгадано).
 
 ## OLD_LOGS — исторические данные (Zapret 1)
 
@@ -51,19 +43,7 @@ Google TCP tls, General TCP, QUIC Google, QUIC General
 
 **Сейчас все эти стратегии заменены одной — `default.txt`.**
 
-### Соответствие bat → winws2 пресетам (историческое)
-
-| bat-стратегия | winws2 пресет | Статус |
-|---------------|---------------|--------|
-| DEEP FAKE | `fake-rnd-dupsid.txt` | ✅ Заменён на default.txt |
-| ALT10 | `fake-only.txt` | ✅ Заменён на default.txt |
-| ALT11 | `alt11-tcp443.txt` | ✅ Заменён на default.txt |
-| BALANCED | `fake-multisplit-combo.txt` | ✅ Заменён на default.txt |
-| ALT | `fakedsplit-zero.txt` | ✅ Заменён на default.txt |
-
----
-
-## Типы DPI (историческая справка)
+### Типы DPI (историческая справка)
 
 | Тип DPI | Симптом | Рабочая стратегия (до default.txt) |
 |---------|---------|-------------------------------------|
@@ -75,8 +55,6 @@ Google TCP tls, General TCP, QUIC Google, QUIC General
 
 **Сейчас все покрываются `default.txt`.**
 
----
-
 ## Доступные пресеты (presets/) — актуально 2026-09-11 (11 release)
 
 | Пресет | Описание |
@@ -84,7 +62,7 @@ Google TCP tls, General TCP, QUIC Google, QUIC General
 | `default.txt` | **Универсальная стратегия** — 7 блоков, все порты |
 | `default-alt.txt` | default + discord-фейки с `tls_mod=rnd,dupsid` (стабилен 3/3) |
 | `auto.txt` | default + автопереключение стратегий (circular) |
-| `tcpmd5-fake.txt` | fake + tcp_md5 (кандидат №1 для сетей с фингерпринтом) |
+| `tcpmd5-fake.txt` | fake + tcp_md5 (кандидат №1 для сетей с фингерпринтом, 100% на Т2) |
 | `fake-only.txt` | Pure fake Google TLS для тестов |
 | `fakedsplit.txt` | Fake + fakedsplit |
 | `hostfakesplit.txt` | Hostname fake + split |

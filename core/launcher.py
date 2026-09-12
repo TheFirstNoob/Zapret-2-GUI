@@ -115,28 +115,26 @@ def build_args_from_preset(
     """Read a .txt preset and return a list of command-line tokens.
 
     Resolves @lua/, @blobs/, @lists/, and @windivert/ prefixes to absolute
-    short paths.  @lua/ and @blobs/ get an @ prefix (for --lua-init, --blob
-    file refs).  @lists/ and @windivert/ resolve bare (for --hostlist,
+    short paths.  @lua/ and @blobs/ keep the @ prefix (for --lua-init, --blob
+    file refs); @lists/ and @windivert/ resolve bare (for --hostlist,
     --hostlist-exclude, --ipset file paths).
 
-    ``%GameFilter%`` placeholders in the preset are replaced with
-    ``1024-65535`` when *game_filter_mode* is not ``"off"``, or removed
-    (with trailing-comma cleanup) otherwise.
+    ``%GameFilter%`` placeholders become ``1024-65535`` when *game_filter_mode*
+    is not ``"off"``, or are removed (with trailing-comma cleanup).
 
     When *ipset_catchall* is True, every ``--hostlist=@lists/list-general.txt``
     block is replaced with an IP-based catch-all (``--ipset=ipset-all.txt.gz``
-    + ``--ipset-exclude=ipset-exclude.txt``).  This mirrors the Zapret 1
-    "general" block: desync applies to ALL traffic in the known-blocked
-    subnets (no SNI hostlist include — winws2 ANDs ipset with hostlist, so
-    keeping the include would neuter the catch-all).  The SNI-based
-    list-exclude and user exclusions still apply.
+    + ``--ipset-exclude=ipset-exclude.txt``), mirroring Zapret 1's "general"
+    block.  The SNI include is dropped — winws2 ANDs ipset with hostlist, so
+    keeping it would neuter the catch-all.  list-exclude and user exclusions
+    still apply.
 
-    When *debug* is True, appends ``--debug=@debug_winws2.log`` so that
-    winws2 writes a diagnostic log into the root directory.  The caller's ZIP
-    collector (export_data_package) will pick that file up automatically.
+    When *debug* is True, appends ``--debug=@debug_winws2.log`` so winws2
+    writes a diagnostic log into the root directory (the ZIP collector picks
+    it up automatically).
 
-    The returned tokens are NOT quoted here; quoting happens in write_run_bat via
-    subprocess.list2cmdline so that paths with spaces are handled correctly.
+    Tokens are NOT quoted here; write_run_bat quotes them via
+    subprocess.list2cmdline so paths with spaces work.
     """
     if lists_dir is None:
         lists_dir = root_dir / "lists"
@@ -145,7 +143,7 @@ def build_args_from_preset(
     short_lists = short_path(lists_dir)
     lines = preset_path.read_text(encoding="utf-8-sig").strip().splitlines()
     game_on = game_filter_mode != "off"
-    # Discord Voice режим: legacy bool + новый селект. Неизвестное значение -> off.
+    # Discord Voice: legacy bool + новый селект. Неизвестное значение -> off.
     voice_mode = (discord_voice_mode or ("fake" if discord_voice else "off")).strip().lower()
     if voice_mode not in ("off", "fake", "udplen"):
         voice_mode = "off"
@@ -157,9 +155,8 @@ def build_args_from_preset(
             auto_file.write_text("", encoding="utf-8")
         auto_path = short_path(auto_file)
 
-    # User IP-include list (page «Списки»).  Only counts when it has real
-    # entries — an empty file must not change the args at all (the working
-    # default configuration stays byte-for-byte the same).
+    # User IP-include list: только непустой файл меняет args — пустой не
+    # должен трогать конфиг вообще (байт-в-байт прежний default).
     ipset_inc_file = lists_dir / "ipset-include-user.txt"
     ipset_inc_path = ""
     if ipset_inc_file.exists():
@@ -171,10 +168,9 @@ def build_args_from_preset(
         if has_entry:
             ipset_inc_path = str(short_path(ipset_inc_file))
 
-    # User IP-exclude list: exclude always wins over include (ipset.c checks
-    # ips_exclude first), so an empty file must simply not change the args —
-    # same rule as the include list above.  Without this wiring the GUI's
-    # «IP-сети — исключения» editor wrote to a file winws2 never received.
+    # User IP-exclude list: exclude всегда сильнее include (ipset.c проверяет
+    # ips_exclude первым) — без этой связки редактор «IP-сети — исключения»
+    # писал в файл, который winws2 никогда не получал.
     ipset_excl_file = lists_dir / "ipset-exclude-user.txt"
     ipset_excl_path = ""
     if ipset_excl_file.exists():
@@ -190,19 +186,17 @@ def build_args_from_preset(
         line = line.strip()
         if not line or line.startswith("#") or line.startswith("--comment"):
             continue
-        # Targeted-mode override: turn list-general SNI blocks into an
-        # IP-based catch-all when the toggle is on (see docstring).
+        # Targeted-mode override: SNI-блоки list-general -> IP catch-all.
         if ipset_catchall and line.startswith("--hostlist=") and "list-general.txt" in line:
             tokens.append(f"--ipset={short_lists}\\ipset-all.txt.gz")
             if ipset_inc_path:
-                # Multiple --ipset tokens OR together (winws2 help: "multiple
-                # ipsets allowed") — user subnets are always desynced too.
+                # Несколько --ipset OR-ятся (winws2 help: "multiple ipsets
+                # allowed") — юзер-подсети десинкаются тоже.
                 tokens.append(f"--ipset={ipset_inc_path}")
             tokens.append(f"--ipset-exclude={short_lists}\\ipset-exclude.txt")
             if ipset_excl_path:
-                # Multiple exclude collections supported (ipset.c iterates a
-                # list): user networks win over ipset-all — IpsetCheck_ checks
-                # excludes first.
+                # Несколько exclude коллекций поддерживаются (ipset.c
+                # итерирует список); юзер-сети сильнее ipset-all.
                 tokens.append(f"--ipset-exclude={ipset_excl_path}")
             continue
         if "@lists/" in line:
@@ -222,8 +216,8 @@ def build_args_from_preset(
         if autohostlist and "--hostlist=" in line and "list-general" in line:
             tokens.append(f"--hostlist-auto={auto_path}")
     # ── Fake blob selector: подмена TLS-фейка без записи в пресет ──
-    # Регистрируется ОТДЕЛЬНОЕ имя alt_tls на новый файл и переписываются
-    # только fake:blob=<tls-blob> — seqovl_pattern (выравнивание перекрытия)
+    # Регистрируется отдельное имя alt_tls на новый файл и переписываются
+    # ТОЛЬКО fake:blob=<tls-blob> — seqovl_pattern (выравнивание перекрытия)
     # и QUIC/HTTP блобы остаются родными.
     if fake_blob:
         alt_file = blobs_dir / f"tls_clienthello_{fake_blob}.bin"
@@ -273,11 +267,10 @@ def build_args_from_preset(
                         continue
                 rebuilt.append(t)
         tokens = rebuilt
-    # CRITICAL: --lua-init @path in SEPARATE-arg form kills winws2's option
-    # parsing when the path contains NO spaces (a real winws2 bug, see
-    # AGENTS.md §23): everything after the option is silently dropped, only
-    # the default no_action profile remains → no desync at all, identical
-    # results across all presets.  The `=` form works with any path.
+    # CRITICAL (AGENTS.md §23): --lua-init @path отдельным аргументом с путём
+    # БЕЗ пробелов убивает парсинг winws2 — все опции после молча отбрасываются,
+    # остаётся 1 профиль no_action → десинка нет, результаты всех пресетов
+    # идентичны. Форма `=` работает с любым путём.
     merged: list[str] = []
     i = 0
     while i < len(tokens):
@@ -290,12 +283,11 @@ def build_args_from_preset(
             i += 1
     tokens = merged
     # Auto-inject user lists into EVERY hostlist-bearing profile block.
-    # winws2 (v1.0.2 source: desync.c dp_match/dp_find) evaluates hostlist
-    # PER PROFILE and picks the FIRST profile whose filter+hostlist match;
-    # multiple --hostlist inside one profile UNION (hostlist.c AppendHostList).
-    # Appending user lists at the very end only touched the LAST (QUIC) block
-    # — TCP blocks never saw user domains.  Inject right after the first
-    # hostlist token of each profile instead.
+    # winws2 (desync.c dp_match/dp_find) evaluates hostlist PER PROFILE and
+    # picks the FIRST profile whose filter+hostlist match; multiple --hostlist
+    # inside one profile UNION (hostlist.c AppendHostList).  Appending user
+    # lists at the end only touched the LAST (QUIC) block — TCP blocks never
+    # saw user domains.  Inject right after the first hostlist token instead.
     exclude_file = lists_dir / "list-exclude-user.txt"
     user_excl = ""
     if exclude_file.exists() and exclude_file.stat().st_size > 0:
@@ -305,10 +297,9 @@ def build_args_from_preset(
     if include_file.exists() and include_file.stat().st_size > 0:
         user_inc = f"--hostlist={short_path(include_file)}"
     if user_excl or user_inc:
-        # Per-segment processing: winws2 ANDs --ipset with --hostlist inside
-        # one profile (AGENTS.md §24.2) — injecting the SNI include into an
-        # ipset-bearing segment would collapse the catch-all to only the
-        # user's listed domains.  hostlist-exclude stays safe in both.
+        # winws2 ANDs --ipset с --hostlist внутри профиля (§24.2): инжект
+        # SNI-include в ipset-сегмент схлопнул бы catch-all до доменов юзера.
+        # hostlist-exclude безопасен в обоих случаях.
         segs: list[list[str]] = [[]]
         for t in tokens:
             if t == "--new":
@@ -351,8 +342,8 @@ def build_args_from_preset(
         tokens.append("-d10")
         tokens.append("--lua-desync=fake:blob=quic_google:repeats=10")
     # ── Discord Voice UDP fix ──
-    # fake — стандартный блок; udplen — вариант для пресетов без инлайн
-    # голосового блока (у default блок уже переписан трансформацией выше).
+    # fake — стандартный блок; udplen — для пресетов без инлайн голосового
+    # блока (у default блок уже переписан трансформацией выше).
     if voice_mode == "udplen":
         tokens.append("--new")
         tokens.append("--filter-udp=19294-19344,50000-50100")
@@ -366,10 +357,10 @@ def build_args_from_preset(
         tokens.append("--out-range=-d10")
         tokens.append("--lua-desync=fake:blob=quic_google")
     # ── User IP-includes, targeted mode ──
-    # winws2 ANDs --ipset with --hostlist inside one profile, so user subnets
-    # cannot share the general block.  Duplicate every profile block that
-    # carries list-general and swap its SNI hostlist for --ipset=<user file>:
-    # same filters/payload/desync, but matched by destination IP instead.
+    # winws2 ANDs --ipset с --hostlist внутри профиля, поэтому юзер-подсети
+    # не могут жить в общем блоке. Дублируем каждый блок с list-general и
+    # меняем SNI-hostlist на --ipset=<user file>: те же фильтры/payload/desync,
+    # но матчинг по IP назначения.
     if ipset_inc_path and not ipset_catchall:
         segs: list[list[str]] = [[]]
         for t in tokens:

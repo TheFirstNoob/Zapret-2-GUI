@@ -8,9 +8,9 @@ from typing import Optional
 
 SERVICE_NAME = "zapret2"
 
-# Короткий TTL-кэш состояния службы: фронтенд поллит /api/service/status каждые
-# ~9с, а sc query — это подпроцесс. Сбрасывается на любой мутирующей операции
-# (install/remove/start/stop/reconfigure) — как PID-кэш в контроллере (§28).
+# Короткий TTL-кэш состояния службы: фронтенд поллит /api/service/status
+# каждые ~9с, а sc query — подпроцесс. Сбрасывается на любой мутирующей
+# операции (install/remove/start/stop/reconfigure).
 _STATUS_TTL = 10.0
 _status_cache_at = 0.0
 _status_cache_value: Optional[str] = None
@@ -76,9 +76,9 @@ def status() -> str:
     if code != 0:
         _status_cache_value = "not_installed"
     else:
-        # Parse SCM state from sc query output.  The header is localized
-        # ("STATE" is "СОСТОЯНИЕ" on Russian Windows), but the VALUE is always
-        # English ("4  RUNNING") — search the value, not the label.
+        # Парсим ЗНАЧЕНИЕ из sc query: заголовок локализован («STATE» —
+        # «СОСТОЯНИЕ» на русской Windows), но значение всегда английское
+        # ("4  RUNNING") — ищем значение, не подпись.
         upper = out.upper()
         _status_cache_value = "running" if "RUNNING" in upper else "stopped"
     _status_cache_at = now
@@ -91,17 +91,17 @@ def _zapret1_service_exists() -> bool:
 
 
 def _service_cmdline(exe: Path, args: list[str]) -> str:
-    """binPath value in the Zapret 1 format: \"exe\" \"arg\" ... — the
-    backslash-quotes are processed by cmd.exe's line parser, exactly like
-    v1's service.bat.  Passing plain quotes via argv makes sc drop the
-    image path or store the escaped form literally."""
+    """binPath в формате Zapret 1: \"exe\" \"arg\" ... — обратные слэш-кавычки
+    обрабатываются парсером cmd.exe, ровно как в v1's service.bat. Обычные
+    кавычки через argv заставляют sc ронять путь или хранить экранированный
+    вид буквально."""
     parts = [f'\\"{exe}\\"']
     parts += [f'\\"{a}\\"' if " " in a else a for a in args]
     return " ".join(parts)
 
 
 def _read_stored_binpath() -> str:
-    """Stored binPath of the service (locale-independent via CIM)."""
+    """Сохранённый binPath службы (locale-independent через CIM)."""
     ps = ("(Get-CimInstance Win32_Service -Filter \"Name='%s'\").PathName"
           % SERVICE_NAME)
     r = subprocess.run(
@@ -206,10 +206,9 @@ def install(root_dir: Optional[Path] = None, args: Optional[list[str]] = None) -
         return False, "winws2.exe не найден"
     if args is None:
         args = []
-    # winws2.exe is the service binary DIRECTLY (like Zapret 1's service.bat:
-    # binPath = "winws.exe <args>", start= auto).  A cmd.exe /C bat wrapper
-    # is what Defender's behavior analytics flags as suspicious — the direct
-    # binary matches the reputable zapret ecosystem and does not trigger.
+    # winws2.exe — бинарник службы НАПРЯМУЮ (как service.bat у Zapret 1:
+    # binPath = "winws.exe <args>", start= auto). cmd-обёртка — то, что
+    # поведенческие детекты Defender помечают подозрительным.
     cmdline = _service_cmdline(exe, args)
     code, out = _sc_run_bat([
         f'sc create {SERVICE_NAME} binPath= "{cmdline}" '
@@ -286,10 +285,10 @@ def stop():
 
 
 # ── SCM-recovery pause/resume (2026-09-12) ─────────────────
-# Тестер/сканы гасят winws2 на весь прогон. Если SCM-recovery активен,
-# он через 60с ПЕРЕЗАПУСКАЕТ службовый winws2 посреди теста → конфликт
-# WinDivert, обрыв прогона, «зависший» процесс. На время управляемых
-# остановок recovery выключается и включается обратно после восстановления.
+# Тестер/сканы гасят winws2 на весь прогон. Если SCM-recovery активен, он
+# через 60с ПЕРЕЗАПУСКАЕТ службовый winws2 посреди теста → конфликт
+# WinDivert, обрыв прогона. На время управляемых остановок recovery
+# выключается и включается обратно после восстановления.
 _recovery_paused: bool = False
 _recovery_was_on: bool = False
 _recovery_lock = threading.Lock()

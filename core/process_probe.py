@@ -18,8 +18,8 @@ from typing import Optional
 
 import core.utils as utils
 
-# RemoteSigned (а не Bypass): скрипты — read-only Get-* cmdlets, политика их не
-# трогает, а флаг Bypass — классический эвристический паттерн для AV/EDR.
+# RemoteSigned (а не Bypass): скрипты — read-only Get-* cmdlets, политика их
+# не трогает, а Bypass — классический эвристический паттерн для AV/EDR.
 # Проверено 2026-09-12: вывод идентичен Bypass на всех вызовах _ps/_ps_json.
 PS_BASE = ["powershell", "-NoProfile", "-ExecutionPolicy", "RemoteSigned", "-Command"]
 
@@ -189,10 +189,10 @@ def _run_pktmon(pids: list[int], etl: Path, txt: Path) -> Optional[dict]:
 def _finish_pktmon(handle: dict) -> dict:
     """Остановка захвата и парсинг remote IP:port + направления пакетов.
 
-    Направление определяется по порту НАШЕГО сокета (source.port in ports
-    = исходящий к серверу, destination.port in ports = входящий ответ) —
-    это позволяет вердикту отличить «шлём, но не получаем» (UDP глушится)
-    от нормального диалога."""
+    Направление определяется по порту НАШЕГО сокета (source.port in ports =
+    исходящий к серверу, destination.port in ports = входящий ответ) — это
+    позволяет вердикту отличить «шлём, но не получаем» (UDP глушится) от
+    нормального диалога."""
     etl = Path(handle["etl"])
     txt = Path(handle["txt"])
     ports = handle["ports"]

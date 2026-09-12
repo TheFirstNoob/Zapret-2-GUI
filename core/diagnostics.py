@@ -20,20 +20,20 @@ from urllib import request as _urlreq
 from core.admin import is_admin
 from core.config import AppConfig, DEFAULT_PROFILE, VERSION
 from core.launcher import build_args_from_preset, validate_args
-from core.utils import short_path
+from core.utils import known_desktop_dir, short_path
 
 # Upload host: 403 from Google Storage means the connection is fine.
 DISCORD_UPLOAD_HOST = "discord-attachments-uploads-prd.storage.googleapis.com"
 
 # Connectivity checks: host, human name, expected-any-code (canary must be 2xx-3xx).
-# i.ytimg.com is checked BEFORE www.youtube.com so the YouTube TCP quirk
-# (§17: TCP blocked everywhere, browser works via QUIC) can be explained
-# using the CDN reachability result instead of showing a false red cross.
+# i.ytimg.com проверяется ДО www.youtube.com, чтобы YouTube TCP-квирк (§17:
+# TCP режется везде, браузер идёт через QUIC) объяснялся результатом CDN
+# вместо ложного красного креста.
 #
-# Discord-аплоад-хост ВЫЧЕРСНУТ из списка чеков (2026-09-12): его путь —
-# клиентский QUIC (§15), curl-проба сквозь десинк всегда 000 и неинформативна
-# в обе стороны; постоянная серая строка в отчёте — только шум. Если файлы
-# в клиенте не отправляются — смотри «Анализ приложения» (UDP/захват).
+# Discord-аплоад-хост ВЫЧЕРСНУТ из чеков (2026-09-12): его путь — клиентский
+# QUIC (§15), curl-проба сквозь десинк всегда 000 и неинформативна; постоянная
+# серая строка — только шум. Если файлы не отправляются — смотри «Анализ
+# приложения» (UDP/захват).
 _NET_CHECKS = [
     ("www.google.com", "Интернет (канарейка)", "canary"),
     ("discord.com", "Discord", "any"),
@@ -44,9 +44,8 @@ _NET_CHECKS = [
 # QUIC-класс (§15/§17): браузер и клиент Дискорда ходят к этим хостам через
 # QUIC/свой TLS, а диагностика пробует «чужой» TLS-клиент (curl/openssl)
 # сквозь движок обхода. google-блок (fake+multisplit, drop+repeats) ломает
-# сторонний ClientHello — пробы дают 000 при работающем у пользователя
-# интернете. Для таких хостов красный крест = ложный, это измерение чужого
-# клиента, а не реального опыта.
+# сторонний ClientHello — пробы дают 000 при работающем интернете. Для таких
+# хостов красный крест = ложный: измеряется чужой клиент, не реальный опыт.
 _QUIC_QUIRK_HOSTS = {
     "www.google.com",
     "i.ytimg.com",
@@ -123,6 +122,44 @@ def _check_path(root_dir: Path) -> Check:
                  tech="no 8.3 names available")
 
 
+def _check_launch_spot(root_dir: Path) -> Check:
+    """Болевые места запуска (0.8): из архива (временная папка), Загрузки
+    (MOTW), Документы (синхронизация), рабочий стол напрямую (замусоривание)."""
+    s = str(root_dir)
+    low = s.lower() + "\\"
+    try:
+        import tempfile as _tempfile
+        in_temp = root_dir.resolve().is_relative_to(
+            Path(_tempfile.gettempdir()).resolve())
+    except OSError:
+        in_temp = False
+    if in_temp:
+        return Check("launch_spot", "Расположение программы", "fail",
+                     "программа запущена из архива (временная папка): данные будут "
+                     "потеряны при её очистке. Распакуйте ZIP в отдельную папку и "
+                     "запускайте оттуда",
+                     tech="exe_dir inside %TEMP%")
+    if "\\downloads\\" in low or low.rstrip("\\").endswith("\\downloads"):
+        return Check("launch_spot", "Расположение программы", "warn",
+                     "папка Загрузки: файлы несут пометку «из интернета» (антивирус "
+                     "агрессивнее) и часто чистятся — лучше отдельная папка, "
+                     "например C:\\Zapret2GUI\\",
+                     tech="exe_dir inside Downloads")
+    if "\\documents\\" in low or low.rstrip("\\").endswith("\\documents"):
+        return Check("launch_spot", "Расположение программы", "warn",
+                     "папка Документы может синхронизироваться (OneDrive) и "
+                     "блокировать файлы — лучше папка вне синхронизации",
+                     tech="exe_dir inside Documents")
+    desktop = known_desktop_dir()
+    if desktop and root_dir == desktop:
+        return Check("launch_spot", "Расположение программы", "warn",
+                     "программа лежит прямо на рабочем столе: при первом обновлении "
+                     "данных рядом появятся папки и файлы программы — стол замусорится. "
+                     "Перенесите в подпапку",
+                     tech="exe_dir == Desktop directly")
+    return Check("launch_spot", "Расположение программы", "ok", s)
+
+
 def _check_preset(root_dir: Path, cfg: AppConfig) -> Check:
     profile = cfg.last_profile or DEFAULT_PROFILE
     exe = root_dir / "bin" / "winws2.exe"
@@ -162,8 +199,8 @@ def _check_debug_log(root_dir: Path, debug_enabled: bool) -> Check:
 
 
 def _check_net() -> list[Check]:
-    # Все пробы параллельно: TLS-проба сквозь десинк доходит до таймаута
-    # (6с) и HTTP-фолбэк добавляет свои секунды — последовательный перебор
+    # Все пробы параллельно: TLS-проба сквозь десинк доходит до таймаута (6с)
+    # и HTTP-фолбэк добавляет свои секунды — последовательный перебор
     # растягивал этап связи до ~40с. Пары задач по хосту — один этап ~6-8с.
     from concurrent.futures import ThreadPoolExecutor
 
@@ -185,10 +222,10 @@ def _check_net() -> list[Check]:
         if code is None or code < 100:
             # Сторонний TLS-клиент (curl/openssl) сквозь движок ломается на
             # google-классе (fake+multisplit рвёт «небраузерный» ClientHello),
-            # тогда как реальный опыт идёт через QUIC (браузер, клиент Discord).
-            # 1) HTTP (порт 80) фолбэк: живой HTTP = интернет жив.
-            # 2) QUIC-квирк-хосты: warn вместо красного креста.
-            # 3) Если HTTP тоже мёртв — classify_block (SNI-swap) отличает
+            # тогда как реальный опыт идёт через QUIC. Порядок:
+            # 1) HTTP-80 фолбэк: живой HTTP = интернет жив;
+            # 2) QUIC-квирк-хосты: warn вместо красного креста;
+            # 3) если HTTP тоже мёртв — classify_block (SNI-swap) отличает
             #    «десинк ломает клиент/движок не берёт» от реального блока.
             if http_code is not None and http_code >= 100:
                 checks.append(Check(f"net_{host}", name, "ok",
@@ -200,9 +237,9 @@ def _check_net() -> list[Check]:
             quirk = host in _QUIC_QUIRK_HOSTS
             if quirk:
                 if kind == "upload_check":
-                    # проба не измеряет клиентскую функцию: файлы Discord
-                    # шлёт через QUIC (§15) — curl-путь не показателен ни
-                    # в какую сторону, врать зелёным/пугать жёлтым нельзя
+                    # проба не измеряет клиентскую функцию: файлы Discord шлёт
+                    # через QUIC (§15) — curl-путь не показателен ни в какую
+                    # сторону, врать зелёным/пугать жёлтым нельзя
                     checks.append(Check(f"net_{host}", name, "skip",
                                         "автопроверка этот путь не измеряет: клиент Discord "
                                         "отправляет файлы через QUIC. Проверьте отправкой файла "
@@ -476,11 +513,10 @@ def _check_dns_poison() -> Check:
 def _check_lan_peers() -> Check:
     """Информационный чек: другие активные хосты в LAN (по ARP-кэшу).
 
-    Локальные машины WinDivert друг друга не перехватывают, но ТСПУ видит
-    их как одного абонента (один публичный IP за NAT): агрессивные фейки
-    с двух ПК складываются в общую пер-IP статистику DPI. Известный кейс
-    (Zapret 1): два ПК на одной Wi-Fi — «стратегии глушили друг друга»,
-    приходилось включать разные. Заплатка — подсказка в диагностике,
+    Локальные машины WinDivert друг друга не перехватывают, но ТСПУ видит их
+    как одного абонента (один публичный IP за NAT): агрессивные фейки с двух
+    ПК складываются в общую пер-IP статистику DPI. Кейс (Zapret 1): два ПК на
+    одной Wi-Fi — «стратегии глушили друг друга». Заплатка — подсказка,
     стратегию выбирает пользователь.
     """
     try:
@@ -522,8 +558,7 @@ def _check_dns_spoof_servers() -> Check:
     """Какие публичные DNS-серверы подменяют ответы для заблокированных
     доменов (метод dpi-detector): эталон берём через DoH Google, ответы
     серверов — через nslookup (UDP 53 проходит через ТСПУ и может
-    перехватываться). Отвечает на вопрос пользователя «какой DNS
-    включить, чтобы сайт открылся»."""
+    перехватываться). Отвечает на вопрос «какой DNS включить»."""
     test_domain = "rutor.info"
     servers = [("8.8.8.8", "Google"), ("1.1.1.1", "Cloudflare"),
                ("77.88.8.8", "Яндекс"), ("9.9.9.9", "Quad9")]
@@ -621,7 +656,7 @@ def run_diagnostics(root_dir: Path, cfg: AppConfig, progress_cb=None) -> dict:
     except Exception as e:
         _add(Check("env", "Окружение", "skip", f"не удалось проверить: {e}"))
 
-    # LAN-соседи (информационно; см. _check_lan_peers — кейс «два ПК глушили друг друга»)
+    # LAN-соседи (информационно; кейс «два ПК глушили друг друга»)
     _add(_check_lan_peers())
 
     # DNS-серверы, которые подменяют ответы для заблокированных доменов

@@ -4,11 +4,11 @@ import subprocess
 import winreg
 from typing import Optional
 
-# TCP timestamps state on modern Windows lives in the NetTCPSetting
-# templates ("Internet" default), NOT in the legacy Tcp1323Opts registry
-# value.  On Win11 the legacy value can read 0x2 (timestamps "off") while
-# the template says Enabled — the template is authoritative.
-# ts-fooling (tcp_ts=...) needs timestamps ON.
+# Состояние TCP timestamps на современных Windows живёт в шаблонах
+# NetTCPSetting ("Internet" default), НЕ в legacy-реестре Tcp1323Opts.
+# На Win11 legacy-значение может читаться как 0x2 (timestamps "off") при
+# включённом шаблоне — авторитетен шаблон. ts-fooling (tcp_ts=...) требует
+# включённых timestamps.
 
 _KEY = r"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters"
 _VALUE = "Tcp1323Opts"
@@ -59,8 +59,8 @@ def timestamps_enabled() -> bool:
 
 
 def _set_modern(enabled: bool) -> bool:
-    # Set-NetTCPSetting prints nothing on success — judge by exit code,
-    # then confirm via the authoritative getter.
+    # Set-NetTCPSetting ничего не печатает при успехе — судим по коду
+    # возврата, затем подтверждаем авторитетным геттером.
     try:
         r = subprocess.run(
             ["powershell", "-NoProfile", "-NonInteractive", "-Command",

@@ -77,7 +77,7 @@ def get_network_info() -> dict:
 
 
 def get_routing_info() -> dict:
-    """Собирает короткий tracert до публичного DNS для анализа хопов провайдера.
+    """Короткий tracert до публичного DNS для анализа хопов провайдера.
     2026-09-13: -h 6 / -w 800 — полный -h 8/-w 1500 растягивал сбор отчёта до
     20-30с (каждый не отвечающий хоп ждал 1.5с×3)."""
     return {
@@ -186,8 +186,8 @@ def export_data_package(
                 zf.write(cfg_json, "zapret2_config.json")
 
             # debug_winws2.log НЕ включается (2026-09-13): тестер не запускает
-            # winws2 с --debug, файл — остаток от прошлой DEBUG-сессии и в
-            # отчёт не должен попадать; exp-/cand-/test- пресеты тоже
+            # winws2 с --debug, файл — остаток от прошлой DEBUG-сессии;
+            # exp-/cand-/test- пресеты тоже не попадают в отчёт.
             presets_dir = root_dir / "presets"
             if presets_dir.is_dir():
                 for pf in sorted(presets_dir.glob("*.txt")):

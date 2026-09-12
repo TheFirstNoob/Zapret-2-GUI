@@ -6,14 +6,15 @@ import secrets
 import shutil
 import socket
 import sys
+import tempfile
 import threading
 import time
 import tempfile
 from pathlib import Path
 
-# Embeddable Python (portable build) uses a ._pth file that disables the
-# automatic addition of the script directory to sys.path — without this
-# import core would fail with ModuleNotFoundError on the portable build.
+# Embeddable Python (portable build) uses a ._pth file that disables
+# auto-adding the script dir to sys.path — without this, imports of core
+# would fail on the portable build.
 if not getattr(sys, "frozen", False):
     _app_dir = os.path.dirname(os.path.abspath(__file__))
     if _app_dir not in sys.path:
@@ -21,7 +22,7 @@ if not getattr(sys, "frozen", False):
 
 from core.admin import is_admin, relaunch_as_admin
 from core.config import VERSION
-from core.utils import short_path
+from core.utils import known_desktop_dir, short_path
 
 
 _DATA_DIRS = ["bin", "blobs", "lua", "presets", "lists", "windivert", "frontend"]
@@ -30,8 +31,7 @@ _DATA_DIRS = ["bin", "blobs", "lua", "presets", "lists", "windivert", "frontend"
 def _cleanup_stale_mei() -> None:
     """PyInstaller onefile unpacks into %TEMP%\\_MEIxxxxx on EVERY run; on
     abnormal exit the unpack dir stays behind (webview child still alive /
-    antivirus holds a file) and 'Failed to remove temporary directory' is
-    reported on shutdown.  Remove stale ones (older than 24h) — never our
+    antivirus holds a file).  Remove stale ones (older than 24h) — never our
     current _MEIPASS, never non-stale dirs (other apps' PyInstaller runs)."""
     if not getattr(sys, "frozen", False):
         return
@@ -51,7 +51,7 @@ def _cleanup_stale_mei() -> None:
 
 
 def _warn_if_bad_path(exe_dir: Path) -> bool:
-    """Return True when the install path is safe for winws2.
+    """True when the install path is safe for winws2.
 
     ASCII paths (spaces included) are safe — launchers quote them correctly.
     Non-ASCII paths only work while 8.3 short names are available (the .bat
@@ -83,9 +83,9 @@ def _ensure_data_dir() -> Path:
     exe_dir = Path(sys.executable).resolve().parent
     src = Path(sys._MEIPASS)
 
-    # Refresh bundled data only when the application version changes so user
-    # edits to bundled presets/lists survive regular launches.  copytree never
-    # deletes extra files — user-added presets and *-user.txt lists are safe.
+    # Refresh bundled data only when the version changes, so user edits to
+    # bundled presets/lists survive regular launches; copytree never deletes
+    # extra files — user presets and *-user.txt lists are safe.
     marker = exe_dir / "data_version.txt"
     try:
         current = marker.read_text(encoding="utf-8").strip() if marker.exists() else ""
@@ -112,6 +112,56 @@ def _ensure_data_dir() -> Path:
             pass
 
     return exe_dir
+
+
+def _check_launch_location(exe_dir: Path) -> None:
+    """Проверка «болевых» мест запуска (0.8): из архива, Загрузки, Документы,
+    рабочий стол напрямую. Временная папка и рабочий стол — важные
+    предупреждения; Загрузки/Документы — некритичные (есть чек в
+    «Проверке системы»)."""
+    def show(msg: str) -> None:
+        ctypes.windll.user32.MessageBoxW(
+            0, msg, "Zapret2 — предупреждение", 0x30)
+
+    s = str(exe_dir)
+    low = s.lower() + "\\"
+    try:
+        in_temp = exe_dir.resolve().is_relative_to(
+            Path(tempfile.gettempdir()).resolve())
+    except OSError:
+        in_temp = False
+    if in_temp:
+        show(
+            "Программа запущена из архива (временная папка):\n\n"
+            f"{s}\n\n"
+            "При запуске из архива Windows распаковывает программу во временную "
+            "папку — списки, пресеты и настройки будут потеряны при её очистке.\n\n"
+            "Распакуйте ZIP в отдельную папку (например C:\\Zapret2GUI\\) "
+            "и запускайте программу оттуда.")
+        return
+    desktop = known_desktop_dir()
+    if desktop and exe_dir == desktop:
+        show(
+            "Программа запущена прямо с рабочего стола.\n\n"
+            "При первом обновлении данных рядом с программой появятся папки "
+            "и файлы (bin, lua, presets...) — рабочий стол замусорится.\n\n"
+            "Создайте папку (например C:\\Zapret2GUI\\), перенесите программу "
+            "туда и запускайте из подпапки.")
+        return
+    if "\\downloads\\" in low or low.rstrip("\\").endswith("\\downloads"):
+        show(
+            "Программа запущена из папки Загрузки.\n\n"
+            "Файлы из браузера несут пометку «из интернета» — антивирус проверяет "
+            "их агрессивнее, а папка часто чистится. Рекомендуем перенести "
+            "программу в отдельную папку (например C:\\Zapret2GUI\\).")
+        return
+    if "\\documents\\" in low or low.rstrip("\\").endswith("\\documents"):
+        show(
+            "Программа запущена из папки Документы.\n\n"
+            "Папка может синхронизироваться (OneDrive) и блокировать файлы "
+            "программы во время записи. Рекомендуем отдельную папку вне "
+            "синхронизации (например C:\\Zapret2GUI\\).")
+        return
 
 
 def _find_free_port() -> int:
@@ -147,6 +197,7 @@ def main_gui() -> None:
     if getattr(sys, "frozen", False):
         if not _warn_if_bad_path(root_dir):
             return
+        _check_launch_location(root_dir)
 
     app_token = secrets.token_hex(16)
     init(root_dir, app_token)
