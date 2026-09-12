@@ -1,0 +1,146 @@
+json -> ui_dump_tester.json  (78 visible elements, viewport 1280x840)
+
+===== DIGEST (main page) =====
+y  92.2 x    10     179x 37.6  a.nav-link "Главная"
+         parent=div.nav-group disp=flex pos=static grow=0 fs=13.5px lh=19.575px wsn=normal minW=0px maxW=none hgt=37.5625px minH=0px pad=9px 10px gap=6px ai=center js=normal
+y 183.4 x    10     179x 37.6  a.nav-link "Проверка системы"
+         parent=div.nav-group disp=flex pos=static grow=0 fs=13.5px lh=19.575px wsn=normal minW=0px maxW=none hgt=37.5625px minH=0px pad=9px 10px gap=6px ai=center js=normal
+y   221 x    10     179x 37.6  a.nav-link "Анализ приложения"
+         parent=div.nav-group disp=flex pos=static grow=0 fs=13.5px lh=19.575px wsn=normal minW=0px maxW=none hgt=37.5625px minH=0px pad=9px 10px gap=6px ai=center js=normal
+y 258.5 x    10     179x 37.6  a.nav-link.active
+         parent=div.nav-group disp=flex pos=static grow=0 fs=13.5px lh=19.575px wsn=normal minW=0px maxW=none hgt=37.5625px minH=0px pad=9px 10px gap=6px ai=center js=normal
+y 349.8 x    10     179x 37.6  a.nav-link "Списки"
+         parent=div.nav-group disp=flex pos=static grow=0 fs=13.5px lh=19.575px wsn=normal minW=0px maxW=none hgt=37.5625px minH=0px pad=9px 10px gap=6px ai=center js=normal
+y 387.3 x    10     179x 37.6  a.nav-link "Спорные домены"
+         parent=div.nav-group disp=flex pos=static grow=0 fs=13.5px lh=19.575px wsn=normal minW=0px maxW=none hgt=37.5625px minH=0px pad=9px 10px gap=6px ai=center js=normal
+y 424.9 x    10     179x 37.6  a.nav-link "CDN-стабилизация"
+         parent=div.nav-group disp=flex pos=static grow=0 fs=13.5px lh=19.575px wsn=normal minW=0px maxW=none hgt=37.5625px minH=0px pad=9px 10px gap=6px ai=center js=normal
+y 462.5 x    10     179x 37.6  a.nav-link "ASN-скан"
+         parent=div.nav-group disp=flex pos=static grow=0 fs=13.5px lh=19.575px wsn=normal minW=0px maxW=none hgt=37.5625px minH=0px pad=9px 10px gap=6px ai=center js=normal
+y 778.9 x    14     171x 32.1  div#protChip.prot-chip.state-ok
+         parent=div.sidebar-foot disp=flex pos=static grow=0 fs=12.5px lh=18.125px wsn=normal minW=0px maxW=none hgt=32.125px minH=0px pad=6px 9px gap=7px ai=center js=normal
+y    10 x   216   127.9x 21.8  h1#pageTitle "Подбор стратегии"
+         parent=header.topbar disp=block pos=static grow=0 fs=15px lh=21.75px wsn=normal minW=auto maxW=none hgt=21.75px minH=auto pad=0px gap=normal ai=normal js=normal
+y  41.8 x   216    1048x461.8  div#testerSetup.panel
+         parent=div#testerIntro.stack disp=block pos=relative grow=0 fs=13px lh=18.85px wsn=normal minW=0px maxW=none hgt=461.781px minH=0px pad=12px 16px gap=normal ai=normal js=normal
+y 127.7 x1058.3   171.7x   24  button#btnDiagCheck.btn.btn-sm "Открыть проверку системы"
+         parent=div.step-actions disp=flex pos=static grow=0 fs=12px lh=17.4px wsn=nowrap minW=64px maxW=none hgt=24px minH=auto pad=0px 9px gap=6px ai=center js=center
+y 262.6 x   250     980x108.8  div.test-options
+         parent=div.step-box disp=flex pos=static grow=0 fs=13px lh=18.85px wsn=normal minW=auto maxW=none hgt=108.781px minH=auto pad=0px gap=normal ai=normal js=normal
+y 263.6 x   251     978x 52.9  label.opt-line
+         parent=div.test-options disp=flex pos=relative grow=0 fs=12.5px lh=18.125px wsn=normal minW=auto maxW=none hgt=52.8906px minH=auto pad=8px 12px gap=10px ai=center js=normal
+y 282.1 x   263      16x   16  input#extendedCheck
+         parent=label.opt-line disp=block pos=static grow=0 fs=13.3333px lh=normal wsn=normal minW=auto maxW=none hgt=16px minH=auto pad=0px gap=normal ai=normal js=normal
+y 316.5 x   251     978x 53.9  label.opt-line
+         parent=div.test-options disp=flex pos=relative grow=0 fs=12.5px lh=18.125px wsn=normal minW=auto maxW=none hgt=53.8906px minH=auto pad=8px 12px gap=10px ai=center js=normal
+y   336 x   263      16x   16  input#logCheck
+         parent=label.opt-line disp=block pos=static grow=0 fs=13.3333px lh=normal wsn=normal minW=auto maxW=none hgt=16px minH=auto pad=0px gap=normal ai=normal js=normal
+y 393.4 x   250   115.2x   28  button#btnStartTest.btn.btn-primary "Начать подбор"
+         parent=div disp=inline-flex pos=static grow=0 fs=12.5px lh=18.125px wsn=nowrap minW=96px maxW=none hgt=28px minH=0px pad=0px 12px gap=6px ai=center js=center
+
+===== ASCII MAP (8px/cell) =====
+                                                                                                                                                                
+                           ----------------                                                                                                                     
+                           |      H       |                                                                                                                     
+                           ----------------                                                                                                                     
+                                                                                                                                                                
+                           -----------------------------------------------------------------------------------------------------------------------------------  
+                           |                                                                                                                                 |  
+                           |                                                                                                                                 |  
+                           |                                                                                                                                 |  
+                           |                                                                                                                                 |  
+                           |                                                                                                                                 |  
+ -----------------------   |                                                                                                                                 |  
+ |                     |   |                                                                                                                                 |  
+ |          n          |   |                                                                                                                                 |  
+ |                     |   |                                                                                                                                 |  
+ |                     |   |                                                                                                        ----------------------   |  
+ -----------------------   |                                                                                                        |                    |   |  
+                           |                                                                                                        |          B         |   |  
+                           |                                                                                                        ----------------------   |  
+                           |                                                                                                                                 |  
+                           |                                                                                                                                 |  
+                           |                                                                                                                                 |  
+ -----------------------   |                                                                                                                                 |  
+ |                     |   |                                                                                                                                 |  
+ |                     |   |                                                                                                                                 |  
+ |          n          |   |                                                                                                                                 |  
+ |                     |   |                                                                                                                                 |  
+ -----------------------   |                                                                                                                                 |  
+ |                     |   |                                                                                                                                 |  
+ |          n          |   |                                                                                                                                 |  
+ |                     |   |                                                                                                                                 |  
+ |                     |   |                                                                                                                                 |  
+ -----------------------   |   ---------------------------------------------------------------------------------------------------------------------------   |  
+ |                     |   |   |                                                                                                                         |   |  
+ |          n          |   |   |                                                                                                                         |   |  
+ |                     |   |   |---                                                                                                                      |   |  
+ -----------------------   |   ||S|                                                                                                                      |   |  
+                           |   |---                                                                                                                      |   |  
+                           |   |                                                                                                                         |   |  
+                           |   |                                                            o                                                            |   |  
+                           |   |                                                                                                                         |   |  
+                           |   |                                                                                                                         |   |  
+                           |   |---                                                                                                                      |   |  
+ -----------------------   |   |-S-                                                                                                                      |   |  
+ |                     |   |   |                                                                                                                         |   |  
+ |                     |   |   |                                                                                                                         |   |  
+ |          n          |   |   ---------------------------------------------------------------------------------------------------------------------------   |  
+ |                     |   |                                                                                                                                 |  
+ -----------------------   |                                                                                                                                 |  
+ |                     |   |   ---------------                                                                                                               |  
+ |          n          |   |   |      B      |                                                                                                               |  
+ |                     |   |   |             |                                                                                                               |  
+ -----------------------   |   ---------------                                                                                                               |  
+ -----------------------   |                                                                                                                                 |  
+ |                     |   |                                                                                                                                 |  
+ |          n          |   |                                                                                                                                 |  
+ |                     |   |                                                                                                                                 |  
+ -----------------------   |                                                                                                                                 |  
+ |                     |   |                                                                                                                                 |  
+ |                     |   |                                                                                                                                 |  
+ |          n          |   |                                                                                                                                 |  
+ |                     |   |                                                                                                                                 |  
+ -----------------------   -----------------------------------------------------------------------------------------------------------------------------------  
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                

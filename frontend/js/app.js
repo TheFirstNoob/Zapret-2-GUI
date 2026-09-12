@@ -193,7 +193,14 @@ const App = {
     if (this.testActive === active) return;
     this.testActive = active;
     const badge = $('testerBadge');
-    if (badge) badge.hidden = !active;
+    if (badge) {
+      badge.hidden = !active;
+      // Бейдж «идёт проверка» — на странице-источнике, а не всегда на «Подборе»
+      if (active) {
+        const link = document.querySelector(`.nav-link[data-page="${this.currentPage}"]`);
+        if (link && link !== badge.parentElement) link.appendChild(badge);
+      }
+    }
     // Кнопки всех проверок — взаимоисключающие (бэкенд дублирует 409-ом).
     ['btnStartTest', 'cdnScanBtn', 'asnScanBtn', 'btnBlobProbe', 'diagRunBtn', 'btnDiagCheck']
       .forEach(id => { const el = $(id); if (el) el.disabled = active; });
@@ -284,6 +291,74 @@ const App = {
   },
 };
 
+// Кастомный дропдаун выбора блоба: триггер фиксированной ширины,
+// список — отдельным слоем в ширину имён. Нативный select остаётся в DOM
+// скрытым и хранит value — вся остальная логика работает как раньше.
+const BlobSelect = {
+  _ready: false,
+
+  init() {
+    if (this._ready) return;
+    this._ready = true;
+    this.btn = $('fakeBlobBtn');
+    this.menu = $('fakeBlobMenu');
+    this.select = $('fakeBlobSelect');
+    if (!this.btn || !this.menu || !this.select) return;
+    this.select.hidden = true;
+    this.btn.addEventListener('click', e => {
+      e.stopPropagation();
+      this.menu.hidden ? this.open() : this.close();
+    });
+    this.select.addEventListener('change', () => this.render());
+    document.addEventListener('click', e => {
+      if (!this.menu.hidden && !this.menu.contains(e.target)) this.close();
+    });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && !this.menu.hidden) this.close();
+    });
+    this.render();
+  },
+
+  open() {
+    this.syncMenu();
+    this.menu.hidden = false;
+    this.btn.setAttribute('aria-expanded', 'true');
+  },
+
+  close() {
+    this.menu.hidden = true;
+    this.btn.setAttribute('aria-expanded', 'false');
+  },
+
+  syncMenu() {
+    this.menu.innerHTML = '';
+    for (const o of this.select.options) {
+      const it = document.createElement('div');
+      it.className = 'dropdown-item' + (o.value === this.select.value ? ' selected' : '');
+      it.textContent = o.textContent;
+      it.title = o.textContent;
+      it.dataset.value = o.value;
+      it.addEventListener('click', () => this.pick(o.value));
+      this.menu.appendChild(it);
+    }
+  },
+
+  pick(value) {
+    this.select.value = value;
+    this.select.dispatchEvent(new Event('change', { bubbles: true }));
+    this.close();
+  },
+
+  render() {
+    if (!this._ready) return;
+    const o = Array.from(this.select.options).find(x => x.value === this.select.value);
+    const label = o ? o.textContent : 'Пресет (Google)';
+    const v = $('fakeBlobValue');
+    if (v) { v.textContent = label; v.title = o ? o.textContent : ''; }
+    if (this.btn) this.btn.title = o ? o.textContent : '';
+  },
+};
+
 // ══════════════════════════ ГЛАВНАЯ ══════════════════════════
 
 const MainPage = {
@@ -297,6 +372,7 @@ const MainPage = {
   onShow() {
     if (!this._loaded) {
       this._loaded = true;
+      BlobSelect.init();
       this.populateFakeBlobs();
       this.loadConfig();
       this.bind();
@@ -338,6 +414,7 @@ const MainPage = {
       if (fbSel && Array.from(fbSel.options).some(o => o.value === this._pendingFakeBlob)) {
         fbSel.value = this._pendingFakeBlob;
       }
+      BlobSelect.render();
       $('toggleWinws2Debug').checked = !!c.winws2_debug;
       $('z1DirPath').value = c.zapret1_dir || '';
       if (c.last_profile) {
@@ -379,6 +456,7 @@ const MainPage = {
         sel.appendChild(o);
       }
       sel.value = this._pendingFakeBlob || '';
+      BlobSelect.render();
     } catch (e) { /* список не критичен */ }
   },
 
@@ -420,6 +498,7 @@ const MainPage = {
       showToast(`Лучший блоб: ${best.blob.replace(/_/g, '.')} (${best.rate}%)`, 'ok');
       if (Array.from(sel.options).some(o => o.value === best.blob) && sel.value !== best.blob) {
         sel.value = best.blob;
+        BlobSelect.render();
         this.saveToggles();
       }
     } catch (e) {
@@ -473,7 +552,9 @@ const MainPage = {
     if (z2.running) {
       badge.className = 'dot ' + (conflict ? 'dot-warn' : 'dot-ok');
       text.className = 'state-text ' + (conflict ? 'st-warn' : 'st-ok');
-      text.textContent = conflict ? 'Работает (конфликт с Zapret 1)' : 'Работает';
+      text.textContent = conflict
+        ? 'Работает (конфликт с Zapret 1)'
+        : 'Работает' + (z2.pid ? ' · PID ' + z2.pid : '');
     } else if (z1.running) {
       badge.className = 'dot dot-warn';
       text.className = 'state-text st-warn';
@@ -483,9 +564,6 @@ const MainPage = {
       text.className = 'state-text st-mute';
       text.textContent = 'Выключен';
     }
-    $('z2Meta').textContent = z2.running
-      ? 'PID ' + (z2.pid || '—') + ' · стратегия «' + (z2.strategy || '?') + '»'
-      : '';
 
     this._z2Running = z2.running;
     this._z2Strategy = z2.strategy || '';
@@ -499,14 +577,17 @@ const MainPage = {
       const strategyChanged = this._z2Running && sel.value && this._z2Strategy && sel.value !== this._z2Strategy;
       if (!this._z2Running) {
         btn.textContent = 'Запустить';
-        btn.classList.add('btn-primary');
+        btn.classList.add('btn-go');
+        btn.classList.remove('btn-stop', 'btn-primary');
       } else if (strategyChanged) {
         // Выбор расходится с запущенной стратегией: кнопка применяет выбор.
         btn.textContent = 'Применить «' + sel.value + '»';
         btn.classList.add('btn-primary');
+        btn.classList.remove('btn-go', 'btn-stop');
       } else {
         btn.textContent = 'Остановить';
-        btn.classList.remove('btn-primary');
+        btn.classList.add('btn-stop');
+        btn.classList.remove('btn-go', 'btn-primary');
       }
       btn.disabled = false;
     } else if (App.testActive) {
@@ -554,6 +635,20 @@ const MainPage = {
       : !installed ? 'не установлена — обход только при открытом приложении'
       : (running ? 'установлена · работает (автозапуск при загрузке)'
                  : 'установлена · остановлена');
+    const chip = $('svcState');
+    if (chip) {
+      const dot = chip.querySelector('.dot');
+      const txt = chip.querySelector('.state-text');
+      if (this._svcBusy) {
+        dot.className = 'dot dot-idle'; txt.textContent = '…'; txt.className = 'state-text st-mute';
+      } else if (!installed) {
+        dot.className = 'dot dot-off'; txt.textContent = 'не установлена'; txt.className = 'state-text st-mute';
+      } else if (running) {
+        dot.className = 'dot dot-ok'; txt.textContent = 'работает'; txt.className = 'state-text st-ok';
+      } else {
+        dot.className = 'dot dot-off'; txt.textContent = 'остановлена'; txt.className = 'state-text st-mute';
+      }
+    }
   },
 
   _setSvcBusy(b) {
@@ -852,11 +947,11 @@ const DiagnosticsPage = {
     const btn = $('diagRunBtn');
     btn.disabled = true;
     btn.textContent = 'Проверяю…';
-    const results = $('diagResults');
     $('diagCopyBtn').hidden = true;
-    $('diagSummary').hidden = true;
+    $('diagIdle').hidden = true;
+    $('diagResults').hidden = true;
+    $('diagLoading').hidden = false;
     const t0 = Date.now();
-    results.innerHTML = '<div class="empty-note">Выполняется проверка: <b id="diagCurrent">…</b> · <span class="mono" id="diagTimer">0</span> с</div>';
     const timer = setInterval(() => {
       const el = $('diagTimer');
       if (el) el.textContent = Math.round((Date.now() - t0) / 1000);
@@ -883,40 +978,47 @@ const DiagnosticsPage = {
       if (note) note.hidden = false;
       this.render(report);
     } catch (e) {
-      results.innerHTML = '<div class="empty-note st-err">Ошибка диагностики: ' + escapeHtml(String(e.message || e)) + '</div>';
+      $('diagLoading').hidden = true;
+      $('diagResults').hidden = false;
+      $('diagSummary').innerHTML = '';
+      $('diagList').innerHTML = '<div class="diag-err">Ошибка диагностики: ' + escapeHtml(String(e.message || e)) + '</div>';
+      $('diagRecommend').hidden = true;
     }
     clearInterval(timer);
     App.setTestActive(false);
     btn.disabled = false;
-    btn.textContent = 'Проверить';
+    btn.textContent = this._last ? 'Повторить' : 'Проверить';
   },
 
   render(report) {
-    const icons = { ok: 'ok', warn: 'warn', fail: 'err', skip: 'idle' };
     const s = report.summary || {};
-    $('diagSummary').hidden = false;
-    $('diagSummary').innerHTML =
-      (s.ok ? `<span class="st-ok">Проверено: ${s.ok}</span>` : '') +
-      (s.warn ? `<span class="st-warn">Внимание: ${s.warn}</span>` : '') +
-      (s.fail ? `<span class="st-err">Ошибки: ${s.fail}</span>` : '') +
-      (s.skip ? `<span class="st-mute">Пропущено: ${s.skip}</span>` : '') +
-      (report.elapsed_sec != null ? `<span class="st-mute">заняло ${report.elapsed_sec} с</span>` : '');
+    $('diagLoading').hidden = true;
+    $('diagResults').hidden = false;
+
+    const badges = [];
+    if (s.ok) badges.push(`<span class="badge badge-ok">✓ ${s.ok} пройдено</span>`);
+    if (s.warn) badges.push(`<span class="badge badge-warn">! ${s.warn} внимание</span>`);
+    if (s.fail) badges.push(`<span class="badge badge-err">✕ ${s.fail} ошибок</span>`);
+    if (s.skip) badges.push(`<span class="badge badge-mute">– ${s.skip} пропущено</span>`);
+    if (report.elapsed_sec != null) badges.push(`<span class="badge badge-mute">⏱ ${report.elapsed_sec} с</span>`);
+    $('diagSummary').innerHTML = badges.join('');
+
+    const ICONS = {
+      ok: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
+      warn: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+      fail: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+      skip: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>',
+    };
 
     const rows = (report.checks || []).map(c => `
-      <tr class="chk-row-${c.status}">
-        <td style="width:14px"><span class="dot dot-${icons[c.status] || 'idle'}"></span></td>
-        <td class="check-name">${escapeHtml(c.name)}</td>
-        <td class="check-detail"${c.tech ? ` title="${escapeHtml(c.tech)}"` : ''}>${escapeHtml(c.detail || '')}</td>
-      </tr>`).join('');
-    let html = `<table class="check-table"><tbody>${rows || '<tr><td class="empty-note">Нет результатов</td></tr>'}</tbody></table>`;
+      <div class="diag-row chk-${c.status}">
+        <div class="diag-icon">${ICONS[c.status] || ICONS.skip}</div>
+        <div class="diag-param">${escapeHtml(c.name)}</div>
+        <div class="diag-value"${c.tech ? ` title="${escapeHtml(c.tech)}"` : ''}>${escapeHtml(c.detail || '')}</div>
+      </div>`).join('');
+    $('diagList').innerHTML = rows || '<div class="empty-note">Нет результатов</div>';
 
-    if ((s.fail || 0) > 0) {
-      html += `<div class="notice notice-warn" style="margin-top:10px">
-        <span>Есть проблемы. Если нужно подобрать стратегию под ваш интернет — начните подбор.</span>
-        <button class="btn btn-sm" onclick="location.hash='tester'">Начать подбор</button>
-      </div>`;
-    }
-    $('diagResults').innerHTML = html;
+    $('diagRecommend').hidden = !((s.fail || 0) > 0);
 
     this._last = report.report_text || '';
     $('diagCopyBtn').hidden = !this._last;
@@ -944,6 +1046,7 @@ const DiagnosticsPage = {
 const ListsPage = {
   _loaded: false,
   saved: {},
+  _badLines: {},   // key -> массив номеров ошибочных строк (для гутера)
   _bundled: null,   // Set доменов из наших включений (для проверки приоритетов)
 
   editors: {
@@ -956,6 +1059,13 @@ const ListsPage = {
   onShow() {
     if (!this._loaded) {
       this._loaded = true;
+      const helpBtn = $('toggleHelpBtn');
+      if (helpBtn) helpBtn.addEventListener('click', () => {
+        const det = $('helpDetails');
+        const open = !!det && det.hidden;
+        if (det) det.hidden = !open;
+        helpBtn.classList.toggle('is-open', open);
+      });
       document.querySelectorAll('[data-save]').forEach(btn =>
         btn.addEventListener('click', () => this.save(btn.dataset.save)));
       apiGet('/bundled-domains')
@@ -973,42 +1083,49 @@ const ListsPage = {
 
   // ── Спорные домены (AWS и др.: десинк одним нужен, других ломает) ──
   async loadContested() {
-    const tbody = $('contestedBody');
+    const body = $('contestedBody');
     const prot = $('contestedProt');
-    if (!tbody) return;
+    if (!body) return;
     try {
       const r = await apiGet('/contested/status');
-      if (prot) prot.textContent = r.protection_running
-        ? 'проба идёт через работающий обход' : 'обход не запущен — проба будет «в голую»';
-      tbody.innerHTML = '';
-      for (const it of (r.items || [])) {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td class="ct-svc">
-            <div class="contested-title">${escapeHtml(it.title)}</div>
-            <code>${escapeHtml(it.domain)}</code>
-          </td>
-          <td class="ct-why">${escapeHtml(it.why)}</td>
-          <td class="ct-check"><button class="btn btn-sm btn-primary" data-ct-check="${escapeHtml(it.id)}">Проба</button></td>
-          <td class="ct-tgl">
-            <label class="contested-toggle">
-              <input type="checkbox" ${it.enabled ? 'checked' : ''} data-ct-id="${escapeHtml(it.id)}">
-              <span class="ct-track"></span>
-            </label>
-          </td>`;
-        tbody.appendChild(tr);
-        const trRes = document.createElement('tr');
-        trRes.innerHTML = `<td colspan="4" class="contested-result" data-ct-result="${escapeHtml(it.id)}"></td>`;
-        tbody.appendChild(trRes);
+      if (prot) {
+        const dot = prot.querySelector('.dot');
+        const txt = prot.querySelector('.state-text');
+        const running = !!r.protection_running;
+        dot.className = 'dot ' + (running ? 'dot-ok' : 'dot-off');
+        txt.className = 'state-text ' + (running ? 'st-ok' : 'st-mute');
+        txt.textContent = running ? 'проба идёт через работающий обход' : 'обход не запущен — проба будет «в голую»';
       }
-      tbody.querySelectorAll('[data-ct-id]').forEach(cb =>
+      body.innerHTML = '';
+      for (const it of (r.items || [])) {
+        const block = document.createElement('div');
+        block.className = 'service-block';
+        block.innerHTML = `
+          <div class="service-row">
+            <div class="service-info">
+              <span class="service-name">${escapeHtml(it.title)}</span>
+              <span class="service-domain">${escapeHtml(it.domain)}</span>
+            </div>
+            <div class="service-desc">${escapeHtml(it.why)}</div>
+            <div class="service-actions">
+              <button class="btn btn-sm btn-primary" data-ct-check="${escapeHtml(it.id)}">Проба</button>
+              <label class="switch" title="Включить/выключить обход для этого домена">
+                <input type="checkbox" ${it.enabled ? 'checked' : ''} data-ct-id="${escapeHtml(it.id)}">
+                <span class="switch-track"><span class="switch-knob"></span></span>
+              </label>
+            </div>
+          </div>
+          <div data-ct-result="${escapeHtml(it.id)}"></div>`;
+        body.appendChild(block);
+      }
+      body.querySelectorAll('[data-ct-id]').forEach(cb =>
         cb.addEventListener('change', () => this.toggleContested(cb.dataset.ctId, cb.checked, cb)));
-      tbody.querySelectorAll('[data-ct-check]').forEach(btn =>
+      body.querySelectorAll('[data-ct-check]').forEach(btn =>
         btn.addEventListener('click', () => this.checkContested(btn.dataset.ctCheck, btn)));
     } catch (err) {
       frontendLog('contested: CATCH ' + (err.message || String(err)));
-      tbody.innerHTML = '<tr><td colspan="4"><div class="empty-note">Не удалось загрузить спорные домены: '
-        + escapeHtml(err.message || String(err)) + '</div></td></tr>';
+      body.innerHTML = '<div class="empty-note">Не удалось загрузить спорные домены: '
+        + escapeHtml(err.message || String(err)) + '</div>';
     }
   },
 
@@ -1033,31 +1150,49 @@ const ListsPage = {
     const label = btn.textContent;
     btn.textContent = 'Проба…';
     const res = document.querySelector(`[data-ct-result="${id}"]`);
-    if (res) { res.textContent = 'Проверяю… (до 10 сек)'; res.className = 'contested-result'; }
+    if (res) {
+      res.innerHTML = '<div class="test-result-box loading"><div class="mini-spinner"></div>' +
+        '<span>Отправка тестового запроса через текущий обход… (до 10 сек)</span></div>';
+    }
     try {
       const r = await apiPost('/contested/check', { id });
       if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
       const code = parseInt(r.code, 10);
       const alive = code >= 100 && code < 500 && code !== 0;
-      const verb = r.with_protection ? 'с обходом' : 'без обхода (в голую)';
-      let verdict;
-      if (!alive) {
-        verdict = r.with_protection
-          ? 'не отвечает С ОБХОДОМ. Если тумблер включён — наш десинк его ломает: выключи и перепроверь. Если выключен — IP/SNI-блок провайдера: включи тумблер; не поможет — WARP.'
-          : 'не отвечает и в голую. Включи тумблер (десинк), перезапусти обход и перепробуй. Если и с обходом нет — IP-блок, поможет только WARP.';
+      const withProt = !!r.with_protection;
+      const badge = `${alive ? '✓' : '✕'} HTTP ${r.code || '—'} · ${r.elapsed} с`;
+      let title, advice;
+      if (alive && withProt) {
+        title = 'Соединение работает с обходом';
+        advice = 'Текущий десинк совместим с доменом. Оставьте тумблер включённым.';
+      } else if (alive && !withProt) {
+        title = 'Соединение работает и без обхода';
+        advice = 'Тумблер не нужен — держите выключенным. Включённый десинк может ломать сервис.';
+      } else if (!alive && withProt) {
+        title = 'Сервер не ответил с обходом';
+        advice = 'Тумблер включён — вероятно, текущий десинк ломает сервис. Выключите тумблер и перепроверьте. Если не поможет — жёсткий блок, потребуется WARP.';
       } else {
-        verdict = r.with_protection
-          ? `жив с обходом (${code}).`
-          : `жив в голую (${code}) — тумблер не нужен, держи выключенным.`;
+        title = 'Сервер не ответил и без обхода';
+        advice = 'Включите тумблер (десинк), перезапустите обход и перепробуйте. Если и с обходом нет — IP-блок, поможет только WARP.';
       }
-      const text = `${verb}: HTTP ${r.code || '—'} за ${r.elapsed}s — ${verdict}`;
       if (res) {
-        res.textContent = text;
-        res.className = 'contested-result ' + (alive ? 'is-ok' : 'is-bad');
+        res.innerHTML = `
+          <div class="test-result-box ${alive ? 'success' : 'danger'}">
+            <span class="res-badge">${badge}</span>
+            <div class="res-content">
+              <span class="res-title">${title}</span>
+              <span class="res-advice">${advice}</span>
+            </div>
+          </div>`;
       }
       showToast(`Проба: HTTP ${r.code || '—'}`, alive ? 'ok' : 'error');
     } catch (e) {
-      if (res) { res.textContent = 'Ошибка пробы: ' + (e.message || e); res.className = 'contested-result is-bad'; }
+      if (res) {
+        res.innerHTML = `<div class="test-result-box danger">
+          <span class="res-badge">✕</span>
+          <div class="res-content"><span class="res-title">Ошибка пробы</span>
+          <span class="res-advice">${escapeHtml(e.message || String(e))}</span></div></div>`;
+      }
       showToast('Проба: ' + (e.message || e), 'error');
     }
     btn.textContent = label;
@@ -1082,14 +1217,16 @@ const ListsPage = {
     if (cnt) cnt.classList.toggle('dirty', dirty);
     const btn = document.querySelector(`[data-save="${key}"]`);
     if (btn) btn.classList.toggle('dirty', dirty);
+    const ta = $(key + 'Textarea');
+    const card = ta && ta.closest('.list-card');
+    if (card) card.classList.toggle('is-dirty', dirty);
     return dirty;
   },
 
   validate(key) {
-    this._syncNums(key);
-    this._dirtyCheck(key);
     const e = this.editors[key];
-    const lines = $(key + 'Textarea').value.split('\n');
+    const ta = $(key + 'Textarea');
+    const lines = ta.value.split('\n');
     let ok = 0;
     const bad = [];
     lines.forEach((line, i) => {
@@ -1098,17 +1235,39 @@ const ListsPage = {
       if (e.kind === 'domain' ? this._validDomain(s) : this._validCidr(s)) ok++;
       else bad.push(i + 1);
     });
+    this._badLines[key] = bad;
+    this._syncNums(key);
+    const dirty = this._dirtyCheck(key);
+
     const cnt = $(key + 'Count');
     if (cnt) cnt.textContent = String(ok);
+
+    const btn = document.querySelector(`[data-save="${key}"]`);
+    if (btn) btn.disabled = bad.length > 0;
+
+    const wrap = ta.closest('.editor-wrapper');
+    if (wrap) wrap.classList.toggle('has-error', bad.length > 0);
+    const card = ta.closest('.list-card');
+    if (card) card.classList.toggle('is-error', bad.length > 0);
+
+    const ICON_ERR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
+    const ICON_DOT = '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="8"/></svg>';
+    const ICON_OK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
     const box = $(key + 'Valid');
+    box.className = 'status-msg';
     if (bad.length) {
-      box.innerHTML = `<span class="bad">строки с ошибкой: ${bad.slice(0, 12).join(', ')}${bad.length > 12 ? '…' : ''} — сохранение заблокировано</span>`;
-    } else if (this._dirtyCheck(key)) {
-      box.innerHTML = '<span class="dirty-note">изменения не сохранены — нажмите «Сохранить»</span>';
+      box.classList.add('status-error');
+      box.innerHTML = ICON_ERR +
+        `<span>строки с ошибкой: ${bad.slice(0, 12).join(', ')}${bad.length > 12 ? '…' : ''} — сохранение заблокировано</span>`;
+    } else if (dirty) {
+      box.classList.add('status-unsaved');
+      box.innerHTML = ICON_DOT + '<span>изменения не сохранены — нажмите «Сохранить»</span>';
     } else if (ok === 0) {
-      box.textContent = 'пусто — список ни на что не влияет';
+      box.classList.add('status-empty');
+      box.innerHTML = '<span>список пуст — ни на что не влияет</span>';
     } else {
-      box.textContent = '';
+      box.classList.add('status-synced');
+      box.innerHTML = ICON_OK + '<span>сохранено</span>';
     }
     $(key + 'Result').textContent = '';
     return bad.length === 0;
@@ -1137,7 +1296,12 @@ const ListsPage = {
     const nums = $(key + 'Nums');
     if (!nums) return;
     const n = ta.value.split('\n').length;
-    nums.textContent = Array.from({ length: n }, (_, i) => i + 1).join('\n');
+    const bad = new Set(this._badLines[key] || []);
+    let html = '';
+    for (let i = 1; i <= n; i++) {
+      html += (i > 1 ? '\n' : '') + (bad.has(i) ? `<span class="bad-line">${i}</span>` : String(i));
+    }
+    nums.innerHTML = html;
     nums.scrollTop = ta.scrollTop;
   },
 
@@ -1613,7 +1777,12 @@ const TesterPage = {
     const detail = document.createElement('tr');
     detail.className = 'strat-detail';
     detail.hidden = true;
-    detail.innerHTML = '<td colspan="6"><table class="host-table"><tbody></tbody></table></td>';
+    detail.innerHTML = `<td colspan="6">
+      <div class="subtable-header">
+        <span>Проверка хостов в стратегии «${escapeHtml(this._label(key))}»</span>
+        <span>статус / задержка</span>
+      </div>
+      <table class="host-table"><tbody></tbody></table></td>`;
 
     $('stratTbody').appendChild(tr);
     $('stratTbody').appendChild(detail);
@@ -2106,40 +2275,40 @@ const TesterPage = {
       const naked = p2.naked;
 
       if (rec) html += this._renderVerdict(rec);
-      else html += '<div class="panel"><div class="verdict-title st-warn">Итог не определён</div><div class="verdict-msg">Нет результатов — запустите подбор заново.</div></div>';
+      else html += '<div class="detail-section"><span class="detail-head st-warn">Итог не определён</span><p class="detail-text">Нет результатов — запустите подбор заново.</p></div>';
 
       if (custom && custom.summary) {
         const rel = custom.relation === 'better' ? '— обгоняет лучшую'
           : custom.relation === 'worse' ? '— уступает лучшей'
           : custom.relation === 'equal' ? '— равна лучшей' : '';
         const rateTxt = custom.rate != null ? ` (${custom.rate}%)` : '';
-        html += `<div class="panel${custom.valid ? '' : ' verdict-panel v-no_bypass'}">
-          <div class="panel-title">Личная стратегия «custom»</div>
-          <div class="verdict-msg">${escapeHtml(custom.summary)}${rel ? ' ' + rel : ''}${rateTxt}.
+        html += `<div class="detail-section">
+          <span class="detail-head">Личная стратегия «custom»</span>
+          <p class="detail-text">${escapeHtml(custom.summary)}${rel ? ' ' + rel : ''}${rateTxt}.
           ${custom.valid
             ? 'Если «custom» помечена лучшей в таблице — запускайте её кнопкой выше.'
             : 'Не прошла проверку движком — запускать её не стоит.'}
-          ${custom.error && !custom.valid ? `<span class="st-err">${escapeHtml(custom.error)}</span>` : ''}</div>
+          ${custom.error && !custom.valid ? `<span class="st-err">${escapeHtml(custom.error)}</span>` : ''}</p>
         </div>`;
       } else if (custom && custom.error) {
-        html += `<div class="panel verdict-panel v-no_bypass">
-          <div class="panel-title">Личная стратегия не собрана</div>
-          <div class="verdict-msg st-err">${escapeHtml(custom.error)}</div>
+        html += `<div class="detail-section">
+          <span class="detail-head st-err">Личная стратегия не собрана</span>
+          <p class="detail-text st-err">${escapeHtml(custom.error)}</p>
         </div>`;
       }
 
       if (naked && naked.net_total) {
-        html += `<div class="panel">
-          <div class="panel-title">Базовый уровень (без защиты): <span class="${rateClass(naked.network_rate || 0)}">${(naked.network_rate || 0).toFixed(0)}%</span></div>
-          <div class="verdict-msg">Столько сервисов доступно вообще без Zapret. Столбец «Без защиты» в таблице — точка отсчёта.</div>
+        html += `<div class="detail-section">
+          <span class="detail-head">Базовый уровень (без защиты): <span class="${rateClass(naked.network_rate || 0)}">${(naked.network_rate || 0).toFixed(0)}%</span></span>
+          <p class="detail-text">Столько сервисов доступно вообще без Zapret. Столбец «Без защиты» в таблице — точка отсчёта.</p>
         </div>`;
       }
 
       if (rec && rec.blocked_domains && rec.blocked_domains.length && rec.verdict !== 'ok') {
-        html += `<div class="panel">
-          <div class="panel-title">Не пробито ни одной стратегией</div>
-          <div class="blocked-chips">${rec.blocked_domains.map(d => `<span class="chip">${escapeHtml(d)}</span>`).join('')}</div>
-          <div class="verdict-msg">Если это ваши рабочие домены — добавьте их в «Списки → Домены — обрабатывать».</div>
+        html += `<div class="detail-section" style="background: var(--err-bg); border-color: var(--err-line);">
+          <span class="detail-head" style="color: #f0b7b8;">Не пробито ни одной стратегией (${rec.blocked_domains.length} хост${rec.blocked_domains.length > 1 ? 'а' : ''})</span>
+          <p class="detail-text" style="color: #f0c6c6;">Если это ваши рабочие домены — добавьте их в «Списки → Домены — обрабатывать».</p>
+          <div class="chip-list">${rec.blocked_domains.map(d => `<span class="fail-domain">${escapeHtml(d)}</span>`).join('')}</div>
         </div>`;
       }
     } else {
@@ -2148,25 +2317,25 @@ const TesterPage = {
       const fa = this.state.fullAnalysisResults || [];
       const rateOf = r => (r.network_rate != null ? r.network_rate : (r.success_rate || 0));
       const best = fa.length ? fa.reduce((a, b) => rateOf(a) > rateOf(b) ? a : b) : null;
-      html += `<div class="panel">
-        <div class="panel-title">Сравнение</div>
+      html += `<div class="detail-section">
+        <span class="detail-head">Сравнение</span>
         <table class="check-table"><tbody>
           <tr><td class="check-name">Zapret 1 (текущий)</td><td class="mono">${cur ? rateOf(cur).toFixed(0) + '%' : '—'}</td></tr>
           <tr><td class="check-name">Без защиты</td><td class="mono">${naked ? rateOf(naked).toFixed(0) + '%' : '—'}</td></tr>
           <tr><td class="check-name">Zapret 2, лучшая${best ? ' («' + escapeHtml(best.profile || '') + (best.blob ? ' + ' + escapeHtml(best.blob) : '') + '»)' : ''}</td>
               <td class="mono ${best ? rateClass(rateOf(best)) : ''}">${best ? rateOf(best).toFixed(0) + '%' : '—'}</td></tr>
         </tbody></table>
-        <div class="verdict-msg">Подробности каждой комбинации — в таблице стратегий (клик по строке).</div>
+        <p class="detail-text">Подробности каждой комбинации — в таблице стратегий (клик по строке).</p>
       </div>`;
     }
 
     if (this.state.collectLogs) {
-      html += `<div class="panel" style="display:flex;gap:12px;align-items:center">
+      html += `<div class="detail-section" style="display:flex;gap:12px;align-items:center">
         <button class="btn btn-primary" id="btnShowCollect">Сохранить отчёт для поддержки</button>
         <span class="meta">ZIP с результатами теста сохранится в папку программы</span>
       </div>`;
     }
-    html += `<div><button class="btn" id="btnBackToIntro">Новый подбор</button></div>`;
+    html += `<div class="results-actions"><button class="btn" id="btnBackToIntro">Новый подбор</button></div>`;
 
     el.innerHTML = html;
     el.hidden = false;
@@ -2181,41 +2350,53 @@ const TesterPage = {
 
   _renderVerdict(rec) {
     const vm = {
-      ok: ['Обход работает', 'dot-ok'],
-      partial: ['Обход работает частично', 'dot-warn'],
-      no_bypass: ['Обход не сработал', 'dot-err'],
-      engine_broken: ['Проблема с движком Zapret', 'dot-err'],
-      no_data: ['Нет данных', 'dot-idle'],
+      ok: ['Обход работает', 'badge-ok'],
+      partial: ['Частичный обход', 'badge-warn'],
+      no_bypass: ['Обход не сработал', 'badge-err'],
+      engine_broken: ['Проблема с движком Zapret', 'badge-err'],
+      no_data: ['Нет данных', 'badge-mute'],
     };
-    const [title, dotCls] = vm[rec.verdict] || vm.no_data;
-    let keys = '';
+    const [title, badgeCls] = vm[rec.verdict] || vm.no_data;
+    const isBad = rec.verdict === 'no_bypass' || rec.verdict === 'engine_broken';
+    let subtitle = escapeHtml(rec.message || '');
+    let chips = '';
     if (rec.key_hosts && rec.key_hosts.length) {
-      keys = '<div class="key-grid">' + rec.key_hosts.map(k => {
+      const okN = rec.key_hosts.filter(k => k.status === 'OK' || k.status === 'QUIC_OK').length;
+      if (!subtitle) subtitle = `Успешно пробито <b>${okN} из ${rec.key_hosts.length}</b> ключевых сервисов.`;
+      chips = '<div class="services-grid">' + rec.key_hosts.map(k => {
         const ok = k.status === 'OK' || k.status === 'QUIC_OK';
-        const label = k.status === 'QUIC_OK' ? 'через QUIC' : ok ? 'доступен' : 'не пробит';
-        return `<div class="key-cell ${ok ? 'cell-ok' : 'cell-err'}">
-          <span class="dot ${ok ? 'dot-ok' : 'dot-err'}"></span><b>${escapeHtml(k.label)}</b>
-          <span class="meta">${escapeHtml(label)}${k.time_ms ? ' · ' + formatTime(k.time_ms) : ''}</span>
-        </div>` + (k.note ? `<div class="verdict-msg" style="grid-column:1/-1">${escapeHtml(k.note)}</div>` : '');
+        const quic = k.status === 'QUIC_OK';
+        return `<div class="service-chip">
+          <div class="chip-head"><span class="${ok ? 'mark-ok' : 'mark-bad'}">${ok ? '✓' : '✗'}</span> ${escapeHtml(k.label)}${quic ? ' <span class="st-quirk">QUIC</span>' : ''}</div>
+          <div class="chip-ping ${ok ? '' : 'chip-ping-bad'}">${k.time_ms ? formatTime(k.time_ms) : (ok ? 'доступен' : 'не пробит')}</div>
+          ${k.note ? `<div class="chip-note">${escapeHtml(k.note)}</div>` : ''}
+        </div>`;
       }).join('') + '</div>';
     }
-
     let actions = '';
-    if (rec.verdict === 'no_bypass' || rec.verdict === 'engine_broken') {
-      actions = `<button class="btn btn-primary" onclick="location.hash='diagnostics'">Открыть проверку системы</button>
+    if (isBad) {
+      actions = `<button class="btn btn-primary hero-btn" onclick="location.hash='diagnostics'">Открыть проверку системы</button>
         ${rec.best_profile ? '<span class="meta">лучшая из протестированных: ' + escapeHtml(rec.best_profile) + '</span>' : ''}`;
     } else if (rec.best_profile) {
-      actions = `<button class="btn btn-primary" id="btnApplyRec">Запустить: ${escapeHtml(rec.best_profile)}
+      actions = `<button class="btn btn-primary hero-btn" id="btnApplyRec">Запустить: ${escapeHtml(rec.best_profile)}
         (${(rec.best_network_rate || 0).toFixed(0)}%)</button>`;
     }
     if (rec.same_as_naked) {
       actions += '<span class="meta">результат как без защиты — обход не применяется</span>';
     }
-
-    return `<div class="panel verdict-panel v-${rec.verdict || 'no_data'}">
-      <div class="verdict-title"><span class="dot ${dotCls}"></span>${escapeHtml(title)}${rec.best_profile && rec.verdict !== 'no_bypass' && rec.verdict !== 'engine_broken' ? ' — лучшая стратегия «' + escapeHtml(rec.best_profile) + '»' : ''}</div>
-      <div class="verdict-msg">${escapeHtml(rec.message || '')}</div>
-      ${keys}
+    const badgeExtra = rec.best_network_rate != null && rec.verdict !== 'no_data'
+      ? ' · ' + rec.best_network_rate.toFixed(0) + '% успеха' : '';
+    return `<div class="verdict-hero">
+      <div class="verdict-top">
+        <div>
+          <span class="verdict-badge ${badgeCls}">${escapeHtml(title)}${badgeExtra}</span>
+          <div class="verdict-title">${isBad
+            ? escapeHtml(title)
+            : (rec.best_profile ? 'Рекомендована стратегия «' + escapeHtml(rec.best_profile) + '»' : escapeHtml(title))}</div>
+          ${subtitle ? `<div class="verdict-subtitle">${subtitle}</div>` : ''}
+        </div>
+      </div>
+      ${chips}
       <div class="verdict-actions">${actions}</div>
     </div>`;
   },

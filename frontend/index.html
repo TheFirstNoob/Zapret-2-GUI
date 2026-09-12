@@ -74,128 +74,197 @@
 
             <!-- Обход DPI (Zapret 2) -->
             <div class="panel panel-accent" id="z2Panel">
-              <div class="panel-head">
-                <div class="panel-title">Обход DPI</div>
-                <span class="meta">Zapret 2</span>
-                <span class="head-right">
-                  <span class="meta" id="z2Meta"></span>
+              <div class="card-head">
+                <div class="head-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                </div>
+                <div class="head-text">
+                  <div class="head-title">Обход DPI</div>
+                  <div class="head-desc">Zapret 2</div>
+                </div>
+                <div class="head-right">
+                  <button class="btn btn-go" id="btnZ2Toggle">Запустить</button>
                   <span class="state" id="z2State">
                     <span class="dot dot-unknown"></span><span class="state-text">—</span>
                   </span>
-                </span>
+                </div>
               </div>
 
-              <div class="row">
-                <label class="field grow">
-                  <span class="field-label">Стратегия</span>
+              <div class="param-row wide">
+                <div class="param-main">
+                  <div class="param-title">Активная стратегия<span class="param-tag">winws2</span></div>
+                  <div class="param-desc">Текущий алгоритм расщепления и модификации пакетов.</div>
+                  <div class="param-hint" id="strategyApplyHint" hidden></div>
+                </div>
+                <div class="param-ctl">
                   <select class="input" id="strategySelect"></select>
-                </label>
-                <button class="btn btn-primary" id="btnZ2Toggle">Запустить</button>
+                </div>
               </div>
-              <div class="meta" id="strategyApplyHint" hidden></div>
+            </div>
 
-<div class="row tight">
-                <span class="row-label">Служба (автозапуск)</span>
+            <!-- Служба (автозапуск) -->
+            <div class="panel panel-accent" id="svcPanel">
+              <div class="card-head">
+                <div class="head-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/><line x1="6" y1="6.5" x2="6.01" y2="6.5"/><line x1="6" y1="17.5" x2="6.01" y2="17.5"/></svg>
+                </div>
+                <div class="head-text">
+                  <div class="head-title">Служба</div>
+                  <div class="head-desc">автозапуск Zapret 2 при загрузке</div>
+                </div>
+                <div class="head-right">
+                  <span class="state" id="svcState"><span class="dot dot-off"></span><span class="state-text st-mute">—</span></span>
+                </div>
+              </div>
+              <div class="row">
                 <span class="meta" id="svcStatusText"></span>
                 <span class="svc-actions">
                   <button class="btn" id="btnSvcInstall" hidden>Установить службу</button>
-                  <button class="btn" id="btnSvcStart" hidden>Запустить службу</button>
-                  <button class="btn" id="btnSvcStop" hidden>Остановить службу</button>
-                  <button class="btn btn-ghost-danger" id="btnSvcRemove" hidden>Удалить службу</button>
+                  <button class="btn btn-go" id="btnSvcStart" hidden>Запустить службу</button>
+                  <button class="btn btn-stop" id="btnSvcStop" hidden>Остановить службу</button>
+                  <button class="btn btn-danger" id="btnSvcRemove" hidden>Удалить службу</button>
                 </span>
               </div>
             </div>
 
             <!-- Параметры запуска (только Zapret 2) -->
             <div class="panel panel-accent" id="togglesPanel">
-              <div class="panel-title">Параметры запуска</div>
-              <div class="panel-sub">Применяются при старте Zapret 2. Не влияют на Zapret 1.</div>
+              <div class="card-head">
+                <div class="head-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+                </div>
+                <div class="head-text">
+                  <div class="head-title">Параметры запуска</div>
+                  <div class="head-desc">Применяются при старте Zapret 2.</div>
+                </div>
+                <div class="head-right"><span class="opt-tag">Только Zapret 2</span></div>
+              </div>
 
               <div class="toggles-overlay" id="togglesOverlay" hidden>
                 Настройки ниже относятся к Zapret 2 — сейчас запущен Zapret 1.
               </div>
 
-              <table class="opt-table">
-                <tr>
-                  <td class="opt-name">Игровые порты<span class="opt-id">GameFilter</span></td>
-                  <td class="opt-desc">Открывает обходу порты 1024–65535 (игры, голосовые чаты). Если игра не работает без него — включите.</td>
-                  <td class="opt-ctl">
+              <div class="param-rows">
+                <div class="param-row">
+                  <div class="param-main">
+                    <div class="param-title">Игровые порты<span class="param-tag">GameFilter</span></div>
+                    <div class="param-desc">Открывает обходу порты 1024–65535 (игры, голосовые чаты).</div>
+                    <div class="param-hint">Если игра не работает без него — включите.</div>
+                  </div>
+                  <div class="param-ctl">
                     <select class="input input-sm" id="toggleGameFilter">
                       <option value="off">Выключено</option>
                       <option value="tcp">Только TCP</option>
                       <option value="udp">Только UDP</option>
                       <option value="both">TCP + UDP</option>
                     </select>
-                  </td>
-                </tr>
+                  </div>
+                </div>
 
-                <tr>
-                  <td class="opt-name">Discord Voice<span class="opt-id">UDP</span></td>
-                  <td class="opt-desc">Дополнительный обход голосового UDP-трафика Discord. Обычно «Выключено» хватает.<span class="opt-mode-hint" id="voiceModeHint"></span></td>
-                  <td class="opt-ctl">
+                <div class="param-row">
+                  <div class="param-main">
+                    <div class="param-title">Discord Voice<span class="param-tag">UDP</span></div>
+                    <div class="param-desc">Дополнительный обход голосового UDP-трафика Discord.</div>
+                    <div class="param-hint">Обычно «Выключено» хватает.</div>
+                    <span class="opt-mode-hint" id="voiceModeHint"></span>
+                  </div>
+                  <div class="param-ctl">
                     <select class="input input-sm" id="toggleDiscordVoice">
                       <option value="off">Выключено</option>
                       <option value="fake">Стандарт</option>
                       <option value="udplen">UDP-длина</option>
                     </select>
-                  </td>
-                </tr>
-                <tr>
-                  <td class="opt-name">Блоб фейка<span class="opt-id">TLS fake</span></td>
-                  <td class="opt-desc">Чем подменять TLS-фейк: у каждого «белого» домена своя живучесть на разных провайдерах — Google пробивают чаще, редкие держатся дольше.<span class="opt-mode-hint" id="fakeBlobHint"></span></td>
-                  <td class="opt-ctl">
+                  </div>
+                </div>
+
+                <div class="param-row">
+                  <div class="param-main">
+                    <div class="param-title">Блоб фейка<span class="param-tag">TLS fake</span></div>
+                    <div class="param-desc">Чем подменять TLS-фейк: у каждого «белого» домена своя живучесть на разных провайдерах.</div>
+                    <div class="param-hint">Google пробивают чаще, редкие держатся дольше.</div>
+                    <span class="opt-mode-hint" id="fakeBlobHint"></span>
+                  </div>
+                  <div class="param-ctl">
                     <div class="opt-ctl-stack">
-                      <select class="input input-sm" id="fakeBlobSelect">
-                        <option value="">Пресет (Google)</option>
-                      </select>
+                      <div class="dropdown" id="fakeBlobDropdown">
+                        <button type="button" class="input input-sm dropdown-trigger" id="fakeBlobBtn"
+                                aria-haspopup="listbox" aria-expanded="false">
+                          <span class="dropdown-value" id="fakeBlobValue">Пресет (Google)</span>
+                          <span class="dropdown-caret">▾</span>
+                        </button>
+                        <select class="input input-sm" id="fakeBlobSelect" hidden>
+                          <option value="">Пресет (Google)</option>
+                        </select>
+                        <div class="dropdown-menu" id="fakeBlobMenu" role="listbox" hidden></div>
+                      </div>
                       <button class="btn btn-sm" id="btnBlobProbe" title="Переберёт блобы и поставит лучший">Подобрать блоба</button>
                     </div>
-                  </td>
-                </tr>
-                <tr>
-                  <td class="opt-name">Авто-список<span class="opt-id">Auto Hostlist</span></td>
-                  <td class="opt-desc">Zapret сам добавит домен в обход, когда заметит блокировку. Держите включённым.</td>
-                  <td class="opt-ctl"><label class="switch"><input type="checkbox" id="toggleAutoHostlist"><span class="switch-track"><span class="switch-knob"></span></span></label></td>
-                </tr>
-                <tr>
-                  <td class="opt-name">Общий IP-обход<span class="opt-id">ipset</span></td>
-                  <td class="opt-desc">Обрабатывать весь трафик в известных блокируемых подсетях, а не только по спискам доменов. Сильнее грузит систему.</td>
-                  <td class="opt-ctl"><label class="switch"><input type="checkbox" id="toggleIpFilter"><span class="switch-track"><span class="switch-knob"></span></span></label></td>
-                </tr>
-                <tr class="opt-row-warn">
-                  <td class="opt-name">DEBUG-лог<span class="opt-id">winws2</span></td>
-                  <td class="opt-desc">Запись каждого пакета. Заметно повышает пинг и нагрузку на CPU. Только для разбора проблем по запросу.</td>
-                  <td class="opt-ctl"><label class="switch"><input type="checkbox" id="toggleWinws2Debug"><span class="switch-track"><span class="switch-knob"></span></span></label></td>
-                </tr>
-              </table>
+                  </div>
+                </div>
+
+                <div class="param-row">
+                  <div class="param-main">
+                    <div class="param-title">Авто-список<span class="param-tag">Auto Hostlist</span></div>
+                    <div class="param-desc">Zapret сам добавит домен в обход, когда заметит блокировку.</div>
+                    <div class="param-hint">Держите включённым.</div>
+                  </div>
+                  <div class="param-ctl"><label class="switch"><input type="checkbox" id="toggleAutoHostlist"><span class="switch-track"><span class="switch-knob"></span></span></label></div>
+                </div>
+
+                <div class="param-row">
+                  <div class="param-main">
+                    <div class="param-title">Общий IP-обход<span class="param-tag">ipset</span></div>
+                    <div class="param-desc">Обрабатывать весь трафик в известных блокируемых подсетях, а не только по спискам доменов.</div>
+                    <div class="param-hint">Сильнее грузит систему.</div>
+                  </div>
+                  <div class="param-ctl"><label class="switch"><input type="checkbox" id="toggleIpFilter"><span class="switch-track"><span class="switch-knob"></span></span></label></div>
+                </div>
+
+                <div class="param-row danger">
+                  <div class="param-main">
+                    <div class="param-title">DEBUG-лог<span class="param-tag">winws2</span></div>
+                    <div class="param-desc">Запись каждого пакета в журнал для глубокой отладки.</div>
+                    <div class="param-hint">Повышает пинг и нагрузку на CPU. Только для разбора проблем по запросу.</div>
+                  </div>
+                  <div class="param-ctl"><label class="switch"><input type="checkbox" id="toggleWinws2Debug"><span class="switch-track"><span class="switch-knob"></span></span></label></div>
+                </div>
+              </div>
 
               <div class="panel-foot">
                 <span class="meta" id="applyTogglesHint"></span>
-                <button class="btn btn-warnline btn-sm" id="btnApplyToggles" hidden>Перезапустить с новыми параметрами</button>
+                <button class="btn btn-warn" id="btnApplyToggles" hidden>Перезапустить с новыми параметрами</button>
               </div>
             </div>
 
             <!-- Zapret 1 — запасной вариант -->
             <div class="panel panel-fallback" id="z1Panel">
-              <div class="panel-head">
-                <div class="panel-title">Zapret 1</div>
-                <span class="meta">запасной вариант — если Zapret 2 не справится</span>
-                <span class="head-right">
+              <div class="card-head">
+                <div class="head-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                </div>
+                <div class="head-text">
+                  <div class="head-title">Zapret 1</div>
+                  <div class="head-desc">запасной вариант — если Zapret 2 не справится</div>
+                </div>
+                <div class="head-right">
                   <span class="state" id="z1State"><span class="dot dot-unknown"></span><span class="state-text">—</span></span>
-                </span>
+                </div>
               </div>
-              <div class="row">
-                <label class="field grow">
-                  <span class="field-label">Папка Zapret 1</span>
-                  <input class="input" id="z1DirPath" placeholder="C:\Zapret">
-                </label>
+
+              <div class="grid-field">
+                <div class="grid-label">
+                  <span class="grid-title">Папка Zapret 1</span>
+                  <span class="grid-tag">Directory</span>
+                </div>
+                <input class="input mono" id="z1DirPath" placeholder="C:\Zapret">
                 <button class="btn" id="btnZ1SaveDir">Сохранить путь</button>
               </div>
-              <div class="row">
-                <label class="field grow">
-                  <span class="field-label">Стратегия (.bat)</span>
-                  <select class="input" id="z1StrategySelect" disabled><option value="">— сначала укажите папку —</option></select>
-                </label>
+              <div class="grid-field">
+                <div class="grid-label">
+                  <span class="grid-title">Стратегия</span>
+                  <span class="grid-tag">.bat</span>
+                </div>
+                <select class="input" id="z1StrategySelect" disabled><option value="">— сначала укажите папку —</option></select>
                 <button class="btn" id="btnZ1Toggle">Запустить</button>
               </div>
             </div>
@@ -208,77 +277,104 @@
         <section id="page-tester" class="page">
 
           <div id="testerIntro" class="stack">
-            <div class="panel">
-              <div class="panel-title">Как это работает</div>
-              <div class="steps">
-                <div class="step">
-                  <span class="step-num">1</span>
-                  <div class="step-body">
-                    <div class="step-name">Проверка системы</div>
-                    <div class="step-desc">Права, конфликты, тип блокировки — обычно несколько секунд.</div>
-                    <button class="btn btn-sm" id="btnDiagCheck">Открыть проверку системы</button>
-                    <span class="opt-tag" style="margin-left:8px">по желанию</span>
-                    <span class="ok-note" id="diagDoneNote" hidden>выполнена</span>
+            <div class="panel" id="testerSetup">
+              <div class="card-head">
+                <div class="head-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                </div>
+                <div class="head-text">
+                  <div class="head-title">Подбор стратегии</div>
+                  <div class="head-desc">Автоматическое тестирование совместимости обхода с вашим провайдером</div>
+                </div>
+              </div>
+
+              <div class="tester-steps">
+                <div class="step-box">
+                  <div class="step-header">
+                    <div class="step-badge-title">
+                      <div class="step-num">1</div>
+                      <div>
+                        <div class="step-name">Проверка системы</div>
+                        <div class="step-desc">Права, конфликты, тип блокировки — обычно несколько секунд.</div>
+                      </div>
+                    </div>
+                    <div class="step-actions">
+                      <button class="btn btn-sm" id="btnDiagCheck">Открыть проверку системы</button>
+                      <span class="ok-note" id="diagDoneNote" hidden>выполнена</span>
+                    </div>
                   </div>
                 </div>
-                <div class="step">
-                  <span class="step-num">2</span>
-                  <div class="step-body">
-                    <div class="step-name">Подбор стратегии</div>
-                    <div class="step-desc">Каждая стратегия тестируется на Discord, YouTube и других сервисах (~12 сек на стратегию). В конце — одна рекомендация.</div>
-<div class="test-options">
-  <label class="opt-line">
-    <input type="checkbox" id="extendedCheck">
-    <span class="opt-text">
-      <span class="opt-title">Расширенный режим <span class="opt-tag">Zapret 1 + анализ</span></span>
-      <span class="opt-hint">сравнение с Zapret 1 и без обхода, полный анализ комбинаций</span>
-    </span>
-  </label>
-  <label class="opt-line">
-    <input type="checkbox" id="logCheck">
-    <span class="opt-text">
-      <span class="opt-title">Отчёт для поддержки <span class="opt-tag">ZIP</span></span>
-      <span class="opt-hint">ZIP с результатами теста и данными о системе</span>
-    </span>
-  </label>
-</div>
+
+                <div class="step-box">
+                  <div class="step-header">
+                    <div class="step-badge-title">
+                      <div class="step-num">2</div>
+                      <div>
+                        <div class="step-name">Подбор стратегии</div>
+                        <div class="step-desc">Каждая стратегия тестируется на Discord, YouTube и других сервисах (~12 сек на стратегию). В конце — одна рекомендация.</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="test-options">
+                    <label class="opt-line">
+                      <input type="checkbox" id="extendedCheck">
+                      <span class="opt-text">
+                        <span class="opt-title">Расширенный режим <span class="opt-tag">Zapret 1 + анализ</span></span>
+                        <span class="opt-hint">сравнение с Zapret 1 и без обхода, полный анализ комбинаций</span>
+                      </span>
+                    </label>
+                    <label class="opt-line">
+                      <input type="checkbox" id="logCheck">
+                      <span class="opt-text">
+                        <span class="opt-title">Отчёт для поддержки <span class="opt-tag">ZIP</span></span>
+                        <span class="opt-hint">ZIP с результатами теста и данными о системе</span>
+                      </span>
+                    </label>
+                  </div>
+                  <div>
                     <button class="btn btn-primary" id="btnStartTest">Начать подбор</button>
                   </div>
                 </div>
+
+                <div class="warning-banner">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                  <span>На время подбора обход будет перезапускаться с каждой стратегией. Возможно кратковременное отключение от сети.</span>
+                </div>
               </div>
             </div>
-            <div class="notice notice-warn">На время подбора обход будет перезапускаться с каждой стратегией. Возможно кратковременное отключение от сети.</div>
           </div>
 
           <div id="testRun" class="stack" hidden>
             <div class="panel">
-              <div class="run-head">
-                <div class="run-current" id="testCurrentPhase">Подготовка…</div>
-                <div class="run-elapsed mono" id="testElapsed">00:00</div>
-                <button class="btn btn-sm btn-danger-text" id="btnCancelTest">Отменить</button>
+              <div class="progress-bar-wrap">
+                <div class="progress-top">
+                  <div class="progress-title"><span id="testCurrentPhase">Подготовка…</span></div>
+                  <div class="progress-meta">
+                    <span class="mono" id="testElapsed">00:00</span>
+                    <button class="btn btn-sm btn-danger-text" id="btnCancelTest">Отменить</button>
+                  </div>
+                </div>
+                <div class="progress-track"><div class="fill" id="testProgressFill"></div></div>
+                <div class="progress-msg" id="testProgressMsg"></div>
               </div>
-              <div class="progress-bar"><div class="fill" id="testProgressFill"></div></div>
-              <div class="progress-msg" id="testProgressMsg"></div>
-            </div>
-
-            <div class="panel">
-              <div class="panel-title">Стратегии</div>
-              <table class="strat-table">
-                <thead>
-                  <tr>
-                    <th class="col-strat">Стратегия</th>
-                    <th class="col-state">Состояние</th>
-                    <th class="col-rate">Доступность</th>
-                    <th class="col-mini">Discord</th>
-                    <th class="col-mini">YouTube</th>
-                    <th class="col-rate">Хосты</th>
-                  </tr>
-                </thead>
-                <tbody id="stratTbody">
-                  <tr class="strat-empty"><td colspan="6">Ожидание первых результатов…</td></tr>
-                </tbody>
-              </table>
-              <div class="meta" style="margin-top:6px">Нажмите на стратегию, чтобы раскрыть проверки по хостам.</div>
+              <div class="table-container">
+                <table class="strat-table">
+                  <thead>
+                    <tr>
+                      <th class="col-strat">Стратегия</th>
+                      <th class="col-state">Состояние</th>
+                      <th class="col-rate">Доступность</th>
+                      <th class="col-mini">Discord</th>
+                      <th class="col-mini">YouTube</th>
+                      <th class="col-rate">Хосты</th>
+                    </tr>
+                  </thead>
+                  <tbody id="stratTbody">
+                    <tr class="strat-empty"><td colspan="6">Ожидание первых результатов…</td></tr>
+                  </tbody>
+                </table>
+                <div class="meta" style="margin-top:6px">Нажмите на стратегию, чтобы раскрыть проверки по хостам.</div>
+              </div>
             </div>
 
             <details class="panel panel-details">
@@ -292,20 +388,50 @@
 
         <!-- ═══ Проверка системы ═══ -->
         <section id="page-diagnostics" class="page">
-          <div class="panel">
-            <div class="diag-head">
-              <div>
-                <div class="panel-title">Диагностика программы</div>
-                <div class="panel-sub">Права, конфликты, служба, пресет, связь и тип блокировки. Обычно 5–15 секунд.</div>
+          <div class="panel" id="diagPanel">
+            <div class="card-head">
+              <div class="head-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
               </div>
-              <div class="diag-actions">
-                <button class="btn btn-primary" id="diagRunBtn">Проверить</button>
+              <div class="head-text">
+                <div class="head-title">Диагностика программы</div>
+                <div class="head-desc">Права, конфликты, служба, пресет, связь и тип блокировки — обычно 5–15 секунд.</div>
+              </div>
+              <div class="head-right">
                 <button class="btn" id="diagCopyBtn" hidden>Скопировать отчёт</button>
+                <button class="btn btn-primary" id="diagRunBtn">Проверить</button>
               </div>
             </div>
-            <div class="diag-summary" id="diagSummary"></div>
-            <div class="diag-body" id="diagResults">
-              <div class="empty-note">Проверим: права администратора, конфликт Zapret 1, службу, валидность пресета, DNS и связь с Discord/YouTube/GitHub, тип блокировки. Нажмите «Проверить».</div>
+
+            <div class="diag-idle" id="diagIdle">
+              <div class="diag-idle-title">Комплексный тест окружения и сети</div>
+              <div class="diag-checklist">
+                <span class="check-pill">Права администратора</span>
+                <span class="check-pill">Конфликт Zapret 1</span>
+                <span class="check-pill">Служба zapret2</span>
+                <span class="check-pill">Пресет и стратегия</span>
+                <span class="check-pill">YouTube & Discord</span>
+                <span class="check-pill">Тип цензуры</span>
+              </div>
+              <div class="diag-idle-note">Тест выявит проблемы окружения и сети. Нажмите «Проверить» в шапке.</div>
+            </div>
+
+            <div class="diag-loading" id="diagLoading" hidden>
+              <div class="spinner"></div>
+              <div class="diag-loading-step">Выполняется проверка: <strong id="diagCurrent">…</strong></div>
+              <div class="diag-loading-timer">прошло <span class="mono" id="diagTimer">0</span> с</div>
+            </div>
+
+            <div id="diagResults" hidden>
+              <div class="diag-summary-bar" id="diagSummary"></div>
+              <div class="diag-list" id="diagList"></div>
+              <div class="diag-recommend" id="diagRecommend" hidden>
+                <div class="rec-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                </div>
+                <div class="rec-text">Есть проблемы с доступом к сервисам. Если нужно подобрать стратегию под ваш интернет — начните подбор.</div>
+                <button class="btn btn-warn" onclick="location.hash='tester'">Начать подбор стратегии</button>
+              </div>
             </div>
           </div>
 
@@ -354,104 +480,150 @@
 
         <!-- ═══ Списки ═══ -->
         <section id="page-lists" class="page">
-          <details class="panel panel-details lists-help">
-            <summary class="panel-summary">
-              <span class="panel-title">Как заполнять</span>
-              <span class="meta">домены, IP-сети, включения и исключения</span>
-            </summary>
-            <div>
-              <div class="lh-row"><code>example.com</code><span>сайт и все его поддомены (www, api, m и любые другие)</span></div>
-              <div class="lh-row"><code>api.example.com</code><span>точечно — только этот поддомен (и его поддомены)</span></div>
-              <div class="lh-row"><code>1.2.3.0/24</code><span>IP-сеть или один IP-адрес — для блоков IP</span></div>
-              <div class="lh-note"><b>Включения</b> — Zapret обходит принудительно. <b>Исключения</b> — пропускает как есть (если обход мешает).</div>
-              <div class="lh-note"><b>Приоритет:</b> исключение сильнее включения. Если домен или сеть есть и там и там, обход на них действовать <b>не будет</b>. Включения из разных списков просто объединяются — дубль безвреден.</div>
-              <div class="lh-note">Один адрес на строчку. Ошибочные строки подсвечиваются — пока они есть, список не сохранится.</div>
+
+          <div class="info-banner">
+            <div class="banner-bar">
+              <div class="banner-left">
+                <div class="banner-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                </div>
+                <div class="banner-caption">Справка по заполнению <span>1 запись на строку · без http://</span></div>
+              </div>
+              <button class="banner-btn" id="toggleHelpBtn">
+                <span>Форматы и примеры</span>
+                <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
             </div>
-          </details>
+            <div class="banner-details" id="helpDetails" hidden>
+              <div class="help-grid">
+                <div class="help-item">
+                  <h4>Формат доменов</h4>
+                  <p>Один домен на строку, без протоколов (<code class="code-tag">https://</code>), слэшей и путей. Поддомены перехватываются автоматически.</p>
+                  <div class="help-ok">Правильно: <code class="code-tag">discord.com</code> · <code class="code-tag">googlevideo.com</code></div>
+                </div>
+                <div class="help-item">
+                  <h4>Формат IP-подсетей</h4>
+                  <p>Одиночные адреса или подсети в нотации CIDR. Локальные и приватные диапазоны уже внесены в исключения.</p>
+                  <div class="help-ok">Правильно: <code class="code-tag">1.2.3.4</code> · <code class="code-tag">198.51.100.0/24</code></div>
+                </div>
+              </div>
+              <div class="help-note"><b>Включения</b> — Zapret обходит принудительно; <b>исключения</b> — пропускает как есть. Исключение сильнее включения: если домен есть и там и там, обход на него действовать не будет. Ошибочные строки подсвечиваются и блокируют сохранение.</div>
+            </div>
+          </div>
 
           <div class="lists-grid">
-            <div class="panel list-panel">
-              <div class="list-head">
-                <div class="panel-title">Домены — включения <span class="list-count" id="domIncCount">0</span></div>
-                <div class="list-desc">Заблокированный сайт, которого нет в стандартных списках, — добавьте сюда: Zapret будет обходить его всегда, при любой стратегии.</div>
+
+            <div class="list-card">
+              <div class="list-header">
+                <div class="list-title-row">
+                  <span class="list-title">Домены — включения</span>
+                  <span class="count-badge" id="domIncCount">0</span>
+                </div>
+                <div class="list-desc">Заблокированный сайт, которого нет в стандартных списках, — Zapret будет обходить его всегда, при любой стратегии.</div>
               </div>
-              <div class="list-area-wrap">
-                <div class="line-nums" id="domIncNums" aria-hidden="true">1</div>
-                <textarea class="input list-area" id="domIncTextarea" spellcheck="false" placeholder="example.com"></textarea>
+              <div class="editor-wrapper">
+                <div class="line-gutter" id="domIncNums" aria-hidden="true">1</div>
+                <textarea class="editor-textarea" id="domIncTextarea" spellcheck="false" placeholder="example.com"></textarea>
               </div>
-              <div class="list-valid" id="domIncValid"></div>
-              <div class="list-foot">
+              <div class="list-footer">
+                <div class="status-msg" id="domIncValid"></div>
+                <span class="meta list-result" id="domIncResult"></span>
                 <button class="btn btn-sm" data-save="domInc">Сохранить</button>
-                <span class="meta" id="domIncResult"></span>
               </div>
             </div>
 
-            <div class="panel list-panel">
-              <div class="list-head">
-                <div class="panel-title">Домены — исключения <span class="list-count" id="domExcCount">0</span></div>
-                <div class="list-desc">Сайт, которому обход мешает (не открывается, тормозит), — добавьте сюда: Zapret будет пропускать его как есть.</div>
+            <div class="list-card">
+              <div class="list-header">
+                <div class="list-title-row">
+                  <span class="list-title">Домены — исключения</span>
+                  <span class="count-badge" id="domExcCount">0</span>
+                </div>
+                <div class="list-desc">Сайт, которому обход мешает (не открывается, тормозит), — Zapret будет пропускать его как есть.</div>
               </div>
-              <div class="list-area-wrap">
-                <div class="line-nums" id="domExcNums" aria-hidden="true">1</div>
-                <textarea class="input list-area" id="domExcTextarea" spellcheck="false" placeholder="bank.ru"></textarea>
+              <div class="editor-wrapper">
+                <div class="line-gutter" id="domExcNums" aria-hidden="true">1</div>
+                <textarea class="editor-textarea" id="domExcTextarea" spellcheck="false" placeholder="bank.ru"></textarea>
               </div>
-              <div class="list-valid" id="domExcValid"></div>
-              <div class="list-foot">
+              <div class="list-footer">
+                <div class="status-msg" id="domExcValid"></div>
+                <span class="meta list-result" id="domExcResult"></span>
                 <button class="btn btn-sm" data-save="domExc">Сохранить</button>
-                <span class="meta" id="domExcResult"></span>
               </div>
             </div>
 
-            <div class="panel list-panel">
-              <div class="list-head">
-                <div class="panel-title">IP-сети — включения <span class="list-count" id="ipIncCount">0</span></div>
+            <div class="list-card">
+              <div class="list-header">
+                <div class="list-title-row">
+                  <span class="list-title">IP-сети — включения</span>
+                  <span class="count-badge" id="ipIncCount">0</span>
+                </div>
                 <div class="list-desc">Подсети, которые обходятся всегда. Нужно при блокировке по IP-адресу, когда сайт не открывается независимо от имени.</div>
               </div>
-              <div class="list-area-wrap">
-                <div class="line-nums" id="ipIncNums" aria-hidden="true">1</div>
-                <textarea class="input list-area" id="ipIncTextarea" spellcheck="false" placeholder="1.2.3.0/24"></textarea>
+              <div class="editor-wrapper">
+                <div class="line-gutter" id="ipIncNums" aria-hidden="true">1</div>
+                <textarea class="editor-textarea" id="ipIncTextarea" spellcheck="false" placeholder="1.2.3.0/24"></textarea>
               </div>
-              <div class="list-valid" id="ipIncValid"></div>
-              <div class="list-foot">
+              <div class="list-footer">
+                <div class="status-msg" id="ipIncValid"></div>
+                <span class="meta list-result" id="ipIncResult"></span>
                 <button class="btn btn-sm" data-save="ipInc">Сохранить</button>
-                <span class="meta" id="ipIncResult"></span>
               </div>
             </div>
 
-            <div class="panel list-panel">
-              <div class="list-head">
-                <div class="panel-title">IP-сети — исключения <span class="list-count" id="ipExcCount">0</span></div>
+            <div class="list-card">
+              <div class="list-header">
+                <div class="list-title-row">
+                  <span class="list-title">IP-сети — исключения</span>
+                  <span class="count-badge" id="ipExcCount">0</span>
+                </div>
                 <div class="list-desc">Свои и локальные сети, которые обход не должен трогать. По умолчанию — приватные диапазоны.</div>
               </div>
-              <div class="list-area-wrap">
-                <div class="line-nums" id="ipExcNums" aria-hidden="true">1</div>
-                <textarea class="input list-area" id="ipExcTextarea" spellcheck="false" placeholder="192.168.0.0/16"></textarea>
+              <div class="editor-wrapper">
+                <div class="line-gutter" id="ipExcNums" aria-hidden="true">1</div>
+                <textarea class="editor-textarea" id="ipExcTextarea" spellcheck="false" placeholder="192.168.0.0/16"></textarea>
               </div>
-              <div class="list-valid" id="ipExcValid"></div>
-              <div class="list-foot">
+              <div class="list-footer">
+                <div class="status-msg" id="ipExcValid"></div>
+                <span class="meta list-result" id="ipExcResult"></span>
                 <button class="btn btn-sm" data-save="ipExc">Сохранить</button>
-                <span class="meta" id="ipExcResult"></span>
               </div>
             </div>
+
           </div>
         </section>
 
         <!-- ═══ Спорные домены ═══ -->
         <section id="page-contested" class="page">
           <div class="panel" id="contestedPanel">
-            <div class="list-head">
-              <div>
-                <div class="panel-title">Спорные домены</div>
-                <div class="panel-desc">Обход одним провайдерам нужен, у других ломается. Порядок: проба → тумблер → перезапуск обхода.</div>
+            <div class="card-head">
+              <div class="head-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
               </div>
-              <span class="meta" id="contestedProt"></span>
+              <div class="head-text">
+                <div class="head-title">Спорные домены</div>
+                <div class="head-desc">Обход одним провайдерам необходим, у других ломает доступ</div>
+              </div>
+              <div class="head-right">
+                <span class="state" id="contestedProt"><span class="dot dot-unknown"></span><span class="state-text st-mute">—</span></span>
+              </div>
             </div>
-            <table class="contested-table">
-              <thead>
-                <tr><th>Сервис</th><th>Проблема</th><th>Проба</th><th>Обход</th></tr>
-              </thead>
-              <tbody id="contestedBody"></tbody>
-            </table>
+
+            <div class="workflow-strip">
+              <span>Порядок действий:</span>
+              <span class="step-pill">1. Проба</span>
+              <span class="step-arrow">→</span>
+              <span class="step-pill">2. Переключить тумблер</span>
+              <span class="step-arrow">→</span>
+              <span class="step-pill">3. Перезапуск обхода</span>
+            </div>
+
+            <div class="table-head">
+              <div>Сервис</div>
+              <div>Особенность и проблема</div>
+              <div class="th-right">Проба / Обход</div>
+            </div>
+
+            <div id="contestedBody"></div>
           </div>
         </section>
 

@@ -23,9 +23,9 @@ y    10 x   216    55.9x 21.8  h1#pageTitle "Главная"
          parent=header.topbar disp=block pos=static grow=0 fs=15px lh=21.75px wsn=normal minW=auto maxW=none hgt=21.75px minH=auto pad=0px gap=normal ai=normal js=normal
 y  41.8 x   216    1048x131.2  div#z2Panel.panel.panel-accent.is-ok
          parent=div.stack disp=block pos=relative grow=0 fs=13px lh=18.85px wsn=normal minW=0px maxW=none hgt=131.203px minH=0px pad=12px 16px gap=normal ai=normal js=normal
-y  54.7 x 950.2     141x   28  button#btnZ2Toggle.btn.btn-stop "Остановить"
+y  54.7 x 945.6     141x   28  button#btnZ2Toggle.btn.btn-stop "Остановить"
          parent=div.head-right disp=flex pos=static grow=0 fs=12.5px lh=18.125px wsn=nowrap minW=141px maxW=none hgt=28px minH=auto pad=0px 12px gap=6px ai=center js=center
-y    56 x1101.2   145.8x 25.4  span#z2State.state
+y    56 x1096.6   150.4x 25.4  span#z2State.state
          parent=div.head-right disp=flex pos=static grow=0 fs=12px lh=17.4px wsn=nowrap minW=auto maxW=none hgt=25.3906px minH=auto pad=3px 10px gap=7px ai=center js=normal
 y 119.3 x  1047     200x   28  select#strategySelect.input
          parent=div.param-ctl disp=block pos=static grow=0 fs=12.5px lh=normal wsn=pre minW=0px maxW=none hgt=28px minH=auto pad=0px 26px 0px 8px gap=normal ai=center js=normal
@@ -71,11 +71,11 @@ y 986.8 x  1117     130x   28  button#btnZ1Toggle.btn "Запустить"
                            -------                                                                                                                              
                                                                                                                                                                 
                            -----------------------------------------------------------------------------------------------------------------------------------  
-                           |                                                                                          -------------------                    |  
-                           |                                                                                          |                 |                    |  
-                           |                                                                                          |        B        |                    |  
-                           |                                                                                          |                 |                    |  
-                           |                                                                                          -------------------                    |  
+                           |                                                                                          ------------------                     |  
+                           |                                                                                          |                |                     |  
+                           |                                                                                          |        B       |                     |  
+                           |                                                                                          |                |                     |  
+                           |                                                                                          ------------------                     |  
  -----------------------   |                                                                                                                                 |  
  |                     |   |                                                                                                                                 |  
  |          n          |   |                                                                                                                                 |  

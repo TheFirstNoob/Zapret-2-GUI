@@ -1,0 +1,1 @@
+.els[] | select(.cls == "info-banner" or .cls == "list-card" or .cls == "editor-wrapper" or .cls == "banner-bar") | .cls + " y=" + (.y|tostring)

@@ -1,0 +1,1 @@
+.els[] | select(.cls == "step-box" or .cls == "warning-banner" or .cls == "progress-bar-wrap" or .cls == "card-head") | .cls + " y=" + (.y|tostring)
