@@ -185,16 +185,6 @@ def export_data_package(
             if cfg_json.exists():
                 zf.write(cfg_json, "zapret2_config.json")
 
-            # ui_debug.log (вкладки/кнопки/сбросы тестера) — из стабильного
-            # журнала %TEMP%\zapret2_probe\ (если есть)
-            try:
-                from core.utils import get_temp_dir
-                ui_log = get_temp_dir() / "ui_debug.log"
-                if ui_log.exists():
-                    zf.write(ui_log, "ui_debug.log")
-            except Exception:
-                pass
-
             # debug_winws2.log НЕ включается (2026-09-13): тестер не запускает
             # winws2 с --debug, файл — остаток от прошлой DEBUG-сессии и в
             # отчёт не должен попадать; exp-/cand-/test- пресеты тоже
