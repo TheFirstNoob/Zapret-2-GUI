@@ -77,9 +77,11 @@ def get_network_info() -> dict:
 
 
 def get_routing_info() -> dict:
-    """Собирает короткий tracert до публичного DNS для анализа хопов провайдера."""
+    """Собирает короткий tracert до публичного DNS для анализа хопов провайдера.
+    2026-09-13: -h 6 / -w 800 — полный -h 8/-w 1500 растягивал сбор отчёта до
+    20-30с (каждый не отвечающий хоп ждал 1.5с×3)."""
     return {
-        "trace_1dot": _run(["tracert", "-d", "-h", "8", "-w", "1500", "1.1.1.1"], timeout=20),
+        "trace_1dot": _run(["tracert", "-d", "-h", "6", "-w", "800", "1.1.1.1"], timeout=12),
     }
 
 
@@ -93,14 +95,27 @@ def get_isp_info() -> dict:
 
 
 def collect_all() -> dict:
-    return {
-        "collected_at": datetime.now().isoformat(),
-        "system": get_system_info(),
-        "dns": get_dns_info(),
-        "network": get_network_info(),
-        "routing": get_routing_info(),
-        "isp": get_isp_info(),
+    """Все внешние команды параллельно: tracert/nslookup/ipconfig — до 30с
+    последовательно; параллель — max(каждой). Каждый вызов с собственным
+    timeout, ошибки изолированы."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    tasks = {
+        "system": lambda: get_system_info(),
+        "dns": lambda: get_dns_info(),
+        "network": lambda: get_network_info(),
+        "routing": lambda: get_routing_info(),
+        "isp": lambda: get_isp_info(),
     }
+    out: dict = {"collected_at": datetime.now().isoformat()}
+    with ThreadPoolExecutor(max_workers=5) as ex:
+        futs = {k: ex.submit(fn) for k, fn in tasks.items()}
+        for k, fut in futs.items():
+            try:
+                out[k] = fut.result(timeout=30)
+            except Exception:
+                out[k] = {}
+    return out
 
 
 def export_data_package(
@@ -165,13 +180,29 @@ def export_data_package(
             if session_log.exists():
                 zf.write(session_log, "test_session.log")
 
-            debug_log = root_dir / "debug_winws2.log"
-            if debug_log.exists():
-                zf.write(debug_log, "debug_winws2.log")
+            # Конфиг (профиль/тогглы) — критичен для разбора отчёта
+            cfg_json = root_dir / "zapret2_config.json"
+            if cfg_json.exists():
+                zf.write(cfg_json, "zapret2_config.json")
 
+            # ui_debug.log (вкладки/кнопки/сбросы тестера) — из стабильного
+            # журнала %TEMP%\zapret2_probe\ (если есть)
+            try:
+                from core.utils import get_temp_dir
+                ui_log = get_temp_dir() / "ui_debug.log"
+                if ui_log.exists():
+                    zf.write(ui_log, "ui_debug.log")
+            except Exception:
+                pass
+
+            # debug_winws2.log НЕ включается (2026-09-13): тестер не запускает
+            # winws2 с --debug, файл — остаток от прошлой DEBUG-сессии и в
+            # отчёт не должен попадать; exp-/cand-/test- пресеты тоже
             presets_dir = root_dir / "presets"
             if presets_dir.is_dir():
-                for pf in presets_dir.glob("*.txt"):
+                for pf in sorted(presets_dir.glob("*.txt")):
+                    if pf.stem.startswith(("exp-", "cand-", "test-")):
+                        continue
                     zf.write(pf, f"presets/{pf.name}")
 
             # Hostlists matter for diagnosis: a blocked domain missing from
