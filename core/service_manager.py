@@ -1,3 +1,4 @@
+import re
 import subprocess
 import time
 from pathlib import Path
@@ -98,13 +99,62 @@ def _service_cmdline(exe: Path, args: list[str]) -> str:
     return " ".join(parts)
 
 
+def _read_stored_binpath() -> str:
+    """Stored binPath of the service (locale-independent via CIM)."""
+    ps = ("(Get-CimInstance Win32_Service -Filter \"Name='%s'\").PathName"
+          % SERVICE_NAME)
+    r = subprocess.run(
+        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps],
+        capture_output=True, text=True, encoding="oem", errors="replace", timeout=20,
+        creationflags=subprocess.CREATE_NO_WINDOW)
+    return (r.stdout or "").strip()
+
+
+def _path_from_token(t: str) -> Optional[str]:
+    """Extract a filesystem path from an args token, if it carries one."""
+    if "@" in t and "\\" in t:
+        return t.split("@", 1)[1]
+    if "=" in t and "\\" in t:
+        return t.split("=", 1)[1]
+    if "--blob" in t and not t.startswith("--blob"):
+        return None
+    return None
+
+
+def _verify_binpath(exe: Path, args: list[str]) -> tuple[bool, str]:
+    """Confirm SCM stored the full command line.  Old/broken Win10 SCM could
+    mangle binPath silently (случай кривой установки 2026-09-12) — validate
+    counts and that every path token still points at an existing file."""
+    stored = _read_stored_binpath()
+    if not stored:
+        return False, "binPath пуст — SCM не сохранил командную строку"
+    s = stored.replace('\\"', '"')
+    tokens = [m.group(1) if m.group(1) is not None else m.group(2)
+              for m in re.finditer(r'"([^"]*)"|(\S+)', s)]
+    if len(tokens) != 1 + len(args):
+        return False, (f"binPath содержит {len(tokens)} аргументов вместо "
+                       f"{1 + len(args)} — часть командной строки потеряна "
+                       f"(нестандартный путь установки?)")
+    for t in tokens[1:]:
+        p = _path_from_token(t)
+        if p and not Path(p).exists():
+            return False, f"путь из binPath не существует: {p} — установка кривая"
+    return True, ""
+
+
 def _sc_run_bat(lines: list[str]) -> tuple[int, str]:
     """Run sc via a temporary .bat — the only faithful way to pass the
     v1-style binPath with backslash-quotes (cmd's line parser handles
     them; argv and even cmd /c <string> mangle them)."""
     import tempfile
     bat = Path(tempfile.gettempdir()) / "zapret2_svc.bat"
-    bat.write_text("\r\n".join(["@echo off"] + lines) + "\r\n", encoding="ascii")
+    # OEM (cp866 на русской Windows) — cmd читает bat в кодовой странице
+    # консоли; ascii ронял установку у пользователей с кириллицей в пути
+    # (UnicodeEncodeError — случай 2026-09-12).
+    try:
+        bat.write_text("\r\n".join(["@echo off"] + lines) + "\r\n", encoding="oem")
+    except UnicodeEncodeError:
+        bat.write_text("\r\n".join(["@echo off"] + lines) + "\r\n", encoding="utf-8")
     try:
         r = subprocess.run(
             ["cmd.exe", "/c", str(bat)],
@@ -167,6 +217,18 @@ def install(root_dir: Optional[Path] = None, args: Optional[list[str]] = None) -
     if code != 0:
         return False, f"sc create failed: {out.strip()}"
     _sc(["description", SERVICE_NAME, "zapret DPI bypass (Zapret 2)"])
+    # Verify BEFORE start: old/broken SCM может молча исказить binPath
+    # (аргументы по пробелам рвутся, кириллические пути не читаются) —
+    # тогда служба «стоит», но обхода нет и автозапуск валится.
+    okv, msgv = _verify_binpath(exe, args)
+    if not okv:
+        remove()
+        return False, f"Установка отменена (кривой binPath): {msgv}"
+    # SCM recovery: если winws2 умрёт (случай 2026-09-12: три падения за утро,
+    # обход пропадал до ручного перезапуска) — перезапустить службу через 60 с.
+    _sc(["failure", SERVICE_NAME,
+         "reset=", "86400",
+         "actions=", "restart/60000/restart/60000/restart/60000"])
     start(args)
     return True, "Служба zapret2 установлена"
 
