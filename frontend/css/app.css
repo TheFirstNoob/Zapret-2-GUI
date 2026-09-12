@@ -706,10 +706,6 @@ label.opt-line:has(input:disabled):hover { background: var(--field); }
 }
 .ok-note[hidden] { display: none; }
 
-.run-head { display: flex; align-items: center; gap: 10px; }
-.run-current { font-weight: 600; font-size: 13px; flex: 1; min-width: 0; }
-.run-elapsed { font-size: 13px; color: var(--dim); }
-
 .progress-msg { font-size: 11.5px; color: var(--faint); margin-top: 8px; min-height: 16px; }
 
 .strat-table, .host-table, .check-table { width: 100%; border-collapse: collapse; }
@@ -724,18 +720,6 @@ label.opt-line:has(input:disabled):hover { background: var(--field); }
 
 /* ── CDN-стабилизация ── */
 .cdn-panel { margin-top: 12px; }
-.cdn-progress { margin-top: 10px; font-size: 12.5px; color: var(--faint); }
-.cdn-summary { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12.5px; margin: 4px 0 8px; }
-.cdn-summary b.bad { color: var(--err); }
-.cdn-body { margin-top: 10px; }
-.list-table { width: 100%; border-collapse: collapse; }
-.list-table th {
-  text-align: left; font-size: 11px; text-transform: uppercase;
-  color: var(--faint); padding: 6px 8px; border-bottom: 1px solid var(--line);
-}
-.list-table td { padding: 6px 8px; border-top: 1px solid var(--line); font-size: 12.5px; }
-.list-table tr:first-child td { border-top: none; }
-.list-table tr.bad { background: var(--err-bg); }
 
 .col-strat { width: 35%; }
 .col-state { width: 20%; }
@@ -925,7 +909,6 @@ label.opt-line:has(input:disabled):hover { background: var(--field); }
 .diag-recommend .btn { flex: 0 0 auto; }
 
 .check-name { font-weight: 600; width: 220px; }
-.check-detail { color: var(--dim); font-size: 12px; }
 .empty-note { padding: 12px; text-align: center; color: var(--faint); font-size: 12.5px; }
 
 /* ── lists: инфо-баннер справки ── */
@@ -1248,8 +1231,6 @@ label.opt-line:has(input:disabled):hover { background: var(--field); }
 .probe-status { min-height: 18px; color: var(--faint); font-size: 12px; padding: 4px 0; }
 .probe-status[hidden] { display: none; }
 .probe-status.st-err { color: var(--err); font-weight: 600; }
-.probe-sec-title { font-weight: 600; margin: 8px 0 2px; color: var(--ink); }
-.probe-dns { font-size: 12px; color: var(--muted); line-height: 1.5; }
 .probe-report { white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace; font-size: 12px; max-height: 400px; overflow: auto; }
 
 /* ── Анализ приложения: подсказка под формой ── */
@@ -1489,9 +1470,7 @@ label.opt-line:has(input:disabled):hover { background: var(--field); }
   padding: 10px 12px;
 }
 
-/* справки CDN/ASN (свёрнутые панели) */
-.lists-help { margin-top: 12px; }
-.lh-title { font-size: 12px; font-weight: 600; margin-bottom: 6px; }
+/* легенда статусов в справках CDN/ASN */
 .lh-row {
   display: flex; align-items: baseline; gap: 10px;
   padding: 2px 0;
