@@ -32,6 +32,11 @@ test_session.log
 hosts.bak
 zapret2_report_*/
 
+# UI dump artifacts (dev)
+ui_dump*
+shot_*.png
+/*.mjs
+
 # OS
 Thumbs.db
 Desktop.ini
