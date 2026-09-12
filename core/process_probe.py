@@ -18,7 +18,10 @@ from typing import Optional
 
 import core.utils as utils
 
-PS_BASE = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command"]
+# RemoteSigned (а не Bypass): скрипты — read-only Get-* cmdlets, политика их не
+# трогает, а флаг Bypass — классический эвристический паттерн для AV/EDR.
+# Проверено 2026-09-12: вывод идентичен Bypass на всех вызовах _ps/_ps_json.
+PS_BASE = ["powershell", "-NoProfile", "-ExecutionPolicy", "RemoteSigned", "-Command"]
 
 _PRIVATE_RE = re.compile(
     r"^(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.|127\.|0\.|169\.254\.|224\.|239\.|255\.)")

@@ -269,6 +269,11 @@ const App = {
     if (hash === 'asn') AsnPage.init();
     if (hash === 'diagnostics') DiagnosticsPage.onShow();
     if (hash === 'tester') TesterPage.onShow();
+    // Список процессов заполняем сами при открытии вкладки — ручная
+    // кнопка «Сканировать» не нужна, интерфейс не дублирует действия.
+    if (hash === 'probe' && !TesterPage._probePollTimer && !TesterPage._probeStarting) {
+      TesterPage.scanProbeProcesses(true);
+    }
   },
 
   async loadVersion() {
@@ -2603,6 +2608,7 @@ const TesterPage = {
   _probeStartAt: 0,
   _probeDuration: 60,
   _probeTimer: null,
+  _probeScanned: false,
 
   _setProbeState(text, cls) {
     const chip = $('probeState');
@@ -2616,11 +2622,12 @@ const TesterPage = {
     txt.textContent = text;
   },
 
-  async scanProbeProcesses() {
+  async scanProbeProcesses(quiet) {
+    if (quiet && this._probeScanned) return;
     const btn = $('probeScanBtn');
     const statusEl = $('probeStatus');
     if (statusEl) { statusEl.hidden = false; statusEl.textContent = 'Сканирование процессов…'; statusEl.className = 'probe-status'; }
-    btn.disabled = true;
+    if (btn) btn.disabled = true;
     try {
       const r = await apiPost('/process-probe/scan', {});
       if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
@@ -2642,13 +2649,14 @@ const TesterPage = {
         sel.appendChild(o);
       }
       const total = (r.processes || []).length;
+      this._probeScanned = true;
       if (statusEl) { statusEl.textContent = `Найдено процессов: ${total}`; statusEl.className = 'probe-status'; }
-      showToast(`Найдено процессов: ${total}`, 'ok');
+      if (!quiet) showToast(`Найдено процессов: ${total}`, 'ok');
     } catch (e) {
       if (statusEl) { statusEl.textContent = 'Ошибка: ' + (e.message || e); statusEl.className = 'probe-status st-err'; }
-      showToast('Сканирование: ' + (e.message || e), 'error');
+      if (!quiet) showToast('Сканирование: ' + (e.message || e), 'error');
     }
-    btn.disabled = false;
+    if (btn) btn.disabled = false;
   },
 
   _probeTick() {
