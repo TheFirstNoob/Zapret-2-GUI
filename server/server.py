@@ -600,6 +600,18 @@ def _build_recommendation(all_results, naked, sanity: dict) -> dict:
     # QUIC-хосты (youtube-класс) вне network_rate — ютуб-«прикол» не влияет
     # на вердикт и «не пробито»-чипсы.
 
+    # Равные проценты (2026-09-13): при 100/100/100 пользователь не понимает,
+    # кого выбирает тестер. Порядок прогона детерминирован: default первым
+    # (эталон), auto/custom последними — при полном равенстве побеждает
+    # default. Объясняем это прямо в вердикте.
+    ties = [r.profile_name for r in all_results
+            if abs(r.network_rate - net_rate) < 1e-9]
+    tie_note = ""
+    if len(ties) > 1:
+        tie_note = (f" Стратегии {', '.join(ties)} показали одинаково ({net_rate:.0f}%) — "
+                    f"рекомендую {best.profile_name} как проверенный эталон, "
+                    "остальные — альтернативы той же силы, пробуйте их, если default начнёт флакать.")
+
     if engine_broken:
         verdict = "engine_broken"
         if profiles_loaded is not None and profiles_loaded <= 1:
@@ -618,11 +630,11 @@ def _build_recommendation(all_results, naked, sanity: dict) -> dict:
                    "Запустите «Диагностику» и сохраните отчёт.")
     elif net_rate >= 100:
         verdict = "ok"
-        message = f"✅ Лучшая стратегия: {best.profile_name} — {best.net_ok_count}/{best.net_total} доступно.{miss_note}"
+        message = f"✅ Лучшая стратегия: {best.profile_name} — {best.net_ok_count}/{best.net_total} доступно.{tie_note}{miss_note}"
     elif net_rate > 0:
         verdict = "partial"
         message = (f"⚠ Лучшая стратегия: {best.profile_name} — {best.net_ok_count}/{best.net_total} "
-                   f"({net_rate:.0f}%). Не пробито: {', '.join(blocked) or '—'}{miss_note}")
+                   f"({net_rate:.0f}%). Не пробито: {', '.join(blocked) or '—'}{tie_note}{miss_note}")
     else:
         verdict = "no_bypass"
         message = "❌ Ни одна стратегия не пробила блокировку."
