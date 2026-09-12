@@ -1,0 +1,1 @@
+.els[] | select(.id == "probeStartBtn" or .id == "probeStopBtn" or .id == "probeScanBtn" or .id == "probeState" or .id == "probeDurSelect" or .cls == "probe-grid" or .id == "probePanel") | .id + "|" + .cls + " y=" + (.y|tostring) + " x=" + (.x|tostring) + " w=" + (.w|tostring) + " h=" + (.h|tostring) + " " + .text

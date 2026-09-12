@@ -1225,9 +1225,119 @@ label.opt-line:has(input:disabled):hover { background: var(--field); }
 .probe-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .probe-actions-right { justify-content: flex-end; }
 .probe-status { min-height: 18px; color: var(--faint); font-size: 12px; padding: 4px 0; }
+.probe-status[hidden] { display: none; }
+.probe-status.st-err { color: var(--err); font-weight: 600; }
 .probe-sec-title { font-weight: 600; margin: 8px 0 2px; color: var(--ink); }
 .probe-dns { font-size: 12px; color: var(--muted); line-height: 1.5; }
 .probe-report { white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace; font-size: 12px; max-height: 400px; overflow: auto; }
+
+/* ── Анализ приложения: подсказка под формой ── */
+.hint-bar {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12px; color: var(--faint);
+  padding: 2px 4px 6px;
+}
+.hint-bar svg { width: 14px; height: 14px; flex-shrink: 0; }
+
+/* состояние «ожидание» */
+.probe-idle {
+  padding: 34px 0 26px;
+  display: flex; flex-direction: column; align-items: center;
+  text-align: center; gap: 10px;
+  color: var(--faint);
+}
+.probe-idle[hidden] { display: none; }
+.idle-icon {
+  width: 44px; height: 44px; border-radius: 50%;
+  background: rgba(255,255,255,.03);
+  border: 1px solid var(--line);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--dim);
+  margin-bottom: 4px;
+}
+.idle-icon svg { width: 20px; height: 20px; }
+.probe-idle-title { font-size: 13.5px; font-weight: 600; color: var(--text); }
+.probe-idle-note { font-size: 12px; max-width: 460px; line-height: 1.45; }
+
+/* ── Анализ приложения: живой перехват ── */
+.capture-live-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  background: rgba(44, 92, 147, .1);
+  border: 1px solid var(--accent-line);
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin: 6px 0 8px;
+}
+.live-status { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.radar-pulse {
+  position: relative;
+  width: 12px; height: 12px; flex: 0 0 auto;
+}
+.radar-pulse::before {
+  content: ''; position: absolute; inset: 0;
+  border-radius: 50%; background: var(--accent); opacity: .8;
+}
+.radar-pulse::after {
+  content: ''; position: absolute; inset: -4px;
+  border-radius: 50%; border: 2px solid var(--accent);
+  animation: pulseAnim 1.4s cubic-bezier(.24, 0, .38, 1) infinite;
+}
+@keyframes pulseAnim {
+  0% { transform: scale(.6); opacity: 1; }
+  100% { transform: scale(1.8); opacity: 0; }
+}
+.live-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.live-title { font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.live-sub { font-size: 12px; color: var(--faint); }
+.live-right { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; }
+.live-timer-badge {
+  font-size: 13px; font-weight: 600;
+  color: var(--accent);
+  background: rgba(79, 135, 199, .12);
+  border: 1px solid var(--accent-line);
+  padding: 4px 10px; border-radius: 6px;
+}
+
+/* ── Анализ приложения: таблица трафика ── */
+.traffic-table-wrap { width: 100%; overflow-x: auto; }
+.traffic-table { width: 100%; border-collapse: collapse; font-size: 12.5px; text-align: left; }
+.traffic-table th {
+  padding: 8px 12px;
+  font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--faint);
+  border-bottom: 1px solid var(--divider);
+}
+.traffic-table td {
+  padding: 8px 12px;
+  vertical-align: middle;
+  color: var(--dim);
+  border-top: 1px solid var(--divider);
+}
+.traffic-table tbody tr:first-child td { border-top: none; }
+.traffic-table tbody tr:hover { background: rgba(255,255,255,.02); }
+.proto-badge {
+  font-family: var(--mono); font-size: 11px; font-weight: 600;
+  padding: 2px 6px; border-radius: 4px;
+  background: rgba(255,255,255,.05);
+  border: 1px solid var(--line);
+  color: var(--text);
+}
+.proto-badge.udp { color: var(--info); }
+.endpoint-ip { font-family: var(--mono); font-size: 12px; font-weight: 500; color: var(--text); }
+.endpoint-dns { font-size: 11px; color: var(--faint); }
+.state-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11.5px; font-weight: 500;
+  padding: 2px 8px; border-radius: 12px;
+  border: 1px solid transparent;
+}
+.state-badge .sdot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.state-badge.established { background: var(--ok-bg); color: var(--ok); border-color: var(--ok-line); }
+.state-badge.syn-sent { background: var(--warn-bg); color: var(--warn); border-color: var(--warn-line); }
+.state-badge.closed { background: var(--err-bg); color: var(--err); border-color: var(--err-line); }
+.state-badge.neutral { background: rgba(255,255,255,.04); color: var(--dim); border-color: var(--line); }
+.packets-count { font-family: var(--mono); color: var(--dim); font-weight: 500; }
+.probe-verdict { margin-top: 10px; font-size: 12.5px; color: var(--dim); line-height: 1.45; }
 
 /* справки CDN/ASN (свёрнутые панели) */
 .lists-help { margin-top: 12px; }

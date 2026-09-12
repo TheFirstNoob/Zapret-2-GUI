@@ -2600,11 +2600,26 @@ const TesterPage = {
   // ── Анализ процесса (game/app network probe) ──────────────
   _probePollTimer: null,
   _probeStarting: false,
+  _probeStartAt: 0,
+  _probeDuration: 60,
+  _probeTimer: null,
+
+  _setProbeState(text, cls) {
+    const chip = $('probeState');
+    if (!chip) return;
+    const dot = chip.querySelector('.dot');
+    const txt = chip.querySelector('.state-text');
+    const map = { idle: ['dot-idle', 'st-mute'], live: ['dot-ok', 'st-ok'], done: ['dot-ok', 'st-ok'], err: ['dot-err', 'st-err'] };
+    const [dc, tc] = map[cls] || map.idle;
+    dot.className = 'dot ' + dc;
+    txt.className = 'state-text ' + tc;
+    txt.textContent = text;
+  },
 
   async scanProbeProcesses() {
     const btn = $('probeScanBtn');
     const statusEl = $('probeStatus');
-    if (statusEl) statusEl.textContent = 'Сканирование процессов…';
+    if (statusEl) { statusEl.hidden = false; statusEl.textContent = 'Сканирование процессов…'; statusEl.className = 'probe-status'; }
     btn.disabled = true;
     try {
       const r = await apiPost('/process-probe/scan', {});
@@ -2626,13 +2641,24 @@ const TesterPage = {
         o.textContent = name + suffix + title;
         sel.appendChild(o);
       }
-      if (statusEl) statusEl.textContent = `Найдено процессов: ${(r.processes || []).length}`;
-      showToast(`Найдено процессов: ${(r.processes || []).length}`, 'ok');
+      const total = (r.processes || []).length;
+      if (statusEl) { statusEl.textContent = `Найдено процессов: ${total}`; statusEl.className = 'probe-status'; }
+      showToast(`Найдено процессов: ${total}`, 'ok');
     } catch (e) {
-      if (statusEl) statusEl.textContent = 'Ошибка: ' + (e.message || e);
+      if (statusEl) { statusEl.textContent = 'Ошибка: ' + (e.message || e); statusEl.className = 'probe-status st-err'; }
       showToast('Сканирование: ' + (e.message || e), 'error');
     }
     btn.disabled = false;
+  },
+
+  _probeTick() {
+    const el = $('probeLiveTimer');
+    if (!el) return;
+    const s = Math.floor((Date.now() - this._probeStartAt) / 1000);
+    const mm = String(Math.floor(s / 60)).padStart(2, '0');
+    const ss = String(s % 60).padStart(2, '0');
+    const total = String(this._probeDuration).padStart(2, '0');
+    el.textContent = `${mm}:${ss} / 00:${total}`;
   },
 
   async startProbe() {
@@ -2657,8 +2683,22 @@ const TesterPage = {
         return;
       }
       $('probeStopBtn').hidden = false;
+      $('probeStartBtn').hidden = true;
       $('probeReportBtn').hidden = true;
-      $('probeResults').innerHTML = '<div class="empty-note">Наблюдение…</div>';
+      $('probeResults').hidden = true;
+      $('probeResults').innerHTML = '';
+      $('probeIdle').hidden = true;
+      $('probeLive').hidden = false;
+      $('probeVerdict').hidden = true;
+      $('probeTbody').innerHTML = '<tr><td colspan="4"><div class="empty-note">Наблюдение…</div></td></tr>';
+      $('probeLiveTitle').textContent = `Прослушивание сетевого трафика процесса «${process}»`;
+      $('probeLiveSub').textContent = 'Пакетов: 0 · Соединений: 0';
+      this._probeStartAt = Date.now();
+      this._probeDuration = +duration;
+      this._probeTick();
+      if (this._probeTimer) clearInterval(this._probeTimer);
+      this._probeTimer = setInterval(() => this._probeTick(), 1000);
+      this._setProbeState('● Перехват пакетов', 'live');
       this._probePollTimer = setInterval(() => this.pollProbe(), 2000);
       this.pollProbe();
     } finally {
@@ -2680,13 +2720,23 @@ const TesterPage = {
     }
     const st = r.state || {};
     const stEl = $('probeStatus');
-    if (stEl) stEl.textContent = st.phase || '';
+    if (st.error) {
+      if (stEl) { stEl.hidden = false; stEl.textContent = st.error; stEl.className = 'probe-status st-err'; }
+      this._setProbeState('Ошибка анализа', 'err');
+    } else if (st.phase && stEl) {
+      stEl.hidden = false;
+      stEl.textContent = st.phase;
+      stEl.className = 'probe-status';
+    }
     this.renderProbe(st);
     if (st.phase === 'завершено' || st.error) {
       this._stopProbePolling();
+      if (this._probeTimer) { clearInterval(this._probeTimer); this._probeTimer = null; }
       $('probeStartBtn').disabled = false;
+      $('probeStartBtn').hidden = false;
       $('probeStopBtn').hidden = true;
       $('probeReportBtn').hidden = false;
+      this._setProbeState(st.error ? 'Анализ прерван' : '✓ Анализ завершён', st.error ? 'err' : 'done');
       if (st.error) showToast('Анализ: ' + st.error, 'error');
     }
   },
@@ -2701,15 +2751,19 @@ const TesterPage = {
   async stopProbe() {
     await apiPost('/process-probe/stop', {});
     this._stopProbePolling();
+    if (this._probeTimer) { clearInterval(this._probeTimer); this._probeTimer = null; }
     $('probeStartBtn').disabled = false;
+    $('probeStartBtn').hidden = false;
     $('probeStopBtn').hidden = true;
     $('probeReportBtn').hidden = false;
+    this._setProbeState('Анализ остановлен', 'done');
   },
 
   async saveProbeReport() {
     const r = await apiPost('/process-probe/report', {});
     if (r.status === 'ok' && r.report) {
       const el = $('probeResults');
+      el.hidden = false;
       el.innerHTML = '<pre class="probe-report">' + escapeHtml(r.report) + '</pre>';
       showToast('Отчёт сохранён: ' + r.path, 'ok');
     } else {
@@ -2718,53 +2772,71 @@ const TesterPage = {
   },
 
   renderProbe(st) {
-    const box = $('probeResults');
+    const box = $('probeTbody');
     if (!box) return;
     const tcp = st.tcp || {};
     const udp = st.udp || {};
     const cap = st.udp_capture || {};
     const dns = st.dns || {};
-    const name = (ip) => (dns[ip] ? ` → ${escapeHtml(dns[ip][0])}` : '');
-    let html = '';
-    if (st.error) {
-      html += `<div class="st-err">Ошибка: ${escapeHtml(st.error)}</div>`;
+    const dnsName = (ip) => (dns[ip] ? ` <span class="endpoint-dns">→ ${escapeHtml(dns[ip][0])}</span>` : '');
+    const stateCls = (s) => {
+      if (s === 'Established') return 'established';
+      if (s === 'SynSent') return 'syn-sent';
+      if (s === 'TimeWait' || s === 'CloseWait' || s === 'Listen' || s === 'Closed') return 'neutral';
+      return 'neutral';
+    };
+    const stateLabel = (s) => {
+      if (s === 'Established') return 'Установлено';
+      if (s === 'SynSent') return 'SYN_SENT';
+      return s || '—';
+    };
+    let rows = '';
+    let pktTotal = 0, connTotal = 0;
+    const tcpRows = Object.entries(tcp).sort((a, b) => b[1].n - a[1].n);
+    for (const [k, v] of tcpRows) {
+      const [ip, port] = k.split(':');
+      pktTotal += v.n; connTotal++;
+      rows += `<tr>
+        <td><span class="proto-badge">TCP</span></td>
+        <td><span class="endpoint-ip">${escapeHtml(ip)}</span><span class="endpoint-dns">:${escapeHtml(port)}</span>${dnsName(ip)}</td>
+        <td><span class="state-badge ${stateCls(v.state)}"><span class="sdot"></span>${escapeHtml(stateLabel(v.state))}</span></td>
+        <td style="text-align:center"><span class="packets-count">×${v.n}</span></td>
+      </tr>`;
     }
-    if (st.verdict) {
-      html += `<div class="verdict-msg">${escapeHtml(st.verdict)}</div>`;
+    const udpRows = Object.entries(udp).sort((a, b) => b[1] - a[1]);
+    for (const [k, v] of udpRows) {
+      const [ip, port] = k.split(':');
+      pktTotal += v; connTotal++;
+      rows += `<tr>
+        <td><span class="proto-badge udp">UDP</span></td>
+        <td><span class="endpoint-ip">${escapeHtml(ip)}</span><span class="endpoint-dns">:${escapeHtml(port)}</span>${dnsName(ip)}</td>
+        <td><span class="state-badge established"><span class="sdot"></span>Активен</span></td>
+        <td style="text-align:center"><span class="packets-count">×${v}</span></td>
+      </tr>`;
     }
-    if (Object.keys(tcp).length) {
-      html += '<div class="probe-sec-title">TCP</div><table class="check-table"><tbody>';
-      for (const [k, v] of Object.entries(tcp).sort((a, b) => b[1].n - a[1].n)) {
-        const bad = v.state === 'SynSent' ? ' class="st-err"' : '';
-        html += `<tr><td class="mono"${bad}>${escapeHtml(k)}${name(k.split(':')[0])}</td>` +
-          `<td${bad}>${escapeHtml(v.state)}</td>` +
-          `<td class="mono">×${v.n}</td></tr>`;
+    const capRows = Object.entries(cap).sort((a, b) => b[1] - a[1]);
+    for (const [k, v] of capRows) {
+      const [ip, port] = k.split(':');
+      pktTotal += v; connTotal++;
+      rows += `<tr>
+        <td><span class="proto-badge udp">UDP</span></td>
+        <td><span class="endpoint-ip">${escapeHtml(ip)}</span><span class="endpoint-dns">:${escapeHtml(port)}</span>${dnsName(ip)}</td>
+        <td><span class="state-badge neutral"><span class="sdot"></span>Захват</span></td>
+        <td style="text-align:center"><span class="packets-count">×${v}</span></td>
+      </tr>`;
+    }
+    box.innerHTML = rows || '<tr><td colspan="4"><div class="empty-note">Наблюдение…</div></td></tr>';
+    const sub = $('probeLiveSub');
+    if (sub) sub.textContent = `Пакетов: ${pktTotal} · Соединений: ${connTotal}`;
+    const vd = $('probeVerdict');
+    if (vd) {
+      if (st.verdict) {
+        vd.hidden = false;
+        vd.innerHTML = escapeHtml(st.verdict);
+      } else {
+        vd.hidden = true;
       }
-      html += '</tbody></table>';
     }
-    if (Object.keys(udp).length) {
-      html += '<div class="probe-sec-title">UDP</div><table class="check-table"><tbody>';
-      for (const [k, v] of Object.entries(udp).sort((a, b) => b[1] - a[1])) {
-        html += `<tr><td class="mono">${escapeHtml(k)}${name(k.split(':')[0])}</td><td class="mono">×${v}</td></tr>`;
-      }
-      html += '</tbody></table>';
-    }
-    if (Object.keys(cap).length) {
-      html += '<div class="probe-sec-title">UDP (захват)</div><table class="check-table"><tbody>';
-      for (const [k, v] of Object.entries(cap).sort((a, b) => b[1] - a[1])) {
-        html += `<tr><td class="mono">${escapeHtml(k)}${name(k.split(':')[0])}</td><td class="mono">пакетов ${v}</td></tr>`;
-      }
-      html += '</tbody></table>';
-    }
-    if (Object.keys(dns).length) {
-      html += '<div class="probe-sec-title">Домены</div><div class="probe-dns">';
-      for (const [ip, doms] of Object.entries(dns)) {
-        html += `<div class="mono">${escapeHtml(ip)} → ${escapeHtml(doms.join(', '))}</div>`;
-      }
-      html += '</div>';
-    }
-    if (!html) html = '<div class="empty-note">Наблюдение…</div>';
-    box.innerHTML = html;
   },
 };
 

@@ -442,49 +442,94 @@
           <div class="panel" id="probePanel">
             <div class="card-head">
               <div class="head-icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
               </div>
               <div class="head-text">
                 <div class="head-title">Анализ приложения / игры</div>
-                <div class="head-desc">Не работает игра или программа? Посмотрите её сеть: куда она ходит и отвечают ли соединения. Процесс можно указать заранее — анализатор дождётся его запуска.</div>
+                <div class="head-desc">Отслеживание сетевых пакетов процесса: удалённые адреса, порты, состояния</div>
               </div>
-            </div>
-
-            <div class="probe-grid">
-              <div class="grid-label">
-                <span class="grid-title">Процесс</span>
-                <span class="grid-tag">имя или PID</span>
-              </div>
-              <div class="probe-input-row">
-                <input class="input" id="probeProcInput" placeholder="напр. WardogsClient или выберите из списка →" />
-                <select class="input" id="probeProcSelect">
-                  <option value="">— список процессов —</option>
-                </select>
-                <button class="btn btn-sm" id="probeScanBtn" title="Обновить список процессов с сетью">🔄 Сканировать</button>
-              </div>
-            </div>
-
-            <div class="probe-grid">
-              <div class="grid-label">
-                <span class="grid-title">Длительность анализа</span>
-                <span class="grid-tag">сколько секунд слушать</span>
-              </div>
-              <div class="probe-actions probe-actions-right">
-                <select class="input input-sm" id="probeDurSelect">
-                  <option value="30">30 сек</option>
-                  <option value="60" selected>60 сек</option>
-                  <option value="120">120 сек</option>
-                </select>
+              <div class="head-right">
+                <span class="state" id="probeState"><span class="dot dot-idle"></span><span class="state-text st-mute">Ожидание запуска</span></span>
                 <button class="btn btn-primary" id="probeStartBtn">Начать анализ</button>
                 <button class="btn btn-stop" id="probeStopBtn" hidden>Стоп</button>
                 <button class="btn" id="probeReportBtn" hidden>Сохранить отчёт</button>
               </div>
             </div>
 
-            <div class="probe-status" id="probeStatus"></div>
-            <div class="diag-body" id="probeResults">
-              <div class="empty-note">Впишите имя процесса (или выберите из списка) и нажмите «Начать анализ». Если процесс ещё не запущен — анализатор будет ждать его появления до 2 минут.</div>
+            <div class="probe-grid">
+              <div class="grid-label">
+                <span class="grid-title">Целевой процесс</span>
+                <span class="grid-tag">имя файла .exe или PID</span>
+              </div>
+              <div class="probe-input-row">
+                <input class="input" id="probeProcInput" placeholder="напр. WardogsClient.exe или выберите из списка →" />
+                <select class="input" id="probeProcSelect">
+                  <option value="">— список процессов —</option>
+                </select>
+                <button class="btn" id="probeScanBtn" title="Обновить список процессов с сетью">Сканировать</button>
+              </div>
             </div>
+
+            <div class="probe-grid">
+              <div class="grid-label">
+                <span class="grid-title">Длительность сбора</span>
+                <span class="grid-tag">время перехвата трафика</span>
+              </div>
+              <div class="probe-actions">
+                <select class="input input-sm" id="probeDurSelect">
+                  <option value="30">30 сек</option>
+                  <option value="60" selected>60 сек</option>
+                  <option value="120">120 сек</option>
+                </select>
+                <span class="meta">по умолчанию 60 с</span>
+              </div>
+            </div>
+
+            <div class="hint-bar">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+              <span>Если игра ещё не открыта, анализатор перейдёт в режим ожидания и дождётся её запуска (до 2 минут).</span>
+            </div>
+
+            <div class="probe-status" id="probeStatus" hidden></div>
+
+            <div class="probe-idle" id="probeIdle">
+              <div class="idle-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+              </div>
+              <div class="probe-idle-title">Сетевой трафик не перехватывается</div>
+              <div class="probe-idle-note">Выберите процесс и нажмите «Начать анализ». Сниффер покажет удалённые IP-адреса, порты и заблокированные пакеты.</div>
+            </div>
+
+            <div id="probeLive" hidden>
+              <div class="capture-live-bar">
+                <div class="live-status">
+                  <div class="radar-pulse"></div>
+                  <div class="live-text">
+                    <span class="live-title" id="probeLiveTitle">Прослушивание…</span>
+                    <span class="live-sub" id="probeLiveSub">Пакетов: 0 · Соединений: 0</span>
+                  </div>
+                </div>
+                <div class="live-right">
+                  <span class="live-timer-badge mono" id="probeLiveTimer">00:00</span>
+                </div>
+              </div>
+              <div class="traffic-table-wrap">
+                <table class="traffic-table">
+                  <thead>
+                    <tr>
+                      <th style="width: 90px;">Протокол</th>
+                      <th>Удалённый адрес и порт</th>
+                      <th style="width: 140px;">Состояние</th>
+                      <th style="width: 90px; text-align: center;">Пакеты</th>
+                    </tr>
+                  </thead>
+                  <tbody id="probeTbody"></tbody>
+                </table>
+              </div>
+              <div class="probe-verdict" id="probeVerdict" hidden></div>
+            </div>
+
+            <div id="probeResults" hidden></div>
           </div>
         </section>
 
