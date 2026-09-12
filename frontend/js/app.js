@@ -228,6 +228,7 @@ const App = {
 bindProbeButtons() {
     const scan = $('probeScanBtn');
     const start = $('probeStartBtn');
+    const stop = $('probeStopBtn');
     if (scan) scan.addEventListener('click', () => TesterPage.scanProbeProcesses());
     const procInput = $('probeProcInput');
     if (procInput) {
