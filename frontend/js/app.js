@@ -186,6 +186,18 @@ const App = {
   pages: ['main', 'tester', 'lists', 'contested', 'diagnostics', 'probe', 'cdn', 'asn'],
   testActive: false,
 
+  // Кнопка «Инструкция и статусы» в info-баннере (единый механизм для всех страниц)
+  bindHelpToggle(btnId, detId) {
+    const btn = $(btnId);
+    if (!btn) return;
+    btn.addEventListener('click', () => {
+      const det = $(detId);
+      const open = !!det && det.hidden;
+      if (det) det.hidden = !open;
+      btn.classList.toggle('is-open', open);
+    });
+  },
+
   // Идёт проверка (стратегии/CDN/ASN/blob/диагностика): обходом управляет
   // тестер — блокируем ручной запуск/остановку, службу и другие кнопки
   // проверок, показываем бейдж на вкладке-источнике.
@@ -1398,6 +1410,13 @@ const CdnStab = {
     if (this._bound) return;
     this._bound = true;
     $('cdnScanBtn').addEventListener('click', () => this.scan());
+    $('cdnCancelBtn').addEventListener('click', () => this.cancel());
+    App.bindHelpToggle('cdnHelpBtn', 'cdnHelpDetails');
+  },
+
+  cancel() {
+    apiPost('/tester/action', { action: 'cancel' }).catch(() => {});
+    this._fail('Сканирование отменено.');
   },
 
   async scan() {
@@ -1405,9 +1424,12 @@ const CdnStab = {
     this._applied = new Set();
     App.setTestActive(true);
     $('cdnScanBtn').disabled = true;
-    $('cdnProgress').hidden = false;
-    $('cdnProgress').textContent = '';
-    $('cdnBody').innerHTML = '<div class="empty-note">Сканирование…</div>';
+    $('cdnIdle').hidden = true;
+    $('cdnResults').hidden = true;
+    $('cdnScanning').hidden = false;
+    $('cdnProgressTitle').textContent = 'Подготовка…';
+    $('cdnProgressPct').textContent = '0%';
+    $('cdnProgressFill').style.width = '0%';
     try {
       // apiPost уже добавляет /api — пути без префикса
       const r = await apiPost('/tester/action', { action: 'cdn_scan' });
@@ -1425,7 +1447,9 @@ const CdnStab = {
 
   _fail(msg) {
     this._stop();
-    $('cdnBody').innerHTML = `<div class="empty-note">${escapeHtml(msg)}</div>`;
+    $('cdnIdle').hidden = true;
+    $('cdnResults').hidden = false;
+    $('cdnResults').innerHTML = `<div class="empty-note st-err">${escapeHtml(msg)}</div>`;
     showToast(msg, 'error');
   },
 
@@ -1448,7 +1472,10 @@ const CdnStab = {
         return;
       }
       const p = st.progress || {};
-      $('cdnProgress').textContent = `Шаг: ${p.message || '…'} (${p.percent ?? 0}%)`;
+      $('cdnProgressTitle').textContent = p.message || 'Сканирование…';
+      const pct = p.percent ?? 0;
+      $('cdnProgressPct').textContent = Math.round(pct) + '%';
+      $('cdnProgressFill').style.width = Math.min(100, Math.max(0, pct)) + '%';
       setTimeout(() => this._poll(), 1200);
       return;
     }
@@ -1470,7 +1497,7 @@ const CdnStab = {
     this._polling = false;
     App.setTestActive(false);
     $('cdnScanBtn').disabled = false;
-    $('cdnProgress').hidden = true;
+    $('cdnScanning').hidden = true;
   },
 
   _render(fr) {
@@ -1480,52 +1507,59 @@ const CdnStab = {
     v.forEach(x => { counts[x.verdict] = (counts[x.verdict] || 0) + 1; });
     const sum = (k) => counts[k] || 0;
     const modeTxt = fr.ipset_mode
-      ? '<span class="meta">прогон в ipset-режиме (тоггл «Общий IP-обход» включён) — правки идут в ipset-включения/исключения</span>'
-      : '<span class="meta">прогон в hostlist-режиме (тоггл «Общий IP-обход» выключен) — правки идут в list-general / list-exclude</span>';
+      ? 'Режим: IP-обход (тоггл включён)'
+      : 'Режим: Hostlist (тоггл выключен)';
     const abFixed = v.filter(x => x.ipset === 'чинит').length;
     const abBroken = v.filter(x => x.ipset === 'ломает').length;
     const abRan = abFixed + abBroken > 0;
-    let abRec = '';
-    if (abRan) {
-      const verdictTxt = abBroken > abFixed
-        ? 'рекомендация: держите «Общий IP-обход» <b>выключенным</b>'
-        : (abFixed > abBroken ? 'рекомендация: «Общий IP-обход» можно <b>держать включённым</b>' : 'эффект неоднозначный — решайте по тому, какие хосты вам нужны');
-      abRec = `<div class="verdict-msg" style="margin:6px 0 2px"><b>IP-обход A/B:</b> чинит <b>${abFixed}</b>, ломает <b class="bad">${abBroken}</b> — ${verdictTxt}.</div>`;
-    }
     // Кнопки есть у строк с IP-действиями: «чинит» (точечный ipset-обход
     // хоста), «ломает» при ipset-режиме (исключить IP), fix/break — доменные.
     const actionable = sum('fix') + sum('break') + (fr.ipset_mode ? abBroken : 0) + (!fr.ipset_mode ? abFixed : 0);
-    const guide = actionable
-      ? '<div class="verdict-msg" style="margin:8px 0 2px"><b>Что делать:</b> нажмите кнопку в строке — правка применится к спискам, и обход перезапустится автоматически. «чинит» = точечный IP-обход хоста; «ломает» = исключить его IP из IP-обхода. Либо примените всё сразу кнопкой ниже.</div>'
-      : (abRan
-        ? '<div class="verdict-msg" style="margin:8px 0 2px">Точечных правок списков не требуется — смотрите итог по IP-обходу выше.</div>'
-        : '<div class="verdict-msg" style="margin:8px 0 2px"><b>Что делать: ничего.</b> Живые хосты отвечают, stateful DPI не обнаружен, а мёртвые не отвечают и без защиты — это не блокировка. Проверять больше нечего.</div>');
-    const applyAllBtn = actionable
-      ? `<div style="margin:8px 0 4px; padding:8px 10px; border:1px solid var(--line); border-radius:8px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; background:var(--panel)">
-           <button id="cdnApplyAll" class="btn btn-primary">Применить все правки (${actionable})</button>
-           <span class="meta" id="cdnApplyAllNote"></span>
-         </div>` : '';
-    const head = `
-      <div class="cdn-summary">
-        <span>режет DPI, лечится: <b class="bad">${sum('fix')}</b></span>
-        <span>уже в ipset: <b>${sum('covered')}</b></span>
-        <span>режет, не лечится: <b>${sum('hard')}</b></span>
-        <span>чисто: <b>${sum('ok')}</b></span>
-        <span>обход ломает: <b class="bad">${sum('break')}</b></span>
-        <span>мёртвые: <b>${sum('dead')}</b></span>
-        ${modeTxt}
-      </div>${abRec}${guide}${applyAllBtn}`;
+
+    let banner = '';
+    if (abRan || actionable) {
+      const recTitle = abRan
+        ? (abBroken > abFixed
+          ? 'Держите «Общий IP-обход» выключенным'
+          : (abFixed > abBroken ? '«Общий IP-обход» можно держать включённым' : 'Эффект IP-обхода неоднозначный'))
+        : 'Есть правки для применения';
+      const recDesc = abRan
+        ? `IP-обход чинит <b>${abFixed}</b> хост(а), но ломает <b>${abBroken}</b> — решайте по нужным хостам.`
+        : 'Нажмите кнопки в строках — правка применится к спискам, обход перезапустится автоматически.';
+      banner = `<div class="rec-banner">
+        <div>
+          <span class="rec-tag">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            Рекомендация по IP-обходу
+          </span>
+          <div class="rec-title">${recTitle}</div>
+          <div class="rec-desc">${recDesc}</div>
+        </div>
+        ${actionable ? `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <button id="cdnApplyAll" class="btn btn-primary">Применить все правки (${actionable})</button>
+          <span class="meta rec-note" id="cdnApplyAllNote"></span>
+        </div>` : ''}
+      </div>`;
+    }
+
+    const metrics = `
+      <span class="m-badge success">✓ Чисто: ${sum('ok')}</span>
+      ${actionable ? `<span class="m-badge warning">● Требует правки: ${actionable}</span>` : ''}
+      <span class="m-badge danger">✕ Не лечится: ${sum('hard')}</span>
+      ${sum('covered') ? `<span class="m-badge neutral">Уже в ipset: ${sum('covered')}</span>` : ''}
+      <span class="m-badge neutral">Мёртвые: ${sum('dead')}</span>
+      <span class="metrics-mode">${modeTxt}</span>`;
+
+    const badgeCls = { fix: 'action', break: 'action', ok: 'clean', hard: 'fatal', dead: 'dead', covered: 'clean', unknown: 'neutral' };
+    const badgeLabel = { fix: 'DPI режет — лечится', break: 'обход ломает', covered: 'уже в ipset', dead: 'хост мёртв' };
     const rows = v.map(x => {
       const vd = this.VERDICTS[x.verdict] || this.VERDICTS.unknown;
       const applied = this._applied.has(x.domain);
       let btn = '';
-      // A/B-действия IP-based: домен тестового хоста ничего не чинит —
-      // работаем адресами. «чинит» в hostlist-режиме -> ipset-включения
-      // (точечный обход; в ipset-режиме хост и так жив — кнопки нет).
-      // «ломает» в ipset-режиме -> IP в исключения (ipset остаётся для
-      // остальных); в hostlist-режиме хост жив и так — кнопки нет.
       let act = vd.btn || null;
       let actText = act ? act.text : '';
+      // A/B-действия IP-based: «чинит» в hostlist-режиме -> ipset-включения;
+      // «ломает» в ipset-режиме -> IP в исключения.
       if (!act && x.ipset === 'чинит' && !fr.ipset_mode && (x.ips || []).length) {
         act = { action: 'ipset-include' };
         actText = 'В ipset-включения';
@@ -1537,32 +1571,55 @@ const CdnStab = {
       if (!applied && act) {
         const text = (fr.ipset_mode && act.action === 'general')
           ? 'В ipset-включения' : actText;
-        btn = `<button class="btn btn-sm" data-cdn-act="${act.action}" data-cdn-domain="${escapeHtml(x.domain)}">${text}</button>`;
+        btn = `<button class="btn-row-action" data-cdn-act="${act.action}" data-cdn-domain="${escapeHtml(x.domain)}">${text}</button>`;
       } else if (applied) {
         btn = '<span class="meta">применено</span>';
       }
       const ips = (fr.ipset_mode && x.ips && x.ips.length)
-        ? `<span class="meta">${escapeHtml(x.ips.join(', '))}</span>` : '';
-      return `<tr class="${vd.cls}" data-cdn-ips="${escapeHtml((x.ips || []).join(','))}">
-        <td class="mono">${escapeHtml(x.domain)}</td>
-        <td>${escapeHtml(x.provider)}</td>
+        ? `<span class="meta"> ${escapeHtml(x.ips.join(', '))}</span>` : '';
+      return `<tr data-cdn-ips="${escapeHtml((x.ips || []).join(','))}">
+        <td><div class="host-cell">
+          <span class="host-name">${escapeHtml(x.domain)}</span>
+          ${x.provider ? `<span class="cdn-tag">${escapeHtml(x.provider)}</span>` : ''}
+        </div></td>
         <td>${x.alive === 'A' ? 'да' : 'нет'}</td>
-        <td>${x.dpi === 'DET' ? '<span class="bad">режет</span>' : (x.dpi === 'ok' ? 'не режет' : '—')}</td>
-        <td>${x.naked === '—' ? '—' : (x.naked === 'A' ? 'жив' : 'мёртв')}</td>
-        <td>${vd.label}${ips}</td>
-        <td class="${x.ipset === 'ломает' ? 'st-err' : (x.ipset === 'чинит' ? 'st-ok' : 'st-mute')}">${escapeHtml(x.ipset || '—')}</td>
-        <td>${btn}</td>
+        <td>${x.dpi === 'DET' ? '<span class="st-err">режет</span>' : (x.dpi === 'ok' ? 'не режет' : '—')}</td>
+        <td><span class="verdict-badge ${badgeCls[x.verdict] || 'neutral'}">${escapeHtml(badgeLabel[x.verdict] || vd.label)}</span>${ips}</td>
+        <td>${x.ipset === 'ломает' ? '<span class="ip-ab-tag breaks">ломает</span>'
+          : (x.ipset === 'чинит' ? '<span class="ip-ab-tag fixes">чинит</span>' : '—')}</td>
+        <td style="text-align:right">${btn}</td>
       </tr>`;
     }).join('');
-    $('cdnBody').innerHTML = head + `
-      <table class="list-table"><thead><tr>
-        <th>Хост</th><th>CDN</th><th>Под защитой</th><th>Stateful DPI</th><th>Без защиты</th><th>Вердикт</th><th>IPset A/B</th><th></th>
-      </tr></thead><tbody>${rows}</tbody></table>`;
-    $('cdnBody').querySelectorAll('[data-cdn-act]').forEach(b =>
+
+    let guide;
+    if (actionable) {
+      guide = 'Нажмите кнопку в строке — правка применится к спискам, и обход перезапустится автоматически. «чинит» = точечный IP-обход хоста; «ломает» = исключить его IP из IP-обхода. Либо примените всё сразу кнопкой вверху.';
+    } else if (abRan) {
+      guide = 'Точечных правок списков не требуется — смотрите итог по IP-обходу выше.';
+    } else {
+      guide = 'Живые хосты отвечают, stateful DPI не обнаружен, а мёртвые не отвечают и без защиты — это не блокировка. Проверять больше нечего.';
+    }
+
+    $('cdnResults').innerHTML = banner + `
+      <div class="metrics-bar">${metrics}</div>
+      <div class="hosts-table-wrap"><table class="hosts-table">
+        <thead><tr>
+          <th style="width:250px">Хост и CDN</th>
+          <th style="width:90px">Под защитой</th>
+          <th style="width:120px">Stateful DPI</th>
+          <th>Вердикт</th>
+          <th style="width:100px">IP-обход</th>
+          <th style="width:170px;text-align:right">Действие</th>
+        </tr></thead>
+        <tbody>${rows || '<tr><td colspan="6"><div class="empty-note">Нет данных</div></td></tr>'}</tbody>
+      </table></div>
+      <div class="cdn-guide">${guide}</div>`;
+    $('cdnResults').hidden = false;
+    $('cdnResults').querySelectorAll('[data-cdn-act]').forEach(b =>
       b.addEventListener('click', () => this.apply(b, fr.ipset_mode)));
     const ab = $('cdnApplyAll');
     if (ab) ab.addEventListener('click', () => this.applyAll(fr));
-    $('cdnBody').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    $('cdnResults').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   },
 
   // Собрать список правок из вердиктов (та же логика, что в apply()).
@@ -1659,6 +1716,7 @@ const AsnPage = {
     if (this._bound) return;
     this._bound = true;
     $('asnScanBtn').addEventListener('click', () => this.scan());
+    App.bindHelpToggle('asnHelpBtn', 'asnHelpDetails');
   },
 
   async scan() {
@@ -1666,9 +1724,12 @@ const AsnPage = {
     this._polling = true;
     App.setTestActive(true);
     $('asnScanBtn').disabled = true;
-    $('asnProgress').hidden = false;
-    $('asnProgress').textContent = '';
-    $('asnBody').innerHTML = '<div class="empty-note">ASN-пробы при выключенном обходе — меряем ТСПУ напрямую. Защита вернётся автоматически…</div>';
+    $('asnIdle').hidden = true;
+    $('asnResults').hidden = true;
+    $('asnScanning').hidden = false;
+    $('asnProgressTitle').textContent = 'Подготовка…';
+    $('asnProgressPct').textContent = '0%';
+    $('asnProgressFill').style.width = '0%';
     try {
       const r = await apiPost('/asn-scan', {});
       if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
@@ -1678,53 +1739,74 @@ const AsnPage = {
         await new Promise(res => setTimeout(res, 700));
         const st = await apiGet('/tester/status');
         if (st.error && !st.running) throw new Error(st.error);
-        if (st.progress) $('asnProgress').textContent = `${st.progress.message || ''} (${st.progress.percent ?? 0}%)`;
+        if (st.progress) {
+          $('asnProgressTitle').textContent = st.progress.message || 'Сканирование…';
+          const pct = st.progress.percent ?? 0;
+          $('asnProgressPct').textContent = Math.round(pct) + '%';
+          $('asnProgressFill').style.width = Math.min(100, Math.max(0, pct)) + '%';
+        }
         if (!st.running) final = st.final_result;
       }
       if (!final) throw new Error('скан не завершился вовремя');
       if (final.type === 'asn_scan') this._render(final.probes || [], final.restored || '');
       else throw new Error('неожиданный результат');
     } catch (e) {
-      $('asnBody').innerHTML = `<div class="empty-note">${escapeHtml(e.message)}</div>`;
+      $('asnScanning').hidden = true;
+      $('asnResults').hidden = false;
+      $('asnResults').innerHTML = `<div class="empty-note st-err">${escapeHtml(e.message)}</div>`;
       showToast('ASN-скан: ' + e.message, 'error');
     }
     this._polling = false;
     App.setTestActive(false);
     $('asnScanBtn').disabled = false;
-    $('asnProgress').hidden = true;
+    $('asnScanning').hidden = true;
   },
 
   _render(probes, restored) {
-    const cls = s => s === 'OK' ? 'st-ok' : (s === 'DETECTED' ? 'st-err' : 'st-warn');
     const okN = probes.filter(x => x.status === 'OK').length;
     const detN = probes.filter(x => x.status === 'DETECTED').length;
     const synN = probes.filter(x => x.status === 'SYN DROP').length;
-    const sum = `<div class="cdn-summary">
-      <span>проб: <b>${probes.length}</b></span>
-      <span>чисто: <b class="st-ok">${okN}</b></span>
-      <span>stateful DPI: <b class="bad">${detN}</b></span>
-      <span>SYN DROP: <b>${synN}</b></span>
-      ${restored ? `<span class="meta">защита восстановлена: ${escapeHtml(restored)}</span>` : ''}
-    </div>`;
+    const rsts = probes.filter(x => x.status === 'TCP RST' || x.status === 'TLS RST').length;
+    const errN = probes.length - okN - detN - synN - rsts;
+
+    const metrics = `
+      <span class="m-badge neutral">Проб: ${probes.length}</span>
+      <span class="m-badge success">✓ Чисто: ${okN}</span>
+      <span class="m-badge danger">✕ DETECTED: ${detN}</span>
+      <span class="m-badge warning">● SYN DROP: ${synN}</span>
+      ${rsts ? `<span class="m-badge warning">RST: ${rsts}</span>` : ''}
+      ${errN ? `<span class="m-badge neutral">Прочие: ${errN}</span>` : ''}
+      ${restored ? `<span class="metrics-mode">защита восстановлена: ${escapeHtml(restored)}</span>` : ''}`;
+
+    const badgeCls = s => s === 'OK' ? 'clean' : (s === 'DETECTED' ? 'fatal' : (s === 'SYN DROP' ? 'action' : 'neutral'));
     const rows = probes.map(x => `
-      <tr class="${x.status === 'OK' ? '' : 'list-tr-bad'}">
-        <td class="mono">${escapeHtml(x.id)}</td>
+      <tr>
+        <td class="host-name">${escapeHtml(x.id)}</td>
         <td class="mono">${escapeHtml(x.asn)}</td>
         <td>${escapeHtml(x.provider)}</td>
-        <td class="${cls(x.status)}"><b>${escapeHtml(x.status)}</b></td>
+        <td><span class="verdict-badge ${badgeCls(x.status)}">${escapeHtml(x.status)}</span></td>
         <td class="meta">${escapeHtml(x.detail || '')}</td>
       </tr>`).join('');
-    const guide = `<div class="panel" style="margin-top:10px">
-      <div class="panel-title">Что делать с результатом</div>
-      <div class="verdict-msg">Если большинство проб <b>OK</b> и сайты работают — <b>ничего делать не нужно</b>: 100% «OK» не требуется, с нашими пресетами доступно ~99% сайтов.
-      ${detN > 0 ? `<br>«DETECTED» (${detN}) — stateful DPI режет CDN-класс: лечится кнопками на вкладке «CDN-стабилизация».` : ''}
-      ${synN > 0 ? `<br>«SYN DROP» (${synN}) — диапазоны режутся целиком или IP списка протухли; десинк против этого не поможет.` : ''}
-      <br>Мобильная сеть меняет картину от часа к часу: перед выводами прогоните скан повторно через паузу.</div>
-    </div>`;
-    $('asnBody').innerHTML = sum + `
-      <table class="list-table"><thead><tr>
-        <th>ID</th><th>ASN</th><th>Провайдер</th><th>Статус</th><th>Детали</th>
-      </tr></thead><tbody>${rows}</tbody></table>` + guide;
+
+    let guide = 'Если большинство проб <b>OK</b> и сайты работают — <b>ничего делать не нужно</b>: 100% «OK» не требуется, с нашими пресетами доступно ~99% сайтов.';
+    if (detN > 0) guide += ` «DETECTED» (${detN}) — stateful DPI режет CDN-класс: лечится кнопками на вкладке «CDN-стабилизация».`;
+    if (synN > 0) guide += ` «SYN DROP» (${synN}) — диапазоны режутся целиком или IP списка протухли; десинк против этого не поможет.`;
+    guide += ' Мобильная сеть меняет картину от часа к часу: перед выводами прогоните скан повторно с паузой.';
+
+    $('asnResults').innerHTML = `
+      <div class="metrics-bar">${metrics}</div>
+      <div class="hosts-table-wrap"><table class="hosts-table">
+        <thead><tr>
+          <th style="width:200px">ID</th>
+          <th style="width:120px">ASN</th>
+          <th>Провайдер</th>
+          <th style="width:130px">Статус</th>
+          <th>Детали</th>
+        </tr></thead>
+        <tbody>${rows || '<tr><td colspan="5"><div class="empty-note">Нет данных</div></td></tr>'}</tbody>
+      </table></div>
+      <div class="cdn-guide">${guide}</div>`;
+    $('asnResults').hidden = false;
   },
 };
 

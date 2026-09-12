@@ -1,4 +1,4 @@
-json -> ui_dump_cdn.json  (72 visible elements, viewport 1280x840)
+json -> ui_dump_cdn.json  (61 visible elements, viewport 1280x840)
 
 ===== DIGEST (main page) =====
 y  92.2 x    10     179x 37.6  a.nav-link "Главная"
@@ -21,14 +21,12 @@ y 778.9 x    14     171x 32.1  div#protChip.prot-chip.state-ok
          parent=div.sidebar-foot disp=flex pos=static grow=0 fs=12.5px lh=18.125px wsn=normal minW=0px maxW=none hgt=32.125px minH=0px pad=6px 9px gap=7px ai=center js=normal
 y    10 x   216   135.4x 21.8  h1#pageTitle "CDN-стабилизация"
          parent=header.topbar disp=block pos=static grow=0 fs=15px lh=21.75px wsn=normal minW=auto maxW=none hgt=21.75px minH=auto pad=0px gap=normal ai=normal js=normal
-y  53.8 x   216    1048x119.1  div#cdnPanel.panel.cdn-panel
-         parent=section#page-cdn.page.active disp=block pos=relative grow=0 fs=13px lh=18.85px wsn=normal minW=0px maxW=none hgt=119.094px minH=0px pad=12px 16px gap=normal ai=normal js=normal
-y  66.7 x  1106     141x   28  button#cdnScanBtn.btn.btn-primary "Сканировать CDN"
+y  52.8 x1092.1   156.9x 29.4  button#cdnHelpBtn.banner-btn
+         parent=div.banner-bar disp=flex pos=static grow=0 fs=12px lh=17.4px wsn=nowrap minW=auto maxW=none hgt=29.3906px minH=auto pad=5px 12px gap=6px ai=center js=normal
+y 105.1 x   216    1048x276.7  div#cdnPanel.panel.cdn-panel
+         parent=section#page-cdn.page.active disp=block pos=relative grow=0 fs=13px lh=18.85px wsn=normal minW=0px maxW=none hgt=276.703px minH=0px pad=12px 16px gap=normal ai=normal js=normal
+y 118.1 x  1106     141x   28  button#cdnScanBtn.btn.btn-primary "Сканировать CDN"
          parent=div.head-right disp=flex pos=static grow=0 fs=12.5px lh=18.125px wsn=nowrap minW=141px maxW=none hgt=28px minH=auto pad=0px 12px gap=6px ai=center js=center
-y 184.8 x   216    1048x 40.8  details.panel.panel-details.lists-help
-         parent=section#page-cdn.page.active disp=block pos=relative grow=0 fs=13px lh=18.85px wsn=normal minW=0px maxW=none hgt=40.8438px minH=0px pad=0px gap=normal ai=normal js=normal
-y 185.8 x   217    1046x 38.8  summary.panel-summary
-         parent=details.panel.panel-details.lists-help disp=flex pos=static grow=0 fs=13px lh=18.85px wsn=normal minW=0px maxW=none hgt=38.8438px minH=0px pad=10px 14px gap=10px ai=center js=normal
 
 ===== ASCII MAP (8px/cell) =====
                                                                                                                                                                 
@@ -37,48 +35,48 @@ y 185.8 x   217    1046x 38.8  summary.panel-summary
                            -----------------                                                                                                                    
                                                                                                                                                                 
                                                                                                                                                                 
-                           -----------------------------------------------------------------------------------------------------------------------------------  
-                           |                                                                                                                                 |  
-                           |                                                                                                              ------------------ |  
+                                                                                                                                        ---------------------   
+                                                                                                                                        |                   |   
+                                                                                                                                        |         B         |   
+                                                                                                                                        |                   |   
+                                                                                                                                        ---------------------   
+ -----------------------                                                                                                                                        
+ |                     |                                                                                                                                        
+ |          n          |   -----------------------------------------------------------------------------------------------------------------------------------  
+ |                     |   |                                                                                                              ------------------ |  
+ |                     |   |                                                                                                              |                | |  
+ -----------------------   |                                                                                                              |        B       | |  
                            |                                                                                                              |                | |  
-                           |                                                                                                              |        B       | |  
- -----------------------   |                                                                                                              ------------------ |  
+                           |                                                                                                              ------------------ |  
+                           |                                                                                                                                 |  
+                           |                                                                                                                                 |  
+                           |                                                                                                                                 |  
+ -----------------------   |                                                                                                                                 |  
+ |                     |   |                                                                                                                                 |  
  |                     |   |                                                                                                                                 |  
  |          n          |   |                                                                                                                                 |  
  |                     |   |                                                                                                                                 |  
+ -----------------------   |                                                                                                                                 |  
+ |                     |   |                                                                                                                                 |  
+ |          n          |   |                                                                                                                                 |  
+ |                     |   |                                                                                                                                 |  
+ |                     |   |                                                                                                                                 |  
+ -----------------------   |                                                                                                                                 |  
+ |                     |   |                                                                                                                                 |  
+ |          n          |   |                                                                                                                                 |  
  |                     |   |                                                                                                                                 |  
  -----------------------   |                                                                                                                                 |  
                            |                                                                                                                                 |  
                            |                                                                                                                                 |  
                            |                                                                                                                                 |  
                            |                                                                                                                                 |  
-                           -----------------------------------------------------------------------------------------------------------------------------------  
- -----------------------                                                                                                                                        
- |                     |   -----------------------------------------------------------------------------------------------------------------------------------  
+                           |                                                                                                                                 |  
+                           |                                                                                                                                 |  
+ -----------------------   |                                                                                                                                 |  
+ |                     |   |                                                                                                                                 |  
  |                     |   |                                                                                                                                 |  
  |          n          |   |                                                                                                                                 |  
- |                     |   |                                                                                                                                 |  
- -----------------------   |                                                                                                                                 |  
  |                     |   -----------------------------------------------------------------------------------------------------------------------------------  
- |          n          |                                                                                                                                        
- |                     |                                                                                                                                        
- |                     |                                                                                                                                        
- -----------------------                                                                                                                                        
- |                     |                                                                                                                                        
- |          n          |                                                                                                                                        
- |                     |                                                                                                                                        
- -----------------------                                                                                                                                        
-                                                                                                                                                                
-                                                                                                                                                                
-                                                                                                                                                                
-                                                                                                                                                                
-                                                                                                                                                                
-                                                                                                                                                                
- -----------------------                                                                                                                                        
- |                     |                                                                                                                                        
- |                     |                                                                                                                                        
- |          n          |                                                                                                                                        
- |                     |                                                                                                                                        
  -----------------------                                                                                                                                        
  |                     |                                                                                                                                        
  |          n          |                                                                                                                                        
