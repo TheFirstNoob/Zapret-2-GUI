@@ -118,7 +118,14 @@ def build_custom(
     """
     fam_fn = make_family_fn(root)
     rates = _family_rates(results_by_profile, fam_fn)
-    profiles = [p for p in results_by_profile if p]
+    # Custom собирает ЛУЧШИЕ СЕГМЕНТЫ пресетов. auto — исключён: его механика
+    # (circular-перебор) требует собственного lua (--lua-init zapret-auto.lua)
+    # и «стратегии внутри стратегии» — это не сегмент, а режим. Притаскивание
+    # circular-сегмента в custom ломало запуск (баг 2026-09-13: «desync
+    # function 'circular' does not exist»). auto остаётся отдельным пресетом
+    # — логика auto и custom разная.
+    profiles = [p for p in results_by_profile
+                if p and p not in ("custom", "auto")]
 
     header, def_segs = parse_preset(root / "presets" / f"{default_name}.txt")
     if not def_segs:
@@ -137,23 +144,53 @@ def build_custom(
     # Header must satisfy ALL source presets: a segment may rely on its own
     # preset's global flags — auto's --wf-tcp-in (for --in-range) AND its
     # --lua-init @lua/zapret-auto.lua (for circular).  Union of the complete
-    # header (exact-line dedup) of every non-default source preset.
+    # header of every non-default source preset.
+    #
+    # 2026-09-13: дедуп РАНЬШЕ был по ОДИНОЧНОЙ строке — пара
+    # «--lua-init + @lua/zapret-auto.lua» разваливалась: второй --lua-init
+    # дедупнулся, а значение-сирота осталось без опции → zapret-auto.lua не
+    # загружался → winws2 падал с «desync function 'circular' does not
+    # exist». Дедуп теперь по ПАРЕ (опция + значение на следующей строке).
+    def _pairwise(ls: list[str]) -> list[tuple[str, str | None]]:
+        out: list[tuple[str, str | None]] = []
+        i = 0
+        while i < len(ls):
+            s = ls[i].strip()
+            if not s:
+                i += 1
+                continue
+            nxt = ls[i + 1].strip() if i + 1 < len(ls) else ""
+            if (s.startswith("--") and "=" not in s
+                    and not s.startswith("--comment")
+                    and nxt and not nxt.startswith("--")):
+                out.append((s, nxt))
+                i += 2
+                continue
+            out.append((s, None))
+            i += 1
+        return out
+
+    def _pair_key(pair: tuple[str, str | None]) -> str:
+        o, v = pair
+        return o if v is None else f"{o}={v}"
+
+    have = {_pair_key(x) for x in _pairwise(header)}
     extra_header: list[str] = []
     for fam, src in sources.items():
         if src == default_name:
             continue
-        src_header = parse_preset(root / "presets" / f"{src}.txt")[0]
-        for l in src_header:
-            s = l.strip()
-            if not s:
+        for o, v in _pairwise(parse_preset(root / "presets" / f"{src}.txt")[0]):
+            k = _pair_key((o, v))
+            if k in have:
                 continue
-            if s in [x.strip() for x in header] or s in [x.strip() for x in extra_header]:
-                continue
-            extra_header.append(l)
+            have.add(k)
+            extra_header.extend([o, v] if v is not None else [o])
     if extra_header:
+        # вставить после lua-init-группы (перед --blob): zapret-auto.lua
+        # грузится после lib/antidpi, как в исходном auto-пресете
         insert_at = len(header)
         for i, l in enumerate(header):
-            if l.strip().startswith("--lua-init"):
+            if l.strip().startswith("--blob"):
                 insert_at = i
                 break
         header[insert_at:insert_at] = extra_header
