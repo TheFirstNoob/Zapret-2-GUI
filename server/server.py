@@ -1050,6 +1050,8 @@ def _run_tester_action(data: dict) -> None:
                             for res in all_results if res
                         }
                         custom = build_custom(get_root_dir(), results_by_profile)
+                        _ui_debug(f"custom: built sources={custom.get('sources')} "
+                                  f"error={custom.get('error')}")
                         if not custom.get("error"):
                             args = build_args_from_preset(
                                 get_root_dir(), get_root_dir() / "lua", get_root_dir() / "blobs",
@@ -1058,6 +1060,7 @@ def _run_tester_action(data: dict) -> None:
                                                     args, cwd=get_root_dir())
                             custom["valid"] = ok
                             custom["error"] = None if ok else err
+                            _ui_debug(f"custom: validate ok={ok} err={err!r}")
                             # --dry-run never opens WinDivert: a preset can be
                             # "valid" yet die at launch (e.g. --in-range without
                             # --wf-tcp-in).  Real 1.5s smoke launch.
@@ -1077,6 +1080,7 @@ def _run_tester_action(data: dict) -> None:
                                     )
                                     _time.sleep(1.5)
                                     alive = tester.is_running()
+                                    _ui_debug(f"custom: smoke alive={alive}")
                                     try:
                                         subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)],
                                                        capture_output=True, timeout=5,
@@ -1091,6 +1095,7 @@ def _run_tester_action(data: dict) -> None:
                                         custom["valid"] = False
                                         custom["error"] = ("custom не стартует на реальном запуске "
                                                            "(проверьте --wf-tcp-in/--in-range сегментов)")
+                                        _ui_debug("custom: smoke FAILED (winws2 did not stay alive)")
                                     try:
                                         bat.unlink()
                                     except OSError:
