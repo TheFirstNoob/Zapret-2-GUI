@@ -194,6 +194,13 @@ def install(root_dir: Optional[Path] = None, args: Optional[list[str]] = None) -
     conflict = _zapret1_conflict()
     if conflict:
         return False, conflict
+    # мёртвая служба драйвера «WinDivert» (ImagePath на удалённую папку) —
+    # иначе sc create пройдёт, а winws2 не откроет перехват (кейс друга)
+    try:
+        from core.utils import fix_stale_windivert_services
+        fix_stale_windivert_services()
+    except Exception:
+        pass
     _invalidate_service_cache()
     remove()
     time.sleep(0.5)

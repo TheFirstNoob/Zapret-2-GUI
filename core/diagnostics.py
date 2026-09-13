@@ -142,6 +142,41 @@ def _check_windivert_files(root_dir: Path) -> Check:
                  "winws2.exe + WinDivert64.sys + WinDivert.dll на месте")
 
 
+def _check_windivert_service(root_dir: Path) -> Check:
+    """Драйвер-служба «WinDivert»: ImagePath должен указывать на
+    СУЩЕСТВУЮЩИЙ файл (кейс друга: ImagePath на удалённую папку → вечный
+    ERROR_FILE_NOT_FOUND при WinDivertOpen)."""
+    try:
+        import winreg
+        with winreg.OpenKey(
+                winreg.HKEY_LOCAL_MACHINE,
+                r"SYSTEM\CurrentControlSet\Services\WinDivert") as sk:
+            image = winreg.QueryValueEx(sk, "ImagePath")[0]
+            start = winreg.QueryValueEx(sk, "Start")[0]
+    except OSError:
+        return Check("windivert_service", "Служба драйвера WinDivert", "ok",
+                     "не установлена — создастся при первом запуске обхода")
+    img = image.strip().strip('"')
+    if img.startswith(chr(92) * 2 + "??" + chr(92)):
+        img = img[4:]
+    img_first = img.split(" ")[0]
+    if not Path(img_first).exists():
+        return Check("windivert_service", "Служба драйвера WinDivert", "fail",
+                     f"службе драйвера указан несуществующий файл: {img_first} — "
+                     "вероятно, от старой установки (другой zapret/переезд папки). "
+                     "Выполните в консоли от администратора: sc delete WinDivert — "
+                     "и запустите обход заново (драйвер поставится заново)",
+                     tech=f"ImagePath dead: {image}")
+    if start == 4:
+        return Check("windivert_service", "Служба драйвера WinDivert", "fail",
+                     "служба драйвера WinDivert ОТКЛЮЧЕНА (Start=Disabled) — "
+                     "перехват трафика невозможен. Включите её или выполните "
+                     "sc config WinDivert start= demand от администратора",
+                     tech=f"Start={start}")
+    return Check("windivert_service", "Служба драйвера WinDivert", "ok",
+                 f"ImagePath: {img_first}", tech=f"Start={start}")
+
+
 def _check_launch_spot(root_dir: Path) -> Check:
     """Болевые места запуска (0.8): из архива (временная папка), Загрузки
     (MOTW), Документы (синхронизация), рабочий стол напрямую (замусоривание)."""
@@ -645,6 +680,7 @@ def run_diagnostics(root_dir: Path, cfg: AppConfig, progress_cb=None) -> dict:
 
     # winws2.exe + WinDivert64.sys + WinDivert.dll (AV удаляет sys — кейс друга)
     _add(_check_windivert_files(root_dir))
+    _add(_check_windivert_service(root_dir))
 
     # zapret2 process
     pid = _pid_of("winws2.exe")

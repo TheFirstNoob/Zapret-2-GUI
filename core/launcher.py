@@ -427,6 +427,16 @@ def launch_winws2_bat(
     token. We enable SeLoadDriverPrivilege first because UAC-elevated Python
     processes often have it disabled, which prevents WinDivert from loading.
     """
+    # Мёртвая служба драйвера «WinDivert» (ImagePath на удалённую папку —
+    # кейс друга 2026-09-13) даёт вечный ERROR_FILE_NOT_FOUND при
+    # WinDivertOpen. Чистим до запуска (безопасно: удаляются только службы
+    # с несуществующим ImagePath).
+    try:
+        from core.utils import fix_stale_windivert_services
+        fix_stale_windivert_services()
+    except Exception:
+        pass
+
     # Enable the privilege in our token; child processes will inherit it.
     privileges_before = get_enabled_privileges()
     se_load_enabled_before = "SeLoadDriverPrivilege" in privileges_before
