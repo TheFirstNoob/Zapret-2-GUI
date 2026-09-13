@@ -820,6 +820,13 @@ class Zapret2Tester:
 
         _logged_progress(5, f"[{profile_name}] запуск winws2...")
         if not self._run_profile(profile_name, ipset_catchall):
+            # диагностика «у друга не запускается»: точные пути в лог сессии
+            if self._logger:
+                self._logger.progress(
+                    profile_name,
+                    f"ABORT: spawn failed | exe={self.bin_dir / 'winws2.exe'} "
+                    f"exists={self.bin_dir.joinpath('winws2.exe').exists()} | "
+                    f"preset={preset} exists={preset.exists()}")
             raise _TestAbort(ProfileTestResult(profile_name=profile_name, results=[
                 TestResult(profile_name, "process", "ERROR", error="winws2 not found or spawn failed"),
             ]))
@@ -831,6 +838,11 @@ class Zapret2Tester:
 
         if not self._any_winws2_running():
             self._ensure_winws2_dead()
+            if self._logger:
+                self._logger.progress(
+                    profile_name,
+                    "ABORT: winws2 died immediately after spawn "
+                    "(WinDivert conflict / AV / driver refused)")
             raise _TestAbort(ProfileTestResult(profile_name=profile_name, results=[
                 TestResult(profile_name, "process", "ERROR", error="winws2 did not start"),
             ]))
@@ -904,9 +916,18 @@ class Zapret2Tester:
             profile_name, provider_hop, provider_ip, _ = self._setup_profile(
                 profile, progress_cb, _logged_progress, ipset_catchall)
         except _TestAbort as e:
-            if e.result is not None:
-                return e.result
-            return ProfileTestResult(profile_name=profile)
+            # Диагностика «не запускается у пользователя»: причина аборт
+            # пишется в test_session.log (попадает в ZIP-отчёт)
+            err_r = e.result or ProfileTestResult(profile_name=profile)
+            detail = "; ".join(
+                (getattr(r, "error", "") or "") for r in (err_r.results or [])) \
+                if err_r.results else "abort"
+            if self._logger:
+                self._logger.progress(
+                    profile,
+                    f"ABORT: {detail} | exe={self.bin_dir / 'winws2.exe'} | "
+                    f"preset={self.root_dir / 'presets' / (profile + '.txt')}")
+            return e.result if e.result is not None else err_r
 
         domains = self._get_tier_hosts(tier)
         all_results: list[TestResult] = []
