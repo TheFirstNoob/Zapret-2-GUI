@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import pathlib
 import shutil
+import sys
 import zipfile
 
 from core.launcher import build_args_from_preset
@@ -187,10 +188,19 @@ def main() -> None:
         src = ROOT / d
         if src.is_dir():
             shutil.copytree(src, LITE / d)
-    # экспериментальные пресеты не попадают в дистрибутив
+    # экспериментальные пресеты и генерируемый custom не попадают в дистрибутив
     for p in list((LITE / "presets").glob("*.txt")):
-        if not RELEASE_PRESETS(p.stem):
+        if not RELEASE_PRESETS(p.stem) or p.stem == "custom":
             p.unlink()
+    # юзер-файлы: в дистрибутив — пустые шаблоны (реальные не утекают)
+    for name in ("list-include-user", "list-exclude-user",
+                 "ipset-include-user", "ipset-exclude-user"):
+        (LITE / "lists" / f"{name}.txt").write_text("", encoding="utf-8")
+
+    # манифест обновления
+    sys.path.insert(0, str(ROOT))
+    from core.updater import write_manifest
+    write_manifest(LITE, "0.7.1")
 
     # one start-<preset>.bat per strategy (portable %~dp0 paths)
     for pf in sorted((LITE / "presets").glob("*.txt")):
@@ -233,7 +243,11 @@ def main() -> None:
         for f in sorted(LITE.rglob("*")):
             if f.is_file():
                 zf.write(f, f.relative_to(LITE))
+    import hashlib
+    sha = hashlib.sha256(zip_name.read_bytes()).hexdigest()
+    (ROOT / "Windows build" / "Zapret2GUI-lite.zip.sha256").write_text(sha + "\n", encoding="ascii")
     print(f"OK: {LITE}  + {zip_name}  ({zip_name.stat().st_size / 1024 / 1024:.1f} MB)")
+    print(f"SHA256: {sha}")
 
 
 if __name__ == "__main__":

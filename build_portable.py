@@ -19,6 +19,7 @@ from __future__ import annotations
 import pathlib
 import shutil
 import subprocess
+import sys
 import urllib.request
 import zipfile
 
@@ -109,10 +110,19 @@ def main() -> None:
     for d in COPY_DIRS:
         shutil.copytree(ROOT / d, APP / d)
     shutil.copy2(ROOT / "main.py", APP / "main.pyw")
-    # экспериментальные пресеты не попадают в дистрибутив
+    # экспериментальные пресеты и генерируемый custom не попадают в дистрибутив
     for p in list((APP / "presets").glob("*.txt")):
-        if p.stem.startswith(("exp-", "cand-", "test-")):
+        if p.stem.startswith(("exp-", "cand-", "test-", "custom")):
             p.unlink()
+    # юзер-файлы: в дистрибутив — пустые шаблоны (реальные не утекают)
+    for name in ("list-include-user", "list-exclude-user",
+                 "ipset-include-user", "ipset-exclude-user"):
+        (APP / "lists" / f"{name}.txt").write_text("", encoding="utf-8")
+
+    # 3b. манифест обновления (system-файлы + sha256)
+    sys.path.insert(0, str(ROOT))
+    from core.updater import write_manifest
+    write_manifest(APP, "0.7.1")
 
     # 4. trim runtime (caches, tests, pip scripts)
     for junk in (PY / "Scripts", PY / "Lib" / "site-packages" / "pip" / "_vendor" / "cache"):

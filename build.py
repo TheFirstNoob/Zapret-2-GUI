@@ -9,8 +9,9 @@ ROOT = Path(__file__).resolve().parent
 DIST = ROOT / "dist"
 NAME = "Zapret2GUI"
 
-# Экспериментальные пресеты не попадают в дистрибутив (остаются в git).
-RELEASE_PRESETS = lambda name: not name.startswith(("exp-", "cand-", "test-"))
+# Экспериментальные пресеты и генерируемый custom не попадают в дистрибутив
+RELEASE_PRESETS = lambda name: not name.startswith(
+    ("exp-", "cand-", "test-", "custom"))
 
 # presets попадают в onefile отфильтрованными через build/presets_release.
 REL_PRESETS = ROOT / "build" / "presets_release"
@@ -78,3 +79,15 @@ PyInstaller.__main__.run([
 
 out = DIST / f"{NAME}.exe"
 print(f"OK: {out}  ({out.stat().st_size / 1024 / 1024:.1f} MB)")
+
+# sha256 + zip рядом (для авто-обновления из программы: exe-версия
+# обновляется заменой exe-файла, архив скачивается из release-ассетов)
+import hashlib
+import zipfile
+out_zip = ROOT / "Windows build" / "Zapret2GUI.zip"
+with zipfile.ZipFile(out_zip, "w", zipfile.ZIP_DEFLATED) as zf:
+    zf.write(out, f"{NAME}.exe")
+sha = hashlib.sha256(out_zip.read_bytes()).hexdigest()
+(ROOT / "Windows build" / "Zapret2GUI.zip.sha256").write_text(sha + "\n", encoding="ascii")
+print(f"OK: {out_zip}  ({out_zip.stat().st_size / 1024 / 1024:.1f} MB)")
+print(f"SHA256: {sha}")

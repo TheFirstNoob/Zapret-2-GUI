@@ -4,6 +4,7 @@ import base64
 import ipaddress
 import json
 import subprocess
+import sys
 import threading
 import time
 import winsound
@@ -70,7 +71,6 @@ class TesterState:
         self.cancelled = False
         self.action_type: Optional[str] = None
         self.logger: Optional[TestLogger] = None
-
     def reset(self):
         self.progress_pct = 0
         self.progress_msg = ""
@@ -157,6 +157,109 @@ def _ui_debug(msg: str) -> None:
 
 # Update-check result cache: one check per application session.
 _update_check_cache: Optional[dict] = None
+
+# ── Updater state (0.8) ─────────────────────────────────────
+_updater_state = {
+    "running": False,
+    "phase": "",
+    "percent": 0,
+    "error": None,
+    "result": None,   # {applied, backup, service_mismatch, restart_required}
+}
+
+
+def _run_update_worker(kind: str, tag: str, info: dict) -> None:
+    """Worker обновления: скачать → бэкап → применить (portable) или
+    подготовить self-update (exe) → проверить службу (аргументы устарели?)."""
+    from core.updater import (apply_portable, fetch_update, fetch_sha256,
+                              prepare_exe_update, service_args_stale)
+    from core.config import ConfigManager
+    from core.launcher import build_args_from_preset
+    from core.service_manager import (_read_stored_binpath, is_installed as
+                                      svc_installed)
+
+    def prog(pct, msg):
+        _updater_state["percent"] = pct
+        _updater_state["phase"] = msg
+        _ui_debug(f"update: {pct}% {msg}")
+
+    try:
+        root_dir = get_root_dir()
+        update_dir = root_dir / "updates"
+        update_dir = update_dir if update_dir.is_dir() else _mk(update_dir)
+
+        prog(10, "Скачивание обновления…")
+        expected = info.get("sha256")
+        if not expected:
+            # sha256 не передан фронтом — берём из release-ассетов
+            try:
+                expected = fetch_sha256(kind, tag, update_dir)
+            except Exception:
+                expected = None
+        zip_path = fetch_update(kind, tag, update_dir,
+                                sha256_expected=expected)
+
+        prog(55, "Резервная копия настроек…")
+        result: dict = {"applied": 0, "backup": None,
+                        "service_mismatch": False,
+                        "restart_required": True}
+
+        if kind == "exe":
+            prog(70, "Подготовка замены EXE…")
+            bat = prepare_exe_update(zip_path, root_dir)
+            result["update_bat"] = str(bat)
+            result["restart_required"] = True
+        else:
+            prog(70, "Применение обновления…")
+            applied = apply_portable(zip_path, root_dir,
+                                     progress_cb=lambda m: prog(80, str(m)))
+            result.update(applied=applied["updated"],
+                          skipped_user=applied["skipped_user"],
+                          backup=applied["backup"])
+            result["restart_required"] = True
+
+        # Служба установлена? Сравнить её аргументы с собранными из НОВЫХ
+        # файлов — при расхождении предложить переустановку службы
+        prog(95, "Проверка конфигурации службы…")
+        if svc_installed():
+            cfg = ConfigManager(root_dir).load()
+            new_args = build_args_from_preset(
+                root_dir, root_dir / "lua", root_dir / "blobs",
+                root_dir / "presets" / f"{cfg.last_profile or 'default'}.txt",
+                lists_dir=root_dir / "lists",
+                windivert_dir=root_dir / "windivert",
+                debug=cfg.winws2_debug, game_filter_mode=cfg.game_filter_mode,
+                discord_voice=cfg.discord_voice,
+                discord_voice_mode=cfg.discord_voice_mode,
+                autohostlist=cfg.autohostlist,
+                ipset_catchall=cfg.ipset_catchall)
+            stored = _read_stored_binpath()
+            result["service_mismatch"] = service_args_stale(stored, new_args)
+            _ui_debug(f"update: service_mismatch={result['service_mismatch']}")
+        else:
+            result["service_mismatch"] = False
+
+        prog(100, "Обновление готово")
+        _updater_state["result"] = result
+    except Exception as e:
+        _ui_debug(f"update: EXCEPTION {e}")
+        _updater_state["error"] = str(e)[:200]
+    finally:
+        _updater_state["running"] = False
+
+
+def _mk(dir_path: Path) -> Path:
+    dir_path.mkdir(exist_ok=True)
+    return dir_path
+
+# ── Updater state (0.8) ─────────────────────────────────────
+_updater_state = {
+    "running": False,
+    "phase": "",
+    "percent": 0,
+    "error": None,
+    "result": None,   # {applied, backup, service_mismatch, restart_required}
+}
 
 
 # ── Helpers ──────────────────────────────────────────────────
@@ -1420,6 +1523,10 @@ class ZapretHandler(BaseHTTPRequestHandler):
                 self._handle_tester_status()
             elif path == "/api/update-check":
                 self._handle_update_check()
+            elif path == "/api/update/status":
+                self._handle_update_status()
+            elif path == "/api/update/start":
+                self._handle_update_start()
             elif path == "/api/process-probe/status":
                 self._handle_probe_status()
             else:
@@ -2057,6 +2164,29 @@ class ZapretHandler(BaseHTTPRequestHandler):
             from core.updates import check_for_updates
             _update_check_cache = check_for_updates()
         self._send_json({"status": "ok", **_update_check_cache})
+
+    def _handle_update_status(self) -> None:
+        self._send_json({"status": "ok", **_updater_state})
+
+    def _handle_update_start(self) -> None:
+        if _updater_state["running"]:
+            self._send_json({"status": "error",
+                             "message": "Обновление уже выполняется"})
+            return
+        info = (_update_check_cache or {}).copy()
+        if not info.get("available"):
+            self._send_json({"status": "error",
+                             "message": "Обновление недоступно или версия уже актуальна"})
+            return
+
+        tag = info.get("tag") or info.get("latest", "").replace(" ", "-")
+        kind = "portable" if not getattr(sys, "frozen", False) else "exe"
+        _updater_state.update({"running": True, "phase": "скачивание",
+                               "percent": 5, "error": None, "result": None})
+        t = threading.Thread(target=_run_update_worker,
+                             args=(kind, tag, info), daemon=True)
+        t.start()
+        self._send_json({"status": "ok", "action": "started"})
 
     def _handle_export_report(self, data: dict) -> None:
         consent = data.get("consent", False)

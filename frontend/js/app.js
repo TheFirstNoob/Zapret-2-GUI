@@ -312,9 +312,50 @@ if (start) start.addEventListener('click', () => TesterPage.startProbe());
         $('updateVersion').textContent = r.latest;
         $('updateLink').href = r.url || '#';
         $('updateMirrorLink').href = r.mirror_url || '#';
+        this._updateTag = r.tag || r.latest.replace(' ', '-');
         $('updateBanner').hidden = false;
       }
     } catch (e) { /* silent */ }
+  },
+
+  // Обновление из программы (0.8): скачать → бэкап → применить (portable/lite)
+  // или подготовить замену EXE → предложит перезапуск; после — проверка службы
+  async runUpdate() {
+    const btn = $('updateNowBtn');
+    btn.disabled = true;
+    btn.textContent = 'Обновление…';
+    try {
+      await apiPost('/update/start', {});
+      const pollId = setInterval(async () => {
+        try {
+          const st = await apiGet('/update/status');
+          btn.textContent = `${st.phase || '…'} ${st.percent ? st.percent + '%' : ''}`.trim();
+          if (st.running) return;
+          clearInterval(pollId);
+          if (st.error) {
+            showToast('Обновление не удалось: ' + st.error, 'error');
+            btn.disabled = false;
+            btn.textContent = 'Повторить обновление';
+            return;
+          }
+          const res = st.result || {};
+          $('updateBanner').hidden = true;
+          showToast('Обновление применено — перезапустите программу', 'ok');
+          if (res.service_mismatch) {
+            showToast('Служба установлена со старой конфигурацией — после перезапуска нажмите «Установить службу» заново', 'warn');
+          }
+          setTimeout(() => { location.reload(); }, 1500);
+        } catch (e) {
+          clearInterval(pollId);
+          btn.disabled = false;
+          btn.textContent = 'Повторить';
+        }
+      }, 1000);
+    } catch (e) {
+      showToast('Обновление не запустилось: ' + (e.message || e), 'error');
+      btn.disabled = false;
+      btn.textContent = 'Обновить сейчас';
+    }
   },
 };
 
@@ -419,6 +460,7 @@ const MainPage = {
     $('btnZ1SaveDir').addEventListener('click', () => this.saveZ1Dir());
     $('btnZ1Toggle').addEventListener('click', () => this.toggleZ1());
     $('updateBannerClose').addEventListener('click', () => { $('updateBanner').hidden = true; });
+    $('updateNowBtn').addEventListener('click', () => this.runUpdate());
 
     ['toggleGameFilter', 'toggleAutoHostlist', 'toggleIpFilter',
       'toggleDiscordVoice', 'toggleWinws2Debug', 'fakeBlobSelect'].forEach(id => {

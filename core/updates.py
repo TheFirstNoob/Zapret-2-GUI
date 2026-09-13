@@ -36,10 +36,18 @@ def _version_key(version: str) -> tuple:
     'Pre-Release 0.10' -> (0, 10); unknown formats fall back to (0,) so they
     never compare as "newer" by accident.
     """
-    m = re.search(r"(\d+)\.(\d+)", version or "")
+    m = re.search(r"(\d+)\.(\d+)(?:\.(\d+))?", version or "")
     if m:
-        return (int(m.group(1)), int(m.group(2)))
+        key = (int(m.group(1)), int(m.group(2)))
+        return key + ((int(m.group(3)),) if m.group(3) else ())
     return (0,)
+
+
+def tag_from_version(version: str) -> str:
+    """Конвенция тегов релизов (2026-09-13): только «Pre-Release-X.Y.Z»
+    (пробел → дефис). Теги вида «0.7.1-hotfix» ломали порядок списка —
+    от них отказались."""
+    return (version or "").strip().replace(" ", "-")
 
 
 def _fetch_latest_raw() -> Optional[str]:
@@ -72,6 +80,7 @@ def check_for_updates() -> dict:
     info = {
         "current": VERSION,
         "latest": "",
+        "tag": "",
         "available": False,
         "error": None,
         "url": RELEASES_URL,
@@ -87,6 +96,7 @@ def check_for_updates() -> dict:
             info["error"] = "empty VERSION file"
             return info
         info["latest"] = latest
+        info["tag"] = tag_from_version(latest)
         info["available"] = _version_key(latest) > _version_key(VERSION)
     except Exception as e:  # noqa: BLE001 — any failure must be silent
         info["error"] = str(e)[:120]
