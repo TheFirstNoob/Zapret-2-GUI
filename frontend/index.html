@@ -649,6 +649,19 @@
             </div>
 
           </div>
+<div class="panel" id="settingsBackupPanel">
+            <div class="list-head">
+              <div>
+                <div class="panel-title">Резервная копия настроек</div>
+                <div class="panel-desc">Сохраняет ваши списки-включения/исключения, ipset-списки, пользовательские пресеты и настройки программы в один ZIP — и восстанавливает их обратно (например, после переустановки программы).</div>
+              </div>
+            </div>
+            <div class="probe-actions">
+              <button class="btn" id="btnSettingsExport">Экспорт настроек</button>
+              <label class="btn" for="settingsImportFile" style="cursor:pointer">Импорт настроек<input type="file" id="settingsImportFile" accept=".zip" hidden></label>
+              <span class="meta" id="settingsResult"></span>
+            </div>
+          </div>
         </section>
 
         <!-- ═══ Спорные домены ═══ -->

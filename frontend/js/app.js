@@ -340,11 +340,15 @@ if (start) start.addEventListener('click', () => TesterPage.startProbe());
           }
           const res = st.result || {};
           $('updateBanner').hidden = true;
-          showToast('Обновление применено — перезапустите программу', 'ok');
           if (res.service_mismatch) {
-            showToast('Служба установлена со старой конфигурацией — после перезапуска нажмите «Установить службу» заново', 'warn');
+            showToast('Обновление применено. Служба стоит на старой конфигурации — переустановите её кнопкой', 'warn');
+            btn.disabled = false;
+            btn.textContent = 'Переустановить службу';
+            this._updateStage = 'service';
+          } else {
+            showToast('Обновление применено — перезапустите программу', 'ok');
+            setTimeout(() => { location.reload(); }, 1500);
           }
-          setTimeout(() => { location.reload(); }, 1500);
         } catch (e) {
           clearInterval(pollId);
           btn.disabled = false;
@@ -356,6 +360,25 @@ if (start) start.addEventListener('click', () => TesterPage.startProbe());
       btn.disabled = false;
       btn.textContent = 'Обновить сейчас';
     }
+  },
+
+  _onUpdateBtn() {
+    if (this._updateStage === 'service') {
+      const btn = $('updateNowBtn');
+      btn.disabled = true;
+      btn.textContent = 'Переустановка службы…';
+      apiPost('/service/install', {}).then(r => {
+        if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
+        showToast('Служба переустановлена — перезапустите программу', 'ok');
+        setTimeout(() => { location.reload(); }, 1500);
+      }).catch(e => {
+        showToast('Ошибка переустановки: ' + (e.message || e), 'error');
+        btn.disabled = false;
+        btn.textContent = 'Повторить переустановку';
+      });
+      return;
+    }
+    this.runUpdate();
   },
 };
 
@@ -460,6 +483,7 @@ const MainPage = {
     $('btnZ1SaveDir').addEventListener('click', () => this.saveZ1Dir());
     $('btnZ1Toggle').addEventListener('click', () => this.toggleZ1());
     $('updateBannerClose').addEventListener('click', () => { $('updateBanner').hidden = true; });
+    $('updateNowBtn').addEventListener('click', () => this._onUpdateBtn());
     $('updateNowBtn').addEventListener('click', () => this.runUpdate());
 
     ['toggleGameFilter', 'toggleAutoHostlist', 'toggleIpFilter',
@@ -1146,8 +1170,59 @@ const ListsPage = {
         ta.addEventListener('scroll', () => this._syncNums(key));
         this.load(key);
       });
+      // резервная копия настроек (экспорт/импорт юзер-файлов)
+      const exp = $('btnSettingsExport');
+      if (exp) exp.addEventListener('click', () => this.exportSettings());
+      const imp = $('settingsImportFile');
+      if (imp) imp.addEventListener('change', () => this.importSettings(imp));
     }
     this.loadContested();
+  },
+
+  async exportSettings() {
+    const btn = $('btnSettingsExport');
+    btn.disabled = true;
+    try {
+      const r = await apiPost('/settings/export', {});
+      if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
+      const fileName = (r.name || '').split('\\').pop();
+      showToast(`Настройки сохранены: ${fileName} в папке программы`, 'ok');
+      const res = $('settingsResult');
+      if (res) res.textContent = 'Сохранено: ' + fileName;
+    } catch (e) {
+      showToast('Экспорт не удался: ' + (e.message || e), 'error');
+    }
+    btn.disabled = false;
+  },
+
+  async importSettings(input) {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    const btn = $('btnSettingsExport');
+    btn.disabled = true;
+    const res = $('settingsResult');
+    if (res) res.textContent = 'Импортирую…';
+    try {
+      const b64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+        reader.onerror = () => reject(new Error('не удалось прочитать файл'));
+        reader.readAsDataURL(file);
+      });
+      const r = await apiPost('/settings/import', { data: b64 });
+      if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
+      showToast(r.message || 'Настройки восстановлены', 'ok');
+      if (res) res.textContent = `Восстановлено: ${r.imported}, пропущено: ${r.skipped}`;
+      await this.load('domInc');
+      await this.load('domExc');
+      await this.load('ipInc');
+      await this.load('ipExc');
+    } catch (e) {
+      showToast('Импорт не удался: ' + (e.message || e), 'error');
+      if (res) res.textContent = '';
+    }
+    input.value = '';
+    btn.disabled = false;
   },
 
   // ── Спорные домены (AWS и др.: десинк одним нужен, других ломает) ──

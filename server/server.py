@@ -1525,8 +1525,6 @@ class ZapretHandler(BaseHTTPRequestHandler):
                 self._handle_update_check()
             elif path == "/api/update/status":
                 self._handle_update_status()
-            elif path == "/api/update/start":
-                self._handle_update_start()
             elif path == "/api/process-probe/status":
                 self._handle_probe_status()
             else:
@@ -1749,6 +1747,12 @@ class ZapretHandler(BaseHTTPRequestHandler):
                 self._handle_blob_probe(data)
             elif path == "/api/tester/action":
                 self._handle_tester_action(data)
+            elif path == "/api/update/start":
+                self._handle_update_start()
+            elif path == "/api/settings/export":
+                self._handle_settings_export()
+            elif path == "/api/settings/import":
+                self._handle_settings_import(data)
             elif path == "/api/cdn/recommendation":
                 self._handle_cdn_recommendation(data)
             elif path == "/api/cdn/apply-all":
@@ -2187,6 +2191,34 @@ class ZapretHandler(BaseHTTPRequestHandler):
                              args=(kind, tag, info), daemon=True)
         t.start()
         self._send_json({"status": "ok", "action": "started"})
+
+    def _handle_settings_export(self) -> None:
+        """Экспорт настроек: config + *-user.txt + юзерские пресеты → один zip."""
+        from core.updater import export_settings_zip
+        path = export_settings_zip(get_root_dir())
+        if not path:
+            self._send_json({"status": "error", "message": "Не удалось создать файл экспорта"})
+            return
+        self._send_json({"status": "ok", "file": str(path),
+                         "name": path.name})
+
+    def _handle_settings_import(self, data: dict) -> None:
+        """Импорт настроек из zip (base64): только юзер-файлы восстанавливаются."""
+        import base64
+        try:
+            zip_data = base64.b64decode(data.get("data") or "")
+        except Exception:
+            self._send_json({"status": "error", "message": "Некорректный файл"})
+            return
+        if not zip_data:
+            self._send_json({"status": "error", "message": "Пустой файл"})
+            return
+        from core.updater import import_settings_zip
+        imported, skipped = import_settings_zip(zip_data, get_root_dir())
+        self._send_json({"status": "ok", "imported": imported,
+                         "skipped": skipped,
+                         "message": f"Восстановлено записей: {imported}. "
+                                    "Перезапустите программу, чтобы применилось."})
 
     def _handle_export_report(self, data: dict) -> None:
         consent = data.get("consent", False)

@@ -158,6 +158,66 @@ def _backup_user_files(root_dir: Path, old_version: str) -> Optional[Path]:
         return None
 
 
+def export_settings_zip(root_dir: Path) -> Optional[Path]:
+    """Экспорт настроек: config + *-user.txt + юзерские пресеты — один zip
+    в корне программы (страховка сценария «снёс всё и поставил заново»)."""
+    name = f"zapret2_settings_{datetime.now():%Y%m%d_%H%M%S}.zip"
+    export_path = root_dir / name
+    try:
+        with zipfile.ZipFile(export_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            for rel in USER_FILES:
+                p = root_dir / rel
+                if p.exists():
+                    zf.write(p, rel)
+            presets = root_dir / "presets"
+            if presets.is_dir():
+                for pf in sorted(presets.glob("*.txt")):
+                    if pf.stem not in RELEASE_PRESETS \
+                            and pf.stem not in USER_PRESET_IGNORE:
+                        zf.write(pf, f"presets/{pf.name}")
+        return export_path
+    except OSError:
+        return None
+
+
+def import_settings_zip(zip_data: bytes, root_dir: Path) -> tuple[int, int]:
+    """Импорт настроек из zip: восстанавливаются ТОЛЬКО юзер-файлы
+    (config, *-user.txt, юзерские пресеты). Возвращает (imported, skipped)."""
+    import io
+    imported = 0
+    skipped = 0
+    with zipfile.ZipFile(io.BytesIO(zip_data)) as zf:
+        for info in zf.infolist():
+            if info.is_dir():
+                continue
+            rel = info.filename.replace("/", "\\")
+            # защита от path traversal внутри чужого zip
+            if rel.startswith(("/", "\\")) or ".." in rel:
+                skipped += 1
+                continue
+            is_user = (
+                rel in USER_FILES
+                or (Path(rel).parts[:1] == ("lists",)
+                    and Path(rel).name.endswith("-user.txt"))
+                or (Path(rel).parts[:1] == ("presets",)
+                    and Path(rel).name.endswith(".txt")
+                    and Path(rel).stem not in RELEASE_PRESETS
+                    and Path(rel).stem != "custom")
+            )
+            if not is_user:
+                skipped += 1
+                continue
+            target = root_dir / rel
+            try:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with zf.open(info) as src, open(target, "wb") as out:
+                    shutil.copyfileobj(src, out)
+                imported += 1
+            except OSError:
+                skipped += 1
+    return imported, skipped
+
+
 def apply_portable(zip_path: Path, root_dir: Path,
                    progress_cb=None) -> dict:
     """Обновить portable/lite-папку из скачанного zip, СОХРАНЯЯ юзер-файлы.
