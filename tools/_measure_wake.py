@@ -64,7 +64,6 @@ def run(profile: str = "default", duration: int = DURATION) -> None:
     print(f"winws2 запущен на {profile}. Наблюдение {duration}s (проба каждые "
           f"{PROBE_INTERVAL}s, curl timeout {PROBE_TIMEOUT}s):")
     timeline = []
-    t_last = t_start
     while time.time() - t_start < duration:
         dt, code = probe_once()
         t_rel = time.time() - t_start
