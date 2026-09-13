@@ -359,3 +359,15 @@ raw/objects/release-assets/private-user-images/gist/avatars* — стабиль�
   DoH — тестировать в Firefox/Chrome.
 - Killer NIC конфликтует с WinDivert (zapret запускается, пакеты не
   обрабатываются) → отключить Bandwidth Control.
+- **Мёртвая служба драйвера «WinDivert» (2026-09-13, ПОДТВЕРЖДЕНО)**: служба
+  ставится ОДИН РАЗ и навсегда хранит ImagePath (путь к .sys). Другая zapret-
+  версия/переезд/удаление папки → ImagePath мёртв → winws2 видит «служба уже
+  есть» (версия совпадает) → StartService по мёртвому пути → вечный
+  «windivert: error opening filter: file not found» ДАЖЕ при живых .sys/.dll
+  рядом (7 профилей и списки загружаются нормально — параметры не виноваты).
+  **Диагноз подтверждён**: `sc delete WinDivert` у пользователя → сразу
+  заработало. Авто-фикс: `fix_stale_windivert_services()` вызывается перед
+  КАЖДЫМ запуском winws2 (launcher) и перед install (service_manager) —
+  удаляет только службы с несуществующим ImagePath. Чеки: diagnostics
+  «Служба драйвера WinDivert» (ImagePath dead / Start=Disabled) и
+  «Файлы WinDivert». Тестер-аборты пишут причину в test_session.log.
