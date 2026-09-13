@@ -122,6 +122,26 @@ def _check_path(root_dir: Path) -> Check:
                  tech="no 8.3 names available")
 
 
+def _check_windivert_files(root_dir: Path) -> Check:
+    """WinDivert-файлы на месте? AV (RiskTool-классификация) часто
+    УДАЛЯЕТ WinDivert64.sys — winws2 тогда стартует, но перехват не
+    открывается: «windivert: error opening filter: file not found»
+    (кейс друга 2026-09-13)."""
+    bin_dir = root_dir / "bin"
+    missing = [f for f in ("winws2.exe", "WinDivert64.sys", "WinDivert.dll",
+                           "WinDivert64.sys")
+               if not (bin_dir / f).exists()]
+    if missing:
+        return Check("windivert_files", "Файлы WinDivert", "fail",
+                     f"отсутствуют: {', '.join(missing)} — вероятно, антивирус их "
+                     "удалил (WinDivert классифицируется как RiskTool). Добавьте "
+                     "папку программы в исключения антивируса и переустановите "
+                     "программу из архива",
+                     tech=f"missing: {missing}")
+    return Check("windivert_files", "Файлы WinDivert", "ok",
+                 "winws2.exe + WinDivert64.sys + WinDivert.dll на месте")
+
+
 def _check_launch_spot(root_dir: Path) -> Check:
     """Болевые места запуска (0.8): из архива (временная папка), Загрузки
     (MOTW), Документы (синхронизация), рабочий стол напрямую (замусоривание)."""
@@ -622,6 +642,9 @@ def run_diagnostics(root_dir: Path, cfg: AppConfig, progress_cb=None) -> dict:
 
     # install path
     _add(_check_path(root_dir))
+
+    # winws2.exe + WinDivert64.sys + WinDivert.dll (AV удаляет sys — кейс друга)
+    _add(_check_windivert_files(root_dir))
 
     # zapret2 process
     pid = _pid_of("winws2.exe")
