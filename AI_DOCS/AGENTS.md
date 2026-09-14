@@ -377,3 +377,12 @@ raw/objects/release-assets/private-user-images/gist/avatars* — стабиль�
   удаляет только службы с несуществующим ImagePath. Чеки: diagnostics
   «Служба драйвера WinDivert» (ImagePath dead / Start=Disabled) и
   «Файлы WinDivert». Тестер-аборты пишут причину в test_session.log.
+  **ЛОВУШКА «marked for delete» (кейс друга #2, 2026-09-13)**: `sc delete
+  WinDivert` при ЖИВОМ winws2 (открытые хендлы драйвера) НЕ удаляет службу
+  сразу — помечает её до перезагрузки; в этом состоянии новый запуск
+  драйвера/программы может падать/выбивать («программу выбило даже с ручным
+  запуском»). Правило: сначала остановить обход (winws2), потом sc delete,
+  затем перезагрузка для завершения удаления. Автозапуск службы zapret2
+  при сбое драйвера: winws2 стартует → WinDivertOpen fail → падает → SCM
+  recovery 3×60с → остаётся STOPPED (GUI: «Запустить службу»). Диагностика
+  покажет причину (ImagePath/Start/файлы).
