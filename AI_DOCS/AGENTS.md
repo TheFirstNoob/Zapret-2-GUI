@@ -372,9 +372,12 @@ raw/objects/release-assets/private-user-images/gist/avatars* — стабиль�
   «windivert: error opening filter: file not found» ДАЖЕ при живых .sys/.dll
   рядом (7 профилей и списки загружаются нормально — параметры не виноваты).
   **Диагноз подтверждён**: `sc delete WinDivert` у пользователя → сразу
-  заработало. Авто-фикс: `fix_stale_windivert_services()` вызывается перед
-  КАЖДЫМ запуском winws2 (launcher) и перед install (service_manager) —
-  удаляет только службы с несуществующим ImagePath. Чеки: diagnostics
+  заработало. Авто-фикс (repair-first, 2026-09-13): битый ImagePath главной
+  службы перезаписывается `sc config binPath= \??\<наш>\bin\WinDivert64.sys`
+  + `start= demand` (БЕЗ удаления); Start=Disabled включается; удаление —
+  только если иначе нельзя и winws2 НЕ запущен. Вызовы: launcher (перед
+  ручным запуском), service install (ПОСЛЕ остановки winws2) и service
+  start. Чеки: diagnostics
   «Служба драйвера WinDivert» (ImagePath dead / Start=Disabled) и
   «Файлы WinDivert». Тестер-аборты пишут причину в test_session.log.
   **ЛОВУШКА «marked for delete» (кейс друга #2, 2026-09-13)**: `sc delete

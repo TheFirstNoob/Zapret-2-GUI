@@ -429,11 +429,11 @@ def launch_winws2_bat(
     """
     # Мёртвая служба драйвера «WinDivert» (ImagePath на удалённую папку —
     # кейс друга 2026-09-13) даёт вечный ERROR_FILE_NOT_FOUND при
-    # WinDivertOpen. Чистим до запуска (безопасно: удаляются только службы
-    # с несуществующим ImagePath).
+    # WinDivertOpen. Лечим до запуска: repair ImagePath на наш .sys, при
+    # невозможности — удаление (и только когда winws2 не запущен).
     try:
         from core.utils import fix_stale_windivert_services
-        fix_stale_windivert_services()
+        fix_stale_windivert_services(root_dir)
     except Exception:
         pass
 

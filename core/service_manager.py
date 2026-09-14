@@ -194,18 +194,19 @@ def install(root_dir: Optional[Path] = None, args: Optional[list[str]] = None) -
     conflict = _zapret1_conflict()
     if conflict:
         return False, conflict
-    # мёртвая служба драйвера «WinDivert» (ImagePath на удалённую папку) —
-    # иначе sc create пройдёт, а winws2 не откроет перехват (кейс друга)
-    try:
-        from core.utils import fix_stale_windivert_services
-        fix_stale_windivert_services()
-    except Exception:
-        pass
     _invalidate_service_cache()
     remove()
     time.sleep(0.5)
     if root_dir is None:
         root_dir = Path(__file__).resolve().parent.parent
+    # Драйвер лечим ПОСЛЕ остановки winws2 (кейс 2026-09-13): править или
+    # удалять службу драйвера при живых хендлах нельзя — она получит
+    # «marked for deletion» (1072) и починится только перезагрузкой.
+    try:
+        from core.utils import fix_stale_windivert_services
+        fix_stale_windivert_services(root_dir)
+    except Exception:
+        pass
     exe = Path(root_dir) / "bin" / "winws2.exe"
     if not exe.exists():
         exe = Path(root_dir) / "winws2.exe"
@@ -274,6 +275,13 @@ def start(args: Optional[list[str]] = None):
     stop()
     # Даём SCM время закрыть состояние (иначе первый sc start может дать 1053).
     time.sleep(0.5)
+    # Драйвер мог сломаться между запусками (кейс 2026-09-13) — лечим до
+    # sc start, иначе winws2 упадёт на WinDivertOpen.
+    try:
+        from core.utils import fix_stale_windivert_services
+        fix_stale_windivert_services(Path(__file__).resolve().parent.parent)
+    except Exception:
+        pass
     if args:
         reconfigure(args)
     code, out = _sc(["start", SERVICE_NAME])
