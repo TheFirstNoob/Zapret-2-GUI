@@ -200,7 +200,7 @@ def main() -> None:
     # манифест обновления
     sys.path.insert(0, str(ROOT))
     from core.updater import write_manifest
-    write_manifest(LITE, "0.7.1")
+    write_manifest(LITE, "0.8")
 
     # one start-<preset>.bat per strategy (portable %~dp0 paths)
     for pf in sorted((LITE / "presets").glob("*.txt")):

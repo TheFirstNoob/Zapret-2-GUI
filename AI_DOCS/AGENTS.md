@@ -1,6 +1,6 @@
 # AGENTS.md — Критические находки (чтение обязательно перед любыми изменениями)
 
-> **Последнее обновление: 2026-09-13 (Pre-Release 0.7.1; UI ведёт отдельный агент)**
+> **Последнее обновление: 2026-09-13 (Pre-Release 0.8 — релиз-подготовка; UI-ветка влита)**
 > **Размер EXE:** 19.4 MB. Сборки актуальны (build.py / build_portable.py / build_lite.py).
 > **Статус:** `default.txt` — универсальная стратегия; Discord-блоки на repeats=8.
 >
@@ -12,7 +12,7 @@
 ## ⚡ СЕССИЯ-СНАПШОТ (читать первым)
 
 ### Текущее состояние (2026-09-13)
-- **VERSION = "Pre-Release 0.7.1"** (config.py + VERSION-файл; релизы 0.7 и 0.7.1 на GitHub).
+- **VERSION = "Pre-Release 0.8"** (config.py; релизы 0.7/0.7.1 на GitHub; сборки 0.8 пересобраны 2026-09-13 — updater/settings/heal/UI/frozen-fix вошли).
 - **Пресеты: 11 release** (default, default-alt, auto, fake-only, fakedsplit,
   fake-disorder, fake-multidisorder, hostfakesplit, multisplit-pure,
   multisplit-seqovl, tcpmd5-fake) + exp-/cand- стенды (скрыты из GUI и дистрибутивов).

@@ -122,7 +122,7 @@ def main() -> None:
     # 3b. манифест обновления (system-файлы + sha256)
     sys.path.insert(0, str(ROOT))
     from core.updater import write_manifest
-    write_manifest(APP, "0.7.1")
+    write_manifest(APP, "0.8")
 
     # 4. trim runtime (caches, tests, pip scripts)
     for junk in (PY / "Scripts", PY / "Lib" / "site-packages" / "pip" / "_vendor" / "cache"):
