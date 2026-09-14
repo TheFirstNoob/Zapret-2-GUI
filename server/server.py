@@ -2017,7 +2017,13 @@ class ZapretHandler(BaseHTTPRequestHandler):
         if not item:
             self._send_json({"status": "error", "message": "Неизвестный домен"})
             return
-        with_protection = get_controller().status().running
+        engine_running = get_controller().status().running
+        # «В обходе» — это про КОНКРЕТНЫЙ домен: движок запущен И домен
+        # добавлен в обход (тумблер). Раньше учитывался только статус
+        # движка — при выключенном тумблере вердикт врал («оставьте
+        # включённым», хотя домен обходом не обрабатывается).
+        enabled = item["domain"].lower() in self._include_user_domains()
+        with_protection = engine_running and enabled
         t0 = _time.time()
         r = _sp.run(
             ["curl.exe", "-4", "-s", "-o", "NUL", "-m", "10",
@@ -2027,7 +2033,9 @@ class ZapretHandler(BaseHTTPRequestHandler):
         code = (r.stdout or "").strip()
         self._send_json({"status": "ok", "code": code,
                          "elapsed": round(_time.time() - t0, 2),
-                         "with_protection": with_protection})
+                         "with_protection": with_protection,
+                         "engine_running": engine_running,
+                         "enabled": enabled})
 
     def _prepare_service_args(self, data: dict) -> tuple[Optional[list[str]], str]:
         """Build + validate the winws2 args for the service (direct-exe style).
