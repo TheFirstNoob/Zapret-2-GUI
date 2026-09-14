@@ -389,3 +389,12 @@ raw/objects/release-assets/private-user-images/gist/avatars* — стабиль�
   при сбое драйвера: winws2 стартует → WinDivertOpen fail → падает → SCM
   recovery 3×60с → остаётся STOPPED (GUI: «Запустить службу»). Диагностика
   покажет причину (ImagePath/Start/файлы).
+- **Миграция с Zapret 1 (Flowseal 1.9.x, service.bat)**: служба называется
+  `zapret` (binPath `"\<папка>\bin\winws.exe" <args>`, start= auto, DisplayName
+  "zapret"); его «Remove Services» делает `net stop zapret` + `sc delete
+  zapret` + `taskkill winws.exe` и вдобавок чистит драйвер-службы `WinDivert`
+  И `WinDivert14` — оттуда мёртвые хвосты у мигрантов. Наш install при
+  конфликте предлагает подтверждение «Остановить и удалить Zapret 1»
+  (zapret1_cleanup — тот же набор действий), затем продолжает установку.
+  Кнопка «Починить» на главной вызывает driver-heal (repair/enable/
+  safe-delete) и рапортует о Zapret 1 (`POST /api/service/repair`).

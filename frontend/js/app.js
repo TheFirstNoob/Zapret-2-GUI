@@ -476,6 +476,7 @@ const MainPage = {
     $('btnZ2Toggle').addEventListener('click', () => this.toggleZ2());
     $('btnStopZ1Now').addEventListener('click', () => this.stopZ1());
     $('btnApplyToggles').addEventListener('click', () => this.restartZapret());
+    $('btnSvcRepair').addEventListener('click', () => this.svcRepair());
     $('btnSvcInstall').addEventListener('click', () => this.svcInstall());
     $('btnSvcStart').addEventListener('click', () => this.svcStart());
     $('btnSvcStop').addEventListener('click', () => this.svcStop());
@@ -746,7 +747,7 @@ const MainPage = {
 
   _setSvcBusy(b) {
     this._svcBusy = b;
-    ['btnSvcInstall', 'btnSvcStart', 'btnSvcStop', 'btnSvcRemove'].forEach(id => {
+    ['btnSvcRepair', 'btnSvcInstall', 'btnSvcStart', 'btnSvcStop', 'btnSvcRemove'].forEach(id => {
       $(id).disabled = b;
     });
   },
@@ -768,14 +769,26 @@ const MainPage = {
 
   svcInstall() {
     const t = this._collectToggles();
+    const payload = {
+      profile: $('strategySelect').value,
+      game_filter: t.game_filter_mode, discord_voice_mode: t.discord_voice_mode,
+      debug: t.winws2_debug, autohostlist: t.autohostlist,
+      ipset_catchall: t.ipset_catchall,
+    };
     this._svcAction(
       async () => {
-        const r = await apiPost('/service/install', {
-          profile: $('strategySelect').value,
-          game_filter: t.game_filter_mode, discord_voice_mode: t.discord_voice_mode,
-          debug: t.winws2_debug, autohostlist: t.autohostlist,
-          ipset_catchall: t.ipset_catchall,
-        });
+        let r = await apiPost('/service/install', payload);
+        if (r.status !== 'ok' && /Zapret 1/.test(r.message || '')) {
+          const go = window.confirm(
+            'Обнаружен Zapret 1 (служба «zapret» или процесс winws.exe).\n\n' +
+            'Остановить и удалить его? Это то же действие, что «Remove Services» ' +
+            'в service.bat Zapret 1:\n' +
+            '• служба zapret будет остановлена и удалена\n' +
+            '• процесс winws.exe будет остановлен\n\n' +
+            'После этого установка продолжится автоматически.');
+          if (!go) return r;
+          r = await apiPost('/service/install', { ...payload, cleanup_zapret1: true });
+        }
         if (r.status !== 'ok') return r;
         return apiPost('/service/start', {});
       },
@@ -799,6 +812,31 @@ const MainPage = {
       if (Status.svc && Status.svc.running) await apiPost('/service/stop', {}).catch(() => {});
       return apiPost('/service/remove', {});
     }, 'Удаление…', 'Служба удалена', 'Не удалось удалить службу: ');
+  },
+
+  async svcRepair() {
+    this._setSvcBusy(true);
+    $('svcStatusText').textContent = 'Проверка драйвера…';
+    try {
+      const r = await apiPost('/service/repair', {});
+      if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
+      const acts = r.actions || [];
+      if (r.reboot_required) {
+        showToast('Нужна перезагрузка: ' + acts.join('; '), 'error');
+      } else if (acts.length) {
+        showToast('Починено: ' + acts.join('; '), 'ok');
+      } else {
+        showToast('Драйвер в порядке — проблем не найдено', 'ok');
+      }
+      if (r.zapret1) {
+        showToast('Замечание: ' + r.zapret1, 'warn');
+      }
+    } catch (e) {
+      showToast('Не удалось починить: ' + e.message, 'error');
+    }
+    this._setSvcBusy(false);
+    Status.refreshService();
+    Status.refresh();
   },
 
   _collectToggles() {
@@ -949,7 +987,7 @@ const MainPage = {
   _setBusy(b) {
     this._busy = b;
     $('btnZ2Toggle').disabled = b;
-    ['btnSvcInstall', 'btnSvcStart', 'btnSvcStop', 'btnSvcRemove'].forEach(id => {
+    ['btnSvcRepair', 'btnSvcInstall', 'btnSvcStart', 'btnSvcStop', 'btnSvcRemove'].forEach(id => {
       $(id).disabled = b;
     });
   },

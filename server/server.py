@@ -21,7 +21,8 @@ from core.tester import (Zapret2Tester, CDN_PROVIDERS, NAKED_BASELINE_HOSTS,
 from core.service_manager import (SERVICE_NAME, is_installed as svc_installed,
                                   status as svc_status, install as svc_install,
                                   remove as svc_remove, start as svc_start,
-                                  stop as svc_stop, pause_recovery, resume_recovery)
+                                  stop as svc_stop, repair as svc_repair,
+                                  pause_recovery, resume_recovery)
 from core.collector import export_data_package
 from core.launcher import build_args_from_preset, validate_args
 from core.test_logger import TestLogger
@@ -1735,6 +1736,8 @@ class ZapretHandler(BaseHTTPRequestHandler):
                 self._handle_service_start()
             elif path == "/api/service/stop":
                 self._handle_service_stop()
+            elif path == "/api/service/repair":
+                self._handle_service_repair()
             elif path == "/api/diagnose/action":
                 self._handle_diagnose_action(data)
             elif path == "/api/diagnose/status":
@@ -2066,7 +2069,9 @@ class ZapretHandler(BaseHTTPRequestHandler):
         if err:
             self._send_json({"status": "error", "message": f"Установка отменена — {err}"})
             return
-        ok, msg = svc_install(root_dir=get_root_dir(), args=args)
+        cleanup = bool(data.get("cleanup_zapret1")) if isinstance(data, dict) else False
+        ok, msg = svc_install(root_dir=get_root_dir(), args=args,
+                              cleanup_zapret1=cleanup)
         if ok:
             # статус на главной показывал «стратегия «?»» — служба запускается
             # вне controller, и тот не знал профиль
@@ -2085,6 +2090,18 @@ class ZapretHandler(BaseHTTPRequestHandler):
             return
         ok, msg = svc_remove()
         self._send_json({"status": "ok" if ok else "error", "message": msg})
+
+    def _handle_service_repair(self) -> None:
+        busy = _checkers_busy()
+        if busy:
+            self._send_json({"status": "error", "message": busy})
+            return
+        try:
+            result = svc_repair(root_dir=get_root_dir())
+        except Exception as e:
+            self._send_json({"status": "error", "message": str(e)})
+            return
+        self._send_json({"status": "ok", **result})
 
     def _handle_service_start(self) -> None:
         busy = _checkers_busy()

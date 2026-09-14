@@ -190,10 +190,66 @@ def _zapret1_conflict() -> Optional[str]:
     return None
 
 
-def install(root_dir: Optional[Path] = None, args: Optional[list[str]] = None) -> tuple[bool, str]:
+def _taskkill_winws() -> bool:
+    """Остановить winws.exe (Zapret 1). True, если процесс был снят."""
+    try:
+        r = subprocess.run(
+            ["taskkill", "/F", "/IM", "winws.exe"], capture_output=True,
+            timeout=10, creationflags=subprocess.CREATE_NO_WINDOW)
+        return r.returncode == 0
+    except Exception:
+        return False
+
+
+def zapret1_cleanup() -> tuple[bool, str]:
+    """Остановить и удалить службу Zapret 1 (zapret) + winws.exe — как
+    «Remove Services» в service.bat Flowseal-бандла. Вызывается только после
+    ЯВНОГО подтверждения пользователя во фронтенде."""
+    actions: list[str] = []
+    code, _out = _sc(["query", "zapret"])
+    if code == 0:
+        _sc(["stop", "zapret"])
+        code, out = _sc(["delete", "zapret"])
+        if code != 0:
+            if "1072" in out or "отмечен" in out.lower():
+                return False, "Служба zapret помечена на удаление — нужна перезагрузка"
+            return False, f"Не удалось удалить службу zapret: {out.strip()[:120]}"
+        actions.append("служба zapret удалена")
+    if _winws_running() and _taskkill_winws():
+        actions.append("winws.exe остановлен")
+    if not actions:
+        return True, "Zapret 1 не обнаружен"
+    return True, ", ".join(actions)
+
+
+def repair(root_dir: Optional[Path] = None) -> dict:
+    """Починить службу драйвера WinDivert (repair ImagePath / включить
+    disabled) и сообщить о конфликте с Zapret 1. Без удаления чужих служб."""
+    actions: list[str] = []
+    try:
+        from core.utils import fix_stale_windivert_services
+        actions += fix_stale_windivert_services(root_dir)
+    except Exception as e:
+        actions.append(f"ошибка починки драйвера: {e}")
+    return {
+        "actions": actions,
+        "reboot_required": any("перезагруз" in a for a in actions),
+        "zapret1": _zapret1_conflict(),
+    }
+
+
+def install(root_dir: Optional[Path] = None, args: Optional[list[str]] = None,
+            cleanup_zapret1: bool = False) -> tuple[bool, str]:
     conflict = _zapret1_conflict()
     if conflict:
-        return False, conflict
+        if not cleanup_zapret1:
+            return False, conflict
+        ok_c, msg_c = zapret1_cleanup()
+        if not ok_c:
+            return False, msg_c
+        conflict = _zapret1_conflict()
+        if conflict:
+            return False, conflict
     _invalidate_service_cache()
     remove()
     time.sleep(0.5)
