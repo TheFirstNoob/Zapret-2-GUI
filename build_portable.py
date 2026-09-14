@@ -135,6 +135,9 @@ def main() -> None:
     # 5. installer + readme
     (PORTABLE / "install.cmd").write_text(INSTALL_CMD, encoding="ascii")
     (PORTABLE / "README.txt").write_text(README_TXT, encoding="utf-8")
+    # лицензии: собственный код (MIT) + уведомления о сторонних компонентах
+    shutil.copy2(ROOT / "LICENSE", PORTABLE / "LICENSE.txt")
+    shutil.copy2(ROOT / "THIRD_PARTY_NOTICES.md", PORTABLE / "THIRD_PARTY_NOTICES.txt")
 
     # 6. zip + sha256
     out_zip = ROOT / "Windows build" / "Zapret2GUI-portable.zip"

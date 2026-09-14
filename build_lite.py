@@ -248,6 +248,9 @@ def main() -> None:
     (LITE / "test.ps1").write_text(ps1, encoding="utf-8-sig")  # BOM: PS5.1 reads Cyrillic correctly
 
     (LITE / "README.txt").write_text(README_TXT, encoding="utf-8")
+    # лицензии: собственный код (MIT) + уведомления о сторонних компонентах
+    shutil.copy2(ROOT / "LICENSE", LITE / "LICENSE.txt")
+    shutil.copy2(ROOT / "THIRD_PARTY_NOTICES.md", LITE / "THIRD_PARTY_NOTICES.txt")
 
     zip_name = ROOT / "Windows build" / "Zapret2GUI-lite.zip"
     with zipfile.ZipFile(zip_name, "w", zipfile.ZIP_DEFLATED) as zf:

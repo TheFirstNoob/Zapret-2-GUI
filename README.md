@@ -259,13 +259,18 @@ python build_lite.py            :: lite на .bat     -> Windows build\Zapret2GU
 
 ## 📄 Лицензия
 
-[MIT](LICENSE) — берите и используйте как угодно, в том числе в своих проектах.
+Собственный код проекта (GUI, backend, сборка) — [MIT](LICENSE): берите и используйте как угодно, в том числе в своих проектах.
+Движок обхода, драйвер и часть данных — сторонние компоненты под своими лицензиями:
+полный список и тексты — [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) (zapret2/bol-van — MIT, WinDivert — LGPLv3/GPLv2 и др.).
 
 ## Благодарности
 
-- [Запрет 2 (zapret2)](https://github.com/bol-van/zapret2) — bol-van, оригинальный проект
-- Сообществу Windows-порта winws и движка winws2 (lua-desync)
+- [Запрет 2 (zapret2)](https://github.com/bol-van/zapret2) — bol-van, оригинальный проект (движок winws2 и lua)
+- [Flowseal/zapret-discord-youtube](https://github.com/Flowseal/zapret-discord-youtube) — Zapret 1, по сути то, чем пользуется большинство (структура батников, данные, сравнение в тестах)
+- [V3nilla/IPSets-For-Bypass-in-Russia](https://github.com/V3nilla/IPSets-For-Bypass-in-Russia) — CIDR-списки для ipset-обхода
+- [DanielLavrushin/b4](https://github.com/DanielLavrushin/b4) — проект и материалы tspu-docs (идеи по анализу ТСПУ)
 - [WinDivert](https://github.com/basil00/WinDivert) — Graham Cleus
+- Сообществу Windows-порта winws и движка winws2 (lua-desync)
 
 ## Справочные материалы
 
