@@ -36,12 +36,6 @@ def relaunch_as_admin() -> bool:
         return False
 
 
-def ensure_admin() -> None:
-    if not is_admin():
-        relaunch_as_admin()
-        sys.exit(0)
-
-
 # ── Privilege helpers ──
 # WinDivert driver loading requires SeLoadDriverPrivilege enabled in the token.
 # UAC-elevated Python processes often have it disabled; enable it before spawning winws2.

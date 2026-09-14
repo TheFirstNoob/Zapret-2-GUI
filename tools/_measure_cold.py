@@ -15,7 +15,6 @@ MIR = Path(r"C:\Users\TheFirstNoob\Desktop\Zapret 2 GUI\zapret2_gui")
 REPO = Path(r"C:\Users\TheFirstNoob\Documents\GitHub\Zapret-2-GUI")
 sys.path.insert(0, str(REPO))
 
-from core.config import ConfigManager  # noqa: E402
 from core.launcher import build_args_from_preset   # noqa: E402
 from core.launcher import validate_args            # noqa: E402
 from core import service_manager                   # noqa: E402

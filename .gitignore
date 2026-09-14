@@ -49,3 +49,7 @@ portable/
 presets/custom.txt
 docs/
 /.superpowers
+
+# Local build/export leftovers
+/Zapret-2-GUI.zip
+tools/zapret2_diag.zip

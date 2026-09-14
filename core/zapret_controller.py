@@ -173,14 +173,3 @@ class ZapretController:
         self._cached_pid = None
         self._cached_pid_at = now
         return None
-
-    @staticmethod
-    def stop_all_instances() -> None:
-        try:
-            subprocess.run(
-                ["taskkill", "/F", "/IM", "winws2.exe"],
-                capture_output=True, timeout=5,
-                creationflags=subprocess.CREATE_NO_WINDOW,
-            )
-        except (subprocess.TimeoutExpired, OSError):
-            pass

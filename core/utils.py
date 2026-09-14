@@ -74,7 +74,7 @@ def stale_windivert_services() -> list[tuple[str, str]]:
     return bad
 
 
-def _sc(args: list[str]) -> tuple[int, str]:
+def run_sc(args: list[str]) -> tuple[int, str]:
     """sc.exe с кодом возврата и выводом (детект 1072 «marked for deletion»)."""
     try:
         r = subprocess.run(
@@ -91,7 +91,7 @@ def _is_marked_for_delete(out: str) -> bool:
     return "1072" in out or "marked for deletion" in lowered or "отмечен" in lowered
 
 
-def _winws2_running() -> bool:
+def winws2_running() -> bool:
     try:
         r = subprocess.run(
             ["tasklist", "/FI", "IMAGENAME eq winws2.exe"],
@@ -143,13 +143,13 @@ def fix_stale_windivert_services(root_dir: Optional[Path] = None) -> list[str]:
     (4) чужие службы windivert* с битым путём — прежний путь удаления.
     Возвращает список действий (для логов/диагностики)."""
     actions: list[str] = []
-    winws2_busy = _winws2_running()
+    winws2_busy = winws2_running()
     local_sys = _local_windivert_sys(root_dir)
 
     for name, _image in stale_windivert_services():
         is_main = name.lower() == "windivert"
         if is_main and local_sys is not None:
-            code, out = _sc(["config", name, "binPath=",
+            code, out = run_sc(["config", name, "binPath=",
                              "\\??\\" + str(local_sys), "start=", "demand"])
             if code == 0:
                 actions.append(f"{name}: ImagePath перезаписан на {local_sys}")
@@ -161,8 +161,8 @@ def fix_stale_windivert_services(root_dir: Optional[Path] = None) -> list[str]:
         if is_main and winws2_busy:
             actions.append(f"{name}: удаление отложено (winws2 запущен)")
             continue
-        _sc(["stop", name])
-        code, out = _sc(["delete", name])
+        run_sc(["stop", name])
+        code, out = run_sc(["delete", name])
         if code == 0:
             actions.append(f"{name}: удалена (драйвер пересоздастся сам)")
         elif _is_marked_for_delete(out):
@@ -172,7 +172,7 @@ def fix_stale_windivert_services(root_dir: Optional[Path] = None) -> list[str]:
 
     if _main_windivert_start() == 4 and not any(
             a.startswith("WinDivert:") for a in actions):
-        code, out = _sc(["config", "WinDivert", "start=", "demand"])
+        code, out = run_sc(["config", "WinDivert", "start=", "demand"])
         if code == 0:
             actions.append("WinDivert: включена (start= demand)")
         elif _is_marked_for_delete(out):

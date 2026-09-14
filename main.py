@@ -9,7 +9,6 @@ import sys
 import tempfile
 import threading
 import time
-import tempfile
 from pathlib import Path
 
 # Embeddable Python (portable build) uses a ._pth file that disables

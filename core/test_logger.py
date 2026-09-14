@@ -71,6 +71,3 @@ class TestLogger:
                 except OSError:
                     pass
                 self._fh = None
-
-    def get_path(self) -> Path:
-        return self.log_path

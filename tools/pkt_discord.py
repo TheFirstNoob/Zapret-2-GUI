@@ -121,7 +121,6 @@ def main():
         out_count = sum(1 for p in pkts if p["dst"] == args.ip)
         in_count = len(pkts) - out_count
         print(f"исходящих: {out_count}, входящих: {in_count}")
-        syn_synack = 0
         # summarize incoming: ServerHello? (0x16 0x03 0x03 len>0, flags PSH-ACK)
         in_tls = sum(1 for p in pkts if p["src"] == args.ip and p["payload"]
                      and p["payload"][0] == 0x16)

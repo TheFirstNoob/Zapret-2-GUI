@@ -5,6 +5,8 @@ import time
 from pathlib import Path
 from typing import Optional
 
+from core.utils import run_sc as _sc
+
 
 SERVICE_NAME = "zapret2"
 
@@ -26,34 +28,12 @@ def _invalidate_service_cache() -> None:
     _installed_cache_value = None
 
 
-def _sc(args: list[str]) -> tuple[int, str]:
-    try:
-        r = subprocess.run(
-            ["sc"] + args,
-            capture_output=True, text=True, encoding="oem", errors="replace", timeout=15,
-            creationflags=subprocess.CREATE_NO_WINDOW,
-        )
-        return r.returncode, (r.stdout or "") + (r.stderr or "")
-    except FileNotFoundError:
-        return -1, "sc not found"
-
-
 def _taskkill_winws2():
     subprocess.run(
         ["taskkill", "/F", "/IM", "winws2.exe"],
         capture_output=True, timeout=10,
         creationflags=subprocess.CREATE_NO_WINDOW,
     )
-
-
-def _winws2_running() -> bool:
-    r = subprocess.run(
-        ["tasklist", "/FI", "IMAGENAME eq winws2.exe"],
-        capture_output=True, text=True, encoding="oem", errors="replace", timeout=10,
-        creationflags=subprocess.CREATE_NO_WINDOW,
-    )
-    # if winws2.exe appears in output (not just the header), it's running
-    return "winws2.exe" in r.stdout and "No tasks" not in r.stdout
 
 
 def is_installed() -> bool:

@@ -63,7 +63,6 @@ def main():
     synack = [p for p in rows if p["flags"] == 0x12 and p["sport"] == 443]
     rst = [p for p in rows if p["flags"] in (0x04, 0x14)]
     out_tls = [p for p in rows if p["dport"] == 443 and p["payload"][:1] == b"\x16"]
-    in_tls = [p for p in rows if p["sport"] == 443 and p["payload"][:1] in (b"\x16", b"\x17")]
     in_rst = [p for p in rows if p["sport"] == 443 and p["flags"] in (0x04, 0x14)]
 
     fakes = [p for p in out_tls if "google" in sni_hint(p["payload"]).lower()]
@@ -75,10 +74,10 @@ def main():
     in_hand = [p for p in rows if p["sport"] == 443 and p["payload"][:1] == b"\x16"]
     in_app = [p for p in rows if p["sport"] == 443 and p["payload"][:1] == b"\x17"]
     print(f"IN: handshake(0x16)={len(in_hand)}, appdata(0x17)={len(in_app)}")
-    print(f"\n-- исходящие TLS (SNI / ttl / len): --")
+    print("\n-- исходящие TLS (SNI / ttl / len): --")
     for p in out_tls[:20]:
         print(f"   OUT ttl={p['ttl']:>3} len={len(p['payload']):>5} sni={sni_hint(p['payload'])[:40]}")
-    print(f"\n-- входящие (первые 10): --")
+    print("\n-- входящие (первые 10): --")
     for p in ([p for p in rows if p["sport"] == 443])[:10]:
         print(f"   IN  ttl={p['ttl']:>3} len={len(p['payload']):>5} head={p['payload'][:8].hex()}")
     etl.unlink(missing_ok=True)
