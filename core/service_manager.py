@@ -5,7 +5,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from core.utils import run_sc as _sc
+from core.utils import app_root, run_sc as _sc
 
 
 SERVICE_NAME = "zapret2"
@@ -234,7 +234,7 @@ def install(root_dir: Optional[Path] = None, args: Optional[list[str]] = None,
     remove()
     time.sleep(0.5)
     if root_dir is None:
-        root_dir = Path(__file__).resolve().parent.parent
+        root_dir = app_root()
     # Драйвер лечим ПОСЛЕ остановки winws2 (кейс 2026-09-13): править или
     # удалять службу драйвера при живых хендлах нельзя — она получит
     # «marked for deletion» (1072) и починится только перезагрузкой.
@@ -248,6 +248,8 @@ def install(root_dir: Optional[Path] = None, args: Optional[list[str]] = None,
         exe = Path(root_dir) / "winws2.exe"
     if not exe.exists():
         return False, "winws2.exe не найден"
+    if not str(exe.resolve()).lower().startswith(str(app_root()).lower()):
+        return False, f"winws2.exe вне каталога программы: {exe}"
     if args is None:
         args = []
     # winws2.exe — бинарник службы НАПРЯМУЮ (как service.bat у Zapret 1:
@@ -281,10 +283,12 @@ def reconfigure(args: list[str]) -> tuple[bool, str]:
     """Refresh the service's binPath with the current args (strategy changes
     require re-applying the command line — direct-exe services bake it in)."""
     _invalidate_service_cache()
-    root_dir = Path(__file__).resolve().parent.parent
+    root_dir = app_root()
     exe = root_dir / "bin" / "winws2.exe"
     if not exe.exists():
         exe = root_dir / "winws2.exe"
+    if not str(exe.resolve()).lower().startswith(str(app_root()).lower()):
+        return False, f"winws2.exe вне каталога программы: {exe}"
     cmdline = _service_cmdline(exe, args)
     code, out = _sc_run_bat([f'sc config {SERVICE_NAME} binPath= "{cmdline}"'])
     if code != 0:
@@ -315,7 +319,7 @@ def start(args: Optional[list[str]] = None):
     # sc start, иначе winws2 упадёт на WinDivertOpen.
     try:
         from core.utils import fix_stale_windivert_services
-        fix_stale_windivert_services(Path(__file__).resolve().parent.parent)
+        fix_stale_windivert_services(app_root())
     except Exception:
         pass
     if args:

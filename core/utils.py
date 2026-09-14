@@ -3,6 +3,7 @@ from __future__ import annotations
 import ctypes
 import os
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import Optional
@@ -20,6 +21,19 @@ def short_path(path: Path) -> Path:
     except Exception:
         pass
     return path
+
+
+def app_root() -> Path:
+    """Каталог программы: рядом с exe (frozen onefile) или корень проекта.
+
+    ВАЖНО: в PyInstaller-onefile `Path(__file__).parent.parent` указывает в
+    ВРЕМЕННУЮ папку `_MEI*` — её нельзя использовать для путей службы и
+    драйвера: папка исчезает после закрытия программы, а запущенный из неё
+    процесс ещё и блокирует удаление («Failed to remove temporary
+    directory _MEI…», кейс 0.7.1)."""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent.parent
 
 
 def get_temp_dir() -> Path:
@@ -117,7 +131,7 @@ def _local_windivert_sys(root_dir: Optional[Path]) -> Optional[Path]:
     if root_dir is not None:
         candidates += [Path(root_dir) / "bin" / "WinDivert64.sys",
                        Path(root_dir) / "WinDivert64.sys"]
-    base = Path(__file__).resolve().parent.parent
+    base = app_root()
     candidates += [base / "bin" / "WinDivert64.sys", base / "WinDivert64.sys"]
     for c in candidates:
         try:
