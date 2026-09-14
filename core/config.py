@@ -21,6 +21,7 @@ class AppConfig:
     autohostlist: bool = False
     ipset_catchall: bool = False
     tour_done: bool = False
+    notice_done: bool = False
 
 
 DEFAULT_PROFILE = "default"

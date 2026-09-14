@@ -1591,6 +1591,12 @@ label.opt-line:has(input:disabled):hover { background: var(--field); }
 .tour-name { display: block; font-size: 12.5px; font-weight: 600; }
 .tour-sub { display: block; font-size: 11px; color: var(--faint); margin-top: 1px; }
 
+/* ── Уведомление «О программе» (показывается один раз) ── */
+.notice-card { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); padding: 12px 14px; }
+.notice-list { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; color: var(--dim); font-size: 12.5px; line-height: 1.45; }
+.notice-list b { color: var(--text); font-weight: 600; }
+.notice-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; }
+
 /* ── Строка отдачи на главной: что происходит и что делать ── */
 .z2-feedback { margin-top: 10px; }
 .z2-feedback .meta { flex: 1; min-width: 0; color: var(--dim); }

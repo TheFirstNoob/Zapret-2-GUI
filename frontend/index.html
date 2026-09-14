@@ -92,6 +92,23 @@
               </div>
             </div>
 
+            <!-- О программе: честное «что делает и какие данные» — один раз -->
+            <div class="notice-card" id="noticeCard" hidden>
+              <div class="tour-head">
+                <span class="tour-title">О программе — коротко и честно</span>
+                <button class="banner-x" id="noticeClose" aria-label="Понятно" title="Понятно">×</button>
+              </div>
+              <ul class="notice-list">
+                <li><b>Что делает:</b> обход блокировок через драйвер WinDivert (ставится автоматически при запуске обхода); служба автозапуска — только по вашему желанию; для части стратегий включается системная настройка TCP timestamps.</li>
+                <li><b>Данные:</b> телеметрии нет. Журналы программы лежат в её папке и никуда не уходят; отчёты для поддержки создаются локально и передаются только если вы сами их отправите.</li>
+                <li><b>Сеть:</b> только проверка обновлений (GitHub) и сетевые пробы для диагностики. Права администратора — лишь для драйвера и службы.</li>
+              </ul>
+              <div class="notice-foot">
+                <span class="meta">Подробнее — README в папке программы.</span>
+                <button class="btn btn-sm" id="noticeOk">Понятно</button>
+              </div>
+            </div>
+
             <!-- Обход DPI (Zapret 2) -->
             <div class="panel panel-accent" id="z2Panel">
               <div class="card-head">
@@ -890,7 +907,7 @@
     <div class="modal">
       <button class="modal-x" id="collectClose" aria-label="Закрыть">×</button>
       <div class="modal-title" id="collectFormTitle">Отчёт для поддержки</div>
-      <p class="modal-desc">Будет сохранён ZIP с результатами теста, версией Windows и сетевыми настройками. Личные файлы и пароли не собираются.</p>
+      <p class="modal-desc">Будет сохранён ZIP с результатами теста, версией Windows и сетевыми настройками. Личные файлы и пароли не собираются. Отчёт сохраняется на вашем компьютере — программа никуда его не отправляет.</p>
       <label class="field"><span class="field-label">Город</span><input class="input" id="collectCity" placeholder="Москва"></label>
       <label class="field"><span class="field-label">Провайдер</span><input class="input" id="collectIsp" placeholder="Ростелеком"></label>
       <div class="drop-zone" id="collectBatZone">

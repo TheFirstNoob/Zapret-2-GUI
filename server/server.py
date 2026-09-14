@@ -1573,6 +1573,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
             "autohostlist": cfg.autohostlist,
             "ipset_catchall": cfg.ipset_catchall,
             "tour_done": cfg.tour_done,
+            "notice_done": cfg.notice_done,
         }})
 
     def _handle_version(self) -> None:
@@ -1848,6 +1849,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
         if "autohostlist" in data: cfg.autohostlist = bool(data["autohostlist"])
         if "ipset_catchall" in data: cfg.ipset_catchall = bool(data["ipset_catchall"])
         if "tour_done" in data: cfg.tour_done = bool(data["tour_done"])
+        if "notice_done" in data: cfg.notice_done = bool(data["notice_done"])
         ok = get_config_manager().save(cfg)
         self._send_json({"status": "ok" if ok else "error"})
 

@@ -225,6 +225,26 @@ const App = {
     $('tourStep3').addEventListener('click', () => { location.hash = 'tester'; });
   },
 
+  // Честное уведомление «что делает программа и какие данные» — один раз
+  // (флаг notice_done в конфиге; закрывается крестиком или «Понятно»).
+  async initNotice() {
+    const card = $('noticeCard');
+    if (!card) return;
+    try {
+      const r = await apiGet('/config');
+      if ((r.config || {}).notice_done) return;
+      card.hidden = false;
+    } catch (e) {
+      return;
+    }
+    const dismiss = async () => {
+      card.hidden = true;
+      try { await apiPost('/config', { notice_done: true }); } catch (e) { /* ignore */ }
+    };
+    $('noticeClose').addEventListener('click', dismiss);
+    $('noticeOk').addEventListener('click', dismiss);
+  },
+
   // Идёт проверка (стратегии/CDN/ASN/blob/диагностика): обходом управляет
   // тестер — блокируем ручной запуск/остановку, службу и другие кнопки
   // проверок, показываем бейдж на вкладке-источнике.
@@ -257,6 +277,7 @@ const App = {
     this.loadVersion();
     this.checkUpdate();
     this.initTour();
+    this.initNotice();
     try {
       const data = await apiGet('/profiles');
       PROFILES = (data.profiles || []).map(p => p.name);
