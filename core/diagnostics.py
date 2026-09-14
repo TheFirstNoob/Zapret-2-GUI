@@ -20,7 +20,8 @@ from urllib import request as _urlreq
 from core.admin import is_admin
 from core.config import AppConfig, DEFAULT_PROFILE, VERSION
 from core.launcher import build_args_from_preset, validate_args
-from core.utils import known_desktop_dir, short_path
+from core.utils import (known_desktop_dir, short_path, windivert_image_dead,
+                        windivert_service_state)
 
 # Upload host: 403 from Google Storage means the connection is fine.
 DISCORD_UPLOAD_HOST = "discord-attachments-uploads-prd.storage.googleapis.com"
@@ -146,33 +147,29 @@ def _check_windivert_service(root_dir: Path) -> Check:
     """Драйвер-служба «WinDivert»: ImagePath должен указывать на
     СУЩЕСТВУЮЩИЙ файл (кейс друга: ImagePath на удалённую папку → вечный
     ERROR_FILE_NOT_FOUND при WinDivertOpen)."""
-    try:
-        import winreg
-        with winreg.OpenKey(
-                winreg.HKEY_LOCAL_MACHINE,
-                r"SYSTEM\CurrentControlSet\Services\WinDivert") as sk:
-            image = winreg.QueryValueEx(sk, "ImagePath")[0]
-            start = winreg.QueryValueEx(sk, "Start")[0]
-    except OSError:
+    state = windivert_service_state()
+    if state is None:
         return Check("windivert_service", "Служба драйвера WinDivert", "ok",
                      "не установлена — создастся при первом запуске обхода")
-    img = image.strip().strip('"')
-    if img.startswith(chr(92) * 2 + "??" + chr(92)):
-        img = img[4:]
-    img_first = img.split(" ")[0]
-    if not Path(img_first).exists():
+    image, start = state
+    dead = windivert_image_dead(image)
+    if dead:
         return Check("windivert_service", "Служба драйвера WinDivert", "fail",
-                     f"службе драйвера указан несуществующий файл: {img_first} — "
+                     f"службе драйвера указан несуществующий файл: {dead} — "
                      "вероятно, от старой установки (другой zapret/переезд папки). "
-                     "Выполните в консоли от администратора: sc delete WinDivert — "
-                     "и запустите обход заново (драйвер поставится заново)",
+                     "Нажмите «Починить» на главной или перезапустите обход — "
+                     "программа исправит путь автоматически",
                      tech=f"ImagePath dead: {image}")
     if start == 4:
         return Check("windivert_service", "Служба драйвера WinDivert", "fail",
                      "служба драйвера WinDivert ОТКЛЮЧЕНА (Start=Disabled) — "
-                     "перехват трафика невозможен. Включите её или выполните "
-                     "sc config WinDivert start= demand от администратора",
+                     "перехват трафика невозможен. Нажмите «Починить» на главной "
+                     "или включите: sc config WinDivert start= demand",
                      tech=f"Start={start}")
+    img = image.strip().strip('"')
+    if img.startswith(chr(92) * 2 + "??" + chr(92)):
+        img = img[4:]
+    img_first = img.split(" ")[0]
     return Check("windivert_service", "Служба драйвера WinDivert", "ok",
                  f"ImagePath: {img_first}", tech=f"Start={start}")
 
@@ -677,6 +674,7 @@ def run_diagnostics(root_dir: Path, cfg: AppConfig, progress_cb=None) -> dict:
 
     # install path
     _add(_check_path(root_dir))
+    _add(_check_launch_spot(root_dir))
 
     # winws2.exe + WinDivert64.sys + WinDivert.dll (AV удаляет sys — кейс друга)
     _add(_check_windivert_files(root_dir))

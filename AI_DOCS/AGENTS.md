@@ -110,15 +110,15 @@
   резолвер влияет на выбор кэш-сервера YouTube. Системный DNS с той же логикой.
 
 ### ВИСИТ (не сделано)
-- Аудит-клининг 2026-09-13 (сделано: дедуп `_sc`/`_winws2_running` →
-  `core.utils.run_sc`/`winws2_running`, мёртвое вычищено (`ensure_admin`,
-  `stop_all_instances`, `get_path`), pyflakes по core/server/tools чист).
-  Решения владельца ждут: (1) `windivert/` — 5 файлов, нигде не
-  используются (README сам пишет «перенесены в lists/, не используются»),
-  но копируются во ВСЕ сборки (COPY_DIRS трёх билдеров) — удалить папку +
-  COPY_DIRS или оставить; (2) `diagnostics._check_launch_spot` — готов, но
-  не подключён (`_add`), дублирует старп-warning'и main.py; (3)
-  `tcp_timestamps.restore_after_engine` — не вызывается.
+- Аудит-клининг 2026-09-13 (закрыт): дедуп `_sc`/`_winws2_running` →
+  `core.utils.run_sc`/`winws2_running`; мёртвое вычищено (`ensure_admin`,
+  `stop_all_instances`, `get_path`; `restore_after_engine` — сломанный no-op);
+  `_check_launch_spot` подключён в диагностику; `_check_windivert_service`
+  переведён на общие ридеры `core.utils.windivert_service_state`/
+  `windivert_image_dead`, советы «sc delete» заменены на «Починить»
+  (delete при живом драйвере даёт marked!). kill-хелперы (tester/server/
+  service_manager) НЕ сливал — контекст-специфичны. `windivert/` — НЕ хвост:
+  часть апстрим-поставки Zapret 2 (как lua), пока не изучена, оставляем.
 - Мегафон-пользователь: дискорд пробился после lua-init фикса, ютуб нет —
   нужны его debug-лог/диагностика.
 - VM-тест с облаком Защитника на новых сборках — рекомендован.

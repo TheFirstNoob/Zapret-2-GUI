@@ -29,6 +29,21 @@ def get_temp_dir() -> Path:
     return d
 
 
+def windivert_image_dead(image: str) -> str:
+    """Путь ImagePath, если файл драйвера НЕ существует; иначе "".
+
+    ImagePath вида «\\??\\C:\\...\\WinDivert64.sys» — префикс \\??\\ отрезаем,
+    аргументы после пути (если есть) отбрасываем."""
+    img = image.strip().strip('"')
+    if img.startswith(chr(92) * 2 + "??" + chr(92)):
+        img = img[4:]
+    img_first = img.split(" ")[0]
+    try:
+        return "" if Path(img_first).exists() else img_first
+    except OSError:
+        return ""
+
+
 def stale_windivert_services() -> list[tuple[str, str]]:
     """Службы драйвера WinDivert с БИТЫМ ImagePath (файл не существует).
 
@@ -59,16 +74,9 @@ def stale_windivert_services() -> list[tuple[str, str]]:
                         image = winreg.QueryValueEx(sk, "ImagePath")[0]
                 except OSError:
                     continue
-                img = image.strip().strip('"')
-                # ImagePath вида «\??\C:\...\WinDivert64.sys» — префикс \??\ отрезаем
-                if img.startswith(chr(92) * 2 + "??" + chr(92)):
-                    img = img[4:]
-                img_first = img.split(" ")[0]
-                try:
-                    if not Path(img_first).exists():
-                        bad.append((name, img))
-                except OSError:
-                    continue
+                dead = windivert_image_dead(str(image))
+                if dead:
+                    bad.append((name, dead))
     except OSError:
         pass
     return bad
@@ -120,14 +128,20 @@ def _local_windivert_sys(root_dir: Optional[Path]) -> Optional[Path]:
     return None
 
 
-def _main_windivert_start() -> Optional[int]:
-    """Start у службы «WinDivert» (None, если службы нет)."""
+def windivert_service_state() -> Optional[tuple[str, int]]:
+    """(ImagePath, Start) службы драйвера «WinDivert» — общий ридер для
+    heal'а и диагностики (None, если службы нет)."""
     import winreg
     try:
         with winreg.OpenKey(
                 winreg.HKEY_LOCAL_MACHINE,
                 r"SYSTEM\CurrentControlSet\Services\WinDivert") as sk:
-            return int(winreg.QueryValueEx(sk, "Start")[0])
+            image = winreg.QueryValueEx(sk, "ImagePath")[0]
+            try:
+                start = int(winreg.QueryValueEx(sk, "Start")[0])
+            except OSError:
+                start = 3
+            return str(image), start
     except OSError:
         return None
 
@@ -170,7 +184,8 @@ def fix_stale_windivert_services(root_dir: Optional[Path] = None) -> list[str]:
         else:
             actions.append(f"{name}: удаление не удалось — {out.strip()[:100]}")
 
-    if _main_windivert_start() == 4 and not any(
+    state = windivert_service_state()
+    if state is not None and state[1] == 4 and not any(
             a.startswith("WinDivert:") for a in actions):
         code, out = run_sc(["config", "WinDivert", "start=", "demand"])
         if code == 0:

@@ -102,11 +102,3 @@ def enable_for_engine() -> tuple[bool, str]:
             return True, "TCP timestamps включены (были выключены — tcp_ts не работал)"
         return False, "timestamps включить не удалось"
     return False, "включить TCP timestamps не удалось (нужны права администратора)"
-
-
-def restore_after_engine() -> str:
-    """Restore the pre-session state if we changed it.  Idempotent."""
-    if timestamps_enabled():
-        return ""
-    _set_modern(False) or _set_legacy_netsh(False)
-    return ""
