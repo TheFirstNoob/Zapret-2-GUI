@@ -20,6 +20,7 @@ class AppConfig:
     winws2_debug: bool = False
     autohostlist: bool = False
     ipset_catchall: bool = False
+    tour_done: bool = False
 
 
 DEFAULT_PROFILE = "default"

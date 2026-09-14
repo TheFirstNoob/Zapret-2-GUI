@@ -198,6 +198,33 @@ const App = {
     });
   },
 
+  // Быстрый старт (туториал): 3 шага для новичка. Показывается, пока
+  // пользователь не закроет; факт закрытия хранится в конфиге (tour_done).
+  async initTour() {
+    const card = $('tourCard');
+    if (!card) return;
+    try {
+      const r = await apiGet('/config');
+      if ((r.config || {}).tour_done) return;
+      card.hidden = false;
+    } catch (e) {
+      return;
+    }
+    $('tourClose').addEventListener('click', async () => {
+      card.hidden = true;
+      try { await apiPost('/config', { tour_done: true }); } catch (e) { /* ignore */ }
+    });
+    $('tourStep1').addEventListener('click', () => {
+      if (MainPage._z2Running) {
+        showToast('Обход уже запущен — переходите к шагу 2', 'ok');
+        return;
+      }
+      $('btnZ2Toggle').click();
+    });
+    $('tourStep2').addEventListener('click', () => { location.hash = 'diagnostics'; });
+    $('tourStep3').addEventListener('click', () => { location.hash = 'tester'; });
+  },
+
   // Идёт проверка (стратегии/CDN/ASN/blob/диагностика): обходом управляет
   // тестер — блокируем ручной запуск/остановку, службу и другие кнопки
   // проверок, показываем бейдж на вкладке-источнике.
@@ -229,6 +256,7 @@ const App = {
     window.addEventListener('hashchange', () => this.handleHash());
     this.loadVersion();
     this.checkUpdate();
+    this.initTour();
     try {
       const data = await apiGet('/profiles');
       PROFILES = (data.profiles || []).map(p => p.name);
@@ -277,6 +305,11 @@ if (start) start.addEventListener('click', () => TesterPage.startProbe());
     frontendLog('nav: hash=' + hash);
     document.querySelectorAll('.nav-link').forEach(l =>
       l.classList.toggle('active', l.dataset.page === hash));
+    const expert = $('expertNav');
+    if (expert) {
+      const cur = document.querySelector('.nav-link.active');
+      if (cur && expert.contains(cur)) expert.open = true;
+    }
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     $('page-' + hash).classList.add('active');
     // Смена вкладки — наверх: скролл не должен переезжать между страницами
@@ -474,6 +507,7 @@ const MainPage = {
 
   bind() {
     $('btnZ2Toggle').addEventListener('click', () => this.toggleZ2());
+    $('btnQuickCheck').addEventListener('click', () => { location.hash = 'diagnostics'; });
     $('btnStopZ1Now').addEventListener('click', () => this.stopZ1());
     $('btnApplyToggles').addEventListener('click', () => this.restartZapret());
     $('btnSvcRepair').addEventListener('click', () => this.svcRepair());
@@ -658,6 +692,23 @@ const MainPage = {
       text.className = 'state-text st-mute';
       text.textContent = 'Выключен';
     }
+
+    // Отдача пользователю на главной: что сейчас и что делать дальше
+    const fb = $('z2Feedback');
+    if (fb) {
+      if (conflict) {
+        fb.textContent = 'Оба обхода запущены одновременно — остановите один из них.';
+      } else if (z2.running) {
+        fb.textContent = 'Обход работает' + (z2.strategy ? ' («' + z2.strategy + '»)' : '') +
+          ' — проверьте, открываются ли нужные сайты.';
+      } else if (z1.running) {
+        fb.textContent = 'Работает запасной Zapret 1 — Zapret 2 остановлен.';
+      } else {
+        fb.textContent = 'Обход выключен: заблокированные сайты не откроются, пока не нажмёте «Запустить».';
+      }
+    }
+    const qc = $('btnQuickCheck');
+    if (qc) qc.hidden = !z2.running;
 
     this._z2Running = z2.running;
     this._z2Strategy = z2.strategy || '';

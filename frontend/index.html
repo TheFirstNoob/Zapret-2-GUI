@@ -20,22 +20,19 @@
 
       <nav class="nav">
         <div class="nav-group">
-          <div class="nav-group-label">Обход</div>
+          <div class="nav-group-label">Основное</div>
           <a href="#main" data-page="main" class="nav-link active">Главная</a>
-        </div>
-        <div class="nav-group">
-          <div class="nav-group-label">Диагностика</div>
           <a href="#diagnostics" data-page="diagnostics" class="nav-link">Проверка системы</a>
-          <a href="#probe" data-page="probe" class="nav-link">Анализ приложения</a>
           <a href="#tester" data-page="tester" class="nav-link">Подбор стратегии<span class="nav-badge" id="testerBadge" hidden>идёт проверка</span></a>
         </div>
-        <div class="nav-group">
-          <div class="nav-group-label">Тонкая настройка</div>
+        <details class="nav-group nav-group-expert" id="expertNav">
+          <summary class="nav-group-label">Экспертные инструменты</summary>
           <a href="#lists" data-page="lists" class="nav-link">Списки</a>
           <a href="#contested" data-page="contested" class="nav-link">Спорные домены</a>
           <a href="#cdn" data-page="cdn" class="nav-link">CDN-стабилизация</a>
           <a href="#asn" data-page="asn" class="nav-link">ASN-скан</a>
-        </div>
+          <a href="#probe" data-page="probe" class="nav-link">Анализ приложения</a>
+        </details>
       </nav>
 
       <div class="sidebar-foot">
@@ -73,6 +70,28 @@
 
           <div class="stack">
 
+            <!-- Быстрый старт: 3 шага, скрывается навсегда после закрытия -->
+            <div class="tour-card" id="tourCard" hidden>
+              <div class="tour-head">
+                <span class="tour-title">Быстрый старт</span>
+                <button class="banner-x" id="tourClose" aria-label="Скрыть" title="Больше не показывать">×</button>
+              </div>
+              <div class="tour-steps">
+                <button class="tour-step" id="tourStep1">
+                  <span class="tour-num">1</span>
+                  <span class="tour-text"><span class="tour-name">Запустить обход</span><span class="tour-sub">кнопка «Запустить» ниже</span></span>
+                </button>
+                <button class="tour-step" id="tourStep2">
+                  <span class="tour-num">2</span>
+                  <span class="tour-text"><span class="tour-name">Проверить работу</span><span class="tour-sub">быстрый чек системы</span></span>
+                </button>
+                <button class="tour-step" id="tourStep3">
+                  <span class="tour-num">3</span>
+                  <span class="tour-text"><span class="tour-name">Не работает?</span><span class="tour-sub">подбор стратегии в один клик</span></span>
+                </button>
+              </div>
+            </div>
+
             <!-- Обход DPI (Zapret 2) -->
             <div class="panel panel-accent" id="z2Panel">
               <div class="card-head">
@@ -101,10 +120,15 @@
                   <select class="input" id="strategySelect"></select>
                 </div>
               </div>
+
+              <div class="row z2-feedback">
+                <span class="meta" id="z2Feedback"></span>
+                <button class="btn btn-sm btn-go" id="btnQuickCheck" hidden>Проверить работу</button>
+              </div>
             </div>
 
             <!-- Служба (автозапуск) -->
-            <div class="panel panel-accent" id="svcPanel">
+            <div class="panel" id="svcPanel">
               <div class="card-head">
                 <div class="head-icon">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/><line x1="6" y1="6.5" x2="6.01" y2="6.5"/><line x1="6" y1="17.5" x2="6.01" y2="17.5"/></svg>
@@ -130,7 +154,7 @@
             </div>
 
             <!-- Параметры запуска (только Zapret 2) -->
-            <div class="panel panel-accent" id="togglesPanel">
+            <div class="panel" id="togglesPanel">
               <div class="card-head">
                 <div class="head-icon">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>

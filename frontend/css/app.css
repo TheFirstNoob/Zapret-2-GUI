@@ -1570,3 +1570,29 @@ label.opt-line:has(input:disabled):hover { background: var(--field); }
 /* QUIC-класс в тестере: нейтральный серый (не ошибка, не доступность) */
 .st-quirk { color: var(--muted); font-weight: 600; font-size: 11px; }
 .hrow-quirk .h-domain { color: var(--muted); }
+
+/* ── Экспертная группа навигации (сворачиваемая) ── */
+.nav-group-expert > summary { cursor: pointer; user-select: none; }
+.nav-group-expert > summary::-webkit-details-marker { display: none; }
+.nav-group-expert > summary { display: flex; align-items: center; justify-content: space-between; }
+.nav-group-expert > summary::after { content: '▸'; font-size: 10px; opacity: .55; transition: transform .15s ease; }
+.nav-group-expert[open] > summary::after { transform: rotate(90deg); }
+.nav-group-expert[open] .nav-link:first-of-type { margin-top: 6px; }
+
+/* ── Быстрый старт на главной (туториал для новичков) ── */
+.tour-card { border: 1px solid var(--accent-line); border-radius: 12px; background: var(--accent-soft); padding: 12px 14px; }
+.tour-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.tour-title { font-size: 13px; font-weight: 600; }
+.tour-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.tour-step { display: flex; align-items: center; gap: 10px; text-align: left; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--text); cursor: pointer; transition: border-color .15s ease, transform .1s ease; }
+.tour-step:hover { border-color: var(--accent-line); }
+.tour-step:active { transform: scale(.985); }
+.tour-num { flex: 0 0 auto; width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: #fff; background: var(--accent-bg); }
+.tour-name { display: block; font-size: 12.5px; font-weight: 600; }
+.tour-sub { display: block; font-size: 11px; color: var(--faint); margin-top: 1px; }
+
+/* ── Строка отдачи на главной: что происходит и что делать ── */
+.z2-feedback { margin-top: 10px; }
+.z2-feedback .meta { flex: 1; min-width: 0; color: var(--dim); }
+
+@media (max-width: 900px) { .tour-steps { grid-template-columns: 1fr; } }
