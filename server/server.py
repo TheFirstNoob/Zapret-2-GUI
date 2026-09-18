@@ -312,6 +312,32 @@ def _checkers_busy() -> Optional[str]:
     return None
 
 
+# Списки, редактируемые через GUI: нормализуются при старте — BOM/zero-width
+# в первой строке не даёт движку сматчить домен/подсеть (кейс 2026-09-14).
+_USER_LIST_FILES = ("list-include-user.txt", "list-exclude-user.txt",
+                    "ipset-include-user.txt", "ipset-exclude.txt")
+
+
+def _normalize_user_lists() -> None:
+    """Разово чистит user-списки от BOM/zero-width (наследие старых файлов и
+    вставок из буфера обмена). Идемпотентно: чистые файлы не перезаписываются."""
+    try:
+        root = get_root_dir()
+    except RuntimeError:
+        return
+    for name in _USER_LIST_FILES:
+        path = root / "lists" / name
+        try:
+            if not path.exists():
+                continue
+            decoded = path.read_bytes().decode("utf-8", errors="replace")
+            cleaned = _clean_list_text(decoded)
+            if cleaned != decoded:
+                path.write_text(cleaned, encoding="utf-8")
+        except OSError:
+            continue
+
+
 def init(root_dir: Path, token: str = "") -> None:
     global _root_dir, _controller, _tester, _config_manager, _app_token
     _root_dir = Path(root_dir)
@@ -319,6 +345,7 @@ def init(root_dir: Path, token: str = "") -> None:
     _config_manager = ConfigManager(root_dir)
     _controller = ZapretController(root_dir, config_manager=_config_manager)
     _tester = Zapret2Tester(root_dir)
+    _normalize_user_lists()
 
 
 def _play_completion_sound() -> None:
@@ -455,12 +482,19 @@ def _resolve_many(domains: list[str], concurrency: int = 8) -> set[str]:
     return out
 
 
+def _clean_list_text(text: str) -> str:
+    """Убирает невидимый мусор (BOM/zero-width), который ломает матчинг
+    домена/подсети: прилетает из буфера обмена или из старых файлов с BOM."""
+    return text.replace("\ufeff", "").replace("\u200b", "")
+
+
 def _read_lines(fname: str) -> set[str]:
     """Читает строки списка (без комментариев) в set; отсутствующий файл = пусто."""
     path = get_root_dir() / "lists" / fname
     if not path.exists():
         return set()
-    return {l.strip() for l in path.read_text(encoding="utf-8").splitlines() if l.strip()}
+    text = _clean_list_text(path.read_text(encoding="utf-8-sig"))
+    return {l.strip() for l in text.splitlines() if l.strip()}
 
 
 def _read_networks(fnames: list[str]) -> list:
@@ -1951,7 +1985,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
         self._send_json({"status": "ok", "message": "Все процессы zapret остановлены"})
 
     def _handle_save_list(self, data: dict, filename: str) -> None:
-        content = data.get("content", "").strip()
+        content = _clean_list_text(data.get("content", "")).strip()
         path = get_root_dir() / "lists" / filename
         try:
             path.write_text(content, encoding="utf-8")
@@ -1993,7 +2027,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
         enable = bool(data.get("enabled"))
         path = get_root_dir() / "lists" / "list-include-user.txt"
         lines = [ln.strip() for ln in
-                 (path.read_text(encoding="utf-8").splitlines()
+                 (_clean_list_text(path.read_text(encoding="utf-8-sig")).splitlines()
                   if path.exists() else []) if ln.strip()]
         domain = item["domain"].lower()
         if enable and domain not in lines:
