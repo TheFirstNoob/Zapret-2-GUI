@@ -240,3 +240,12 @@ def add_domain(root: Path, domain: str, mode: str = "include") -> dict:
     return {"result": "moved" if moved else "added",
             "message": "Перенесён из исключений в обход" if moved
                        else "Добавлен в обход"}
+
+
+def remove_domain(root: Path, domain: str, mode: str = "include") -> bool:
+    """Убирает домен из user-списка (включений/исключений); True если убрали."""
+    d = (domain or "").strip().lower().rstrip(".")
+    if not d:
+        return False
+    fname = DOMAIN_INCLUDE_USER if mode == "include" else DOMAIN_EXCLUDE_USER
+    return _remove_entry(root / "lists" / fname, d)

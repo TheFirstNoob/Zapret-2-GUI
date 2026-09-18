@@ -545,6 +545,10 @@ def _plan_cdn_action(domain: str, action: str, ips: list[str],
         return True, "", [(fname, values)]
     if action == "exclude":
         fname = "list-exclude.txt"
+        from core import list_health
+        cov = list_health.coverage(get_root_dir(), [domain]).get(domain, {})
+        if cov.get("excludes"):
+            return True, f"уже в исключениях ({', '.join(cov['excludes'])})", []
         existing = _read_lines(fname)
         values = [domain] if domain not in existing else []
         if not values:
@@ -570,6 +574,13 @@ def _plan_cdn_action(domain: str, action: str, ips: list[str],
             return True, "уже в списке", []
         return True, "", [(fname, values)]
     fname = "list-general.txt"
+    from core import list_health
+    cov = list_health.coverage(get_root_dir(), [domain]).get(domain, {})
+    if any(n in list_health.DOMAIN_EXCLUDE_BUNDLED for n in cov.get("excludes", [])):
+        return False, (f"{domain} уже в стандартных исключениях — исключение "
+                       "сильнее, пропускаем"), []
+    if cov.get("includes"):
+        return True, f"уже в обходе ({', '.join(cov['includes'])})", []
     existing = _read_lines(fname)
     values = [domain] if domain not in existing else []
     if not values:
@@ -2015,26 +2026,26 @@ class ZapretHandler(BaseHTTPRequestHandler):
         if not item:
             self._send_json({"status": "error", "message": "Неизвестный домен"})
             return
+        # Единый слой list_health: дедуп, переносы из исключений, конфликты
+        from core import list_health
         enable = bool(data.get("enabled"))
-        path = get_root_dir() / "lists" / "list-include-user.txt"
-        lines = [ln.strip() for ln in
-                 (_clean_list_text(path.read_text(encoding="utf-8-sig")).splitlines()
-                  if path.exists() else []) if ln.strip()]
-        domain = item["domain"].lower()
-        if enable and domain not in lines:
-            lines.append(domain)
-        elif not enable:
-            lines = [ln for ln in lines if ln != domain]
-        try:
-            path.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
-        except OSError as e:
-            self._send_json({"status": "error", "message": str(e)})
-            return
+        if enable:
+            r = list_health.add_domain(get_root_dir(), item["domain"], "include")
+            if r.get("result") in ("invalid", "blocked"):
+                self._send_json({"status": "error",
+                                 "message": r.get("message", "ошибка")})
+                return
+            prefix = {"already": "Уже в обходе",
+                      "moved": "Перенесён из Исключений"}.get(
+                          r.get("result"), "Добавлено в Включения")
+        else:
+            removed = list_health.remove_domain(get_root_dir(),
+                                                item["domain"], "include")
+            prefix = ("Убрано из Включений" if removed
+                      else "Домен и так не был включён")
         self._send_json({"status": "ok",
-                         "message": ("Добавлено в Включения — применится к новым "
-                                     "подключениям (перезапуск не нужен)")
-                         if enable else "Убрано из Включений — применится к новым "
-                                        "подключениям (перезапуск не нужен)"})
+                         "message": prefix + " — применится к новым подключениям "
+                                             "(перезапуск не нужен)"})
 
     def _handle_contested_check(self, data: dict) -> None:
         import subprocess as _sp
