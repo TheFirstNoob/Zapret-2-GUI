@@ -36,9 +36,9 @@ def relaunch_as_admin() -> bool:
         return False
 
 
-# ── Privilege helpers ──
-# WinDivert driver loading requires SeLoadDriverPrivilege enabled in the token.
-# UAC-elevated Python processes often have it disabled; enable it before spawning winws2.
+# ── Хелперы привилегий ──
+# Загрузке драйвера WinDivert нужен включённый SeLoadDriverPrivilege в токене.
+# У UAC-elevated Python он часто выключен — включаем до запуска winws2.
 
 SE_PRIVILEGE_ENABLED = 0x00000002
 TOKEN_QUERY = 0x0008
@@ -58,9 +58,9 @@ class _TOKEN_PRIVILEGES(ctypes.Structure):
     _fields_ = [("PrivilegeCount", ctypes.c_ulong), ("Privileges", _LUID_AND_ATTRIBUTES * 1)]
 
 
-# ── Fix ctypes 64-bit HANDLE truncation ──
-# ctypes.windll defaults to c_int (32-bit) for return types and parameters.
-# HANDLE is 64-bit on x64 → must set restype/argtypes explicitly.
+# ── Фикс обрезки 64-битных HANDLE в ctypes ──
+# ctypes.windll по умолчанию берёт c_int (32 бита) для возвратов и параметров.
+# HANDLE на x64 — 64 бита → restype/argtypes задаются явно.
 _kernel32 = ctypes.WinDLL("kernel32", use_last_error=False)
 _advapi32 = ctypes.WinDLL("advapi32", use_last_error=False)
 
@@ -120,7 +120,7 @@ def enable_privilege(name: str) -> bool:
         if last_err == 0:
             return True
 
-        # ── Fallback: Try with the linked token (full admin token) ──
+        # ── Fallback: пробуем linked-токен (полный админский токен) ──
         linked_token = wintypes.HANDLE()
         try:
             size = ctypes.c_ulong(0)

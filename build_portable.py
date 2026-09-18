@@ -1,18 +1,16 @@
-"""Assemble the 'portable' distribution — GUI with NO packer at all.
+"""Сборка portable-дистрибутива: GUI вообще без упаковщика — официальный
+embeddable Python (pythonw.exe за подписью PSF, чистая репутация у Defender),
+а наш код лежит рядом обычными .py: ни бутлоадера PyInstaller, ни распаковки
+во временную папку — облачным эвристикам Defender не за что зацепиться.
 
-The GUI runs on the official Python embeddable runtime (pythonw.exe, signed
-by the Python Software Foundation, white Defender reputation).  Our code
-sits next to it as plain .py files — no PyInstaller bootloader, no temp
-extraction, nothing for Defender's cloud heuristics to key on.
-
-Layout:
+Структура:
   portable/
-  ├── app/            <- our app (main.pyw, core/, server/, frontend/, data dirs)
+  ├── app/            <- наше приложение (main.pyw, core/, server/, frontend/, данные)
   ├── python/         <- python-3.13.x-embed-amd64 + pywebview
-  ├── install.cmd     <- one-time: creates desktop + Start menu shortcuts
+  ├── install.cmd     <- разовый запуск: ярлыки на рабочем столе и в меню Пуск
   └── README.txt
 
-Usage: python build_portable.py   (run from the repo root)
+Запуск: python build_portable.py   (из корня репо)
 """
 from __future__ import annotations
 
@@ -31,7 +29,7 @@ PY = PORTABLE / "python"
 PY_VER = "3.13.14"
 PY_URL = f"https://www.python.org/ftp/python/{PY_VER}/python-{PY_VER}-embed-amd64.zip"
 PIP_URL = "https://bootstrap.pypa.io/get-pip.py"
-PY_SHORT = "".join(PY_VER.split(".")[:2])  # 3.13.14 -> 313 (dll/pth use short form)
+PY_SHORT = "".join(PY_VER.split(".")[:2])  # 3.13.14 -> 313 (dll/pth используют короткую форму)
 
 COPY_DIRS = ("bin", "blobs", "lua", "lists", "presets", "windivert", "frontend", "core", "server")
 
@@ -87,14 +85,14 @@ def main() -> None:
     PORTABLE.mkdir()
     APP.mkdir()
 
-    # 1. python embeddable runtime
+    # 1. embeddable-рантайм Python
     PY.mkdir()
     tmp_zip = ROOT / "build" / "python-embed.zip"
     tmp_zip.parent.mkdir(exist_ok=True)
     _download(PY_URL, tmp_zip)
     with zipfile.ZipFile(tmp_zip) as zf:
         zf.extractall(PY)
-    # allow site-packages
+    # включаем site-packages
     pth = PY / f"python{PY_SHORT}._pth"
     pth.write_text(f"python{PY_SHORT}.zip\n.\nLib\\site-packages\nimport site\n", encoding="ascii")
 
@@ -106,7 +104,7 @@ def main() -> None:
     subprocess.run([str(PY / "python.exe"), "-m", "pip", "install", "--no-warn-script-location",
                     "pywebview"], check=True)
 
-    # 3. app code
+    # 3. код приложения
     for d in COPY_DIRS:
         shutil.copytree(ROOT / d, APP / d)
     shutil.copy2(ROOT / "main.py", APP / "main.pyw")
@@ -124,7 +122,7 @@ def main() -> None:
     from core.updater import write_manifest
     write_manifest(APP, "0.8")
 
-    # 4. trim runtime (caches, tests, pip scripts)
+    # 4. чистим рантайм (кэши, тесты, pip-скрипты)
     for junk in (PY / "Scripts", PY / "Lib" / "site-packages" / "pip" / "_vendor" / "cache"):
         shutil.rmtree(junk, ignore_errors=True)
     for p in PY.rglob("__pycache__"):
@@ -132,7 +130,7 @@ def main() -> None:
     for p in APP.rglob("__pycache__"):
         shutil.rmtree(p, ignore_errors=True)
 
-    # 5. installer + readme
+    # 5. установщик + readme
     (PORTABLE / "install.cmd").write_text(INSTALL_CMD, encoding="ascii")
     (PORTABLE / "README.txt").write_text(README_TXT, encoding="utf-8")
     # лицензии: собственный код (MIT) + уведомления о сторонних компонентах

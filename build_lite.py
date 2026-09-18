@@ -1,12 +1,12 @@
-"""Generate the 'lite' distribution — a Defender-friendly .bat-based package
-with NO Python runtime (mirrors the Zapret 1 layout).
+"""Сборка «lite»-дистрибутива: .bat-пакет без Python-рантайма (как в Zapret 1) —
+те же бинарники winws2 + lua/blobs/lists, что и в v1.
 
-The full GUI (PyInstaller onefile) triggers cloud-detection heuristics
-(temp extraction + driver load + localhost server).  The lite package is
-just winws2 + lua/blobs/lists + .bat files — the same binaries v1 ships.
+PyInstaller-onefile полного GUI ловит облачные эвристики Defender (распаковка
+во временную папку + загрузка драйвера + локальный сервер); lite-сборке
+ловить нечего.
 
-Usage:  python build_lite.py   (run from the repo root)
-Output: lite/  (start.bat, stop.bat, service-install.bat, service-remove.bat)
+Запуск: python build_lite.py   (из корня репо)
+Вывод:  lite/  (start.bat, stop.bat, service-install.bat, service-remove.bat)
 """
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ STOP_BAT = (
 
 
 def _portable_args(args: list[str], root_abs: str, root_short: str) -> list[str]:
-    """Rewrite absolute paths in args to %~dp0-relative (portable bat)."""
+    """Переписывает абсолютные пути в args на %~dp0-относительные (portable bat)."""
     out = []
     for a in args:
         for prefix in (root_abs, root_short):
@@ -118,8 +118,8 @@ goto menu
 
 
 def _svc_install_bat(portable_args: list[str]) -> str:
-    """Direct-exe service like Zapret 1 (binPath = winws2.exe + args,
-    start= auto) — the cmd/bat wrapper is what Defender flags."""
+    """Служба напрямую на exe, как в Zapret 1 (binPath = winws2.exe + args,
+    start= auto): cmd/bat-обёртку как раз и ловит Defender."""
     argstr = " ".join(f'\\"{a}\\"' for a in portable_args)
     return (
         '@echo off\r\n'
@@ -213,7 +213,7 @@ def main() -> None:
     from core.updater import write_manifest
     write_manifest(LITE, "0.8")
 
-    # one start-<preset>.bat per strategy (portable %~dp0 paths)
+    # по одному start-<preset>.bat на стратегию (портативные %~dp0-пути)
     for pf in sorted((LITE / "presets").glob("*.txt")):
         if not RELEASE_PRESETS(pf.stem):
             continue
@@ -221,14 +221,14 @@ def main() -> None:
         portable = _portable_args(args, str(LITE), short_path(LITE))
         _write_start_bat(f"start-{pf.stem}.bat", portable)
 
-    # ipset (catch-all) variant of default — used by test.ps1 stabilizer A/B
+    # ipset-вариант default (catch-all) — им пользуется стабилизатор test.ps1 в A/B
     ipset_args = build_args_from_preset(LITE, LITE / "lua", LITE / "blobs",
                                         LITE / "presets" / "default.txt",
                                         ipset_catchall=True)
     ipset_portable = _portable_args(ipset_args, str(LITE), short_path(LITE))
     _write_start_bat("start-ipset.bat", ipset_portable)
 
-    # default preset for the service
+    # default-пресет для службы
     args = build_args_from_preset(LITE, LITE / "lua", LITE / "blobs",
                                   LITE / "presets" / "default.txt")
     portable = _portable_args(args, str(LITE), short_path(LITE))
@@ -238,14 +238,14 @@ def main() -> None:
     (LITE / "service-install.bat").write_text(_svc_install_bat(portable), encoding="ascii")
     (LITE / "service-remove.bat").write_text(SVC_REMOVE_BAT, encoding="ascii")
 
-    # tester: test.bat launcher (double-click safe) + test.ps1 (PS 5.1)
+    # тестер: test.bat (безопасен при двойном клике) + test.ps1 (PS 5.1)
     (LITE / "test.bat").write_text(
         '@echo off\r\n'
         'chcp 65001 >nul\r\n'
         'powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0test.ps1"\r\n',
         encoding="ascii")
     ps1 = (ROOT / "test_lite.ps1").read_text(encoding="utf-8")
-    (LITE / "test.ps1").write_text(ps1, encoding="utf-8-sig")  # BOM: PS5.1 reads Cyrillic correctly
+    (LITE / "test.ps1").write_text(ps1, encoding="utf-8-sig")  # BOM: иначе PS 5.1 ломает кириллицу
 
     (LITE / "README.txt").write_text(README_TXT, encoding="utf-8")
     # лицензии: собственный код (MIT) + уведомления о сторонних компонентах

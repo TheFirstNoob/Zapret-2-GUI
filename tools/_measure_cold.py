@@ -2,7 +2,7 @@
 winws2 на выбранном пресете/варианте. Не меняет файлы репозитория — вариант
 задаётся модификаторами аргументов.
 
-Usage: python _measure_cold.py default | default_nodrop202 | default_rep7 | ...
+Запуск: python _measure_cold.py default | default_nodrop202 | default_rep7 | ...
 """
 from __future__ import annotations
 
@@ -115,7 +115,7 @@ def main():
                        capture_output=True, creationflags=0x08000000)
         time.sleep(1.5)
         launch_winws2(args)
-        time.sleep(1.5)  # WinDivert settle
+        time.sleep(1.5)  # даём WinDivert инициализироваться
         t_cold, a_cold = probe_cold("updates.discord.com")
         # тёплый повтор (тот же пресет работает)
         t_warm, a_warm = probe_cold("updates.discord.com", attempts=2)

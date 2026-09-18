@@ -10,8 +10,8 @@ from core.utils import short_path
 
 _GAME_PORT = "1024-65535"
 
-# Error markers winws2 prints for invalid parameters (exit code is unreliable:
-# it returns 0 even on "unknown option", so output must be scanned).
+# Маркеры ошибок winws2 на неверные параметры (exit code ненадёжен: даже на
+# "unknown option" возвращает 0 — вывод приходится сканировать).
 _DRY_RUN_ERROR_MARKERS = (
     "unknown option",
     "bad file",
@@ -25,12 +25,12 @@ _DRY_RUN_ERROR_MARKERS = (
 
 
 def validate_args(exe_path: Path, args: list[str], cwd: Optional[Path] = None, timeout: float = 10.0) -> tuple[bool, str]:
-    """Verify winws2 arguments via --dry-run before an actual launch.
+    """Проверка аргументов winws2 через --dry-run перед реальным запуском.
 
-    Runs the real binary in verification mode (~0.1-0.3s) and scans its output
-    for known error markers.  Returns (True, "") when arguments are valid,
-    otherwise (False, first offending output line).  --dry-run does not load
-    WinDivert, so no driver state is touched.
+    Гоняет настоящий бинарник в режиме проверки (~0.1-0.3с) и ищет в выводе
+    известные маркеры ошибок.  Возвращает (True, "") при валидных аргументах
+    или (False, первая проблемная строка вывода).  WinDivert не грузится —
+    состояние драйвера не затрагивается.
     """
     try:
         r = subprocess.run(
@@ -65,13 +65,13 @@ _LUA_ERROR_MARKERS = (
 
 
 def validate_lua(exe_path: Path, args: list[str], cwd: Optional[Path] = None, timeout: float = 10.0) -> tuple[bool, str]:
-    """Compile-check the Lua modules referenced by args via --intercept=0.
+    """Компиляционная проверка Lua-модулей из args через --intercept=0.
 
-    --dry-run does NOT initialize Lua, so a typo in a custom lua file (e.g.
-    zapret-custom.lua) passes it and kills winws2 at real launch.  --intercept=0
-    loads and compiles the lua-init files, then exits without capturing.
-    Only the lua/blob-related tokens are passed — no filters, so no WinDivert
-    handle is touched even if another instance is running.
+    --dry-run НЕ инициализирует Lua, поэтому опечатка в кастомном lua-файле
+    (например, zapret-custom.lua) проходит её и валит winws2 при реальном
+    запуске.  --intercept=0 загружает и компилирует lua-init-файлы и выходит
+    без захвата.  Передаются только lua/blob-токены — без фильтров, поэтому
+    хендл WinDivert не трогается даже при работающем другом экземпляре.
     """
     lua_tokens = [t for t in args if t.startswith("--lua-init") or t.startswith("--blob") or t.startswith("--lua-gc")]
     if not lua_tokens:
@@ -112,29 +112,16 @@ def build_args_from_preset(
     ipset_catchall: bool = False,
     fake_blob: str = "",
 ) -> list[str]:
-    """Read a .txt preset and return a list of command-line tokens.
+    """Читает .txt пресет и возвращает токены командной строки.
 
-    Resolves @lua/, @blobs/, @lists/, and @windivert/ prefixes to absolute
-    short paths.  @lua/ and @blobs/ keep the @ prefix (for --lua-init, --blob
-    file refs); @lists/ and @windivert/ resolve bare (for --hostlist,
-    --hostlist-exclude, --ipset file paths).
-
-    ``%GameFilter%`` placeholders become ``1024-65535`` when *game_filter_mode*
-    is not ``"off"``, or are removed (with trailing-comma cleanup).
-
-    When *ipset_catchall* is True, every ``--hostlist=@lists/list-general.txt``
-    block is replaced with an IP-based catch-all (``--ipset=ipset-all.txt.gz``
-    + ``--ipset-exclude=ipset-exclude.txt``), mirroring Zapret 1's "general"
-    block.  The SNI include is dropped — winws2 ANDs ipset with hostlist, so
-    keeping it would neuter the catch-all.  list-exclude and user exclusions
-    still apply.
-
-    When *debug* is True, appends ``--debug=@debug_winws2.log`` so winws2
-    writes a diagnostic log into the root directory (the ZIP collector picks
-    it up automatically).
-
-    Tokens are NOT quoted here; write_run_bat quotes them via
-    subprocess.list2cmdline so paths with spaces work.
+    @lua/ и @blobs/ остаются с @ (--lua-init/--blob), @lists/ и @windivert/
+    разворачиваются в короткие пути без @ (--hostlist, --ipset).
+    %GameFilter% -> 1024-65535 при включённом game_filter_mode, иначе
+    вырезается.  ipset_catchall заменяет list-general на IP-catch-all,
+    отбрасывая SNI-include: winws2 AND-ит ipset с hostlist, и включение
+    обнулило бы catch-all; list-exclude и юзер-исключения действуют.
+    debug дописывает --debug=@debug_winws2.log.  Токены НЕ квотируются —
+    это делает write_run_bat через subprocess.list2cmdline.
     """
     if lists_dir is None:
         lists_dir = root_dir / "lists"
@@ -204,7 +191,6 @@ def build_args_from_preset(
         for dir_name, dir_path in [("@lua/", lua_dir), ("@blobs/", blobs_dir), ("@windivert/", windivert_dir)]:
             if dir_name in line:
                 line = line.replace(dir_name, "@" + str(dir_path) + "\\")
-        # Expand %GameFilter% placeholder
         if "%GameFilter%" in line:
             port = _GAME_PORT if game_on else ""
             cleaned = line.replace("%GameFilter%", port).strip(",").strip()
@@ -212,7 +198,7 @@ def build_args_from_preset(
                 continue
             line = cleaned
         tokens.append(line)
-        # Inject --autohostlist into list-general filter blocks
+        # --autohostlist добавляется в блоки фильтра list-general
         if autohostlist and "--hostlist=" in line and "list-general" in line:
             tokens.append(f"--hostlist-auto={auto_path}")
     # ── Fake blob selector: подмена TLS-фейка без записи в пресет ──
@@ -282,12 +268,12 @@ def build_args_from_preset(
             merged.append(t)
             i += 1
     tokens = merged
-    # Auto-inject user lists into EVERY hostlist-bearing profile block.
-    # winws2 (desync.c dp_match/dp_find) evaluates hostlist PER PROFILE and
-    # picks the FIRST profile whose filter+hostlist match; multiple --hostlist
-    # inside one profile UNION (hostlist.c AppendHostList).  Appending user
-    # lists at the end only touched the LAST (QUIC) block — TCP blocks never
-    # saw user domains.  Inject right after the first hostlist token instead.
+    # Юзер-списки инжектятся в КАЖДЫЙ блок с hostlist. winws2 (desync.c
+    # dp_match/dp_find) матчит hostlist ПО ПРОФИЛЮ и берёт ПЕРВЫЙ подходящий
+    # профиль; несколько --hostlist внутри профиля объединяются (hostlist.c
+    # AppendHostList). Добавление в конец затрагивало только последний
+    # (QUIC) блок — TCP-блоки юзерских доменов не видели. Инжект — сразу
+    # после первого hostlist-токена.
     # Ссылаемся на user-файлы ВСЕГДА (даже пустые): winws2 перечитывает
     # hostlist/ipset на лету по mtime (проверено 2026-09-14), поэтому первая
     # же правка применится к новым подключениям без перезапуска обхода.
@@ -326,9 +312,9 @@ def build_args_from_preset(
                     injected_once = True
                 out.append(t)
         tokens = out
-    # ── GameFilter: high-port capture + catchall profiles ──
+    # ── GameFilter: захват высоких портов + catch-all профили ──
     if game_filter_mode in ("udp", "both"):
-        # Raw parts don't cover 1024-65535 → add explicit --wf-udp-out
+        # Raw-части не покрывают 1024-65535 → явный --wf-udp-out
         tokens.insert(0, "--wf-udp-out=1024-65535")
     if game_filter_mode in ("tcp", "both"):
         tokens.append("--new")
@@ -345,7 +331,7 @@ def build_args_from_preset(
         tokens.append("--out-range")
         tokens.append("-d10")
         tokens.append("--lua-desync=fake:blob=quic_google:repeats=10")
-    # ── Discord Voice UDP fix ──
+    # ── Discord Voice: фикс UDP ──
     # fake — стандартный блок; udplen — для пресетов без инлайн голосового
     # блока (у default блок уже переписан трансформацией выше).
     if voice_mode == "udplen":
@@ -360,7 +346,7 @@ def build_args_from_preset(
         tokens.append("--payload=discord_ip_discovery")
         tokens.append("--out-range=-d10")
         tokens.append("--lua-desync=fake:blob=quic_google")
-    # ── User IP-includes, targeted mode ──
+    # ── Юзерские IP-include, targeted-режим ──
     # winws2 ANDs --ipset с --hostlist внутри профиля, поэтому юзер-подсети
     # не могут жить в общем блоке. Дублируем каждый блок с list-general и
     # меняем SNI-hostlist на --ipset=<user file>: те же фильтры/payload/desync,
@@ -385,7 +371,7 @@ def build_args_from_preset(
                     if ipset_excl_path:
                         dup.append(f"--ipset-exclude={ipset_excl_path}")
                 elif t.startswith("--hostlist=") or t.startswith("--hostlist-auto="):
-                    continue  # SNI-based includes are meaningless in an IP-matched dup
+                    continue  # SNI-include бессмысленен в IP-дубле
                 else:
                     dup.append(t)
             out_segs.append(dup)
@@ -405,10 +391,10 @@ def write_run_bat(
     exe_path: Path,
     args: list[str],
 ) -> None:
-    """Write a .bat that starts winws2 via `start /min`.
+    """Пишет .bat, запускающий winws2 через `start /min`.
 
-    Uses subprocess.list2cmdline to quote tokens with spaces correctly and
-    short paths to avoid non-ASCII characters in the .bat file.
+    subprocess.list2cmdline корректно квотирует токены с пробелами,
+    короткие пути убирают не-ASCII из .bat.
     """
     short_exe = short_path(exe_path)
     short_root = short_path(root_dir)
@@ -425,11 +411,11 @@ def launch_winws2_bat(
     root_dir: Path,
     timeout: float = 5.0,
 ) -> bool:
-    """Launch a winws2 .bat with SeLoadDriverPrivilege enabled.
+    """Запускает .bat с winws2, включив SeLoadDriverPrivilege.
 
-    Uses CreateProcess (subprocess.Popen) so the child inherits the current
-    token. We enable SeLoadDriverPrivilege first because UAC-elevated Python
-    processes often have it disabled, which prevents WinDivert from loading.
+    CreateProcess (subprocess.Popen) даёт дочернему процессу унаследовать
+    текущий токен. Привилегия включается заранее: у UAC-elevated Python она
+    часто выключена, из-за чего WinDivert не грузится.
     """
     # Мёртвая служба драйвера «WinDivert» (ImagePath на удалённую папку —
     # кейс друга 2026-09-13) даёт вечный ERROR_FILE_NOT_FOUND при
@@ -441,7 +427,7 @@ def launch_winws2_bat(
     except Exception:
         pass
 
-    # Enable the privilege in our token; child processes will inherit it.
+    # Привилегия включается в текущем токене — её наследуют дочерние процессы.
     privileges_before = get_enabled_privileges()
     se_load_enabled_before = "SeLoadDriverPrivilege" in privileges_before
 
@@ -457,7 +443,7 @@ def launch_winws2_bat(
             f"[zapret2] SeLoadDriverPrivilege still OFF — all privs: {privileges_after}"
         )
 
-    # Give the OS a moment if this is a relaunch after taskkill.
+    # Пауза на случай перезапуска сразу после taskkill.
     time.sleep(0.5)
 
     try:
@@ -470,7 +456,6 @@ def launch_winws2_bat(
     except (OSError, subprocess.SubprocessError):
         return False
 
-    # Wait briefly and verify winws2 started.
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:

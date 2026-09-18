@@ -1,14 +1,11 @@
-"""pkt_verify.py — полигон проверки параметров десинка на уровне пакетов.
+"""Полигон проверки параметров десинка на уровне пакетов: pktmon ловит
+исходящий TCP :443, скрипт шлёт тестовый TLS-запрос, парсит pcapng чистым
+Python (без зависимостей) и печатает по каждому пакету TTL/seq/TCP-опции/
+начало payload (SNI).
 
-Что делает:
-  1. Захватывает исходящий TCP-трафик на :443 через pktmon (встроенный в Windows)
-  2. Делает тестовый TLS-запрос к заданному хосту (должен быть покрыт пресетом)
-  3. Разбирает pcapng чистым python (без зависимостей)
-  4. Печатает для каждого исходящего пакета: TTL, seq, TCP-опции, первые байты payload (SNI)
-
-Зачем: 200/000 не отличает «параметр применился» от «перекрыт другим».
-Сравнение «эталон (default) vs с параметром» показывает, какие поля пакета
-реально изменились: опция tcp_md5 (kind 19), TTL (ip_autottl), SNI (rndsni), ts.
+Зачем: 200/000 не отличает «параметр применился» от «перекрыт другим» —
+сравнение «эталон (default) vs с параметром» показывает, какие поля пакета
+реально изменились: tcp_md5 (kind 19), TTL (ip_autottl), SNI (rndsni), ts.
 
 Использование (от админа, при работающей службе winws2 с нужным пресетом):
     python tools/pkt_verify.py --url https://www.youtube.com/ --label default
@@ -40,19 +37,19 @@ def run(cmd: list[str], check: bool = True) -> str:
     return out
 
 
-# ── pcapng parser ─────────────────────────────────────────────
+# ── разбор pcapng ─────────────────────────────────────────────
 
 def parse_pcapng(data: bytes):
-    """Yield (linktype, packet_bytes) from a pcapng file (SHB/IDB/EPB/SPB)."""
+    """Отдаёт (linktype, байты пакета) из pcapng (SHB/IDB/EPB/SPB)."""
     off = 0
-    linktype = 1  # default Ethernet
+    linktype = 1  # Ethernet по умолчанию
     while off + 12 <= len(data):
         btype, blen = struct.unpack_from("<II", data, off)
         if btype == 0x0A0D0D0A:          # SHB
             if len(data) - off < blen:
                 break
             linktype = None
-            # find IDB later; store byte order
+            # IDB появится дальше — до него linktype неизвестен
         elif btype == 1:                 # IDB
             if len(data) - off < blen:
                 break
@@ -75,7 +72,7 @@ def parse_pcapng(data: bytes):
         elif btype == 0:                 # OB
             pass
         else:
-            # unknown block: try to skip by length
+            # неизвестный блок: пропускаем по длине
             if blen <= 0 or blen > len(data) - off:
                 break
         off += blen
@@ -84,7 +81,7 @@ def parse_pcapng(data: bytes):
 
 
 def parse_packet(linktype: int, pkt: bytes):
-    """Extract IP/TCP fields. Returns dict or None."""
+    """Достаёт поля IP/TCP; возвращает dict или None."""
     if linktype == 1:                    # Ethernet
         if len(pkt) < 14:
             return None
@@ -103,7 +100,7 @@ def parse_packet(linktype: int, pkt: bytes):
     proto = ip[9]
     src = socket.inet_ntoa(ip[12:16])
     dst = socket.inet_ntoa(ip[16:20])
-    if proto != 6:                        # TCP only
+    if proto != 6:                        # только TCP
         return None
     tcp = ip[ihl:]
     sport, dport = struct.unpack_from(">HH", tcp, 0)
@@ -136,7 +133,7 @@ def parse_packet(linktype: int, pkt: bytes):
 
 
 def sni_hint(payload: bytes) -> str:
-    """Try to find an SNI-ish hostname in the payload (TLS ClientHello)."""
+    """Ищет похожий на SNI хост в payload (TLS ClientHello)."""
     if len(payload) < 12 or payload[0] != 0x16:
         return ""
     cur = ""

@@ -1,10 +1,9 @@
-"""Non-intrusive update check.
+"""Ненавязчивая проверка обновлений.
 
-Compares the local application version against a plain-text ``VERSION`` file
-hosted in the GitHub repository.  Best effort by design: any network error,
-timeout or parse failure silently results in "no update info" — the check
-must never block or disturb the user.  Updates are only ever *recommended*
-(a toast + dismissible banner in the GUI), never enforced.
+Сравнивает локальную версию с текстовым файлом ``VERSION`` в GitHub-репо.
+По замыслу best-effort: любая ошибка сети/таймаут/парсинг молча дают «нет
+данных об обновлении» — проверка не должна мешать пользователю. Обновление
+только *рекомендуется* (тост + закрываемый баннер в GUI), не навязывается.
 """
 from __future__ import annotations
 
@@ -15,14 +14,14 @@ from typing import Optional
 
 from core.config import VERSION
 
-# Single-line version file in the repository root, e.g. "Pre-Release 0.3".
-# raw.githubusercontent may be unreachable in some networks — that's fine,
-# the check fails silently.
+# Однострочный VERSION в корне репозитория, например "Pre-Release 0.3".
+# raw.githubusercontent может быть недоступен в некоторых сетях — это ок,
+# проверка молча падает.
 VERSION_URL = "https://raw.githubusercontent.com/TheFirstNoob/Zapret-2-GUI/main/VERSION"
 API_URL = "https://api.github.com/repos/TheFirstNoob/Zapret-2-GUI/contents/VERSION"
 RELEASES_URL = "https://github.com/TheFirstNoob/Zapret-2-GUI/releases"
-# jsDelivr serves repo files from a different CDN — works even on networks
-# where raw.githubusercontent/objects.githubusercontent are IP-blocked.
+# jsDelivr отдаёт файлы репо с другого CDN — работает даже в сетях,
+# где raw/objects.githubusercontent заблокированы по IP.
 MIRROR_URL = ("https://cdn.jsdelivr.net/gh/TheFirstNoob/Zapret-2-GUI@main/"
               "Windows%20build/Zapret2GUI.zip")
 
@@ -31,10 +30,10 @@ _UA = {"User-Agent": "Zapret2GUI"}
 
 
 def _version_key(version: str) -> tuple:
-    """Extract a comparable key from a version string.
+    """Сравнимый ключ из строки версии.
 
-    'Pre-Release 0.10' -> (0, 10); unknown formats fall back to (0,) so they
-    never compare as "newer" by accident.
+    'Pre-Release 0.10' -> (0, 10); неизвестный формат -> (0,), чтобы он
+    случайно не оказался «новее».
     """
     m = re.search(r"(\d+)\.(\d+)(?:\.(\d+))?", version or "")
     if m:
@@ -51,17 +50,17 @@ def tag_from_version(version: str) -> str:
 
 
 def _fetch_latest_raw() -> Optional[str]:
-    """Latest version from the raw VERSION file (primary source)."""
+    """Последняя версия из raw VERSION (основной источник)."""
     req = urllib.request.Request(VERSION_URL, headers=_UA)
     with urllib.request.urlopen(req, timeout=_CHECK_TIMEOUT) as r:
         return r.read(200).decode("utf-8", errors="replace").strip()
 
 
 def _fetch_latest_api() -> Optional[str]:
-    """Fallback via the GitHub API — raw.githubusercontent.com is frequently
-    blocked/throttled on Russian ISPs (185.199.108.0/22 blackholed), while
-    api.github.com (140.82.121.x) usually survives.  Uses the contents
-    endpoint (works even without a published GitHub Release)."""
+    """Fallback через GitHub API — raw.githubusercontent.com часто
+    блокируется/режется у российских провайдеров (185.199.108.0/22 в
+    blackhole), а api.github.com (140.82.121.x) обычно жив.  Endpoint
+    contents работает даже без опубликованного GitHub Release."""
     req = urllib.request.Request(
         API_URL, headers={**_UA, "Accept": "application/vnd.github+json"})
     with urllib.request.urlopen(req, timeout=_CHECK_TIMEOUT) as r:
@@ -76,7 +75,7 @@ def _fetch_latest_api() -> Optional[str]:
 
 
 def check_for_updates() -> dict:
-    """Return update info: {current, latest, available, error, url}."""
+    """Информация об обновлении: {current, latest, available, error, url}."""
     info = {
         "current": VERSION,
         "latest": "",
@@ -91,7 +90,7 @@ def check_for_updates() -> dict:
         try:
             latest = _fetch_latest_raw()
         except Exception:
-            latest = _fetch_latest_api()  # raw blocked — API fallback
+            latest = _fetch_latest_api()  # raw заблокирован — fallback на API
         if not latest:
             info["error"] = "empty VERSION file"
             return info

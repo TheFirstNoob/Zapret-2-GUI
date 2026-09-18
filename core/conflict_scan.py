@@ -4,8 +4,8 @@ import subprocess
 from dataclasses import dataclass, field
 from typing import List, Optional
 
-# Known DPI-bypass tools that share the WinDivert driver — running them
-# alongside winws2 is a HARD conflict (one of them stops seeing packets).
+# Известные DPI-bypass-тулы, использующие драйвер WinDivert: работа рядом
+# с winws2 — ЖЁСТКИЙ конфликт (один из них перестаёт видеть пакеты).
 DPI_TOOL_IMAGES = {
     "winws.exe": "Zapret 1",
     "byedpi.exe": "ByeDPI",
@@ -16,8 +16,8 @@ DPI_TOOL_IMAGES = {
     "intosy.exe": "Intosy",
 }
 
-# VPN clients / tunnels — not fatal (no WinDivert sharing) but they can
-# shadow the bypass or be shadowed by it; worth a warning.
+# VPN-клиенты/туннели — не фатальны (WinDivert не делят), но могут
+# перекрывать обход или быть перекрытыми им; повод для предупреждения.
 VPN_IMAGES = {
     "openvpn.exe": "OpenVPN",
     "wireguard.exe": "WireGuard",
@@ -139,7 +139,7 @@ def scan() -> ConflictReport:
 
 
 def describe(report: ConflictReport) -> Optional[str]:
-    """Human text for diagnostics, or None when nothing found."""
+    """Человекочитаемый текст для диагностики или None, если ничего не найдено."""
     lines = []
     for t in report.dpi_tools:
         lines.append(f"Чужой DPI-тулз {t} — жёсткий конфликт (общий WinDivert), остановите его")

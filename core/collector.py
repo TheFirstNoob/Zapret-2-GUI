@@ -195,9 +195,9 @@ def export_data_package(
                         continue
                     zf.write(pf, f"presets/{pf.name}")
 
-            # Hostlists matter for diagnosis: a blocked domain missing from
-            # every list a preset references means its desync profile never
-            # fires (no_action) — strategies look identical and nothing works.
+            # Hostlist'ы важны для диагностики: если заблокированного домена
+            # нет ни в одном списке пресета, его desync-профиль не сработает
+            # (no_action) — все стратегии выглядят одинаково и не работают.
             lists_dir = root_dir / "lists"
             if lists_dir.is_dir():
                 for lf in sorted(lists_dir.glob("*.txt")):

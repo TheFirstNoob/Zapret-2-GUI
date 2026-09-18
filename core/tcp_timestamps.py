@@ -90,10 +90,10 @@ def _set_legacy_netsh(enabled: bool) -> bool:
 
 
 def enable_for_engine() -> tuple[bool, str]:
-    """Make sure TCP timestamps are ON before the engine starts.
+    """Гарантирует включённые TCP timestamps перед стартом движка.
 
-    ts-fooling (tcp_ts=...) silently does nothing when the OS has
-    timestamps disabled.  Returns (ok, note).
+    ts-fooling (tcp_ts=...) молча ничего не делает при выключенных
+    timestamps в ОС.  Возвращает (ok, note).
     """
     if timestamps_enabled():
         return True, ""

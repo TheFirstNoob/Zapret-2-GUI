@@ -92,7 +92,7 @@ def _read_stored_binpath() -> str:
 
 
 def _path_from_token(t: str) -> Optional[str]:
-    """Extract a filesystem path from an args token, if it carries one."""
+    """Путь к файлу из токена аргументов, если он там есть."""
     if "@" in t and "\\" in t:
         return t.split("@", 1)[1]
     if "=" in t and "\\" in t:
@@ -103,9 +103,9 @@ def _path_from_token(t: str) -> Optional[str]:
 
 
 def _verify_binpath(exe: Path, args: list[str]) -> tuple[bool, str]:
-    """Confirm SCM stored the full command line.  Old/broken Win10 SCM could
-    mangle binPath silently (случай кривой установки 2026-09-12) — validate
-    counts and that every path token still points at an existing file."""
+    """Проверяет, что SCM сохранил всю командную строку: старый/кривой SCM
+    Win10 мог молча исказить binPath (случай кривой установки 2026-09-12) —
+    сверяем число аргументов и существование всех путей."""
     stored = _read_stored_binpath()
     if not stored:
         return False, "binPath пуст — SCM не сохранил командную строку"
@@ -124,9 +124,9 @@ def _verify_binpath(exe: Path, args: list[str]) -> tuple[bool, str]:
 
 
 def _sc_run_bat(lines: list[str]) -> tuple[int, str]:
-    """Run sc via a temporary .bat — the only faithful way to pass the
-    v1-style binPath with backslash-quotes (cmd's line parser handles
-    them; argv and even cmd /c <string> mangle them)."""
+    """sc через временный .bat — единственный способ честно передать
+    v1-style binPath с backslash-кавычками (их понимает парсер cmd;
+    argv и даже cmd /c <string> их искажают)."""
     import tempfile
     bat = Path(tempfile.gettempdir()) / "zapret2_svc.bat"
     # OEM (cp866 на русской Windows) — cmd читает bat в кодовой странице
@@ -162,7 +162,7 @@ def _winws_running() -> bool:
 
 
 def _zapret1_conflict() -> Optional[str]:
-    """Reason why Zapret 1 blocks the operation, or None when it's free."""
+    """Причина, по которой Zapret 1 блокирует операцию, или None."""
     if _zapret1_service_exists():
         return "Обнаружена служба Zapret 1 (zapret). Удалите её через service.bat от Zapret 1."
     if _winws_running():
@@ -280,8 +280,8 @@ def install(root_dir: Optional[Path] = None, args: Optional[list[str]] = None,
 
 
 def reconfigure(args: list[str]) -> tuple[bool, str]:
-    """Refresh the service's binPath with the current args (strategy changes
-    require re-applying the command line — direct-exe services bake it in)."""
+    """Обновляет binPath службы текущими args (служба запускает exe напрямую,
+    поэтому смена стратегии требует перезаписи командной строки)."""
     _invalidate_service_cache()
     root_dir = app_root()
     exe = root_dir / "bin" / "winws2.exe"
@@ -339,7 +339,7 @@ def stop():
     return True, "winws2 остановлен"
 
 
-# ── SCM-recovery pause/resume (2026-09-12) ─────────────────
+# ── SCM-recovery: пауза/возобновление (2026-09-12) ─────────────────
 # Тестер/сканы гасят winws2 на весь прогон. Если SCM-recovery активен, он
 # через 60с ПЕРЕЗАПУСКАЕТ службовый winws2 посреди теста → конфликт
 # WinDivert, обрыв прогона. На время управляемых остановок recovery

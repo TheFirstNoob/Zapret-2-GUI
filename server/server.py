@@ -41,7 +41,7 @@ CONTENT_TYPES = {
 }
 
 
-# ── Global state ─────────────────────────────────────────────
+# ── Глобальное состояние ─────────────────────────────────────
 
 _root_dir: Optional[Path] = None
 _controller: Optional[ZapretController] = None
@@ -50,14 +50,14 @@ _config_manager: Optional[ConfigManager] = None
 _app_token: str = ""
 _tester_lock = threading.Lock()
 
-# Streaming diagnostics state (like the tester): running / progress / report.
+# Состояние диагностики (как у тестера): running / progress / report.
 _diag_lock = threading.Lock()
 _diag_state = {"running": False, "progress": "", "report": None, "error": None,
                "started": 0.0}
 _server: Optional[HTTPServer] = None
 
 
-# ── Tester shared state (polling replacement for WebSocket) ──
+# ── Общее состояние тестера (polling вместо WebSocket) ──
 
 class TesterState:
     def __init__(self):
@@ -114,7 +114,7 @@ class TesterState:
 
 _tester_state = TesterState()
 
-# Process network probe (game/app analysis) — singleton
+# Probe сетевой активности процесса (анализ игры/приложения) — singleton
 _process_probe = None
 
 
@@ -127,7 +127,7 @@ def get_process_probe():
 
 
 def _debug_append(file_name: str, msg: str) -> None:
-    """append в debug-лог с ротацией (L7): >5MB — старый в .old, новый чистый"""
+    """Debug-лог с ротацией (L7): >5MB — старый уходит в .old.log."""
     import datetime as _dt
     try:
         from core.utils import get_temp_dir
@@ -152,14 +152,13 @@ def _probe_debug(msg: str) -> None:
 def _ui_debug(msg: str) -> None:
     """UI/flow-логи (вкладки, кнопки, сбросы тестера) — ui_debug.log.
 
-    Всегда активный отладочный журнал: ловит «пользователя выкинуло на
-    главный блок посреди теста» и прочие неочевидные переходы."""
+    Всегда активен: ловит «выкинуло на главный блок посреди теста»."""
     _debug_append("ui_debug.log", msg)
 
-# Update-check result cache: one check per application session.
+# Кэш проверки обновлений: одна проверка за сессию приложения.
 _update_check_cache: Optional[dict] = None
 
-# ── Updater state (0.8) ─────────────────────────────────────
+# ── Состояние апдейтера (0.8) ───────────────────────────────
 _updater_state = {
     "running": False,
     "phase": "",
@@ -253,7 +252,7 @@ def _mk(dir_path: Path) -> Path:
     dir_path.mkdir(exist_ok=True)
     return dir_path
 
-# ── Updater state (0.8) ─────────────────────────────────────
+# ── Состояние апдейтера (0.8) ───────────────────────────────
 _updater_state = {
     "running": False,
     "phase": "",
@@ -263,7 +262,7 @@ _updater_state = {
 }
 
 
-# ── Helpers ──────────────────────────────────────────────────
+# ── Хелперы ──────────────────────────────────────────────────
 
 def get_root_dir() -> Path:
     if _root_dir is None:
@@ -299,10 +298,9 @@ def get_tester() -> Zapret2Tester:
 
 
 def _checkers_busy() -> Optional[str]:
-    """Сообщение о занятости другой проверки, или None, если всё свободно.
-
-    Тестер (стратегии/CDN/ASN/blob) и диагностика — взаимно исключающие;
-    запуск/остановка обхода и службы во время проверки тоже запрещены."""
+    """Сообщение о занятости проверки, или None, если всё свободно.
+    Тестер (стратегии/CDN/ASN/blob) и диагностика взаимоисключающие; запуск/
+    остановка обхода и службы во время проверки тоже запрещены."""
     with _tester_state.lock:
         if _tester_state.running:
             return "Тестер занят — завершите текущую проверку"
@@ -580,12 +578,9 @@ def _plan_cdn_action(domain: str, action: str, ips: list[str],
 
 
 def _restore_protection_after_naked(z2_was: bool, z1_was: bool, state, svc_was: bool = False) -> str:
-    """Restart the protection that was active before the naked test.
-
-    The naked test kills winws/winws2 — leaving the user silently
-    unprotected afterwards was a long-standing footgun.  Best effort:
-    failures are reported, never raised.
-    """
+    """Восстановление защиты, активной до голого теста: naked гасит
+    winws/winws2, оставлять пользователя без защиты нельзя.
+    Best effort — ошибки возвращаем, не бросаем."""
     try:
         if z2_was:
             # Если обход жил в службе — поднимаем службу (sc start с её же
@@ -678,9 +673,9 @@ def _scan_winws_exe() -> dict:
     return {"running": bool(pid), "pid": pid}
 
 
-# ── Tester action runner (background thread) ─────────────────
+# ── Запуск действий тестера (фоновый поток) ──────────────────
 
-# Hosts the user cares about most — shown prominently in the final verdict.
+# Самые важные для пользователя хосты — показываются в финальном вердикте.
 KEY_HOST_LABELS: list[tuple[str, str]] = [
     ("discord.com", "Discord"),
     ("gateway.discord.gg", "Discord (шлюз)"),
@@ -690,8 +685,8 @@ KEY_HOST_LABELS: list[tuple[str, str]] = [
 
 
 def _build_recommendation(all_results, naked, sanity: dict) -> dict:
-    """Build the final verdict: best strategy by network rate, key-host
-    status (Discord/YouTube), and diagnosis when nothing works."""
+    """Финальный вердикт: лучшая стратегия по network_rate, статус ключевых
+    хостов (Discord/YouTube), диагноз, если не работает ничего."""
     if not all_results:
         return {"verdict": "no_data", "message": "Нет результатов тестов", "best_profile": ""}
 
@@ -722,9 +717,8 @@ def _build_recommendation(all_results, naked, sanity: dict) -> dict:
     engine_broken = (not dry.get("ok", True)
                      or (profiles_loaded is not None and profiles_loaded <= 1))
     misses = [c for c in sanity.get("list_coverage", []) if not c.get("covered")]
-    # Coverage gaps are NOT a block: the bypass works, but those domains are
-    # outside the preset's lists (e.g. random CDN probe hosts).  Report them
-    # as a note — never as "не пробито".
+    # Пробелы покрытия — НЕ блок: обход работает, но домены вне списков
+    # пресета (например, случайные CDN-хосты). Пишем заметкой, не «не пробито».
     miss_note = ""
     if misses:
         doms = ", ".join(c["domain"] for c in misses[:6])
@@ -848,7 +842,7 @@ _BLOB_PRIORITY = [
     "max_ru",                # большой (664), работал в general
     "web_max_ru",            # мелкий, работал в general
 ]
-# Проверенно НЕ пробивающие (Т2): example_com — RFC-заглушка, нереальный
+# Проверено НЕ пробивающие (Т2): example_com — RFC-заглушка, нереальный
 # домен; sni2gis/snimail — тестовые артефакты скрещиваний.
 _BLOB_STOPLIST = {"example_com", "sni2gis", "snimail"}
 
@@ -883,19 +877,14 @@ def _recommended_blob_keys() -> list[str]:
 
 
 def _recheck_contested(tester, best, rec: dict, progress) -> dict:
-    """Речек спорных доменов (§29): вердикт «заблокирован» vs «временно недоступен».
+    """Речек спорных доменов (§29): «заблокирован» vs «временно недоступен».
 
-    Пер-хостовых ретраев в _curl_test нет — 000 фиксируется как есть. Спорно
-    то, что RATED-домен («популярный, должен работать») не пробился ЛУЧШЕЙ
-    стратегией: один общий повтор в конце прогона (naked) отличает
-    транзиентный спайк/флак от реального блока. Ожившие на речеке уходят из
-    «не пробито» и помечаются «временно недоступен — ретест»; стабильные
-    000 — «заблокирован».
-
-    Этап 2 (2026-09-11): подтверждённо «заблокированные» домены перепроверяем
-    с АЛЬТЕРНАТИВНЫМИ блобами (рекомендованный список, ≤3 попытки) — блоб
-    фейка влияет на живучесть на разных провайдерах (STRATEGY_TRIALS: батарея
-    блобов). Пробитые так — «домен пробит с блобом X» (подсказка пользователю).
+    В _curl_test пер-хостовых ретраев нет — 000 фиксируется как есть.
+    RATED-домен, не пробитый лучшей стратегией, один раз перепроверяется в
+    конце прогона: ожившие — «временно недоступен», стабильные 000 —
+    «заблокирован». Этап 2 (2026-09-11): перепроверка с альтернативными
+    блобами (рекомендованный список, ≤3) — блоб влияет на живучесть у разных
+    провайдеров (STRATEGY_TRIALS) — «пробит с блобом X».
     """
     best_failed = {r.domain for r in best.results
                    if r.test_type != "ping" and r.status != "OK"}
@@ -1090,7 +1079,7 @@ def _run_tester_action(data: dict) -> None:
         if action in ("test", "test_profiles", "current", "naked", "cdn_scan",
                        "check-winws", "check_vpn", "full_analysis"):
 
-            # short synchronous checks
+            # короткие синхронные проверки
             if action == "check-winws":
                 info = _scan_winws_exe()
                 state.set_final({"type": "check_result", "running": info["running"]})
@@ -1130,7 +1119,7 @@ def _run_tester_action(data: dict) -> None:
                 state.running = False
                 return
 
-            # actions that need a logger
+            # действия, которым нужен логгер
             mode_map = {
                 "test":         "test",
                 "test_profiles":"quick",
@@ -1158,10 +1147,9 @@ def _run_tester_action(data: dict) -> None:
                 profiles = data.get("profiles", None)
                 if not profiles:
                     profiles = _ui_presets() or ["default"]
-                # ALWAYS order: default first; auto/custom (generated) last —
-                # the user expects the proven strategy to be tested first.
-                # (The frontend passes its own list from /api/status — order
-                # must be enforced here, not only for the glob path.)
+                # Порядок ВСЕГДА: default первым, auto/custom последними —
+                # проверенная стратегия должна тестироваться первой (порядок
+                # задаём здесь, а не только для glob-пути из /api/status).
                 def _order_key(p: str):
                     if p == "default":
                         return (0, "")
@@ -1187,7 +1175,7 @@ def _run_tester_action(data: dict) -> None:
                 z2_was = get_controller().status().running
                 svc_was = _svc_was_running()
 
-                # Naked baseline first: detects "strategies do nothing" cases.
+                # Сначала naked-baseline: ловит «стратегии ничего не делают».
                 naked_baseline = _run_tester(lambda: tester.run_naked_baseline(
                     _make_progress_cb(state),
                     result_cb=_make_result_cb(state, profile="__naked__"),
@@ -1230,8 +1218,8 @@ def _run_tester_action(data: dict) -> None:
                     final["sanity"] = sanity
                     final["naked"] = _serialize_result(naked_baseline) if naked_baseline else None
 
-                    # Personal strategy: aggregate the best segment per family
-                    # (Discord <- P_a, Google <- P_b, General <- P_c).
+                    # Личная стратегия: лучший сегмент на семейство
+                    # (Discord ← P_a, Google ← P_b, General ← P_c).
                     try:
                         from core.strategy_builder import build_custom
                         from core.launcher import build_args_from_preset, validate_args, write_run_bat
@@ -1254,9 +1242,9 @@ def _run_tester_action(data: dict) -> None:
                             custom["valid"] = ok
                             custom["error"] = None if ok else err
                             _ui_debug(f"custom: validate ok={ok} err={err!r}")
-                            # --dry-run never opens WinDivert: a preset can be
-                            # "valid" yet die at launch (e.g. --in-range without
-                            # --wf-tcp-in).  Real 1.5s smoke launch.
+                            # --dry-run не открывает WinDivert: пресет может быть
+                            # «валидным», но упасть при запуске (--in-range без
+                            # --wf-tcp-in). Реальный smoke-запуск на 1.5 с.
                             if ok:
                                 try:
                                     import time as _time
@@ -1338,10 +1326,7 @@ def _run_tester_action(data: dict) -> None:
                             custom["rate"] = round(c_rate, 1)
 
                     # ── Речек спорных доменов (§29) ──
-                    # Пер-хостовых ретраев в _curl_test нет: 000 фиксируется
-                    # как есть, а «популярный домен, который должен работать»
-                    # и не пробился лучшей стратегией — спорен. Один общий
-                    # повтор в конце прогона отличает спайк/флак от блока.
+                    # Подробности — в докстринге _recheck_contested.
                     rec = _recheck_contested(tester, best, rec, progress)
                     final["recommendation"] = rec
                     _ui_debug(f"tester: sweep done best={best.profile_name} "
@@ -1381,7 +1366,7 @@ def _run_tester_action(data: dict) -> None:
                 })
 
             elif action == "naked":
-                # Remember what protected the user so we can restore it after
+                # Запоминаем, чем был защищён пользователь, чтобы вернуть после
                 z2_was_running = get_controller().status().running
                 z1_was_running = _scan_winws_exe()["running"]
                 svc_was_running = _svc_was_running()
@@ -1424,9 +1409,9 @@ def _run_tester_action(data: dict) -> None:
                 final_all = run_full_analysis(tester, profiles, _tester_lock, on_event=_on_event,
                                               ipset_catchall=fa_ipset)
                 
-                # Reduce intermediate + progress noise from final poll
+                # Финальный poll: чистим промежуточные результаты —
+                # оставляем только test_result (есть домен и статус)
                 with state.lock:
-                    # Clear in-flight results (keep only test_result items)
                     state.results = [r for r in state.results
                                      if r.get("domain") and r.get("status")]
                     state.final_result = {"type": "final", "all_results": final_all}
@@ -1449,15 +1434,15 @@ def _run_tester_action(data: dict) -> None:
             tester.set_logger(None)
 
 
-# ── HTTP Handler ────────────────────────────────────────────
+# ── HTTP-хендлер ────────────────────────────────────────────
 
 class ZapretHandler(BaseHTTPRequestHandler):
 
-    # Silence default logging
+    # Глушим штатный лог BaseHTTPRequestHandler
     def log_message(self, fmt, *args):
         pass
 
-    # ── Auth ──
+    # ── Авторизация ──
 
     def _check_token(self) -> bool:
         if _app_token:
@@ -1467,7 +1452,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
                 return False
         return True
 
-    # ── JSON helpers ──
+    # ── JSON-хелперы ──
 
     def _send_json(self, obj: Any, status: int = HTTPStatus.OK) -> None:
         body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
@@ -1519,7 +1504,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
         path = parsed.path
         params = parse_qs(parsed.query)
 
-        # Token check for /api/
+        # Проверка токена для /api/
         if path.startswith("/api/") and not self._check_token():
             return
 
@@ -1713,12 +1698,12 @@ class ZapretHandler(BaseHTTPRequestHandler):
 
     def _handle_static(self, path: str) -> None:
         frontend = get_root_dir() / "frontend"
-        # /static/... or direct paths like /css/..., /js/...
+        # /static/... или прямые пути (/css/..., /js/...)
         rel = path.lstrip("/")
         if rel.startswith("static/"):
             rel = rel[7:]
         file_path = frontend / rel
-        # Security: prevent path traversal (is_relative_to — не строковый
+        # Защита от path traversal (is_relative_to — не строковый
         # префикс: sibling-папка frontend2/backup не проходит)
         try:
             file_path = file_path.resolve()
@@ -1816,7 +1801,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
             _probe_debug(f"api 500 POST {path}: {e}")
             self._send_json({"status": "error", "message": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR)
 
-    # ── Process probe (game/app network analysis) ─────────────
+    # ── Probe сетевой активности процессов (игра/приложение) ──
     def _handle_probe_scan(self) -> None:
         """Список процессов с сетью — ТОЛЬКО по явной кнопке (AV-safe)."""
         try:
@@ -2074,11 +2059,9 @@ class ZapretHandler(BaseHTTPRequestHandler):
                          "enabled": enabled})
 
     def _prepare_service_args(self, data: dict) -> tuple[Optional[list[str]], str]:
-        """Build + validate the winws2 args for the service (direct-exe style).
-
-        The service runs winws2.exe itself (like Zapret 1), so args are baked
-        into binPath and refreshed on install/start — no cmd/bat wrapper.
-        """
+        """Сборка и валидация аргументов winws2 для службы (direct-exe):
+        служба запускает winws2.exe сама, аргументы вшиты в binPath
+        и обновляются при install/start — без cmd/bat-обёртки."""
         cfg = get_config_manager().load()
         profile = data.get("profile") or cfg.last_profile or DEFAULT_PROFILE
         game_filter = data.get("game_filter") or cfg.game_filter_mode or "off"
@@ -2156,8 +2139,8 @@ class ZapretHandler(BaseHTTPRequestHandler):
         if busy:
             self._send_json({"status": "error", "message": busy})
             return
-        # Refresh binPath with the current args: direct-exe services bake
-        # them in, a stale cmdline would silently run an old strategy.
+        # Обновляем binPath текущими аргументами: у direct-exe службы они
+        # вшиты, устаревшая cmdline молча запустит старую стратегию.
         args, err = self._prepare_service_args({})
         if err:
             self._send_json({"status": "error", "message": f"Служба не запущена — {err}"})
@@ -2391,17 +2374,14 @@ class ZapretHandler(BaseHTTPRequestHandler):
         self._send_json({"status": "ok", "action": "started"})
 
     def _handle_cdn_recommendation(self, data: dict) -> None:
-        """Полу-автономное применение вердикта без наложений.
+        """Полу-автономное применение вердикта CDN-скана без наложений.
 
-        Действия по вердиктам CDN-скана:
-        general         — hostlist-режим: домен -> list-general.txt;
-                          ipset-режим: IP кандидата -> ipset-include-user.txt
-                          (с проверкой пересечения с ipset-exclude.txt).
-        exclude         — домен -> list-exclude.txt (hostname-исключение
-                          работает в обоих режимах).
-        ipset-include   — IP кандидата -> ipset-include-user.txt: точечный
-        busy-чек: применение вердикта перезапускает обход — не во время теста
-        (M1: кнопки строк страницы CDN остаются активными во время прогона).
+        general — домен → list-general.txt (в ipset-режиме IP кандидата →
+        ipset-include-user.txt, с проверкой пересечения с ipset-exclude);
+        exclude — домен → list-exclude.txt (работает в обоих режимах);
+        ipset-include/ipset-exclude — IP → ipset-include-user.txt.
+        Применение перезапускает обход — busy-чек не даёт делать это во время
+        теста (M1: кнопки строк CDN активны во время прогона).
         """
         busy = _checkers_busy()
         if busy:
@@ -2455,13 +2435,12 @@ class ZapretHandler(BaseHTTPRequestHandler):
                              "message": f"{domain}: {fname} обновлён, но перезапуск не удался: {restart_msg}"})
 
     def _handle_cdn_apply_all(self, data: dict) -> None:
-        """«Применить всё по матрице»: батч вердиктов CDN-скана за один
-        перезапуск.  actions = [{domain, action, ips}, ...]; working_domains
-        — живые в основном прогоне (protection для safe_prefixes).
+        """«Применить всё по матрице»: батч вердиктов CDN-скана за один перезапуск.
 
-        Каждая правка планируется как в ручном хендлере; наложения и ошибки
-        отдельных правок не валят батч — пропускаются с причиной. Записи по
-        каждому файлу дедуплицируются, затем один перезапуск.
+        actions = [{domain, action, ips}, ...]; working_domains — живые в основном
+        прогоне (protection для safe_prefixes). Каждая правка планируется как в
+        ручном хендлере; наложения/ошибки не валят батч, а пропускаются с причиной.
+        Записи дедуплицируются по файлам, затем один перезапуск.
         """
         busy = _checkers_busy()
         if busy:
@@ -2541,7 +2520,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
                          "applied": applied, "skipped": skipped})
 
 
-# ── Server lifecycle ────────────────────────────────────────
+# ── Жизненный цикл сервера ───────────────────────────────────
 
 class ThreadedHTTPServer(HTTPServer):
     allow_reuse_address = True

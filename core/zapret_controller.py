@@ -72,8 +72,8 @@ class ZapretController:
             fake_blob=fake_blob,
         )
 
-        # Validate BEFORE stopping the running instance: a failed check must
-        # not leave the user unprotected.
+        # Валидация ДО остановки текущего запуска: провал проверки не должен
+        # оставить пользователя без обхода.
         ok, err = validate_args(exe_path, args, cwd=self.root_dir)
         if not ok:
             return False, err

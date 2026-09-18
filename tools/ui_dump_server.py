@@ -1,8 +1,8 @@
-"""Dev tool: real Zapret2 backend on a fixed port for UI layout dumps.
+"""Dev-инструмент: реальный бэкенд Zapret2 на фиксированном порту — для
+снятия дампов вёрстки UI.
 
-Usage:
-    python ui_dump_server.py
-Serves http://127.0.0.1:18888/?token=dump until Ctrl+C.
+Запуск: python ui_dump_server.py
+Отдаёт http://127.0.0.1:18888/?token=dump до Ctrl+C.
 """
 
 from __future__ import annotations

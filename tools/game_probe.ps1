@@ -1,34 +1,34 @@
 ﻿<#
-game_probe.ps1 - background network analyzer for a game process.
+game_probe.ps1 - фоновый анализатор сети игрового процесса.
 
-Usage:
-  game_probe.bat                          (default process: WardogsClient)
+Использование:
+  game_probe.bat                          (процесс по умолчанию: WardogsClient)
   powershell -ExecutionPolicy Bypass -File game_probe.ps1 -Process dayz
 
-Parameters:
-  -Process      part of the game process name (default WardogsClient)
-  -IntervalSec  log refresh period in seconds (default 2)
-  -DurationSec  observation time, 0 = until Ctrl+C (default 0)
-  -CheckTcp     additionally test TCP reachability of found IPs
-  -NoCapture    disable UDP capture (pktmon; otherwise used when admin)
+Параметры:
+  -Process      часть имени процесса игры (по умолчанию WardogsClient)
+  -IntervalSec  период обновления лога, сек (по умолчанию 2)
+  -DurationSec  время наблюдения, 0 = до Ctrl+C (по умолчанию 0)
+  -CheckTcp     дополнительно проверить TCP-доступность найденных IP
+  -NoCapture    отключить захват UDP (pktmon; иначе используется при админе)
 
-What it does: while you play, the script polls the game process network
-connections and writes a LIVE log game_probe.log next to the script -
-the file refreshes every couple of seconds, nothing to copy from console.
-On finish (Ctrl+C or game exit) the log is marked FINISHED.
+Что делает: пока вы играете, скрипт опрашивает сетевые соединения процесса
+игры и пишет живой лог game_probe.log рядом со скриптом — файл обновляется
+каждые пару секунд, из консоли ничего копировать не нужно. По завершении
+(Ctrl+C или выход игры) в логе ставится метка FINISHED.
 
-UDP servers are visible only via packet capture (Windows does not store
-UDP remote addresses) - the built-in pktmon is used for that.
-game_probe.bat requests administrator rights automatically.
+UDP-серверы видны только захватом пакетов (Windows не хранит удалённые
+адреса UDP) — для этого используется встроенный pktmon.
+game_probe.bat сам запрашивает права администратора.
 
-What to look for in the log:
-  - TCP state "SynSent" - SYN got no answer (possible IP/subnet block);
-  - IPv6 connections - if the game uses IPv6, the bypass (IPv4) misses it;
-  - UDP servers (from capture) - if the game is blocked by them;
-  - Domains (DNS cache) - which domains map to the found IPs.
+На что смотреть в логе:
+  - TCP-состояние "SynSent" — SYN ушёл без ответа (возможна блокировка IP/подсети);
+  - соединения IPv6 — если игра использует IPv6, обход (IPv4) их не видит;
+  - UDP-серверы (из захвата) — не блокируется ли игра через них;
+  - домены (кэш DNS) — какие домены соответствуют найденным IP.
 
-Send game_probe.log to the developer - it shows where the game connects
-and what exactly is blocked.
+Отправьте game_probe.log разработчику — по нему видно, куда игра
+подключается и что именно блокируется.
 #>
 param(
     [string]$Process = "WardogsClient",
@@ -139,7 +139,7 @@ function Parse-UdpCapture([string]$file, $knownPorts) {
     foreach ($line in [System.IO.File]::ReadLines($file)) {
         if ($line -match '(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\.(\d+) > (\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\.(\d+)') {
             $a = $matches[1]; $ap = [int]$matches[2]; $b = $matches[3]; $bp = [int]$matches[4]
-            # only packets related to the game ports (empty list = accept all)
+            # только пакеты, относящиеся к портам игры (пустой список = принимать все)
             $portMatch = ($knownPorts.Count -eq 0) -or ($knownPorts -contains $ap) -or ($knownPorts -contains $bp)
             if ($portMatch) {
                 foreach ($p in @(@($a, $ap), @($b, $bp))) {
@@ -157,7 +157,7 @@ function Parse-UdpCapture([string]$file, $knownPorts) {
 }
 
 function Get-DnsMap($remoteIps) {
-    # IP -> domains (from DNS cache): maps found game addresses to domain names
+    # IP -> домены (из кэша DNS): найденные адреса игры получают имена
     $map = @{}
     $dns = Get-DnsClientCache -ErrorAction SilentlyContinue
     foreach ($d in $dns) {
@@ -189,7 +189,7 @@ if (-not $procs) {
 $procName = ($procs | ForEach-Object { $_.ProcessName }) -join ", "
 $pidList = ($procs | ForEach-Object { $_.Id }) -join ", "
 
-# --- UDP capture (pktmon) ---
+# --- захват UDP (pktmon) ---
 $captureNote = ""
 $captureActive = $false
 $knownPorts = New-Object System.Collections.Generic.List[int]
@@ -264,7 +264,7 @@ try {
                 }
             }
         }
-        # periodically refresh capture ports (new ones may appear)
+        # периодически обновляем порты захвата (могут появляться новые)
         if ($captureActive -and ((Get-Date) - $lastPortRefresh).TotalSeconds -ge 20) {
             $lastPortRefresh = Get-Date
             $newPorts = Get-LocalUdpPorts $cpids
@@ -283,7 +283,7 @@ try {
 } finally {
     $elapsed = [int]((Get-Date) - $start).TotalSeconds
 
-    # stop capture and parse
+    # стоп захвата и разбор
     $udpCapture = $null
     if ($captureActive) {
         pktmon stop 2>&1 | Out-Null
@@ -295,7 +295,7 @@ try {
         $captureNote = "finished, servers found: $(if ($udpCapture) { $udpCapture.Count } else { 0 })"
     }
 
-    # optional final TCP reachability check (once, for found IPs)
+    # опциональная финальная проверка TCP-доступности (один раз, по найденным IP)
     $tcpCheck = $null
     if ($CheckTcp -and $tcp.Count -gt 0) {
         $tcpCheck = @{}
@@ -308,7 +308,7 @@ try {
         }
     }
 
-    # DNS cache: map found IPs to game domain names
+    # кэш DNS: сопоставляем найденные IP с доменами игры
     $remoteIps = New-Object System.Collections.Generic.HashSet[string]
     foreach ($k in $tcp.Keys) { [void]$remoteIps.Add($k.Substring(0, $k.LastIndexOf(':'))) }
     foreach ($k in $udp.Keys) { [void]$remoteIps.Add($k.Substring(0, $k.LastIndexOf(':'))) }

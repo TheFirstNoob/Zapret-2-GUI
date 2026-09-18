@@ -11,9 +11,8 @@ import threading
 import time
 from pathlib import Path
 
-# Embeddable Python (portable build) uses a ._pth file that disables
-# auto-adding the script dir to sys.path — without this, imports of core
-# would fail on the portable build.
+# Embeddable Python (portable-сборка) с ._pth не добавляет папку скрипта
+# в sys.path — без этого импорт core на portable-сборке падает.
 if not getattr(sys, "frozen", False):
     _app_dir = os.path.dirname(os.path.abspath(__file__))
     if _app_dir not in sys.path:
@@ -28,10 +27,9 @@ _DATA_DIRS = ["bin", "blobs", "lua", "presets", "lists", "windivert", "frontend"
 
 
 def _cleanup_stale_mei() -> None:
-    """PyInstaller onefile unpacks into %TEMP%\\_MEIxxxxx on EVERY run; on
-    abnormal exit the unpack dir stays behind (webview child still alive /
-    antivirus holds a file).  Remove stale ones (older than 24h) — never our
-    current _MEIPASS, never non-stale dirs (other apps' PyInstaller runs)."""
+    """Убирает брошенные распаковки PyInstaller (%TEMP%\\_MEI*, старше 24ч):
+    после аварийного выхода onefile оставляет их (живой webview или AV держит
+    файл). Текущий _MEIPASS и свежие папки (чужие запуски) не трогаем."""
     if not getattr(sys, "frozen", False):
         return
     current = getattr(sys, "_MEIPASS", "")
@@ -50,18 +48,18 @@ def _cleanup_stale_mei() -> None:
 
 
 def _warn_if_bad_path(exe_dir: Path) -> bool:
-    """True when the install path is safe for winws2.
+    """True, если путь установки безопасен для winws2.
 
-    ASCII paths (spaces included) are safe — launchers quote them correctly.
-    Non-ASCII paths only work while 8.3 short names are available (the .bat
-    launchers are written in ASCII via short paths).  Warn only for the real
-    failure class: non-ASCII path with no short form.
+    ASCII-путь (с пробелами) безопасен — лаунчеры его квотируют. Не-ASCII
+    работает только при наличии короткого имени 8.3 (bat-лаунчеры пишутся
+    в ASCII через короткие пути). Предупреждаем лишь о реальном провале:
+    не-ASCII путь без короткой формы.
     """
     s = str(exe_dir)
     if all(ord(c) < 128 for c in s):
         return True
     if str(short_path(exe_dir)) != s:
-        return True  # short form exists — launcher handles it
+        return True  # короткая форма есть — лаунчер справится
 
     title = "Zapret2 \u2014 \u041f\u0440\u0435\u0434\u0443\u043f\u0440\u0435\u0436\u0434\u0435\u043d\u0438\u0435"
     msg = (
@@ -82,9 +80,9 @@ def _ensure_data_dir() -> Path:
     exe_dir = Path(sys.executable).resolve().parent
     src = Path(sys._MEIPASS)
 
-    # Refresh bundled data only when the version changes, so user edits to
-    # bundled presets/lists survive regular launches; copytree never deletes
-    # extra files — user presets and *-user.txt lists are safe.
+    # Обновляем данные только при смене версии: правки пользователя в
+    # presets/lists переживают обычные запуски. copytree не удаляет лишние
+    # файлы — user-пресеты и *-user.txt в безопасности.
     marker = exe_dir / "data_version.txt"
     try:
         current = marker.read_text(encoding="utf-8").strip() if marker.exists() else ""
@@ -114,10 +112,9 @@ def _ensure_data_dir() -> Path:
 
 
 def _check_launch_location(exe_dir: Path) -> None:
-    """Проверка «болевых» мест запуска (0.8): из архива, Загрузки, Документы,
-    рабочий стол напрямую. Временная папка и рабочий стол — важные
-    предупреждения; Загрузки/Документы — некритичные (есть чек в
-    «Проверке системы»)."""
+    """Предупреждения о «болевых» местах запуска (0.8): архив/временная папка
+    и рабочий стол напрямую — важные; Загрузки/Документы — некритичные
+    (есть чек в «Проверке системы»)."""
     def show(msg: str) -> None:
         ctypes.windll.user32.MessageBoxW(
             0, msg, "Zapret2 — предупреждение", 0x30)
@@ -245,7 +242,7 @@ def main_gui() -> None:
         window.events.closing += on_closing
         webview.start()
     except Exception:
-        # pythonw has no console — never fail silently.
+        # у pythonw нет консоли — молча падать нельзя.
         ctypes.windll.user32.MessageBoxW(
             0,
             "Ошибка запуска интерфейса (WebView2).\n\n"

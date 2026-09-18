@@ -95,7 +95,7 @@ def run_full_analysis(
             intermediate(entry, idx)
         return entry
 
-    # Phase 1: Screen all profiles on smoke tier
+    # Фаза 1: прогон всех профилей на smoke tier
     all_screened: list[dict] = []
     for i, pname in enumerate(profiles):
         if tester.shutdown_event.is_set():
@@ -110,7 +110,7 @@ def run_full_analysis(
     all_screened.sort(key=lambda x: x.get("network_rate", 0) or 0, reverse=True)
     top3 = all_screened[:3]
 
-    # Phase 2: Validate top 3 on full tier
+    # Фаза 2: валидация топ-3 на full tier
     validated: list[dict] = []
     total += min(3, len(top3))
     for vi, entry in enumerate(top3):

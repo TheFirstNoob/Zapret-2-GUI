@@ -1,11 +1,10 @@
-"""Personal strategy builder — aggregate the best-scoring preset segments.
+"""Сборка персональной стратегии — лучшие сегменты пресетов в один custom.
 
-After the tester sweeps all presets, each probe domain is attributed to a
-target family (discord / google / general via the hostlists).  The segment
-that covers a family is taken from the preset with the highest family rate,
-and a merged "custom" preset is written: Discord <- P_a, Google <- P_b,
-General <- P_c.  Untestable segments (voice / media ports / QUIC) always
-come from default.
+После прогона тестера каждый probe-домен относится к family (discord /
+google / general по hostlist).  Сегмент family берётся из пресета с лучшим
+family-рейтингом, и пишется merged-пресет "custom": Discord <- P_a,
+Google <- P_b, General <- P_c.  Непроверяемые сегменты (voice / media /
+QUIC) всегда берутся из default.
 """
 from __future__ import annotations
 
@@ -14,15 +13,15 @@ from typing import Callable, Optional
 
 FAMILIES = ("discord", "google", "general")
 
-# Tester-probeable segments and the family each one scores.
+# Сегменты, проверяемые тестером, и их family.
 SEGMENT_FAMILY = {
     "Discord TCP tls": "discord",
     "Google TCP tls": "google",
     "General TCP": "general",
 }
 
-# Segments the tester cannot probe (UDP voice, media ports, QUIC):
-# keep them from default, where they are proven.
+# Сегменты, недоступные тестеру (UDP voice, media-порты, QUIC):
+# берутся из default, где они проверены.
 KEEP_FROM_DEFAULT = ("Discord Voice", "Discord Media TCP", "QUIC Google", "QUIC General")
 
 CUSTOM_PRESET = "custom"
@@ -38,13 +37,13 @@ def _load_list(path: Path) -> set[str]:
         line = line.split("#", 1)[0].strip().lower()
         if not line:
             continue
-        line = line.lstrip("^")  # zapret "^" = exact domain; same family mapping
+        line = line.lstrip("^")  # "^" у zapret = точный домен; маппинг family тот же
         out.add(line)
     return out
 
 
 def make_family_fn(root: Path) -> Callable[[str], Optional[str]]:
-    """domain -> family ("discord"/"google"/"general"/None) by hostlist membership."""
+    """Домен -> family ("discord"/"google"/"general"/None) по вхождению в hostlist."""
     lists = {f: _load_list(root / "lists" / f"list-{f}.txt") for f in FAMILIES}
 
     def fam(domain: str) -> Optional[str]:
@@ -61,7 +60,7 @@ def make_family_fn(root: Path) -> Callable[[str], Optional[str]]:
 
 
 def parse_preset(preset_path: Path) -> tuple[list[str], dict[str, list[str]]]:
-    """(header_lines, {segment_name: lines}) — segments split on '--new'."""
+    """(строки заголовка, {имя_сегмента: строки}) — сегменты делятся по '--new'."""
     text = preset_path.read_text(encoding="utf-8", errors="replace")
     blocks: list[list[str]] = []
     cur: list[str] = []
@@ -111,10 +110,10 @@ def build_custom(
     results_by_profile: dict[str, list[dict]],
     default_name: str = "default",
 ) -> dict:
-    """Pick the best segment per family and write presets/custom.txt.
+    """Выбирает лучший сегмент на family и пишет presets/custom.txt.
 
-    Returns {"sources": {family: preset}, "rates": {profile: {family: rate}},
-    "preset": "custom", "error": None}.
+    Возвращает {"sources": {family: preset}, "rates": {profile: {family:
+    rate}}, "preset": "custom", "error": None}.
     """
     fam_fn = make_family_fn(root)
     rates = _family_rates(results_by_profile, fam_fn)
@@ -140,10 +139,10 @@ def build_custom(
                 best_p, best_rate = p, rate
         sources[fam] = best_p
 
-    # Header must satisfy ALL source presets: a segment may rely on its own
-    # preset's global flags — auto's --wf-tcp-in (for --in-range) AND its
-    # --lua-init @lua/zapret-auto.lua (for circular).  Union of the complete
-    # header of every non-default source preset.
+    # Заголовок должен покрыть ВСЕ источники: сегмент может зависеть от
+    # глобальных флагов своего пресета — у auto это --wf-tcp-in (для
+    # --in-range) и --lua-init @lua/zapret-auto.lua (для circular). Берём
+    # объединение полных заголовков всех не-default источников.
     #
     # 2026-09-13: дедуп РАНЬШЕ был по ОДИНОЧНОЙ строке — пара
     # «--lua-init + @lua/zapret-auto.lua» разваливалась: второй --lua-init

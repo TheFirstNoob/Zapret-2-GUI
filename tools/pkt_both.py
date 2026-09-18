@@ -1,4 +1,4 @@
-"""_pkt_both.py — захват исходящих И входящих пакетов discord-сессии (pktmon).
+"""pkt_both.py — захват исходящих И входящих пакетов discord-сессии (pktmon).
 
 Показывает: доходит ли ServerHello от discord (входящий TLS), сколько фейков
 шлёт winws2, их SNI/TTL. Отличает «ТСПУ режет ClientHello» от «режет ответы».
@@ -155,7 +155,7 @@ def main():
             continue
         if not (p["src"].startswith("162.159.") or p["dst"].startswith("162.159.")):
             continue
-        # direction: our machine is source when dport=443 (outgoing)
+        # направление: наша машина — источник при dport=443 (исходящий)
         direction = "OUT" if p["dport"] == 443 else "IN"
         opts = ",".join(TCP_KIND_NAMES.get(k, f"k{k}") for k, _, _ in p["options"])
         head = p["payload"][:16].hex() if p["payload"] else ""

@@ -23,13 +23,24 @@ for pf in sorted((ROOT / "presets").glob("*.txt")):
         shutil.copy2(pf, REL_PRESETS / pf.name)
 
 ADD_DATA = []
-for d in ("bin", "blobs", "lua", "lists", "windivert", "frontend"):
+for d in ("bin", "blobs", "lua", "windivert", "frontend"):
     src = str(ROOT / d)
     dst = d
     ADD_DATA.append(f"{src}{os.pathsep}{dst}")
 ADD_DATA.append(f"{str(REL_PRESETS)}{os.pathsep}presets")
 
-# Packages not needed at runtime – pulled in by PyInstaller hooks/build-time deps
+# lists попадают в onefile через staging: user-файлы обнуляются, чтобы данные
+# разработчика не утекли в дистрибутив (как в portable/lite)
+REL_LISTS = ROOT / "build" / "lists_release"
+if REL_LISTS.exists():
+    shutil.rmtree(REL_LISTS)
+shutil.copytree(ROOT / "lists", REL_LISTS)
+for name in ("list-include-user", "list-exclude-user",
+             "ipset-include-user", "ipset-exclude-user"):
+    (REL_LISTS / f"{name}.txt").write_text("", encoding="utf-8")
+ADD_DATA.append(f"{str(REL_LISTS)}{os.pathsep}lists")
+
+# В рантайме не нужны — тянутся хуками и зависимостями сборки PyInstaller
 EXCLUDE = [
     "numpy",
     "PIL",

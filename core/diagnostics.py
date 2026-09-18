@@ -1,10 +1,9 @@
-"""Built-in self-diagnostics for end users.
+"""Встроенная самодиагностика для пользователя.
 
-Runs a fixed set of health checks and returns a structured report that the
-GUI renders as a checklist.  Designed to answer the most common support
-questions without the user touching logs: rights, install path, process,
-service, preset validity, conflicts and connectivity (incl. Discord upload
-host).  Every check has a hard timeout and never raises.
+Фиксированный набор проверок → структурированный отчёт (чек-лист в GUI).
+Закрывает частые вопросы поддержки без разбора логов: права, путь установки,
+процесс, служба, валидность пресета, конфликты, связь. У каждой проверки
+жёсткий таймаут, исключений наружу нет.
 """
 from __future__ import annotations
 
@@ -23,10 +22,10 @@ from core.launcher import build_args_from_preset, validate_args
 from core.utils import (known_desktop_dir, short_path, windivert_image_dead,
                         windivert_service_state)
 
-# Upload host: 403 from Google Storage means the connection is fine.
+# Хост аплоада: 403 от Google Storage = соединение живо.
 DISCORD_UPLOAD_HOST = "discord-attachments-uploads-prd.storage.googleapis.com"
 
-# Connectivity checks: host, human name, expected-any-code (canary must be 2xx-3xx).
+# Проверки связи: хост, имя, тип ожидаемого кода (канарейка — обязательно 2xx-3xx).
 # i.ytimg.com проверяется ДО www.youtube.com, чтобы YouTube TCP-квирк (§17:
 # TCP режется везде, браузер идёт через QUIC) объяснялся результатом CDN
 # вместо ложного красного креста.
@@ -93,7 +92,7 @@ def _pid_of(image_name: str) -> Optional[int]:
 
 
 def _curl_code(host: str, timeout: int = 6, scheme: str = "https") -> Optional[int]:
-    """HTTP status code via curl, None on timeout/transport error."""
+    """HTTP-код через curl; None при таймауте/ошибке транспорта."""
     try:
         r = subprocess.run(
             ["curl.exe", "-4", "-s", "-m", str(timeout),
@@ -330,8 +329,8 @@ def _check_net() -> list[Check]:
                                     "сайт отвечает, но с необычным ответом — соединение всё же есть",
                                     tech=f"HTTP {code}"))
         else:
-            # Any HTTP code >= 100 means the TLS connection passed the DPI.
-            # 403/404/520 are expected "anonymous request" answers from CDNs.
+            # Любой HTTP-код >= 100 = TLS-соединение прошло DPI.
+            # 403/404/520 — штатные ответы CDN на анонимный запрос.
             if code == 403:
                 detail = ("соединение работает — код 403 это нормальный ответ CDN "
                           "на анонимный запрос, это не блокировка")
@@ -354,22 +353,21 @@ def _check_net() -> list[Check]:
 
 
 def classify_block(host: str, timeout: float = 2.5, max_ips: int = 2) -> dict:
-    """Determine WHAT kind of block a host faces (pure stdlib, no curl).
+    """Определяет тип блока хоста (только stdlib, без curl).
 
-    Probes, in order:
-    1. DNS resolution                      -> "dns" (hijack / no answer)
-    2. TCP connect to :443 (any IP)        -> "ip_block" (SYN-level/port filter)
-    3. TLS handshake with the REAL SNI     -> "ok" (site reachable)
-    4. TLS handshake to the SAME IP with a
-       benign SNI (google/cloudflare)      -> "sni_block": the IP is clean, the
-       block is triggered ONLY by the SNI — exactly what a desync must defeat.
-       If even a foreign SNI fails         -> "tls_block" (not SNI-bound:
-       IP/port level or deep DPI).
+    Пробы по порядку:
+    1. DNS-резолв                     -> "dns" (перехват / нет ответа);
+    2. TCP-коннект :443 (любой IP)    -> "ip_block" (фильтр на SYN/порту);
+    3. TLS-рукопожатие с РЕАЛЬНЫМ SNI -> "ok" (сайт доступен);
+    4. TLS к ТОМУ ЖЕ IP с чужим SNI
+       (google/cloudflare)            -> "sni_block": IP чист, блок только по
+       SNI — именно это обязан обходить десинк; если и чужой SNI не проходит
+       -> "tls_block" (блок не по SNI: уровень IP/порта или глубокий DPI).
 
-    The SNI-swap step is the key validator: on "sni_block" a working zapret
-    MUST be able to bypass the site.  If no preset bypasses it anyway, the
-    problem is the engine/lists, not "the DPI is too strong".
-    Never raises; TLS certs are ignored (handshake completion is the signal).
+    SNI-swap — ключевой валидатор: при "sni_block" работающий zapret ОБЯЗАН
+    пробить сайт; если ни один пресет не пробивает — проблема в движке/списках,
+    а не «DPI слишком сильный». Исключений не бросает; TLS-сертификаты
+    игнорируются (важен сам факт рукопожатия).
     """
     import socket
     import ssl
@@ -397,7 +395,7 @@ def classify_block(host: str, timeout: float = 2.5, max_ips: int = 2) -> dict:
             return False
 
     def _probe(ip: str, sni: Optional[str]) -> bool:
-        """TCP connect probe when sni is None, TLS-handshake probe otherwise."""
+        """TCP-коннект, если sni=None; иначе TLS-рукопожатие."""
         if sni is None:
             try:
                 s = socket.create_connection((ip, 443), timeout=timeout)
@@ -408,9 +406,9 @@ def classify_block(host: str, timeout: float = 2.5, max_ips: int = 2) -> dict:
         return _tls(ip, sni)
 
     def _first_success(ips, sni) -> bool:
-        # Note: NOT a `with` block — exiting a context manager calls
-        # shutdown(wait=True) and blocks until blackholed probes time out,
-        # adding ~timeout to every step.  wait=False lets them die on their own.
+        # НЕ `with`: выход из контекстного менеджера зовёт shutdown(wait=True)
+        # и ждёт пробы, застрявшие в чёрной дыре, добавляя ~timeout к каждому
+        # шагу. wait=False — пусть умирают сами.
         pool = ThreadPoolExecutor(max_workers=max_ips)
         futs = [pool.submit(_probe, ip, sni) for ip in ips]
         try:
@@ -452,8 +450,8 @@ def classify_block(host: str, timeout: float = 2.5, max_ips: int = 2) -> dict:
 
 
 def _check_block_types(net_checks: list[Check]) -> list[Check]:
-    """Classify WHY the failed connectivity hosts are blocked (max 1 host,
-    youtube preferred — it is the most common and most informative case)."""
+    """Классифицирует, ПОЧЕМУ упавшие хосты связи заблокированы (не более 1
+    хоста, приоритет — youtube: самый частый и информативный кейс)."""
     failed = {c.id.removeprefix("net_"): c for c in net_checks if c.status == "fail"}
     names = {h: n for h, n, _k in _NET_CHECKS}
     if "www.youtube.com" in failed:
@@ -474,7 +472,7 @@ def _check_block_types(net_checks: list[Check]) -> list[Check]:
 
 
 def _check_dns_health() -> Check:
-    """plain 53 / DoT 853 / DoH 443 — many RU ISPs poison or block DNS layers."""
+    """Обычный 53 / DoT 853 / DoH 443: многие RU-провайдеры травят или режут DNS."""
     import socket as _s
     results = []
 
@@ -667,12 +665,12 @@ def run_diagnostics(root_dir: Path, cfg: AppConfig, progress_cb=None) -> dict:
 
     _add(Check("version", "Версия", "ok", VERSION))
 
-    # rights
+    # права
     _add(Check("admin", "Права администратора",
                "ok" if is_admin() else "fail",
                "есть" if is_admin() else "нет — WinDivert не загрузится"))
 
-    # install path
+    # путь установки
     _add(_check_path(root_dir))
     _add(_check_launch_spot(root_dir))
 
@@ -680,7 +678,7 @@ def run_diagnostics(root_dir: Path, cfg: AppConfig, progress_cb=None) -> dict:
     _add(_check_windivert_files(root_dir))
     _add(_check_windivert_service(root_dir))
 
-    # zapret2 process
+    # процесс zapret2
     pid = _pid_of("winws2.exe")
     if pid is not None:
         strategy = cfg.last_profile or DEFAULT_PROFILE
@@ -690,7 +688,7 @@ def run_diagnostics(root_dir: Path, cfg: AppConfig, progress_cb=None) -> dict:
         _add(Check("winws2", "Процесс winws2", "fail",
                             "не запущен — обход неактивен"))
 
-    # zapret 1 conflict
+    # конфликт с Zapret 1
     z1 = _pid_of("winws.exe")
     if z1 is not None:
         _add(Check("zapret1", "Zapret 1", "warn",
@@ -698,7 +696,7 @@ def run_diagnostics(root_dir: Path, cfg: AppConfig, progress_cb=None) -> dict:
     else:
         _add(Check("zapret1", "Zapret 1", "ok", "не запущен"))
 
-    # environment scan: other DPI tools / VPN clients / tunnel adapters
+    # скан окружения: другие DPI-тулзы / VPN-клиенты / туннели
     try:
         from core.conflict_scan import scan as scan_conflicts, describe as describe_conflicts
         cr = scan_conflicts()
@@ -719,7 +717,7 @@ def run_diagnostics(root_dir: Path, cfg: AppConfig, progress_cb=None) -> dict:
     # DNS-серверы, которые подменяют ответы для заблокированных доменов
     _add(_check_dns_spoof_servers())
 
-    # TCP timestamps (ts-fooling silently dead when disabled)
+    # TCP timestamps (при выключенных ts-fooling молча не работает)
     try:
         from core.tcp_timestamps import timestamps_enabled as ts_enabled
         if ts_enabled():
@@ -733,7 +731,7 @@ def run_diagnostics(root_dir: Path, cfg: AppConfig, progress_cb=None) -> dict:
     except Exception as e:
         _add(Check("tcp_ts", "TCP timestamps", "skip", f"не удалось проверить: {e}"))
 
-    # service
+    # служба
     try:
         from core.service_manager import is_installed as svc_installed, status as svc_status
         if svc_installed():
@@ -752,13 +750,13 @@ def run_diagnostics(root_dir: Path, cfg: AppConfig, progress_cb=None) -> dict:
     except Exception as e:
         _add(Check("service", "Служба zapret2", "warn", f"не удалось проверить: {e}"))
 
-    # preset validation
+    # валидация пресета
     _add(_check_preset(root_dir, cfg))
 
-    # debug log
+    # debug-лог
     _add(_check_debug_log(root_dir, bool(cfg.winws2_debug)))
 
-    # connectivity (bypass active or not — see winws2 check for context)
+    # связь (независимо от обхода; контекст — в чеке winws2)
     if progress_cb is not None:
         try:
             progress_cb("Связь (канарейки)")
@@ -767,7 +765,7 @@ def run_diagnostics(root_dir: Path, cfg: AppConfig, progress_cb=None) -> dict:
     net_checks = _check_net()
     checks.extend(net_checks)
 
-    # block-type classification for the failed host(s): DNS vs IP vs SNI
+    # тип блока упавших хостов: DNS vs IP vs SNI
     if progress_cb is not None:
         try:
             progress_cb("Тип блокировки")
@@ -775,10 +773,10 @@ def run_diagnostics(root_dir: Path, cfg: AppConfig, progress_cb=None) -> dict:
             pass
     checks.extend(_check_block_types(net_checks))
 
-    # DNS health: plain resolver vs DoT (853) vs DoH (443)
+    # DNS: обычный резолвер vs DoT (853) vs DoH (443)
     _add(_check_dns_health())
 
-    # DNS poisoning: system resolver vs clean DoH for blocked domains
+    # DNS-подмена: системный резолвер vs чистый DoH на заблокированных доменах
     _add(_check_dns_poison())
 
     summary = {"ok": 0, "warn": 0, "fail": 0, "skip": 0}
@@ -794,7 +792,7 @@ def run_diagnostics(root_dir: Path, cfg: AppConfig, progress_cb=None) -> dict:
 
 
 def format_report_text(report: dict) -> str:
-    """Plain-text report for clipboard sharing (support tickets)."""
+    """Текстовый отчёт для копирования в поддержку."""
     icon = {"ok": "[OK]  ", "warn": "[ВНИМ]", "fail": "[FAIL]", "skip": "[----]"}
     lines = [
         f"Zapret2 GUI — диагностика {report.get('timestamp', '')} (v{VERSION})",

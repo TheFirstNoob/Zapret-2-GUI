@@ -18,7 +18,7 @@ TEST_HOSTS = [
 ]
 
 def check_clean():
-    """Return list of winws2 pids if any running (conflict) else []."""
+    """Список pid уже запущенных winws2 (конфликт) либо []."""
     out = subprocess.run(["tasklist", "/FI", "IMAGENAME eq winws2.exe", "/FO", "CSV", "/NH"],
                          capture_output=True, text=True, encoding="oem", errors="replace",
                          timeout=20).stdout
@@ -44,25 +44,25 @@ def curl_code(host):
         return "ERR"
 
 def run_one(preset):
-    # 1. conflict check — abort if anything running
+    # 1. проверка конфликтов — выходим, если что-то уже запущено
     pids = check_clean()
     if pids:
         print(f"ABORT: winws2 already running pid={pids} — stop zapret first", flush=True)
         sys.exit(3)
 
-    # 2. start test preset, track OUR pid
+    # 2. запускаем тестовый пресет, запоминаем НАШ pid
     args = build_args_from_preset(root, lua, blobs, root / 'presets' / preset)
     proc = subprocess.Popen([str(exe)] + args,
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     print(f"[{preset}] started pid={proc.pid}", flush=True)
     time.sleep(5)
 
-    # 3. run curls
+    # 3. прогон curl
     print(f"\n===== {preset} =====", flush=True)
     for h in TEST_HOSTS:
         print(f"  {h:<42} -> {curl_code(h)}", flush=True)
 
-    # 4. kill ONLY our pid
+    # 4. убиваем ТОЛЬКО свой pid
     proc.terminate()
     try:
         proc.wait(timeout=5)
@@ -70,7 +70,7 @@ def run_one(preset):
         proc.kill()
     print("  [stopped]", flush=True)
 
-    # 5. verify clean
+    # 5. проверяем, что чисто
     left = check_clean()
     if left:
         print(f"  WARN: winws2 still running: {left}", flush=True)

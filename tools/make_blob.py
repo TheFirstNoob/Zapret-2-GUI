@@ -6,7 +6,7 @@
 
 Использование:
     python tools/make_blob.py chat.wb.ru                 # -> blobs/tls_clienthello_chat_wb_ru.bin
-    python tools/make_blob.ru example.com out.bin
+    python tools/make_blob.py example.com out.bin
 
 Синтетический ClientHello структурно валиден (TLS 1.3 + 1.2, x25519
 key_share, SNI) — DPI не отличит его от браузерного по структуре, а от

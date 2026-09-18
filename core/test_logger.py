@@ -41,7 +41,7 @@ class TestLogger:
         self._write(f"[{profile}] {message}")
 
     def log(self, message: str) -> None:
-        """Generic log line (used for helper steps like service stop)."""
+        """Обычная строка лога (служебные шаги вроде остановки службы)."""
         self._write(message)
 
     def result(self, profile: str, ok_count: int, fail_count: int, success_rate: float,

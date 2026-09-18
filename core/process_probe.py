@@ -156,11 +156,11 @@ def _dns_map(remote_ips: set[str]) -> dict[str, list[str]]:
 
 
 def _run_pktmon(pids: list[int], etl: Path, txt: Path) -> Optional[dict]:
-    """UDP-захват через pktmon (headers only). Возвращает {ip:port: count}.
+    """UDP-захват через pktmon (только заголовки). Возвращает {ip:port: count}.
 
-    Без известных UDP-портов процесса захват НЕ запускается: pktmon не умеет
-    фильтровать по PID, и без фильтра ловится весь UDP-трафик машины
-    (браузер, Discord и т.д.) — шум и раздутый ETL."""
+    Без известных UDP-портов процесса захват НЕ запускается: pktmon не фильтрует
+    по PID, и без фильтра ловится весь UDP машины (браузер, Discord) — шум и
+    раздутый ETL."""
     utils.run_quiet(["pktmon", "stop"])
     utils.run_quiet(["pktmon", "filter", "remove"])
     if etl.exists():

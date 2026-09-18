@@ -10,8 +10,7 @@ from typing import Optional
 
 
 def short_path(path: Path) -> Path:
-    """Windows short (8.3) path; falls back to the original when short
-    names are disabled or unavailable."""
+    """Короткий путь 8.3; если короткие имена недоступны — исходный путь."""
     try:
         long_name = str(path.resolve())
         buf = ctypes.create_unicode_buffer(260)
@@ -37,7 +36,7 @@ def app_root() -> Path:
 
 
 def get_temp_dir() -> Path:
-    """Stable temp dir for probe artifacts (probe etl/txt, reports)."""
+    """Постоянный temp-каталог для артефактов probe (etl/txt, отчёты)."""
     d = Path(tempfile.gettempdir()) / "zapret2_probe"
     d.mkdir(exist_ok=True)
     return d
@@ -247,7 +246,7 @@ def known_desktop_dir() -> Path:
 
 
 def run_quiet(cmd: list[str], timeout: int = 30) -> None:
-    """Run a command silently; failures are ignored (best-effort helpers)."""
+    """Тихий запуск команды; ошибки игнорируются (best-effort хелпер)."""
     try:
         subprocess.run(cmd, capture_output=True, text=True, encoding="oem",
                        errors="replace", timeout=timeout,
