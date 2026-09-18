@@ -1431,7 +1431,7 @@ const ListsPage = {
         }
       } else if (protectedNow) {
         title = 'С обходом не отвечает';
-        advice = 'Тумблер включён — вероятно, текущий десинк ломает сервис. Выключите тумблер, перезапустите обход и перепроверьте. Если и без обхода нет — жёсткий блок, потребуется WARP.';
+        advice = 'Тумблер включён — вероятно, текущий десинк ломает сервис. Выключите тумблер и повторите пробу: правка списков применяется к новым подключениям. Если и без обхода нет — жёсткий блок, потребуется WARP.';
       } else if (!engine) {
         title = 'Обход не запущен';
         advice = toggled
@@ -1439,7 +1439,7 @@ const ListsPage = {
           : 'Запустите обход и повторите пробу. Если сервис без обхода не живёт — включите тумблер.';
       } else {
         title = 'Не отвечает и без обхода';
-        advice = 'Домен не в обходе. Включите тумблер, перезапустите обход и перепробуйте. Если и с обходом нет — IP-блок, поможет только WARP.';
+        advice = 'Домен не в обходе. Включите тумблер и повторите пробу — правка списков применяется к новым подключениям. Если и с обходом нет — IP-блок, поможет только WARP.';
       }
       if (res) {
         res.innerHTML = `
@@ -1593,11 +1593,9 @@ const ListsPage = {
       if (r.status === 'ok') {
         el.textContent = 'сохранено';
         this.saved[key] = $(key + 'Textarea').value;
-        // Списки читаются winws2 при старте: если обход запущен — предлагаем
-        // перезапуск прямо из тоста, иначе изменение «висит» до ручного.
-        const z2 = Status.last && Status.last.zapret;
-        let msg = z2 && z2.running ? 'Список сохранён — применится при перезапуске обхода'
-                                   : 'Список сохранён — применится при запуске обхода';
+        // winws2 перечитывает списки на лету (mtime) — правка вступает в
+        // силу для НОВЫХ подключений, перезапуск обхода не нужен.
+        let msg = 'Список сохранён — применится к новым подключениям';
         let type = 'ok';
         const overlap = this._bundledOverlap(key);
         if (key === 'domExc' && overlap.length) {
@@ -1608,13 +1606,7 @@ const ListsPage = {
         } else if (key === 'domInc' && overlap.length) {
           msg += ' (уже в стандартных списках — дубль безвреден: ' + this._fmtList(overlap) + ')';
         }
-        if (z2 && z2.running) {
-          const strat = z2.strategy || $('strategySelect').value || '';
-          showToast(msg, type,
-            strat ? { label: 'Перезапустить сейчас', onClick: () => MainPage.applyStrategy(strat, false) } : null);
-        } else {
-          showToast(msg, type);
-        }
+        showToast(msg, type);
         this.validate(key);
       } else {
         el.textContent = 'ошибка';

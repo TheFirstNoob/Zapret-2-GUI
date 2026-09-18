@@ -288,13 +288,17 @@ def build_args_from_preset(
     # inside one profile UNION (hostlist.c AppendHostList).  Appending user
     # lists at the end only touched the LAST (QUIC) block — TCP blocks never
     # saw user domains.  Inject right after the first hostlist token instead.
+    # Ссылаемся на user-файлы ВСЕГДА (даже пустые): winws2 перечитывает
+    # hostlist/ipset на лету по mtime (проверено 2026-09-14), поэтому первая
+    # же правка применится к новым подключениям без перезапуска обхода.
+    # Пустой файл не влияет на выбор профиля (0 доменов = нет фильтра).
     exclude_file = lists_dir / "list-exclude-user.txt"
     user_excl = ""
-    if exclude_file.exists() and exclude_file.stat().st_size > 0:
+    if exclude_file.exists():
         user_excl = f"--hostlist-exclude={short_path(exclude_file)}"
     include_file = lists_dir / "list-include-user.txt"
     user_inc = ""
-    if include_file.exists() and include_file.stat().st_size > 0:
+    if include_file.exists():
         user_inc = f"--hostlist={short_path(include_file)}"
     if user_excl or user_inc:
         # winws2 ANDs --ipset с --hostlist внутри профиля (§24.2): инжект

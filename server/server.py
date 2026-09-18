@@ -1605,7 +1605,9 @@ class ZapretHandler(BaseHTTPRequestHandler):
         path = get_root_dir() / "lists" / filename
         content = ""
         if path.exists():
-            content = path.read_text(encoding="utf-8")
+            # utf-8-sig: не тащим BOM (Notepad) в текстовое поле — иначе он
+            # станет частью первой строки и сломает матчинг домена/подсети.
+            content = path.read_text(encoding="utf-8-sig")
         self._send_json({"status": "ok", "content": content})
 
     def _handle_fake_blobs(self) -> None:
@@ -2004,10 +2006,10 @@ class ZapretHandler(BaseHTTPRequestHandler):
             self._send_json({"status": "error", "message": str(e)})
             return
         self._send_json({"status": "ok",
-                         "message": ("Добавлено в Включения — перезапусти обход, "
-                                     "чтобы применилось")
-                         if enable else "Убрано из Включений — перезапусти обход, "
-                                        "чтобы применилось"})
+                         "message": ("Добавлено в Включения — применится к новым "
+                                     "подключениям (перезапуск не нужен)")
+                         if enable else "Убрано из Включений — применится к новым "
+                                        "подключениям (перезапуск не нужен)"})
 
     def _handle_contested_check(self, data: dict) -> None:
         import subprocess as _sp
