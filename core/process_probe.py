@@ -199,7 +199,9 @@ def _finish_pktmon(handle: dict) -> dict:
     utils.run_quiet(["pktmon", "stop"])
     utils.run_quiet(["pktmon", "etl2txt", str(etl), "-o", str(txt)])
     utils.run_quiet(["pktmon", "filter", "remove"])
-    result: dict[str, int] = {}
+    # ips: удалённая цель -> {sent, recv}; направление — по НАШЕМУ порту
+    # сокета (source = исходящий, destination = входящий ответ)
+    ips: dict[str, dict[str, int]] = {}
     sent = 0
     recv = 0
     try:
@@ -213,14 +215,11 @@ def _finish_pktmon(handle: dict) -> dict:
                 a, ap, b, bp = m.group(1), int(m.group(2)), m.group(3), int(m.group(4))
                 if ports and ap not in ports and bp not in ports:
                     continue
-                for ip, port in ((a, ap), (b, bp)):
-                    if not _PRIVATE_RE.match(ip):
-                        key = f"{ip}:{port}"
-                        result[key] = result.get(key, 0) + 1
-                # у исходящих НАШ порт в источнике, у входящих — в приёмнике
-                if ap in ports:
+                if ap in ports and not _PRIVATE_RE.match(b):
+                    ips.setdefault(f"{b}:{bp}", {"sent": 0, "recv": 0})["sent"] += 1
                     sent += 1
-                elif bp in ports:
+                elif bp in ports and not _PRIVATE_RE.match(a):
+                    ips.setdefault(f"{a}:{ap}", {"sent": 0, "recv": 0})["recv"] += 1
                     recv += 1
     finally:
         for f in (etl, txt):
@@ -228,10 +227,38 @@ def _finish_pktmon(handle: dict) -> dict:
                 f.unlink(missing_ok=True)
             except OSError:
                 pass
-    return {"ips": result, "sent": sent, "recv": recv}
+    return {"ips": ips, "sent": sent, "recv": recv}
 
 
-def _verdict(tcp: dict, udp: dict, udp_capture: dict, ipv6: bool, no_conn: bool,
+def _merge_history(hist: dict, tcp: dict, udp: dict, now: float) -> None:
+    """Копит наблюдения по целям за всё окно. Снимок каждые 2с перезаписывался,
+    и краткие таймауты/ретраи терялись; история даёт «где именно не бьётся»:
+    состояния и их частоту, первое/последнее появление цели."""
+    for proto, snap in (("tcp", tcp), ("udp", udp)):
+        for key, v in snap.items():
+            h = hist.setdefault(key, {"proto": proto, "states": {},
+                                      "first": now, "last": now, "snapshots": 0})
+            state = v["state"] if proto == "tcp" else "UDP"
+            h["states"][state] = h["states"].get(state, 0) + 1
+            h["state"] = state
+            h["last"] = now
+            h["snapshots"] += 1
+
+
+def _capture_into_history(hist: dict, cap: dict, now: float) -> None:
+    """Добавляет в историю счётчики pktmon по целям (исходящие→входящие)."""
+    for key, v in (cap or {}).items():
+        h = hist.setdefault(key, {"proto": "udp", "states": {}, "first": now,
+                                  "last": now, "snapshots": 0, "state": "UDP"})
+        h["sent"] = h.get("sent", 0) + int(v.get("sent", 0))
+        h["recv"] = h.get("recv", 0) + int(v.get("recv", 0))
+        h["last"] = now
+        if not h["snapshots"]:
+            h["snapshots"] = 1
+            h["states"]["UDP"] = 1
+
+
+def _verdict(hist: dict, ipv6: bool, no_conn: bool,
              dns: Optional[dict] = None) -> str:
     if no_conn:
         return ("Нет соединений — включите анализ и воспроизведите проблему "
@@ -240,29 +267,36 @@ def _verdict(tcp: dict, udp: dict, udp_capture: dict, ipv6: bool, no_conn: bool,
     parts = []
     if ipv6:
         parts.append("обнаружен IPv6 — обход работает только по IPv4")
+
     def _name(ip: str) -> str:
         doms = dns.get(ip)
         return f"{ip} ({', '.join(doms[:2])})" if doms else ip
-    syn = [k for k, v in tcp.items() if v["state"] == "SynSent"]
-    est = [k for k, v in tcp.items() if v["state"] == "Established"]
-    if syn:
-        hint = ("SynSent к " + ", ".join(_name(k.rsplit(":", 1)[0]) for k in syn[:3])
+
+    syn_fail, established, udp_dead = [], [], []
+    for key, h in hist.items():
+        states = h.get("states", {})
+        if h.get("proto") == "tcp":
+            if "SynSent" in states and "Established" not in states:
+                syn_fail.append(key)
+            elif "Established" in states:
+                established.append(key)
+        elif h.get("sent", 0) > 0 and h.get("recv", 0) == 0:
+            udp_dead.append(key)
+    if syn_fail:
+        hint = ("SynSent без ответа: "
+                + ", ".join(_name(k.rsplit(":", 1)[0]) for k in syn_fail[:4])
                 + " — SYN не получает ответа (возможен IP-блок провайдера). "
-                "Десинк SYN-дроп не лечит — попробуйте WARP.")
-        if est:
-            hint += " Часть соединений работает (Established)."
+                "Десинк SYN-дроп не лечит — нужен WARP.")
+        if established:
+            hint += f" Остальные соединения работают ({len(established)})."
         parts.append(hint)
-    elif est:
-        parts.append("Соединения устанавливаются — сеть работает, проблема, "
+    elif established:
+        parts.append("TCP-соединения устанавливаются — сеть работает, проблема, "
                      "вероятно, на стороне приложения/сервиса.")
-    if udp_capture:
-        sent = udp_capture.get("sent", 0)
-        recv = udp_capture.get("recv", 0)
-        if sent and not recv:
-            parts.append(f"UDP: отправлено {sent} пакетов, входящих 0 — UDP-трафик "
-                         "к серверу глушится (ТСПУ). Десинк бессилен — WARP.")
-        elif sent and recv:
-            parts.append(f"UDP-диалог: отправлено {sent}, получено {recv}.")
+    if udp_dead:
+        parts.append("UDP без ответа: " + ", ".join(udp_dead[:4])
+                     + " — исходящие идут, входящих нет (глушится ТСПУ/сервером). "
+                       "Нужен WARP.")
     return " ".join(parts) if parts else "Соединения не обнаружены."
 
 
@@ -294,8 +328,8 @@ class ProcessProbe:
             self._stop_flag.clear()
             self._state = {"process": process, "elapsed": 0,
                            "duration": duration, "tcp": {}, "udp": {},
-                           "udp_capture": None, "dns": {}, "verdict": "",
-                           "error": "", "phase": "старт"}
+                           "history": {}, "udp_capture": None, "dns": {},
+                           "verdict": "", "error": "", "phase": "старт"}
             self._thread.start()
         return True, "Анализ запущен"
 
@@ -344,22 +378,21 @@ class ProcessProbe:
                     ipv6 = True
                 elapsed = int(time.time() - start)
                 with self._lock:
+                    _merge_history(self._state["history"], tcp, udp, time.time())
                     self._state.update({"tcp": tcp, "udp": udp, "elapsed": elapsed,
                                         "ipv6": ipv6, "phase": "наблюдение"})
                 time.sleep(2)
             udp_capture = _finish_pktmon(handle) if handle else {}
-            cap_ips = (udp_capture or {}).get("ips", {})
-            remote_ips = {k.rsplit(":", 1)[0] for k in
-                          list(self._state.get("tcp", {})) +
-                          list(self._state.get("udp", {})) + list(cap_ips)}
+            with self._lock:
+                _capture_into_history(self._state["history"],
+                                      (udp_capture or {}).get("ips", {}), time.time())
+                remote_ips = {k.rsplit(":", 1)[0] for k in self._state["history"]}
+                no_conn = not self._state["history"]
             dns = _dns_map(remote_ips) if remote_ips else {}
-            no_conn = not self._state.get("tcp") and not self._state.get("udp") \
-                and not cap_ips
-            verdict = _verdict(self._state.get("tcp", {}),
-                               self._state.get("udp", {}), udp_capture,
+            verdict = _verdict(self._state["history"],
                                self._state.get("ipv6", False), no_conn, dns)
             with self._lock:
-                self._state.update({"udp_capture": cap_ips, "dns": dns,
+                self._state.update({"udp_capture": udp_capture, "dns": dns,
                                     "verdict": verdict, "phase": "завершено",
                                     "elapsed": int(time.time() - start)})
         except Exception as e:  # noqa: BLE001
@@ -390,26 +423,36 @@ class ProcessProbe:
         if s.get("error"):
             lines.append(f"Ошибка: {s['error']}")
         lines.append("")
-        lines.append("--- TCP ---")
-        tcp = s.get("tcp", {})
-        if not tcp:
+        lines.append("--- Цели (история за окно наблюдения) ---")
+        hist = s.get("history", {})
+        if not hist:
             lines.append("(нет)")
-        for k, v in sorted(tcp.items(), key=lambda kv: -kv[1]["n"]):
-            mark = "  <-- SYN без ответа (возможен IP-блок)" if v["state"] == "SynSent" else ""
-            lines.append(f"{k:<24} {v['state']:<12} x{v['n']}{mark}")
-        lines.append("")
-        lines.append("--- UDP (system) ---")
-        udp = s.get("udp", {})
-        if not udp:
-            lines.append("(нет)")
-        for k, v in sorted(udp.items(), key=lambda kv: -kv[1]):
-            lines.append(f"{k:<24} x{v}")
+        for k, h in sorted(hist.items(),
+                           key=lambda kv: (-kv[1].get("snapshots", 0), kv[0])):
+            states = h.get("states", {})
+            dur = int(max(0.0, h.get("last", 0) - h.get("first", 0)))
+            if h.get("proto") == "udp":
+                metric = (f"пакеты {h.get('sent', 0)}→{h.get('recv', 0)}"
+                          if (h.get("sent") or h.get("recv"))
+                          else f"снимков {h.get('snapshots', 0)}")
+            else:
+                metric = f"снимков {h.get('snapshots', 0)}, ~{dur} с"
+            if h.get("proto") == "tcp" and "SynSent" in states \
+                    and "Established" not in states:
+                flag = "  <-- SYN без ответа (возможен IP-блок)"
+            elif h.get("proto") == "udp" and h.get("sent", 0) > 0 \
+                    and h.get("recv", 0) == 0:
+                flag = "  <-- входящих нет (глушится)"
+            elif "Established" in states:
+                flag = "  <-- работало"
+            else:
+                flag = ""
+            lines.append(f"{k:<24} {h.get('state', '?'):<12} {metric}{flag}")
         cap = s.get("udp_capture") or {}
         if cap:
             lines.append("")
-            lines.append("--- UDP (из захвата pktmon) ---")
-            for k, v in sorted(cap.items(), key=lambda kv: -kv[1]):
-                lines.append(f"{k:<24} пакетов {v}")
+            lines.append(f"UDP-захват: отправлено {cap.get('sent', 0)}, "
+                         f"получено {cap.get('recv', 0)}")
         dns = s.get("dns", {})
         if dns:
             lines.append("")

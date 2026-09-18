@@ -3179,62 +3179,50 @@ const TesterPage = {
   },
 
   renderProbe(st) {
+    // История за окно наблюдения (сервер копит её снимками каждые 2с):
+    // показываем итог по каждой цели, включая те, что так и не подключились
     const box = $('probeTbody');
     if (!box) return;
-    const tcp = st.tcp || {};
-    const udp = st.udp || {};
-    const cap = st.udp_capture || {};
+    const hist = st.history || {};
     const dns = st.dns || {};
     const dnsName = (ip) => (dns[ip] ? ` <span class="endpoint-dns">→ ${escapeHtml(dns[ip][0])}</span>` : '');
-    const stateCls = (s) => {
-      if (s === 'Established') return 'established';
-      if (s === 'SynSent') return 'syn-sent';
-      if (s === 'TimeWait' || s === 'CloseWait' || s === 'Listen' || s === 'Closed') return 'neutral';
-      return 'neutral';
-    };
-    const stateLabel = (s) => {
-      if (s === 'Established') return 'Установлено';
-      if (s === 'SynSent') return 'SYN_SENT';
-      return s || '—';
-    };
+    const rowsData = Object.entries(hist).map(([k, h]) => {
+      const idx = k.lastIndexOf(':');
+      const ip = k.slice(0, idx), port = k.slice(idx + 1);
+      const states = h.states || {};
+      let status, cls, metric, sev;
+      if (h.proto === 'tcp') {
+        if ('SynSent' in states && !('Established' in states)) { status = 'Нет ответа (SYN)'; cls = 'syn-sent'; sev = 0; }
+        else if ('Established' in states) { status = 'Установлено'; cls = 'established'; sev = 2; }
+        else if ('CloseWait' in states) { status = 'Сервер закрыл'; cls = 'neutral'; sev = 1; }
+        else { status = h.state || '—'; cls = 'neutral'; sev = 1; }
+        metric = `снимков ${h.snapshots || 0}`;
+      } else {
+        const s = h.sent || 0, r = h.recv || 0;
+        if (s > 0 && r === 0) { status = 'Нет ответа (UDP)'; cls = 'syn-sent'; sev = 0; }
+        else if (r > 0) { status = 'Диалог'; cls = 'established'; sev = 2; }
+        else { status = 'UDP'; cls = 'neutral'; sev = 1; }
+        metric = (s || r) ? `${s}→${r}` : `снимков ${h.snapshots || 0}`;
+      }
+      return { k, ip, port, status, cls, metric, sev, proto: h.proto };
+    }).sort((a, b) => a.sev - b.sev || a.k.localeCompare(b.k));
     let rows = '';
-    let pktTotal = 0, connTotal = 0;
-    const tcpRows = Object.entries(tcp).sort((a, b) => b[1].n - a[1].n);
-    for (const [k, v] of tcpRows) {
-      const [ip, port] = k.split(':');
-      pktTotal += v.n; connTotal++;
+    for (const r of rowsData) {
       rows += `<tr>
-        <td><span class="proto-badge">TCP</span></td>
-        <td><span class="endpoint-ip">${escapeHtml(ip)}</span><span class="endpoint-dns">:${escapeHtml(port)}</span>${dnsName(ip)}</td>
-        <td><span class="state-badge ${stateCls(v.state)}"><span class="sdot"></span>${escapeHtml(stateLabel(v.state))}</span></td>
-        <td style="text-align:center"><span class="packets-count">×${v.n}</span></td>
-      </tr>`;
-    }
-    const udpRows = Object.entries(udp).sort((a, b) => b[1] - a[1]);
-    for (const [k, v] of udpRows) {
-      const [ip, port] = k.split(':');
-      pktTotal += v; connTotal++;
-      rows += `<tr>
-        <td><span class="proto-badge udp">UDP</span></td>
-        <td><span class="endpoint-ip">${escapeHtml(ip)}</span><span class="endpoint-dns">:${escapeHtml(port)}</span>${dnsName(ip)}</td>
-        <td><span class="state-badge established"><span class="sdot"></span>Активен</span></td>
-        <td style="text-align:center"><span class="packets-count">×${v}</span></td>
-      </tr>`;
-    }
-    const capRows = Object.entries(cap).sort((a, b) => b[1] - a[1]);
-    for (const [k, v] of capRows) {
-      const [ip, port] = k.split(':');
-      pktTotal += v; connTotal++;
-      rows += `<tr>
-        <td><span class="proto-badge udp">UDP</span></td>
-        <td><span class="endpoint-ip">${escapeHtml(ip)}</span><span class="endpoint-dns">:${escapeHtml(port)}</span>${dnsName(ip)}</td>
-        <td><span class="state-badge neutral"><span class="sdot"></span>Захват</span></td>
-        <td style="text-align:center"><span class="packets-count">×${v}</span></td>
+        <td><span class="proto-badge ${r.proto === 'udp' ? 'udp' : ''}">${r.proto === 'udp' ? 'UDP' : 'TCP'}</span></td>
+        <td><span class="endpoint-ip">${escapeHtml(r.ip)}</span><span class="endpoint-dns">:${escapeHtml(r.port)}</span>${dnsName(r.ip)}</td>
+        <td><span class="state-badge ${r.cls}"><span class="sdot"></span>${escapeHtml(r.status)}</span></td>
+        <td style="text-align:center"><span class="packets-count">${escapeHtml(r.metric)}</span></td>
       </tr>`;
     }
     box.innerHTML = rows || '<tr><td colspan="4"><div class="empty-note">Наблюдение…</div></td></tr>';
     const sub = $('probeLiveSub');
-    if (sub) sub.textContent = `Пакетов: ${pktTotal} · Соединений: ${connTotal}`;
+    if (sub) {
+      const cap = st.udp_capture || {};
+      let txt = `Целей: ${rowsData.length}`;
+      if (cap.sent || cap.recv) txt += ` · UDP-пакетов: ${cap.sent || 0}→${cap.recv || 0}`;
+      sub.textContent = txt;
+    }
     const vd = $('probeVerdict');
     if (vd) {
       if (st.verdict) {
