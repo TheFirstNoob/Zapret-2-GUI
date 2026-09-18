@@ -1533,6 +1533,8 @@ class ZapretHandler(BaseHTTPRequestHandler):
                 self._handle_get_list("ipset-exclude.txt")
             elif path == "/api/ipset-include-list":
                 self._handle_get_list("ipset-include-user.txt")
+            elif path == "/api/lists/health":
+                self._handle_lists_health()
             elif path == "/api/contested/status":
                 self._handle_contested_status()
             elif path == "/api/service/status":
@@ -1751,6 +1753,10 @@ class ZapretHandler(BaseHTTPRequestHandler):
                 self._handle_contested_toggle(data)
             elif path == "/api/contested/check":
                 self._handle_contested_check(data)
+            elif path == "/api/lists/dedupe":
+                self._handle_lists_dedupe()
+            elif path == "/api/lists/add-domain":
+                self._handle_lists_add_domain(data)
             elif path == "/api/service/install":
                 self._handle_service_install(data)
             elif path == "/api/service/remove":
@@ -2057,6 +2063,46 @@ class ZapretHandler(BaseHTTPRequestHandler):
                          "with_protection": with_protection,
                          "engine_running": engine_running,
                          "enabled": enabled})
+
+    # ── Здоровье списков: дубли, пересечения, покрытие (list_health) ──
+
+    def _handle_lists_health(self) -> None:
+        try:
+            from core import list_health
+            report = list_health.check_health(get_root_dir())
+        except Exception as e:  # noqa: BLE001
+            self._send_json({"status": "error", "message": str(e)})
+            return
+        self._send_json({"status": "ok", **report})
+
+    def _handle_lists_dedupe(self) -> None:
+        busy = _checkers_busy()
+        if busy:
+            self._send_json({"status": "error", "message": busy})
+            return
+        try:
+            from core import list_health
+            result = list_health.dedupe(get_root_dir())
+        except Exception as e:  # noqa: BLE001
+            self._send_json({"status": "error", "message": str(e)})
+            return
+        self._send_json({"status": "ok", **result})
+
+    def _handle_lists_add_domain(self, data: dict) -> None:
+        busy = _checkers_busy()
+        if busy:
+            self._send_json({"status": "error", "message": busy})
+            return
+        mode = "exclude" if data.get("mode") == "exclude" else "include"
+        try:
+            from core import list_health
+            result = list_health.add_domain(
+                get_root_dir(), str(data.get("domain") or ""), mode)
+        except Exception as e:  # noqa: BLE001
+            self._send_json({"status": "error", "message": str(e)})
+            return
+        ok = result.get("result") in ("added", "moved", "already")
+        self._send_json({"status": "ok" if ok else "error", **result})
 
     def _prepare_service_args(self, data: dict) -> tuple[Optional[list[str]], str]:
         """Сборка и валидация аргументов winws2 для службы (direct-exe):

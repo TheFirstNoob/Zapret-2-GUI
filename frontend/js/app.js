@@ -245,6 +245,23 @@ const App = {
     $('noticeOk').addEventListener('click', dismiss);
   },
 
+  // Фоновая проверка списков при старте: только уведомление (чистит юзер —
+  // кнопкой в «Списках»), чтобы дубли из блокнота не путали со временем.
+  async checkListsHealth() {
+    try {
+      const r = await apiGet('/lists/health');
+      if (r.status !== 'ok') return;
+      const bits = [];
+      if (r.total_dups) bits.push(`дубли: ${r.total_dups}`);
+      if (r.total_cross) bits.push(`повторы между вашими списками: ${r.total_cross}`);
+      if (r.total_redundant) bits.push(`повторы: ${r.total_redundant}`);
+      if (r.total_conflicts) bits.push(`конфликты: ${r.total_conflicts}`);
+      if (bits.length) {
+        showToast('Списки: ' + bits.join(', ') + ' — вкладка «Списки» → «Проверить»', 'warn');
+      }
+    } catch (e) { /* фоновая проверка не должна мешать запуску */ }
+  },
+
   // Идёт проверка (стратегии/CDN/ASN/blob/диагностика): обходом управляет
   // тестер — блокируем ручной запуск/остановку, службу и другие кнопки
   // проверок, показываем бейдж на вкладке-источнике.
@@ -278,6 +295,7 @@ const App = {
     this.checkUpdate();
     this.initTour();
     this.initNotice();
+    this.checkListsHealth();
     try {
       const data = await apiGet('/profiles');
       PROFILES = (data.profiles || []).map(p => p.name);
@@ -1285,7 +1303,12 @@ const ListsPage = {
       if (exp) exp.addEventListener('click', () => this.exportSettings());
       const imp = $('settingsImportFile');
       if (imp) imp.addEventListener('change', () => this.importSettings(imp));
+      const hc = $('btnListsCheck');
+      if (hc) hc.addEventListener('click', () => this.checkHealth(true));
+      const hd = $('btnListsDedupe');
+      if (hd) hd.addEventListener('click', () => this.dedupeLists());
     }
+    this.checkHealth(false);
     this.loadContested();
   },
 
@@ -1463,6 +1486,69 @@ const ListsPage = {
     }
     btn.textContent = label;
     btn.disabled = false;
+  },
+
+  // ── Здоровье списков: дубли/повторы/конфликты (серверный list_health) ──
+
+  async checkHealth(warnIfClear) {
+    const txt = $('listsHealthText');
+    const btn = $('btnListsDedupe');
+    if (!txt) return;
+    txt.textContent = 'Проверяю…';
+    try {
+      const r = await apiGet('/lists/health');
+      if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
+      const bits = [];
+      if (r.total_dups) bits.push(`дубли: ${r.total_dups}`);
+      if (r.total_cross) bits.push(`повторы между вашими списками: ${r.total_cross}`);
+      if (r.total_redundant) bits.push(`повторы уже включённых: ${r.total_redundant}`);
+      if (r.total_conflicts) bits.push(`конфликты вкл/искл: ${r.total_conflicts}`);
+      if (bits.length) {
+        const example = (r.conflicts[0] && r.conflicts[0].entry)
+          || (r.redundant[0] && r.redundant[0].entry) || '';
+        txt.innerHTML = `<span class="st-err">Найдено: ${escapeHtml(bits.join(' · '))}</span>`
+          + (example ? ` <span class="meta">(например: ${escapeHtml(example)})</span>` : '');
+        if (btn) btn.hidden = false;
+        if (warnIfClear) showToast('Списки: ' + bits.join(' · '), 'warn');
+      } else {
+        txt.textContent = 'Проблем не найдено — списки чистые.';
+        if (btn) btn.hidden = true;
+        if (warnIfClear) showToast('Списки в порядке', 'ok');
+      }
+    } catch (e) {
+      txt.textContent = 'Не удалось проверить: ' + (e.message || e);
+    }
+  },
+
+  async dedupeLists() {
+    if (!window.confirm('Убрать дубли во всех редактируемых списках? Несохранённые правки в полях будут потеряны.')) return;
+    const btn = $('btnListsDedupe');
+    btn.disabled = true;
+    try {
+      const r = await apiPost('/lists/dedupe', {});
+      if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
+      showToast(r.total ? `Убрано лишних записей: ${r.total}` : 'Дублей не найдено', 'ok');
+      Object.keys(this.editors).forEach(key => this.load(key));
+      this.checkHealth(false);
+    } catch (e) {
+      showToast('Не удалось почистить: ' + (e.message || e), 'error');
+    }
+    btn.disabled = false;
+  },
+
+  // Кнопка «В обход» из подсказок анализа приложения (дедуп на сервере)
+  async addDomainSuggestion(btn) {
+    const domain = btn.dataset.addDomain;
+    btn.disabled = true;
+    try {
+      const r = await apiPost('/lists/add-domain', { domain, mode: 'include' });
+      btn.textContent = r.message || 'Готово';
+      showToast(`${domain}: ${r.message || ''}`.trim(), r.status === 'ok' ? 'ok' : 'warn');
+      if (r.status === 'ok') this.checkHealth(false);
+    } catch (e) {
+      btn.textContent = 'Ошибка';
+      showToast('Не удалось добавить: ' + (e.message || e), 'error');
+    }
   },
 
   async load(key) {
@@ -3230,6 +3316,37 @@ const TesterPage = {
         vd.innerHTML = escapeHtml(st.verdict);
       } else {
         vd.hidden = true;
+      }
+    }
+    // Подсказки «в обход»: домены проблемных целей (SYN/UDP без ответа)
+    const domBox = $('probeDomains');
+    if (domBox) {
+      if (!st.verdict || st.phase !== 'завершено') {
+        domBox.hidden = true;
+      } else {
+        const problems = [];
+        for (const [k, h] of Object.entries(hist)) {
+          const states = h.states || {};
+          const bad = (h.proto === 'tcp' && 'SynSent' in states && !('Established' in states))
+            || (h.proto === 'udp' && (h.sent || 0) > 0 && (h.recv || 0) === 0);
+          if (!bad) continue;
+          const ip = k.slice(0, k.lastIndexOf(':'));
+          for (const d of (dns[ip] || [])) problems.push(d);
+        }
+        const uniq = [...new Set(problems)];
+        domBox.hidden = false;
+        if (!uniq.length) {
+          domBox.innerHTML = '<div class="meta">Проблемные цели — серверы по IP '
+            + '(имён в DNS-кэше нет). Попробуйте «Общий IP-обход» или добавьте IP в ipset-включения.</div>';
+        } else {
+          domBox.innerHTML = '<div class="probe-domains-title">Домены проблемных целей — можно добавить в обход:</div>'
+            + uniq.map(d => `<div class="probe-domain-row">
+                <span class="endpoint-ip">${escapeHtml(d)}</span>
+                <button class="btn btn-sm" data-add-domain="${escapeHtml(d)}">В обход</button>
+              </div>`).join('');
+          domBox.querySelectorAll('[data-add-domain]').forEach(b =>
+            b.addEventListener('click', () => ListsPage.addDomainSuggestion(b)));
+        }
       }
     }
   },

@@ -573,6 +573,7 @@
                 </table>
               </div>
               <div class="probe-verdict" id="probeVerdict" hidden></div>
+              <div class="probe-domains" id="probeDomains" hidden></div>
             </div>
 
             <div id="probeResults" hidden></div>
@@ -610,6 +611,20 @@
               </div>
               <div class="help-note"><b>Включения</b> — Zapret обходит принудительно; <b>исключения</b> — пропускает как есть. Исключение сильнее включения: если домен есть и там и там, обход на него действовать не будет. Ошибочные строки подсвечиваются и блокируют сохранение.</div>
             </div>
+          </div>
+
+          <div class="panel" id="listsHealthPanel">
+            <div class="card-head">
+              <div class="head-text">
+                <div class="head-title">Здоровье списков</div>
+                <div class="head-desc">Дубли, повторы уже включённых записей и конфликты «включение ↔ исключение» — включая правки через блокнот.</div>
+              </div>
+              <div class="head-right" style="display:flex;gap:8px;">
+                <button class="btn btn-sm" id="btnListsCheck">Проверить</button>
+                <button class="btn btn-sm btn-warn" id="btnListsDedupe" hidden>Убрать дубли</button>
+              </div>
+            </div>
+            <div class="meta" id="listsHealthText">проверка при открытии…</div>
           </div>
 
           <div class="lists-grid">

@@ -1597,6 +1597,11 @@ label.opt-line:has(input:disabled):hover { background: var(--field); }
 .notice-list b { color: var(--text); font-weight: 600; }
 .notice-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; }
 
+/* ── Подсказки доменов в «Анализе приложения» ── */
+.probe-domains { margin-top: 10px; }
+.probe-domains-title { font-size: 12px; color: var(--dim); margin-bottom: 6px; }
+.probe-domain-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 5px 0; border-top: 1px solid var(--line); }
+
 /* ── Строка отдачи на главной: что происходит и что делать ── */
 .z2-feedback { margin-top: 10px; }
 .z2-feedback .meta { flex: 1; min-width: 0; color: var(--dim); }
