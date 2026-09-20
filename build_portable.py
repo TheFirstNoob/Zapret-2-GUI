@@ -1,11 +1,11 @@
 """Сборка portable-дистрибутива: GUI вообще без упаковщика — официальный
 embeddable Python (pythonw.exe за подписью PSF, чистая репутация у Defender),
-а наш код лежит рядом обычными .py: ни бутлоадера PyInstaller, ни распаковки
+а код проекта лежит рядом обычными .py: ни бутлоадера PyInstaller, ни распаковки
 во временную папку — облачным эвристикам Defender не за что зацепиться.
 
 Структура:
   portable/
-  ├── app/            <- наше приложение (main.pyw, core/, server/, frontend/, данные)
+  ├── app/            <- приложение (main.pyw, core/, server/, frontend/, данные)
   ├── python/         <- python-3.13.x-embed-amd64 + pywebview
   ├── install.cmd     <- разовый запуск: ярлыки на рабочем столе и в меню Пуск
   └── README.txt
