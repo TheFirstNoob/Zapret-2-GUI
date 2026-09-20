@@ -493,11 +493,15 @@ raw/objects/release-assets/private-user-images/gist/avatars* — стабиль�
   `tools/security/gen_update_key.py` (ключ вне репо, см. .gitignore) +
   `tools/security/sign_release.py` → release.json + release.json.sig
   (прикрепить к релизу + закоммитить теми же байтами для jsDelivr).
-  Worker: манифест+подпись → verify → validate_release (тег, анти-даунгрейд,
-  артефакт, формат sha256) → скачивание с обязательной сверкой sha256
-  (fail-closed, без подтверждённого хеша сеть не трогается). Хеш из того же
-  источника, что и файл, защитой не считается. Тесты:
-  `tools/security/test_updates_security.py` (векторы RFC + worker-интеграция).
+  Worker: манифест+подпись → verify → validate_release (schema, тег,
+  анти-даунгрейд, артефакт, формат sha256; для exe — exe_sha256) → скачивание
+  с обязательной сверкой sha256 (fail-closed, без подтверждённого хеша сеть
+  не трогается) → распаковка в updates/_extract, сверка файлов по
+  update_manifest.json ДО записи в установку (zip-slip guard; неизвестные
+  манифесту файлы пропускаются — исторически bat/readme в него не попадали).
+  Хеш из того же источника, что и файл, защитой не считается. Тесты:
+  `tools/security/test_updates_security.py` (векторы RFC + worker-интеграция +
+  кросс-проверка с cryptography, dev-only).
   Закалка аккаунта: 2FA + Immutable Releases.
 - **Холодный прогон Discord (2026-09-21, ВИСИТ, на потом)**: zapret1 alt11
   пробивает инстантно, zapret2 (текущий пресет, repeats=8) иногда падает —

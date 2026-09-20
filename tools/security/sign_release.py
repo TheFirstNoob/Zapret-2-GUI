@@ -15,13 +15,15 @@ import hashlib
 import json
 import re
 import sys
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from core import update_verify as uv  # noqa: E402
-from core.updater import MANIFEST_NAME, MANIFEST_SIG_NAME  # noqa: E402
+from core.updater import (MANIFEST_NAME, MANIFEST_SCHEMA,  # noqa: E402
+                          MANIFEST_SIG_NAME)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ARTIFACTS = {
@@ -68,13 +70,24 @@ def main() -> int:
         if not p.is_file():
             print(f"Пропуск: нет архива {p}")
             continue
-        artifacts[kind] = {"file": fname, "size": p.stat().st_size,
-                           "sha256": _sha256(p)}
+        art = {"file": fname, "size": p.stat().st_size, "sha256": _sha256(p)}
+        if kind == "exe":
+            # Хеш самого exe внутри архива: апдейтер сверит его после
+            # распаковки, до подмены файла.
+            with zipfile.ZipFile(p) as zf:
+                member = next((n for n in zf.namelist()
+                               if n.endswith("Zapret2GUI.exe")), None)
+                if not member:
+                    print(f"Ошибка: в {fname} нет Zapret2GUI.exe")
+                    return 1
+                art["exe_sha256"] = hashlib.sha256(zf.read(member)).hexdigest()
+        artifacts[kind] = art
     if not artifacts:
         print("Не найдено ни одного архива для подписи")
         return 1
 
     manifest = {
+        "schema": MANIFEST_SCHEMA,
         "version": args.version,
         "tag": args.tag,
         "generated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),

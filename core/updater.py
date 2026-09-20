@@ -84,6 +84,7 @@ def download_url(kind: str, tag: str) -> tuple[str, str]:
 
 MANIFEST_NAME = "release.json"
 MANIFEST_SIG_NAME = "release.json.sig"
+MANIFEST_SCHEMA = 1
 
 
 def fetch_release_manifest(tag: str, dest_dir: Path) -> tuple[bytes, str]:
@@ -114,6 +115,8 @@ def validate_release(manifest: dict, tag: str, current_version: str,
     from core.updates import version_key
     if not isinstance(manifest, dict):
         return "манифест обновления повреждён"
+    if manifest.get("schema") != MANIFEST_SCHEMA:
+        return "неподдерживаемый формат манифеста обновления"
     if str(manifest.get("tag") or "") != tag:
         return "манифест обновления не совпадает с релизом"
     version = str(manifest.get("version") or "")
@@ -126,6 +129,11 @@ def validate_release(manifest: dict, tag: str, current_version: str,
     sha = str(art.get("sha256") or "").lower()
     if len(sha) != 64 or any(c not in "0123456789abcdef" for c in sha):
         return "в манифесте некорректная контрольная сумма"
+    if kind == "exe":
+        inner = str(art.get("exe_sha256") or "").lower()
+        if len(inner) != 64 or any(c not in "0123456789abcdef"
+                                   for c in inner):
+            return "в манифесте нет контрольной суммы exe"
     return None
 
 
@@ -253,9 +261,11 @@ def apply_portable(zip_path: Path, root_dir: Path,
                    progress_cb=None) -> dict:
     """Обновить portable/lite-папку из скачанного zip, СОХРАНЯЯ юзер-файлы.
 
-    Распаковываются только SYSTEM-файлы; юзер-файлы (конфиг, *-user.txt,
-    юзерские пресеты, логи) не трогаются ни в каком виде.
-    Возвращает {updated: N, skipped_user: N, backup: path|None}."""
+    Сначала архив распаковывается во временную папку, и файлы, известные
+    манифесту, сверяются по sha256 ДО записи в установку: повреждённый/
+    подложенный файл ничего не успевает заменить. Юзер-файлы (конфиг,
+    *-user.txt, юзерские пресеты, логи) не трогаются.
+    Возвращает {updated, skipped_user, backup}."""
     def cb(x):
         if progress_cb:
             try:
@@ -272,41 +282,84 @@ def apply_portable(zip_path: Path, root_dir: Path,
         names = zf.namelist()
         # portable-архив кладёт код в app/, lite — в корне архива
         prefix = "app/" if any(n.startswith("app/") for n in names) else ""
-        for info in zf.infolist():
-            if info.is_dir():
-                continue
-            rel = info.filename
-            if prefix and rel.startswith(prefix):
-                rel = rel[len(prefix):]
-            if is_user_file(rel):
-                skipped_user += 1
-                continue
-            target = root_dir / rel
-            try:
-                target.parent.mkdir(parents=True, exist_ok=True)
-                with zf.open(info) as src, open(target, "wb") as out:
+        try:
+            manifest_raw = zf.read(prefix + "update_manifest.json")
+        except KeyError:
+            manifest_raw = b""
+        if not manifest_raw:
+            raise RuntimeError("в обновлении нет манифеста файлов")
+        try:
+            manifest_files = json.loads(manifest_raw.decode("utf-8")).get(
+                "files") or {}
+        except Exception:
+            raise RuntimeError("манифест файлов обновления повреждён")
+
+        tmp_dir = root_dir / "updates" / "_extract"
+        if tmp_dir.exists():
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+        extracted: list[str] = []
+        try:
+            for info in zf.infolist():
+                if info.is_dir():
+                    continue
+                rel = info.filename
+                if prefix and rel.startswith(prefix):
+                    rel = rel[len(prefix):]
+                if not rel or rel == "update_manifest.json":
+                    continue
+                parts = Path(rel).parts
+                if (rel.startswith(("/", "\\")) or ".." in parts
+                        or ":" in parts[0]):
+                    raise RuntimeError(f"небезопасный путь в архиве: {rel}")
+                if is_user_file(rel):
+                    skipped_user += 1
+                    continue
+                target_tmp = tmp_dir / rel
+                target_tmp.parent.mkdir(parents=True, exist_ok=True)
+                with zf.open(info) as src, open(target_tmp, "wb") as out:
                     shutil.copyfileobj(src, out)
+                # Сверяем только известные манифесту файлы: сам zip уже
+                # подтверждён подписью, а неизвестные (bat/readme и т.п.)
+                # исторически в манифест не попадали.
+                expected = str(manifest_files.get(rel) or "").lower()
+                if expected and _sha256(target_tmp) != expected:
+                    raise RuntimeError(f"файл обновления повреждён: {rel}")
+                extracted.append(rel)
+
+            for rel in extracted:
+                target = root_dir / rel
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(tmp_dir / rel, target)
                 updated += 1
                 cb(f"обновлено: {rel}")
-            except OSError:
-                continue
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
     return {"updated": updated, "skipped_user": skipped_user,
             "backup": str(backup) if backup else None}
 
 
 def prepare_exe_update(zip_path: Path, root_dir: Path,
-                       exe_name: str = "Zapret2GUI.exe") -> Path:
+                       exe_name: str = "Zapret2GUI.exe",
+                       exe_sha256: Optional[str] = None) -> Path:
     """exe-версия обновляет СЕБЯ через батник: zip уже скачан — извлечь exe
-    рядом, создать updater-bat, который после закрытия текущего процесса
-    заменит exe и запустит новый. Возвращает путь к батнику (его запускает
-    вызывающий через Popen detached — иначе батник умрёт вместе с нами)."""
+    рядом, сверить его sha256 (из подписанного манифеста), создать
+    updater-bat, который после закрытия текущего процесса заменит exe и
+    запустит новый. Возвращает путь к батнику (его запускает вызывающий
+    через Popen detached — иначе батник умрёт вместе с нами).
+    Fail-closed: без совпадения хеша .new и батник не создаются."""
     import sys as _sys
 
+    if not exe_sha256:
+        raise RuntimeError("контрольная сумма exe не подтверждена")
     with zipfile.ZipFile(zip_path) as zf:
         exe_member = next(n for n in zf.namelist() if n.endswith(exe_name))
-        new_exe = root_dir / f"{exe_name}.new"
-        with zf.open(exe_member) as src, open(new_exe, "wb") as out:
-            shutil.copyfileobj(src, out)
+        data = zf.read(exe_member)
+
+    new_exe = root_dir / f"{exe_name}.new"
+    new_exe.write_bytes(data)
+    if _sha256(new_exe) != exe_sha256.lower():
+        new_exe.unlink(missing_ok=True)
+        raise RuntimeError("исполняемый файл обновления повреждён")
 
     cur_exe = Path(_sys.executable)
     script = (

@@ -221,7 +221,9 @@ def _run_update_worker(kind: str, tag: str, info: dict) -> None:
 
         if kind == "exe":
             prog(70, "Подготовка замены EXE…")
-            bat = prepare_exe_update(zip_path, root_dir)
+            bat = prepare_exe_update(
+                zip_path, root_dir,
+                exe_sha256=manifest["artifacts"]["exe"].get("exe_sha256"))
             result["update_bat"] = str(bat)
             result["restart_required"] = True
         else:

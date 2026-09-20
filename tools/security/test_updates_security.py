@@ -90,10 +90,12 @@ class TestVerifyGuards(unittest.TestCase):
 
 def _manifest(**overrides):
     base = {
+        "schema": 1,
         "version": "0.9",
         "tag": "Pre-Release-0.9",
         "artifacts": {
-            "exe": {"file": "Zapret2GUI.zip", "sha256": "a" * 64},
+            "exe": {"file": "Zapret2GUI.zip", "sha256": "a" * 64,
+                    "exe_sha256": "d" * 64},
             "portable": {"file": "Zapret2GUI-portable.zip",
                          "sha256": "b" * 64},
             "lite": {"file": "Zapret2GUI-lite.zip", "sha256": "c" * 64},
@@ -149,6 +151,137 @@ class TestReleaseManifest(unittest.TestCase):
                 up.fetch_update("exe", "Pre-Release-0.9", Path(td),
                                 sha256_expected=None)
 
+    def test_wrong_schema_rejected(self):
+        err = up.validate_release(_manifest(schema=99), "Pre-Release-0.9",
+                                  "0.8", "exe")
+        self.assertIn("формат", err or "")
+
+    def test_missing_schema_rejected(self):
+        m = _manifest()
+        del m["schema"]
+        self.assertIsNotNone(up.validate_release(m, "Pre-Release-0.9",
+                                                 "0.8", "exe"))
+
+    def test_exe_without_inner_hash_rejected(self):
+        m = _manifest(artifacts={
+            "exe": {"file": "Zapret2GUI.zip", "sha256": "a" * 64}})
+        err = up.validate_release(m, "Pre-Release-0.9", "0.8", "exe")
+        self.assertIn("exe", (err or "").lower())
+
+
+def _sha256(data: bytes) -> str:
+    import hashlib
+    return hashlib.sha256(data).hexdigest()
+
+
+def _portable_zip(path: Path, file_data=b"print(1)", tamper=False,
+                  traversal=False, manifest=True):
+    """Собрать мини-portable архив: app/core/x.py + update_manifest.json."""
+    names = {"core/x.py": file_data}
+    if manifest:
+        names["update_manifest.json"] = json.dumps(
+            {"version": "9.9", "files": {"core/x.py": _sha256(b"print(1)")}}
+        ).encode()
+    with zipfile.ZipFile(path, "w") as zf:
+        for rel, data in names.items():
+            zf.writestr("app/" + rel, data)
+        if tamper:
+            zf.writestr("app/core/x.py", b"evil()")
+        if traversal:
+            zf.writestr("app/../evil.txt", b"evil")
+    return path
+
+
+class TestPortableApply(unittest.TestCase):
+    """Распаковка: проверка файлов по манифесту ДО записи в установку."""
+
+    def setUp(self):
+        self.td = tempfile.TemporaryDirectory()
+        self.root = Path(self.td.name)
+        (self.root / "core").mkdir()
+
+    def tearDown(self):
+        self.td.cleanup()
+
+    def test_verified_files_applied(self):
+        zp = _portable_zip(self.root / "upd.zip")
+        up.apply_portable(zp, self.root, progress_cb=None)
+        self.assertTrue((self.root / "core" / "x.py").is_file())
+
+    def test_corrupt_file_rejected_without_changes(self):
+        zp = _portable_zip(self.root / "upd.zip", tamper=True)
+        with self.assertRaises(RuntimeError):
+            up.apply_portable(zp, self.root)
+        self.assertFalse((self.root / "core" / "x.py").exists())
+
+    def test_path_traversal_rejected(self):
+        zp = _portable_zip(self.root / "upd.zip", traversal=True)
+        with self.assertRaises(RuntimeError):
+            up.apply_portable(zp, self.root)
+        self.assertFalse((self.root.parent / "evil.txt").exists())
+        self.assertFalse((self.root / "evil.txt").exists())
+
+    def test_missing_manifest_rejected(self):
+        zp = _portable_zip(self.root / "upd.zip", manifest=False)
+        with self.assertRaises(RuntimeError):
+            up.apply_portable(zp, self.root)
+        self.assertFalse((self.root / "core" / "x.py").exists())
+
+
+class TestExePrepare(unittest.TestCase):
+    """EXE-обновление: внутренний exe сверяется по подписанному манифесту."""
+
+    def setUp(self):
+        self.td = tempfile.TemporaryDirectory()
+        self.root = Path(self.td.name)
+
+    def tearDown(self):
+        self.td.cleanup()
+
+    def _exe_zip(self):
+        zp = self.root / "upd.zip"
+        with zipfile.ZipFile(zp, "w") as zf:
+            zf.writestr("Zapret2GUI.exe", b"MZ-fake-exe")
+        return zp
+
+    def test_exe_hash_ok(self):
+        zp = self._exe_zip()
+        up.prepare_exe_update(zp, self.root,
+                              exe_sha256=_sha256(b"MZ-fake-exe"))
+        self.assertTrue((self.root / "Zapret2GUI.exe.new").is_file())
+        self.assertTrue((self.root / "_update_self.bat").is_file())
+
+    def test_exe_hash_mismatch_rejected(self):
+        zp = self._exe_zip()
+        with self.assertRaises(RuntimeError):
+            up.prepare_exe_update(zp, self.root, exe_sha256="0" * 64)
+        self.assertFalse((self.root / "_update_self.bat").exists())
+
+    def test_exe_hash_missing_fails_closed(self):
+        zp = self._exe_zip()
+        with self.assertRaises(RuntimeError):
+            up.prepare_exe_update(zp, self.root, exe_sha256=None)
+
+
+class TestCrossImplementation(unittest.TestCase):
+    """Сверка нашей Ed25519 с проверенной библиотекой (dev-окружение)."""
+
+    def test_matches_cryptography(self):
+        try:
+            from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+                Ed25519PrivateKey, Ed25519PublicKey)
+        except Exception:
+            self.skipTest("cryptography не установлена")
+        sk_hex, pk_hex = uv.keygen()
+        msg = b"cross-check-message"
+        ours = bytes.fromhex(uv.sign(msg, sk_hex))
+        priv = Ed25519PrivateKey.from_private_bytes(bytes.fromhex(sk_hex))
+        self.assertEqual(priv.public_key().public_bytes_raw().hex(), pk_hex)
+        # их подпись — нашей проверкой, нашу подпись — их проверкой
+        self.assertTrue(uv.verify(msg, priv.sign(msg).hex(), pk_hex))
+        Ed25519PublicKey.from_public_bytes(
+            bytes.fromhex(pk_hex)).verify(ours, msg)
+
 
 class TestVersionSources(unittest.TestCase):
     """Сверка независимых источников версии (raw/API)."""
@@ -177,9 +310,14 @@ class TestVersionSources(unittest.TestCase):
 
 
 def _make_dist_zip(path: Path) -> None:
+    # Мини-дистрибутив с корректным манифестом файлов (для worker-тестов).
+    import hashlib
+    data = b"ok"
+    manifest = json.dumps({"version": "9.9", "files": {
+        "core/marker.txt": hashlib.sha256(data).hexdigest()}}).encode()
     with zipfile.ZipFile(path, "w") as zf:
-        zf.writestr("core/marker.txt", "ok")
-        zf.writestr("update_manifest.json", "{}")
+        zf.writestr("core/marker.txt", data)
+        zf.writestr("update_manifest.json", manifest)
 
 
 class TestUpdateWorkerSignature(unittest.TestCase):
