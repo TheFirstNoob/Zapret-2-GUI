@@ -484,5 +484,23 @@ raw/objects/release-assets/private-user-images/gist/avatars* — стабиль�
   И `WinDivert14` — оттуда мёртвые хвосты у мигрантов. Наш install при
   конфликте предлагает подтверждение «Остановить и удалить Zapret 1»
   (zapret1_cleanup — тот же набор действий), затем продолжает установку.
-  Кнопка «Починить» на главной вызывает driver-heal (repair/enable/
+  Кнопка «Починить» на главной вызывает driver-heal (repair/enable/удаление
+  по обстоятельствам).
+- **Безопасность обновлений (0.9, 2026-09-21)**: апдейтер ставит только
+  обновления с валидной подписью. `core/update_verify.py` — Ed25519 (RFC 8032,
+  чистый Python, без зависимостей), вшитый PUBKEY (пусто = fail-closed, ничего
+  не применяется). Релиз подписывается офлайн-ключом:
+  `tools/security/gen_update_key.py` (ключ вне репо, см. .gitignore) +
+  `tools/security/sign_release.py` → release.json + release.json.sig
+  (прикрепить к релизу + закоммитить теми же байтами для jsDelivr).
+  Worker: манифест+подпись → verify → validate_release (тег, анти-даунгрейд,
+  артефакт, формат sha256) → скачивание с обязательной сверкой sha256
+  (fail-closed, без подтверждённого хеша сеть не трогается). Хеш из того же
+  источника, что и файл, защитой не считается. Тесты:
+  `tools/security/test_updates_security.py` (векторы RFC + worker-интеграция).
+  Закалка аккаунта: 2FA + Immutable Releases.
+- **Холодный прогон Discord (2026-09-21, ВИСИТ, на потом)**: zapret1 alt11
+  пробивает инстантно, zapret2 (текущий пресет, repeats=8) иногда падает —
+  уже второй раз. Похоже на флак/специфику сегментов; разобрать позже
+  (A/B discord-сегментов, mtproto/QUIC-слои).
   safe-delete) и рапортует о Zapret 1 (`POST /api/service/repair`).
