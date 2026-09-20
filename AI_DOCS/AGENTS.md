@@ -267,7 +267,14 @@ nodrop = оригинал уходит как есть + фейк отдельн
 - General TCP (github-fix): fake без nodrop + repeats=8.
 - Тот же фикс в остальных пресетах (google-блоки); fake-disorder не тронут
   (механизм tls_fake_disorder иной).
-- Discord-блоки: с nodrop и без — оба 200 (A/B 2026-09-12), nodrop оставлен.
+- **Discord-блоки: nodrop УБРАН (2026-09-21)**. Debug-лог winws2 доказал
+  механику: с nodrop оригинальный ClientHello уходит в сеть целиком
+  (`packet: id=N reinject unmodified`), без nodrop — `packet: id=N drop`
+  (данные доставляют только сплит-части). Плюс оптимизация: repeats только на
+  fake-залпе, сплит-части ×1 (**24→10 пакетов на hello**, сверено логом);
+  чисто-сплитовые пресеты (multisplit-pure/seqovl) повторы сохраняют — там
+  это единственный объём. Учёт пакетов и судьбу hello смотреть в debug-логе
+  (`--debug=@<длинный путь>.log`, короткий 8.3-путь не писать!).
 
 ### §7. tcp_ts / PAWS — ключевая механика fake (2026-08-23)
 `fake` шлёт блоб на том же seq, что оригинальный ClientHello; `tcp_ts=-1000`
@@ -504,8 +511,10 @@ raw/objects/release-assets/private-user-images/gist/avatars* — стабиль�
   кросс-проверка с cryptography, dev-only). Чеклист выпуска:
   AI_DOCS/RELEASE_CHECKLIST.md (версии в манифестах сборок — из core.config).
   Закалка аккаунта: 2FA + Immutable Releases.
-- **Холодный прогон Discord (2026-09-21, ВИСИТ, на потом)**: zapret1 alt11
-  пробивает инстантно, zapret2 (текущий пресет, repeats=8) иногда падает —
-  уже второй раз. Похоже на флак/специфику сегментов; разобрать позже
-  (A/B discord-сегментов, mtproto/QUIC-слои).
+- **Холодный прогон Discord (2026-09-21)**: диагноз найден — nodrop-утечка
+  полного ClientHello (доказано debug-логом, см. §6). База переведена в drop
+  + повторы только на fake-залпе. Ждём плохое окно для финальной проверки;
+  alt-режим (nodrop) планируется галочкой (тестер/экспертные инструменты).
+  Побочные кандидаты: QUIC-покрытие Discord в list-general отсутствует
+  (у ALT11 есть 24 домена), voice repeats=6 как у ALT11.
   safe-delete) и рапортует о Zapret 1 (`POST /api/service/repair`).
