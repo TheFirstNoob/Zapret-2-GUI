@@ -119,8 +119,9 @@ def main() -> None:
 
     # 3b. манифест обновления (system-файлы + sha256)
     sys.path.insert(0, str(ROOT))
+    from core.config import VERSION
     from core.updater import write_manifest
-    write_manifest(APP, "0.8")
+    write_manifest(APP, VERSION)
 
     # 4. чистим рантайм (кэши, тесты, pip-скрипты)
     for junk in (PY / "Scripts", PY / "Lib" / "site-packages" / "pip" / "_vendor" / "cache"):

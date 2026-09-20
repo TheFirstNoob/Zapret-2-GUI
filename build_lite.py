@@ -210,8 +210,9 @@ def main() -> None:
 
     # манифест обновления
     sys.path.insert(0, str(ROOT))
+    from core.config import VERSION
     from core.updater import write_manifest
-    write_manifest(LITE, "0.8")
+    write_manifest(LITE, VERSION)
 
     # по одному start-<preset>.bat на стратегию (портативные %~dp0-пути)
     for pf in sorted((LITE / "presets").glob("*.txt")):

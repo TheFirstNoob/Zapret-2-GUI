@@ -501,7 +501,8 @@ raw/objects/release-assets/private-user-images/gist/avatars* — стабиль�
   манифесту файлы пропускаются — исторически bat/readme в него не попадали).
   Хеш из того же источника, что и файл, защитой не считается. Тесты:
   `tools/security/test_updates_security.py` (векторы RFC + worker-интеграция +
-  кросс-проверка с cryptography, dev-only).
+  кросс-проверка с cryptography, dev-only). Чеклист выпуска:
+  AI_DOCS/RELEASE_CHECKLIST.md (версии в манифестах сборок — из core.config).
   Закалка аккаунта: 2FA + Immutable Releases.
 - **Холодный прогон Discord (2026-09-21, ВИСИТ, на потом)**: zapret1 alt11
   пробивает инстантно, zapret2 (текущий пресет, repeats=8) иногда падает —
