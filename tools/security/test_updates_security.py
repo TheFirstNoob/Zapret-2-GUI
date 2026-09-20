@@ -62,12 +62,18 @@ class TestVerifyGuards(unittest.TestCase):
         self.assertFalse(uv.verify(b"", "not-a-signature", V1_PK))
         self.assertFalse(uv.verify(b"", V1_SIG, "not-a-key"))
 
-    def test_unset_production_key_fails_closed(self):
-        # Пока ключ не вшит, проверок нет: verify обязан вернуть False,
-        # а не «пропустить» (fail-closed).
-        self.assertEqual(uv.PUBKEY, "")
+    def test_empty_key_fails_closed(self):
+        # Пустой ключ (канал не настроен) не должен ничего «пропускать».
         self.assertFalse(uv.verify(b"", V1_SIG, None))
         self.assertFalse(uv.verify(b"", V1_SIG, ""))
+
+    def test_embedded_key_is_not_a_test_vector(self):
+        # Трипваер: вшитый боевой ключ не должен оказаться ключом из RFC или
+        # тестов — они публичны, подпись ими сможет сделать кто угодно.
+        self.assertNotIn(uv.PUBKEY, (V1_PK, V2_PK))
+        if uv.PUBKEY:
+            self.assertEqual(len(uv._decode_hex_or_b64(uv.PUBKEY, 32)), 32)
+            self.assertTrue(uv.pubkey_fingerprint())
 
     def test_base64_signature_roundtrip(self):
         import base64
