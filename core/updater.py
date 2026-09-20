@@ -8,6 +8,10 @@
 
 Источники скачивания: GitHub release asset -> jsDelivr-зеркало (CDN отдаёт
 repo-файлы даже на сетях, где объекты GitHub IP-блокированы).
+
+Подлинность: подписанный release.json (Ed25519, core.update_verify). Без
+валидной подписи и подтверждённого sha256 обновление не применяется
+(fail-closed) — зеркало считается недоверенным кэшем.
 """
 from __future__ import annotations
 
@@ -78,27 +82,50 @@ def download_url(kind: str, tag: str) -> tuple[str, str]:
     return gh, mirror
 
 
-def fetch_sha256(kind: str, tag: str, dest_dir: Path) -> Optional[str]:
-    """SHA256 из release-ассетов (<archive>.sha256): primary -> jsDelivr.
-    None = файл не найден (проверка целостности пропускается)."""
-    fname = {
-        "exe": "Zapret2GUI.zip.sha256",
-        "portable": "Zapret2GUI-portable.zip.sha256",
-        "lite": "Zapret2GUI-lite.zip.sha256",
-    }[kind]
-    gh = f"https://github.com/{_REPO}/releases/download/{tag}/{fname}"
-    mirror = (f"https://cdn.jsdelivr.net/gh/{_REPO}@{tag}/"
-              f"Windows%20build/{fname}")
-    dest = dest_dir / fname
-    for url in (gh, mirror):
+MANIFEST_NAME = "release.json"
+MANIFEST_SIG_NAME = "release.json.sig"
+
+
+def fetch_release_manifest(tag: str, dest_dir: Path) -> tuple[bytes, str]:
+    """Скачать манифест релиза и подпись: GitHub asset → jsDelivr-зеркало.
+
+    Возвращает (байты манифеста, текст подписи). Подпись проверяет
+    вызывающий (core.update_verify) — здесь только доставка."""
+    last_err: Optional[Exception] = None
+    for base in (f"https://github.com/{_REPO}/releases/download/{tag}/",
+                 f"https://cdn.jsdelivr.net/gh/{_REPO}@{tag}/"):
         try:
-            _download(url, dest, timeout=60)
-            got = dest.read_text(encoding="ascii", errors="replace").strip()
-            dest.unlink(missing_ok=True)
-            return got or None
-        except Exception:
-            continue
-    dest.unlink(missing_ok=True)
+            m_dest = dest_dir / MANIFEST_NAME
+            s_dest = dest_dir / MANIFEST_SIG_NAME
+            _download(base + MANIFEST_NAME, m_dest, timeout=30)
+            _download(base + MANIFEST_SIG_NAME, s_dest, timeout=30)
+            return (m_dest.read_bytes(),
+                    s_dest.read_text(encoding="utf-8").strip())
+        except Exception as e:  # noqa: BLE001 — пробуем следующий источник
+            last_err = e
+    raise RuntimeError(f"манифест обновления недоступен: {last_err}")
+
+
+def validate_release(manifest: dict, tag: str, current_version: str,
+                     kind: str) -> Optional[str]:
+    """Проверить манифест: тег, версия новее текущей (анти-даунгрейд),
+    наличие артефакта для способа обновления и формат его SHA256.
+    None = манифест корректен."""
+    from core.updates import version_key
+    if not isinstance(manifest, dict):
+        return "манифест обновления повреждён"
+    if str(manifest.get("tag") or "") != tag:
+        return "манифест обновления не совпадает с релизом"
+    version = str(manifest.get("version") or "")
+    if version_key(version) <= version_key(current_version):
+        return "в манифесте нет версии новее текущей"
+    artifacts = manifest.get("artifacts")
+    art = artifacts.get(kind) if isinstance(artifacts, dict) else None
+    if not isinstance(art, dict):
+        return "в манифесте нет артефакта для этого способа обновления"
+    sha = str(art.get("sha256") or "").lower()
+    if len(sha) != 64 or any(c not in "0123456789abcdef" for c in sha):
+        return "в манифесте некорректная контрольная сумма"
     return None
 
 
@@ -115,8 +142,12 @@ def _download(url: str, dest: Path, timeout: int = 300) -> None:
 
 def fetch_update(kind: str, tag: str, dest_dir: Path,
                  sha256_expected: Optional[str] = None) -> Path:
-    """Скачать zip обновления: GitHub asset -> jsDelivr-зеркало.
-    Проверяет SHA256 (expected — из release-ассетов)."""
+    """Скачать zip обновления: GitHub asset → jsDelivr-зеркало.
+
+    Fail-closed: без подтверждённой SHA256 (из подписанного манифеста)
+    ничего не качаем и не применяем."""
+    if not sha256_expected:
+        raise RuntimeError("контрольная сумма обновления не подтверждена")
     dest = dest_dir / f"update_{kind}.zip"
     primary, mirror = download_url(kind, tag)
     for url in (primary, mirror):
@@ -128,7 +159,7 @@ def fetch_update(kind: str, tag: str, dest_dir: Path,
     else:
         raise RuntimeError("не удалось скачать обновление (GitHub и зеркало)")
     got = _sha256(dest)
-    if sha256_expected and got != sha256_expected:
+    if got != sha256_expected:
         dest.unlink(missing_ok=True)
         raise RuntimeError(f"SHA256 скачанного файла не совпал ({got[:16]}…)")
     return dest

@@ -171,8 +171,10 @@ _updater_state = {
 def _run_update_worker(kind: str, tag: str, info: dict) -> None:
     """Worker обновления: скачать → бэкап → применить (portable) или
     подготовить self-update (exe) → проверить службу (аргументы устарели?)."""
-    from core.updater import (apply_portable, fetch_update, fetch_sha256,
-                              prepare_exe_update, service_args_stale)
+    from core.updater import (apply_portable, fetch_release_manifest,
+                              fetch_update, prepare_exe_update,
+                              service_args_stale, validate_release)
+    from core.update_verify import verify as verify_signature
     from core.config import ConfigManager
     from core.launcher import build_args_from_preset
     from core.service_manager import (_read_stored_binpath, is_installed as
@@ -183,25 +185,38 @@ def _run_update_worker(kind: str, tag: str, info: dict) -> None:
         _updater_state["phase"] = msg
         _ui_debug(f"update: {pct}% {msg}")
 
+    # Сброс состояния: повторный прогон не должен видеть error/result прошлого
+    _updater_state.update({"running": True, "phase": "проверка подписи",
+                           "percent": 0, "error": None, "result": None})
     try:
         root_dir = get_root_dir()
         update_dir = root_dir / "updates"
         update_dir = update_dir if update_dir.is_dir() else _mk(update_dir)
 
-        prog(10, "Скачивание обновления…")
-        expected = info.get("sha256")
-        if not expected:
-            # sha256 не передан фронтом — берём из release-ассетов
-            try:
-                expected = fetch_sha256(kind, tag, update_dir)
-            except Exception:
-                expected = None
+        prog(10, "Проверка подписи обновления…")
+        # Fail-closed: без валидной подписи офлайн-ключа обновление не ставим
+        manifest_bytes, sig_text = fetch_release_manifest(tag, update_dir)
+        if not verify_signature(manifest_bytes, sig_text):
+            raise RuntimeError(
+                "обновление не прошло проверку подлинности — скачайте версию "
+                "вручную с GitHub и сверьте SHA256 из описания релиза")
+        try:
+            manifest = json.loads(manifest_bytes.decode("utf-8"))
+        except Exception:
+            raise RuntimeError("манифест обновления повреждён")
+        manifest_err = validate_release(manifest, tag, VERSION, kind)
+        if manifest_err:
+            raise RuntimeError(manifest_err)
+        expected = str(manifest["artifacts"][kind]["sha256"]).lower()
+
+        prog(25, "Скачивание обновления…")
         zip_path = fetch_update(kind, tag, update_dir,
                                 sha256_expected=expected)
 
         prog(55, "Резервная копия настроек…")
         result: dict = {"applied": 0, "backup": None,
                         "service_mismatch": False,
+                        "signature_verified": True,
                         "restart_required": True}
 
         if kind == "exe":

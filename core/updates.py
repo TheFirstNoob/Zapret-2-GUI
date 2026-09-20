@@ -29,7 +29,7 @@ _CHECK_TIMEOUT = 5.0
 _UA = {"User-Agent": "Zapret2GUI"}
 
 
-def _version_key(version: str) -> tuple:
+def version_key(version: str) -> tuple:
     """Сравнимый ключ из строки версии.
 
     'Pre-Release 0.10' -> (0, 10); неизвестный формат -> (0,), чтобы он
@@ -74,6 +74,22 @@ def _fetch_latest_api() -> Optional[str]:
     return text or None
 
 
+def merge_version_sources(raw: Optional[str],
+                          api: Optional[str]) -> tuple[Optional[str], Optional[str]]:
+    """Сверить независимые источники версии (raw/API).
+
+    Оба доступны и расходятся → (None, причина): возможна подмена, апдейт
+    не предлагаем. Возвращает (версия|None, ошибка|None)."""
+    raw = (raw or "").strip() or None
+    api = (api or "").strip() or None
+    if raw and api and raw != api:
+        return None, "источники версии расходятся"
+    latest = raw or api
+    if not latest:
+        return None, "не удалось получить версию"
+    return latest, None
+
+
 def check_for_updates() -> dict:
     """Информация об обновлении: {current, latest, available, error, url}."""
     info = {
@@ -86,17 +102,23 @@ def check_for_updates() -> dict:
         "mirror_url": MIRROR_URL,
     }
     try:
-        latest = None
+        raw = None
+        api = None
         try:
-            latest = _fetch_latest_raw()
+            raw = _fetch_latest_raw()
         except Exception:
-            latest = _fetch_latest_api()  # raw заблокирован — fallback на API
-        if not latest:
-            info["error"] = "empty VERSION file"
+            raw = None
+        try:
+            api = _fetch_latest_api()
+        except Exception:
+            api = None
+        latest, err = merge_version_sources(raw, api)
+        if latest is None:
+            info["error"] = err
             return info
         info["latest"] = latest
         info["tag"] = tag_from_version(latest)
-        info["available"] = _version_key(latest) > _version_key(VERSION)
+        info["available"] = version_key(latest) > version_key(VERSION)
     except Exception as e:  # noqa: BLE001 — any failure must be silent
         info["error"] = str(e)[:120]
     return info

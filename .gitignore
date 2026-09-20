@@ -28,6 +28,10 @@ data_version.txt
 tcp1620_test_body.bin
 zapret-auto.txt
 debug_winws2.log
+
+# Приватные ключи подписи релизов (в репозитории им не место)
+*update_signing_key*
+*_signing_key.txt
 test_session.log
 hosts.bak
 zapret2_report_*/

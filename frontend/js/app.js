@@ -413,12 +413,12 @@ if (start) start.addEventListener('click', () => TesterPage.startProbe());
           const res = st.result || {};
           $('updateBanner').hidden = true;
           if (res.service_mismatch) {
-            showToast('Обновление применено. Служба стоит на старой конфигурации — переустановите её кнопкой', 'warn');
+            showToast('Обновление проверено по подписи и применено. Служба стоит на старой конфигурации — переустановите её кнопкой', 'warn');
             btn.disabled = false;
             btn.textContent = 'Переустановить службу';
             this._updateStage = 'service';
           } else {
-            showToast('Обновление применено — перезапустите программу', 'ok');
+            showToast('Обновление проверено по подписи и применено — перезапустите программу', 'ok');
             setTimeout(() => { location.reload(); }, 1500);
           }
         } catch (e) {
