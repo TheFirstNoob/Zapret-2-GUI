@@ -37,6 +37,14 @@ VARIANTS = {
     "discord_nodropoff": [
         ("replace", "repeats=8:nodrop", "repeats=8"),
     ],
+    # без nodrop + repeats=6 (как у google-блока)
+    "nodrop_rep6": [
+        ("replace", "repeats=8:nodrop", "repeats=6"),
+    ],
+    # без nodrop и вовсе без repeats (чистая проверка гипотезы)
+    "nodrop_rep0": [
+        ("replace", ":repeats=8:nodrop", ""),
+    ],
 }
 
 
@@ -66,6 +74,7 @@ def launch(args) -> subprocess.Popen:
     for _ in range(50):
         r = subprocess.run(["tasklist", "/FI", "IMAGENAME eq winws2.exe"],
                            capture_output=True, text=True,
+                           encoding="oem", errors="replace",
                            creationflags=0x08000000)
         if "winws2.exe" in (r.stdout or ""):
             return
@@ -84,6 +93,7 @@ def launch_winws2(args) -> None:
     for _ in range(50):
         r = subprocess.run(["tasklist", "/FI", "IMAGENAME eq winws2.exe"],
                            capture_output=True, text=True,
+                           encoding="oem", errors="replace",
                            creationflags=0x08000000)
         if "winws2.exe" in (r.stdout or ""):
             return
