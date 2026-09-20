@@ -111,6 +111,7 @@ def build_args_from_preset(
     autohostlist: bool = False,
     ipset_catchall: bool = False,
     fake_blob: str = "",
+    discord_alt: bool = False,
 ) -> list[str]:
     """Читает .txt пресет и возвращает токены командной строки.
 
@@ -122,6 +123,9 @@ def build_args_from_preset(
     обнулило бы catch-all; list-exclude и юзер-исключения действуют.
     debug дописывает --debug=@debug_winws2.log.  Токены НЕ квотируются —
     это делает write_run_bat через subprocess.list2cmdline.
+
+    discord_alt: альтернативный режим Discord (вернуть :nodrop в Discord-профили)
+    — для сетей, где базовый drop-режим не пробивает «холодный старт».
     """
     if lists_dir is None:
         lists_dir = root_dir / "lists"
@@ -376,6 +380,25 @@ def build_args_from_preset(
                     dup.append(t)
             out_segs.append(dup)
         tokens = [x for i, s in enumerate(out_segs) for x in ([] if i == 0 else ["--new"]) + s]
+    if discord_alt:
+        # ALT-режим Discord: вернуть :nodrop в lua-desync Discord-профилей
+        # (профиль определяется по hostlist list-discord; voice-профиль не
+        # затрагивается). Для сетей, где drop-режим не бьёт холодный старт.
+        segs_alt: list[list[str]] = [[]]
+        for t in tokens:
+            if t == "--new":
+                segs_alt.append([])
+            else:
+                segs_alt[-1].append(t)
+        for seg in segs_alt:
+            if not any(t.startswith("--hostlist=") and "list-discord" in t
+                       for t in seg):
+                continue
+            for i, t in enumerate(seg):
+                if t.startswith("--lua-desync=") and ":nodrop" not in t:
+                    seg[i] = t + ":nodrop"
+        tokens = [x for i, s in enumerate(segs_alt)
+                  for x in ([] if i == 0 else ["--new"]) + s]
     if debug:
         debug_file = root_dir / "debug_winws2.log"
         if not debug_file.exists():

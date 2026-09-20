@@ -49,7 +49,7 @@ class ZapretController:
                 return p
         return None
 
-    def start(self, profile: str, game_filter_mode: str = "off", discord_voice: bool = False, discord_voice_mode: str = "", winws2_debug: bool = False, autohostlist: bool = False, ipset_catchall: bool = False, fake_blob: str = "") -> tuple[bool, str]:
+    def start(self, profile: str, game_filter_mode: str = "off", discord_voice: bool = False, discord_voice_mode: str = "", winws2_debug: bool = False, autohostlist: bool = False, ipset_catchall: bool = False, fake_blob: str = "", discord_alt: bool = False) -> tuple[bool, str]:
         if not isinstance(profile, str):
             return False, "Profile must be a preset name string"
 
@@ -70,6 +70,7 @@ class ZapretController:
             autohostlist=autohostlist,
             ipset_catchall=ipset_catchall,
             fake_blob=fake_blob,
+            discord_alt=discord_alt,
         )
 
         # Валидация ДО остановки текущего запуска: провал проверки не должен

@@ -459,7 +459,7 @@ class Zapret2Tester:
         Zapret2Tester._kill_never_hang(image_name)
 
     def _run_profile(self, profile_name: str, ipset_catchall: bool = False,
-                     fake_blob: str = "") -> bool:
+                     fake_blob: str = "", discord_alt: bool = False) -> bool:
         exe_path = self.bin_dir / "winws2.exe"
         if not exe_path.exists():
             exe_path = self.root_dir / "winws2.exe"
@@ -473,7 +473,8 @@ class Zapret2Tester:
         self._wait_windivert_free()
 
         args = build_args_from_preset(self.root_dir, self.lua_dir, self.blobs_dir, preset,
-                                      ipset_catchall=ipset_catchall, fake_blob=fake_blob)
+                                      ipset_catchall=ipset_catchall, fake_blob=fake_blob,
+                                      discord_alt=discord_alt)
         bat = self.root_dir / "_zapret_run.bat"
         write_run_bat(self.root_dir, bat, exe_path, args)
 
@@ -780,7 +781,7 @@ class Zapret2Tester:
     def _get_tier_hosts(self, tier: str) -> list[str]:
         return list(TEST_HOSTS)
 
-    def _setup_profile(self, profile: str, progress_cb, _logged_progress, ipset_catchall: bool = False) -> tuple[str, str, str, float]:
+    def _setup_profile(self, profile: str, progress_cb, _logged_progress, ipset_catchall: bool = False, discord_alt: bool = False) -> tuple[str, str, str, float]:
         """Запустить winws2 для пресета, измерить RTT, пробить хоп ТСПУ.
         Возвращает (profile_name, provider_hop, provider_ip, timeout);
         при сбое запуска — raise _TestAbort с результатом-ошибкой."""
@@ -795,7 +796,8 @@ class Zapret2Tester:
             self._logger.progress(profile_name, "START")
 
         _logged_progress(5, f"[{profile_name}] запуск winws2...")
-        if not self._run_profile(profile_name, ipset_catchall):
+        if not self._run_profile(profile_name, ipset_catchall,
+                                 discord_alt=discord_alt):
             # диагностика «у друга не запускается»: точные пути в лог сессии
             if self._logger:
                 self._logger.progress(
@@ -876,6 +878,7 @@ class Zapret2Tester:
         tier: str = "critical",
         result_cb: Optional[Callable[[TestResult], None]] = None,
         ipset_catchall: bool = False,
+        discord_alt: bool = False,
     ) -> ProfileTestResult:
         self.shutdown_event.clear()
         self._ensure_winws2_dead()
@@ -890,7 +893,8 @@ class Zapret2Tester:
         # ошибка возвращается, вызывающий продолжает.
         try:
             profile_name, provider_hop, provider_ip, _ = self._setup_profile(
-                profile, progress_cb, _logged_progress, ipset_catchall)
+                profile, progress_cb, _logged_progress, ipset_catchall,
+                discord_alt=discord_alt)
         except _TestAbort as e:
             # Диагностика «не запускается у пользователя»: причина аборт
             # пишется в test_session.log (попадает в ZIP-отчёт)

@@ -222,6 +222,15 @@
 
                 <div class="param-row">
                   <div class="param-main">
+                    <div class="param-title">Альт-режим Discord<span class="param-tag">nodrop</span></div>
+                    <div class="param-desc">Прежний режим обработки Discord — для сетей, где базовый не пробивает «холодный старт».</div>
+                    <div class="param-hint">Включайте, если Discord не открывается, а остальное работает.</div>
+                  </div>
+                  <div class="param-ctl"><label class="switch"><input type="checkbox" id="toggleDiscordAlt"><span class="switch-track"><span class="switch-knob"></span></span></label></div>
+                </div>
+
+                <div class="param-row">
+                  <div class="param-main">
                     <div class="param-title">Блоб фейка<span class="param-tag">TLS fake</span></div>
                     <div class="param-desc">Чем подменять TLS-фейк: у каждого «белого» домена своя живучесть на разных провайдерах.</div>
                     <div class="param-hint">Google пробивают чаще, редкие держатся дольше.</div>
@@ -364,6 +373,13 @@
                       <span class="opt-text">
                         <span class="opt-title">Расширенный режим <span class="opt-tag">Zapret 1 + анализ</span></span>
                         <span class="opt-hint">сравнение с Zapret 1 и без обхода, полный анализ комбинаций</span>
+                      </span>
+                    </label>
+                    <label class="opt-line">
+                      <input type="checkbox" id="altParamsCheck">
+                      <span class="opt-text">
+                        <span class="opt-title">Альт-режим Discord <span class="opt-tag">+время</span></span>
+                        <span class="opt-hint">дополнительно прогнать стратегии с альтернативной обработкой Discord (результаты справочно)</span>
                       </span>
                     </label>
                     <label class="opt-line">

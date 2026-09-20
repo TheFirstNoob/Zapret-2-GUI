@@ -561,7 +561,7 @@ const MainPage = {
     $('updateNowBtn').addEventListener('click', () => this.runUpdate());
 
     ['toggleGameFilter', 'toggleAutoHostlist', 'toggleIpFilter',
-      'toggleDiscordVoice', 'toggleWinws2Debug', 'fakeBlobSelect'].forEach(id => {
+      'toggleDiscordVoice', 'toggleDiscordAlt', 'toggleWinws2Debug', 'fakeBlobSelect'].forEach(id => {
       $(id).addEventListener('change', () => this.saveToggles());
     });
     $('btnBlobProbe').addEventListener('click', () => this.runBlobProbe());
@@ -575,6 +575,7 @@ const MainPage = {
       $('toggleAutoHostlist').checked = !!c.autohostlist;
       $('toggleIpFilter').checked = !!c.ipset_catchall;
       $('toggleDiscordVoice').value = c.discord_voice_mode || (c.discord_voice ? 'fake' : 'off');
+      $('toggleDiscordAlt').checked = !!c.discord_alt;
       this._updateVoiceHint();
       this._pendingFakeBlob = c.fake_blob || '';
       const fbSel = $('fakeBlobSelect');
@@ -863,7 +864,7 @@ const MainPage = {
       profile: $('strategySelect').value,
       game_filter: t.game_filter_mode, discord_voice_mode: t.discord_voice_mode,
       debug: t.winws2_debug, autohostlist: t.autohostlist,
-      ipset_catchall: t.ipset_catchall,
+      ipset_catchall: t.ipset_catchall, discord_alt: t.discord_alt,
     };
     this._svcAction(
       async () => {
@@ -937,6 +938,7 @@ const MainPage = {
       winws2_debug: $('toggleWinws2Debug').checked,
       autohostlist: $('toggleAutoHostlist').checked,
       ipset_catchall: $('toggleIpFilter').checked,
+      discord_alt: $('toggleDiscordAlt').checked,
       fake_blob: $('fakeBlobSelect') ? $('fakeBlobSelect').value : '',
     };
   },
@@ -972,6 +974,7 @@ const MainPage = {
       !!a.winws2_debug === !!b.winws2_debug &&
       !!a.autohostlist === !!b.autohostlist &&
       !!a.ipset_catchall === !!b.ipset_catchall &&
+      !!a.discord_alt === !!b.discord_alt &&
       (a.fake_blob || '') === (b.fake_blob || '');
   },
 
@@ -2561,7 +2564,8 @@ const TesterPage = {
   runBasicPhase2() {
     $('testCurrentPhase').textContent = 'Стратегии тестируются по очереди';
     this._startTesterAction(
-      { action: 'test_profiles', profiles: PROFILES },
+      { action: 'test_profiles', profiles: PROFILES,
+        alt_params: !!($('altParamsCheck') && $('altParamsCheck').checked) },
       {
         progressConfig: { startPercent: 0, scalePercent: 1, textTemplate: '{msg}' },
         onResult: (d) => {
@@ -2602,9 +2606,10 @@ const TesterPage = {
   },
 
   runFullPipelinePhase2() {
-    $('testCurrentPhase').textContent = 'Фаза 3 из 4: тест стратегий Zapret 2';
+    $('testCurrentPhase').textContent = 'Фаза 3 из 4: стратегии Zapret 2';
     this._startTesterAction(
-      { action: 'test_profiles', profiles: PROFILES },
+      { action: 'test_profiles', profiles: PROFILES,
+        alt_params: !!($('altParamsCheck') && $('altParamsCheck').checked) },
       {
         resultType: 'result',
         progressConfig: { startPercent: 15, scalePercent: 0.1 },

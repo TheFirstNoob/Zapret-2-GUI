@@ -20,6 +20,7 @@ class AppConfig:
     winws2_debug: bool = False
     autohostlist: bool = False
     ipset_catchall: bool = False
+    discord_alt: bool = False          # альт-режим Discord (nodrop) для капризных сетей
     tour_done: bool = False
     notice_done: bool = False
 

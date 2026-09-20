@@ -249,7 +249,8 @@ def _run_update_worker(kind: str, tag: str, info: dict) -> None:
                 discord_voice=cfg.discord_voice,
                 discord_voice_mode=cfg.discord_voice_mode,
                 autohostlist=cfg.autohostlist,
-                ipset_catchall=cfg.ipset_catchall)
+                ipset_catchall=cfg.ipset_catchall,
+                discord_alt=cfg.discord_alt)
             stored = _read_stored_binpath()
             result["service_mismatch"] = service_args_stale(stored, new_args)
             _ui_debug(f"update: service_mismatch={result['service_mismatch']}")
@@ -635,6 +636,7 @@ def _restore_protection_after_naked(z2_was: bool, z1_was: bool, state, svc_was: 
                 winws2_debug=cfg.winws2_debug,
                 autohostlist=cfg.autohostlist,
                 ipset_catchall=cfg.ipset_catchall,
+                discord_alt=cfg.discord_alt,
             )
             return (f"Zapret 2 восстановлен (пресет {profile})" if ok
                     else f"Не удалось восстановить Zapret 2: {msg}")
@@ -1190,7 +1192,15 @@ def _run_tester_action(data: dict) -> None:
                 # свежая сборка получает одну проверочную сессию ниже.
                 profiles = [p for p in profiles if p != "custom"]
                 all_results = []
-                total = len(profiles)
+                alt_params = bool(data.get("alt_params", False))
+                # Прогоны: база для всех пресетов; с галочкой — ещё и ALT
+                # (справочно: в рекомендацию идут только базовые прогоны).
+                runs: list[tuple[str, bool]] = []
+                for p in profiles:
+                    runs.append((p, False))
+                    if alt_params:
+                        runs.append((p, True))
+                total = len(runs)
                 _tier = data.get("tier", "critical")
                 # Тестер гоняет стратегии в текущей конфигурации пользователя
                 # (глобальный тоггл «Общий IP-обход»); CDN-механика переехала
@@ -1211,30 +1221,33 @@ def _run_tester_action(data: dict) -> None:
                 if naked_baseline is not None:
                     progress(5, f"Голый тест: {naked_baseline.net_ok_count}/{naked_baseline.net_total} доступно")
 
-                for idx, profile_name in enumerate(profiles):
+                for idx, (profile_name, is_alt) in enumerate(runs):
                     if tester.shutdown_event.is_set():
                         break
-                    base_pct = 6 + int(idx / total * 94)
-                    progress(base_pct, f"Тестируем стратегию {profile_name} ({idx + 1}/{total})...")
+                    label = f"{profile_name} (ALT)" if is_alt else profile_name
+                    progress(int(6 + idx / total * 94),
+                             f"Тестируем стратегию {label} ({idx + 1}/{total})...")
 
                     def _inner_progress(pct: int, msg: str):
                         overall = int(6 + (idx + pct / 100) / total * 94)
                         progress(overall, msg)
 
-                    cb_for_profile = _make_result_cb(state, profile=profile_name)
+                    cb_for_profile = _make_result_cb(state, profile=label)
                     res = _run_tester(
-                        lambda pn=profile_name, cb=cb_for_profile: tester.test_profile(
+                        lambda pn=profile_name, cb=cb_for_profile, alt=is_alt: tester.test_profile(
                             pn, _inner_progress, tier=_tier,
                             result_cb=cb,
-                            ipset_catchall=ipset_mode)
+                            ipset_catchall=ipset_mode,
+                            discord_alt=alt)
                     )
                     if res is not None:
-                        all_results.append(res)
+                        if not is_alt:
+                            all_results.append(res)
                         progress(int(6 + (idx + 1) / total * 94),
-                                 f"Стратегия {profile_name}: {res.success_rate:.0f}%")
+                                 f"Стратегия {label}: {res.success_rate:.0f}%")
                     else:
                         progress(int(6 + (idx + 1) / total * 94),
-                                 f"Стратегия {profile_name}: не запустилась")
+                                 f"Стратегия {label}: не запустилась")
                 if all_results:
                     best = max(all_results, key=lambda r: (r.network_rate, r.net_ok_count))
                     blocked = sorted({r.domain for r in best.results
@@ -1621,6 +1634,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
             "winws2_debug": cfg.winws2_debug,
             "autohostlist": cfg.autohostlist,
             "ipset_catchall": cfg.ipset_catchall,
+            "discord_alt": cfg.discord_alt,
             "tour_done": cfg.tour_done,
             "notice_done": cfg.notice_done,
         }})
@@ -1903,6 +1917,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
             cfg.fake_blob = fb
         if "autohostlist" in data: cfg.autohostlist = bool(data["autohostlist"])
         if "ipset_catchall" in data: cfg.ipset_catchall = bool(data["ipset_catchall"])
+        if "discord_alt" in data: cfg.discord_alt = bool(data["discord_alt"])
         if "tour_done" in data: cfg.tour_done = bool(data["tour_done"])
         if "notice_done" in data: cfg.notice_done = bool(data["notice_done"])
         ok = get_config_manager().save(cfg)
@@ -1991,6 +2006,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
             winws2_debug=cfg.winws2_debug,
             autohostlist=cfg.autohostlist,
             ipset_catchall=cfg.ipset_catchall,
+            discord_alt=cfg.discord_alt,
         )
         self._send_json({"status": "ok" if ok else "error", "message": msg})
 
@@ -2159,7 +2175,8 @@ class ZapretHandler(BaseHTTPRequestHandler):
                                        discord_voice_mode=voice_mode,
                                        fake_blob=str(data.get("fake_blob") or cfg.fake_blob or ""),
                                        autohostlist=autohostlist,
-                                       ipset_catchall=ipset_catchall)
+                                       ipset_catchall=ipset_catchall,
+                                       discord_alt=bool(data.get("discord_alt", cfg.discord_alt)))
         ok, err = validate_args(exe, args, cwd=root)
         if not ok:
             return None, err
@@ -2496,6 +2513,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
             winws2_debug=cfg.winws2_debug,
             autohostlist=cfg.autohostlist,
             ipset_catchall=cfg.ipset_catchall,
+            discord_alt=cfg.discord_alt,
         )
         if ok:
             if action in ("ipset-include", "ipset-exclude") or (action == "general" and ipset_mode):
