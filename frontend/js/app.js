@@ -564,7 +564,10 @@ const MainPage = {
       'toggleDiscordVoice', 'toggleDiscordAlt', 'toggleWinws2Debug', 'fakeBlobSelect'].forEach(id => {
       $(id).addEventListener('change', () => this.saveToggles());
     });
-    $('btnBlobProbe').addEventListener('click', () => this.runBlobProbe());
+    $('btnBlobProbe').addEventListener('click', () => {
+      if (this._blobProbing) this._cancelBlobProbe();
+      else this.runBlobProbe();
+    });
   },
 
   async loadConfig() {
@@ -633,10 +636,15 @@ const MainPage = {
   async runBlobProbe() {
     if (this._blobProbing || App.testActive) return;
     this._blobProbing = true;
+    this._blobProbeCancelled = false;
     App.setTestActive(true);
     const btn = $('btnBlobProbe');
     const hint = $('fakeBlobHint');
-    btn.disabled = true;
+    // На время подбора кнопка сама становится «Остановить» — без лишней.
+    btn.textContent = 'Остановить';
+    btn.classList.add('btn-danger-text');
+    btn.title = 'Остановить подбор';
+    btn.disabled = false;
     hint.textContent = 'Запуск...';
     try {
       const started = await apiPost('/blob-probe', {});
@@ -647,7 +655,7 @@ const MainPage = {
         await new Promise(res => setTimeout(res, 700));
         const st = await apiGet('/tester/status');
         if (st.error) throw new Error(st.error);
-        if (st.progress && hint) {
+        if (st.progress && hint && !this._blobProbeCancelled) {
           hint.textContent = `${st.progress.message || ''} (${st.progress.percent ?? 0}%)`;
         }
         if (!st.running) final = st.final_result;
@@ -661,22 +669,44 @@ const MainPage = {
         hint.innerHTML = results.map(x =>
           `<div>${x.blob === results[0].blob ? '<b>' : ''}${escapeHtml(x.blob)}: ${x.rate}% (${x.ok}/${x.total})${x.blob === results[0].blob ? '</b>' : ''}</div>`).join('');
       }
-      const best = results[0];
-      const sel = $('fakeBlobSelect');
-      showToast(`Лучший блоб: ${best.blob.replace(/_/g, '.')} (${best.rate}%)`, 'ok');
-      if (Array.from(sel.options).some(o => o.value === best.blob) && sel.value !== best.blob) {
-        sel.value = best.blob;
-        BlobSelect.render();
-        this.saveToggles();
+      if (this._blobProbeCancelled) {
+        // частичный прогон: показываем, но лучший не подставляем
+        showToast('Подбор остановлен — показаны частичные результаты', 'warn');
+      } else {
+        const best = results[0];
+        const sel = $('fakeBlobSelect');
+        showToast(`Лучший блоб: ${best.blob.replace(/_/g, '.')} (${best.rate}%)`, 'ok');
+        if (Array.from(sel.options).some(o => o.value === best.blob) && sel.value !== best.blob) {
+          sel.value = best.blob;
+          BlobSelect.render();
+          this.saveToggles();
+        }
       }
     } catch (e) {
-      showToast('Подбор блоба: ' + e.message, 'error');
-      if (hint) hint.textContent = '';
+      if (this._blobProbeCancelled) {
+        showToast('Подбор остановлен', 'warn');
+        if (hint) hint.textContent = '';
+      } else {
+        showToast('Подбор блоба: ' + e.message, 'error');
+        if (hint) hint.textContent = '';
+      }
     }
+    btn.textContent = 'Подобрать блоба';
+    btn.classList.remove('btn-danger-text');
+    btn.title = 'Переберёт блобы и поставит лучший';
     btn.disabled = false;
     this._blobProbing = false;
     App.setTestActive(false);
     Status.refresh();
+  },
+
+  _cancelBlobProbe() {
+    const btn = $('btnBlobProbe');
+    btn.disabled = true;
+    this._blobProbeCancelled = true;
+    apiPost('/tester/action', { action: 'cancel' }).catch(() => {});
+    const hint = $('fakeBlobHint');
+    if (hint) hint.textContent = 'Останавливаем...';
   },
 
   populateProfiles(list) {
