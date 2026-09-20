@@ -45,6 +45,24 @@ VARIANTS = {
     "nodrop_rep0": [
         ("replace", ":repeats=8:nodrop", ""),
     ],
+    # drop: fake ×8, сплит-части ×1 (экономия 16 пакетов на hello)
+    "drop_f8": [
+        ("replace",
+         "fake:blob=google_tls:tcp_ts=-1000:repeats=8:nodrop",
+         "fake:blob=google_tls:tcp_ts=-1000:repeats=8"),
+        ("replace",
+         "multisplit:pos=1:seqovl=681:seqovl_pattern=google_tls:repeats=8:nodrop",
+         "multisplit:pos=1:seqovl=681:seqovl_pattern=google_tls"),
+    ],
+    # drop: fake ×6, сплит-части ×1
+    "drop_f6": [
+        ("replace",
+         "fake:blob=google_tls:tcp_ts=-1000:repeats=8:nodrop",
+         "fake:blob=google_tls:tcp_ts=-1000:repeats=6"),
+        ("replace",
+         "multisplit:pos=1:seqovl=681:seqovl_pattern=google_tls:repeats=8:nodrop",
+         "multisplit:pos=1:seqovl=681:seqovl_pattern=google_tls"),
+    ],
 }
 
 
