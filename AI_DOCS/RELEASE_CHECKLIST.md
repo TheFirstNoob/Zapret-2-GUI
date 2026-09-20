@@ -27,10 +27,15 @@
 - [ ] Отпечаток в выводе = 50DCECF29451 (тот самый ключ).
 
 ## Публикация
-- [ ] Закоммитить дистрибутивы + release.json + release.json.sig в main.
-- [ ] Тег Pre-Release-X.Y → GitHub Release; прикрепить 3 zip + release.json +
-      release.json.sig (байт-в-байт те же файлы, что закоммичены).
-- [ ] README/описание релиза: SHA256, ссылки.
+- [ ] Закоммитить дистрибутивы + `.sha256` + release.json + release.json.sig в main.
+- [ ] Тег Pre-Release-X.Y → GitHub Release; прикрепить архивы **каноническими
+      именами** (`Zapret2GUI.zip`, `Zapret2GUI-portable.zip`,
+      `Zapret2GUI-lite.zip`) + их `.sha256` + release.json + release.json.sig
+      (байт-в-байт те же файлы, что закоммичены). Имена важны: апдейтер качает
+      именно их (core/updater.download_url) — при других именах primary-источник
+      даёт 404 и спасает только jsDelivr-зеркало.
+- [ ] В **описание релиза** вставить SHA256 всех трёх архивов (печатает
+      sign_release) — README обещает сверку «с хешем в описании релиза».
 
 ## После публикации
 - [ ] Смоук: манифест по jsDelivr-пути, проверка подписи и хешей.
