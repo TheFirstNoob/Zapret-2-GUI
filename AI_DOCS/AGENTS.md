@@ -519,4 +519,17 @@ raw/objects/release-assets/private-user-images/gist/avatars* — стабиль�
   холодный старт; после поимки/решения переустановить службу из GUI.
   Побочные кандидаты: QUIC-покрытие Discord в list-general отсутствует
   (у ALT11 есть 24 домена), voice repeats=6 как у ALT11.
+- **Wardogs на SkyNet (2026-09-21, ВИСИТ)**: авторизация/лобби ок
+  (list-include-user: live.wardogs.bulkhead.pragmaengine.com, firstlook.gg,
+  api.epicgames.dev; EC2 eu-west-1 54.228.212.233/54.216.209.199 —
+  Established). **Не проходит игровая UDP-сессия**: серверы
+  54.115.115.111:4192 и 54.115.9.78:4192 (AWS eu-central-1) —
+  sent≈1800 vs recv≈120-160, клиент откидывает в меню («компиляция карты»
+  не начинается). Проверено ручным winws2 (default-alt): `ipset_catchall=ON`
+  — без эффекта (catch-all покрывает TCP 80/443 + QUIC 443, не 4192);
+  `GameFilter=udp` (fake quic ×10 на 1024-65535) — без эффекта. TCP DynamoDB
+  35.71.x SynSent — транзиентные (SYN-ACK приходят). Рабочий обход сейчас —
+  WARP. Идея на потом: отдельная сегментация/профиль под игровой UDP (иные
+  payload/повторы/паттерны) и точечное тестирование. Сырой pktmon-захват:
+  `%TEMP%\zapret2_probe\game_udp.txt` (UTF-16; парсер probe починен в 683e740).
   safe-delete) и рапортует о Zapret 1 (`POST /api/service/repair`).
