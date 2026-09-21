@@ -186,48 +186,62 @@ def _run_pktmon(pids: list[int], etl: Path, txt: Path) -> Optional[dict]:
     return {"ports": ports, "etl": etl, "txt": txt}
 
 
-def _finish_pktmon(handle: dict) -> dict:
-    """Остановка захвата и парсинг remote IP:port + направления пакетов.
+def _read_pktmon_txt(txt: Path) -> str:
+    """pktmon etl2txt пишет UTF-16 (иногда UTF-8) — читаем оба варианта."""
+    raw = txt.read_bytes()
+    if raw[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        return raw.decode("utf-16", errors="replace")
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return raw.decode("utf-16", errors="replace")
 
-    Направление определяется по порту НАШЕГО сокета (source.port in ports =
-    исходящий к серверу, destination.port in ports = входящий ответ) — это
-    позволяет вердикту отличить «шлём, но не получаем» (UDP глушится) от
-    нормального диалога."""
+
+def _parse_pktmon_txt(txt: Path, ports: list[int]) -> dict:
+    """Разбор etl2txt: {ips: {remote: {sent, recv}}, sent, recv}.
+
+    Направление — по НАШЕМУ порту сокета (source.port in ports = исходящий к
+    серверу, destination.port in ports = входящий ответ) — это позволяет
+    вердикту отличить «шлём, но не получаем» (UDP глушится) от диалога."""
+    ips: dict[str, dict[str, int]] = {}
+    sent = 0
+    recv = 0
+    if not txt.exists():
+        return {"ips": ips, "sent": sent, "recv": recv}
+    for line in _read_pktmon_txt(txt).splitlines():
+        m = re.search(
+            r"(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\.(\d+) > "
+            r"(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\.(\d+)", line)
+        if not m:
+            continue
+        a, ap, b, bp = m.group(1), int(m.group(2)), m.group(3), int(m.group(4))
+        if ports and ap not in ports and bp not in ports:
+            continue
+        if ap in ports and not _PRIVATE_RE.match(b):
+            ips.setdefault(f"{b}:{bp}", {"sent": 0, "recv": 0})["sent"] += 1
+            sent += 1
+        elif bp in ports and not _PRIVATE_RE.match(a):
+            ips.setdefault(f"{a}:{ap}", {"sent": 0, "recv": 0})["recv"] += 1
+            recv += 1
+    return {"ips": ips, "sent": sent, "recv": recv}
+
+
+def _finish_pktmon(handle: dict) -> dict:
+    """Остановка захвата и разбор (UTF-16/UTF-8) remote IP:port + направлений."""
     etl = Path(handle["etl"])
     txt = Path(handle["txt"])
     ports = handle["ports"]
     utils.run_quiet(["pktmon", "stop"])
     utils.run_quiet(["pktmon", "etl2txt", str(etl), "-o", str(txt)])
     utils.run_quiet(["pktmon", "filter", "remove"])
-    # ips: удалённая цель -> {sent, recv}; направление — по НАШЕМУ порту
-    # сокета (source = исходящий, destination = входящий ответ)
-    ips: dict[str, dict[str, int]] = {}
-    sent = 0
-    recv = 0
     try:
-        if txt.exists():
-            for line in txt.read_text(encoding="utf-8", errors="replace").splitlines():
-                m = re.search(
-                    r"(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\.(\d+) > "
-                    r"(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\.(\d+)", line)
-                if not m:
-                    continue
-                a, ap, b, bp = m.group(1), int(m.group(2)), m.group(3), int(m.group(4))
-                if ports and ap not in ports and bp not in ports:
-                    continue
-                if ap in ports and not _PRIVATE_RE.match(b):
-                    ips.setdefault(f"{b}:{bp}", {"sent": 0, "recv": 0})["sent"] += 1
-                    sent += 1
-                elif bp in ports and not _PRIVATE_RE.match(a):
-                    ips.setdefault(f"{a}:{ap}", {"sent": 0, "recv": 0})["recv"] += 1
-                    recv += 1
+        return _parse_pktmon_txt(txt, ports)
     finally:
         for f in (etl, txt):
             try:
                 f.unlink(missing_ok=True)
             except OSError:
                 pass
-    return {"ips": ips, "sent": sent, "recv": recv}
 
 
 def _merge_history(hist: dict, tcp: dict, udp: dict, now: float) -> None:
