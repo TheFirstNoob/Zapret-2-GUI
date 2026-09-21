@@ -534,5 +534,9 @@ raw/objects/release-assets/private-user-images/gist/avatars* — стабиль�
   `udplen` (increment/pattern — механика из Discord Voice «UDP-длина»), иные
   блобы/паттерны fake, порт-специфичный сегмент на 4192; тестировать точечно.
   Сырой pktmon-захват: `%TEMP%\zapret2_probe\game_udp.txt` (UTF-16; парсер
-  probe починен в 683e740).
+  probe починен в 683e740). **udplen проверен прямым прогоном** (DNS 53 +
+  debug-лог): +5 с `pattern=0xDEADBEEF` и `pattern=quic_google` работает
+  (`udplen: 29 => 34`, поток не ломается), −5 обрезает запрос. Варианты под
+  игру: `tools/_game_udp.py udplen_hex|udplen_quic|udplen_fake|udplen_up2`
+  (порт 4192; служба останавливается на время прогона, вернуть: sc start).
   safe-delete) и рапортует о Zapret 1 (`POST /api/service/repair`).
