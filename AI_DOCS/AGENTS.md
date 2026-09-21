@@ -528,8 +528,11 @@ raw/objects/release-assets/private-user-images/gist/avatars* — стабиль�
   не начинается). Проверено ручным winws2 (default-alt): `ipset_catchall=ON`
   — без эффекта (catch-all покрывает TCP 80/443 + QUIC 443, не 4192);
   `GameFilter=udp` (fake quic ×10 на 1024-65535) — без эффекта. TCP DynamoDB
-  35.71.x SynSent — транзиентные (SYN-ACK приходят). Рабочий обход сейчас —
-  WARP. Идея на потом: отдельная сегментация/профиль под игровой UDP (иные
-  payload/повторы/паттерны) и точечное тестирование. Сырой pktmon-захват:
-  `%TEMP%\zapret2_probe\game_udp.txt` (UTF-16; парсер probe починен в 683e740).
+  35.71.x SynSent — транзиентные (SYN-ACK приходят). **Подтверждено
+  (2026-09-21): WARP в режиме «только UDP» пробивает игру** → блок строго на
+  UDP-уровне, TCP ни при чём. Кандидаты для отдельного UDP-профиля (на потом):
+  `udplen` (increment/pattern — механика из Discord Voice «UDP-длина»), иные
+  блобы/паттерны fake, порт-специфичный сегмент на 4192; тестировать точечно.
+  Сырой pktmon-захват: `%TEMP%\zapret2_probe\game_udp.txt` (UTF-16; парсер
+  probe починен в 683e740).
   safe-delete) и рапортует о Zapret 1 (`POST /api/service/repair`).
