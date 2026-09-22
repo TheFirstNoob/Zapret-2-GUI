@@ -334,7 +334,9 @@ def build_args_from_preset(
         tokens.append("--filter-udp=1024-65535")
         tokens.append("--out-range")
         tokens.append("-d10")
-        tokens.append("--lua-desync=fake:blob=quic_google:repeats=10")
+        # payload=all обязателен: lua fake по умолчанию не трогает unknown-UDP
+        # (игровой трафик) — без него тоггл «Игровые порты» был холостым
+        tokens.append("--lua-desync=fake:blob=quic_google:repeats=10:payload=all")
     # ── Discord Voice: фикс UDP ──
     # fake — стандартный блок; udplen — для пресетов без инлайн голосового
     # блока (у default блок уже переписан трансформацией выше).

@@ -20,22 +20,81 @@ sys.path.insert(0, str(REPO))
 from core.launcher import build_args_from_preset, validate_args  # noqa: E402
 
 PORT = 4192
+# Игровые серверы: UDP шёл на 54.115.x (4192), TCP-бэкенды — 54.228/54.216/3.218.
+# Порты у серверов могут меняться → таргетим по IP-диапазонам, не по порту.
+IPSET_CIDRS = ("54.115.0.0/16", "54.228.0.0/16", "54.216.0.0/16",
+               "3.218.0.0/16")
 VARIANTS = {
-    "udplen_hex": ["--lua-desync=udplen:increment=5:pattern=0xDEADBEEF"],
-    "udplen_quic": ["--lua-desync=udplen:increment=5:pattern=quic_google"],
-    "udplen_fake": ["--lua-desync=fake:blob=quic_google:repeats=3",
-                    "--lua-desync=udplen:increment=5:pattern=quic_google"],
-    "udplen_up2": ["--lua-desync=udplen:increment=2:pattern=0xDEADBEEF"],
+    "udplen_hex": {"ports": [PORT],
+                   "desync": ["--lua-desync=udplen:increment=5:pattern=0xDEADBEEF:payload=all"]},
+    "udplen_quic": {"ports": [PORT],
+                    "desync": ["--lua-desync=udplen:increment=5:pattern=quic_google:payload=all"]},
+    "udplen_fake": {"ports": [PORT],
+                    "desync": ["--lua-desync=fake:blob=quic_google:repeats=3:payload=all",
+                               "--lua-desync=udplen:increment=5:pattern=quic_google:payload=all"]},
+    "udplen_up2": {"ports": [PORT],
+                   "desync": ["--lua-desync=udplen:increment=2:pattern=0xDEADBEEF:payload=all"]},
+    # IP-таргетинг: любой порт на игровых диапазонах
+    "udplen_ipset": {"ipset": True,
+                     "desync": ["--lua-desync=udplen:increment=5:pattern=quic_google:payload=all"]},
+    "udplen_ipset_hex": {"ipset": True,
+                         "desync": ["--lua-desync=udplen:increment=5:pattern=0xDEADBEEF:payload=all"]},
+    # Рецепт из треда: fake на диапазон 54.115.0.0/16 (любой порт), как GameFilter,
+    # но без фейка рабочих UDP-потоков (104.29.x/Steam) — их не трогаем
+    "fake_ipset": {"ipset": True,
+                   "desync": ["--lua-desync=fake:blob=quic_google:repeats=10:payload=all"]},
+    # Механизм zapret1: fake + DROP оригинала (как nfqws: игра ретранслирует,
+    # DPI видит только QUIC-фейки). cutoff n4 ~ out-range -d4.
+    "fake_drop": {"ipset": True, "cutoff": "-d4",
+                  "desync": ["--lua-desync=fake:blob=quic_google:repeats=10:payload=all",
+                             "--lua-desync=drop"]},
+    "fake_drop_full": {"ipset": True, "no_cutoff": True,
+                       "desync": ["--lua-desync=fake:blob=quic_google:repeats=10:payload=all",
+                                  "--lua-desync=drop"]},
+    # fake без drop (оригинал тоже уходит) — если дроп ломает протокол игры
+    "fake_pass": {"ipset": True, "cutoff": "-d4",
+                  "desync": ["--lua-desync=fake:blob=quic_google:repeats=10:payload=all"]},
+    # Весь высокий UDP (проверка «дело вообще в UDP-портах?»)
+    "udplen_all": {"all_udp": True,
+                   "desync": ["--lua-desync=udplen:increment=5:pattern=quic_google:payload=all"]},
 }
 
 
-def add_wf_udp_port(args: list[str], port: int) -> None:
+def add_wf_udp_value(args: list[str], value: str) -> None:
     for i, t in enumerate(args):
         if t == "--wf-udp-out" and i + 1 < len(args):
-            if str(port) not in args[i + 1].split(","):
-                args[i + 1] = args[i + 1] + f",{port}"
+            if value not in args[i + 1].split(","):
+                args[i + 1] = args[i + 1] + f",{value}"
             return
-    args.insert(0, f"--wf-udp-out={port}")
+    args.insert(0, f"--wf-udp-out={value}")
+
+
+def build_extra(cfg: dict) -> list[str]:
+    """Профиль(и) для варианта: порт / ipset / весь UDP."""
+    extra: list[str] = []
+    if cfg.get("no_cutoff"):
+        cutoff = []
+    elif cfg.get("cutoff"):
+        cutoff = ["--out-range", cfg["cutoff"]]
+    else:
+        cutoff = ["--out-range", "-d10"]
+    if cfg.get("all_udp"):
+        add_wf_udp_value(args, "1024-65535")
+        extra += ["--new", "--filter-udp=1024-65535"] + cutoff
+    elif cfg.get("ipset"):
+        import tempfile
+        from core.utils import short_path
+        f = Path(tempfile.gettempdir()) / "z2_game_ipset.txt"
+        f.write_text("\n".join(IPSET_CIDRS) + "\n", encoding="ascii")
+        add_wf_udp_value(args, "1024-65535")
+        extra += ["--new", "--filter-udp=1024-65535",
+                  f"--ipset={short_path(f)}"] + cutoff
+    else:
+        for p in cfg.get("ports", []):
+            add_wf_udp_value(args, str(p))
+        port_csv = ",".join(str(p) for p in cfg.get("ports", []))
+        extra += ["--new", f"--filter-udp={port_csv}"] + cutoff
+    return extra + list(cfg["desync"])
 
 
 name = sys.argv[1] if len(sys.argv) > 1 else ""
@@ -48,9 +107,7 @@ args = build_args_from_preset(
     lists_dir=MIR / "lists", windivert_dir=MIR / "windivert",
     debug=False, game_filter_mode="off", discord_voice=False,
     discord_voice_mode="", autohostlist=False, ipset_catchall=False)
-add_wf_udp_port(args, PORT)
-args += ["--new", f"--filter-udp={PORT}", "--out-range", "-d10"]
-args += VARIANTS[name]
+args += build_extra(VARIANTS[name])
 
 ok, err = validate_args(MIR / "bin" / "winws2.exe", args, cwd=MIR)
 if not ok:
@@ -79,5 +136,4 @@ r = subprocess.run(["tasklist", "/FI", "IMAGENAME eq winws2.exe"],
                    capture_output=True, text=True,
                    encoding="oem", errors="replace")
 alive = "winws2.exe" in (r.stdout or "")
-print(f"variant={name} winws2={'RUNNING' if alive else 'NOT RUNNING'} "
-      f"(порт {PORT})")
+print(f"variant={name} winws2={'RUNNING' if alive else 'NOT RUNNING'}")

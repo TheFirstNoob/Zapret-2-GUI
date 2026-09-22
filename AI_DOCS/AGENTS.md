@@ -539,4 +539,14 @@ raw/objects/release-assets/private-user-images/gist/avatars* — стабиль�
   (`udplen: 29 => 34`, поток не ломается), −5 обрезает запрос. Варианты под
   игру: `tools/_game_udp.py udplen_hex|udplen_quic|udplen_fake|udplen_up2`
   (порт 4192; служба останавливается на время прогона, вернуть: sc start).
+  **✅ РЕШЕНО (2026-09-22)**: рабочий рецепт — `fake ×10 + drop` на UDP-к
+  диапазонам (`--filter-udp=1024-65535 --ipset=<54.115/54.228/54.216/3.218.0.0/16>`
+  `--out-range -d4 --lua-desync=fake:blob=quic_google:repeats=10:payload=all`
+  `--lua-desync=drop`), вариант `tools/_game_udp.py fake_drop`. Два корня:
+  (1) **lua fake/udplen по умолчанию трогают только known-payload** — на
+  unknown-UDP нужен аргумент функции `:payload=all` (все прошлые UDP-тесты
+  были холостыми!); (2) drop оригинала (механизм nfqws: DPI видит только
+  QUIC-фейки, игра ретранслирует). Блок только на этапе коннекта: после
+  установления сессии выключение обхода не выкидывает. БАГ ПРОДУКТА:
+  GameFilter=udp в лаунчере был холостым (нет `payload=all`) — исправлено.
   safe-delete) и рапортует о Zapret 1 (`POST /api/service/repair`).
