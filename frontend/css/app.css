@@ -1022,6 +1022,13 @@ label.opt-line:has(input:disabled):hover { background: var(--field); }
 }
 .list-card.is-dirty { border-color: var(--warn-line); }
 .list-card.is-error { border-color: var(--err); }
+/* IP-списки свёрнуты: настройка редкая, подробности — по запросу */
+details.list-card > summary { cursor: pointer; list-style: none; }
+details.list-card > summary::-webkit-details-marker { display: none; }
+details.list-card > summary.list-header { border-bottom: none; }
+details.list-card[open] > summary.list-header { border-bottom: 1px solid var(--divider); }
+details.list-card > summary .list-title::after { content: ' ▾'; opacity: .5; font-weight: 400; }
+details.list-card[open] > summary .list-title::after { content: ' ▴'; }
 .list-header {
   padding: 10px 12px;
   background: var(--field);
@@ -1567,6 +1574,7 @@ label.opt-line:has(input:disabled):hover { background: var(--field); }
 .service-domain { font-size: 11px; font-family: var(--mono); color: var(--faint); }
 .service-desc { font-size: 12px; color: var(--dim); line-height: 1.45; }
 .service-actions { display: flex; align-items: center; justify-content: flex-end; gap: 14px; }
+.switch-cap { font-size: 11.5px; color: var(--faint); }
 
 /* результат пробы: бейдж + заголовок + совет */
 .test-result-box {

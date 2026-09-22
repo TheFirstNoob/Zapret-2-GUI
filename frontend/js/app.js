@@ -1545,7 +1545,7 @@ const ListsPage = {
 
   async exportSettings() {
     const btn = $('btnSettingsExport');
-    btn.disabled = true;
+    if (btn) btn.disabled = true;
     try {
       const r = await apiPost('/settings/export', {});
       if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
@@ -1556,14 +1556,14 @@ const ListsPage = {
     } catch (e) {
       showToast('Экспорт не удался: ' + (e.message || e), 'error');
     }
-    btn.disabled = false;
+    if (btn) btn.disabled = false;
   },
 
   async importSettings(input) {
     const file = input.files && input.files[0];
     if (!file) return;
     const btn = $('btnSettingsExport');
-    btn.disabled = true;
+    if (btn) btn.disabled = true;
     const res = $('settingsResult');
     if (res) res.textContent = 'Импортирую…';
     try {
@@ -1586,7 +1586,7 @@ const ListsPage = {
       if (res) res.textContent = '';
     }
     input.value = '';
-    btn.disabled = false;
+    if (btn) btn.disabled = false;
   },
 
   // ── Спорные домены (AWS и др.: десинк одним нужен, других ломает) ──
@@ -1617,6 +1617,7 @@ const ListsPage = {
             <div class="service-desc">${escapeHtml(it.why)}</div>
             <div class="service-actions">
               <button class="btn btn-sm btn-primary" data-ct-check="${escapeHtml(it.id)}">Проба</button>
+              <span class="switch-cap">в обход</span>
               <label class="switch" title="Включить/выключить обход для этого домена">
                 <input type="checkbox" ${it.enabled ? 'checked' : ''} data-ct-id="${escapeHtml(it.id)}">
                 <span class="switch-track"><span class="switch-knob"></span></span>

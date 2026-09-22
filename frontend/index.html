@@ -86,6 +86,7 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
           </button>
         </div>
+        <input type="file" id="settingsImportFile" accept=".zip" hidden>
       </div>
     </aside>
 
@@ -673,22 +674,8 @@
                   <div class="help-ok">Правильно: <code class="code-tag">1.2.3.4</code> · <code class="code-tag">198.51.100.0/24</code></div>
                 </div>
               </div>
-              <div class="help-note"><b>Включения</b> — Zapret обходит принудительно; <b>исключения</b> — пропускает как есть. Исключение сильнее включения: если домен есть и там и там, обход на него действовать не будет. Ошибочные строки подсвечиваются и блокируют сохранение.</div>
+              <div class="help-note"><b>В обход</b> — Zapret обходит принудительно; <b>не трогать</b> — пропускает как есть. «Не трогать» сильнее: если домен есть в обоих списках, обход на него действовать не будет. Ошибочные строки подсвечиваются и блокируют сохранение.</div>
             </div>
-          </div>
-
-          <div class="panel" id="listsHealthPanel">
-            <div class="card-head">
-              <div class="head-text">
-                <div class="head-title">Здоровье списков</div>
-                <div class="head-desc">Дубли, повторы уже включённых записей и конфликты «включение ↔ исключение» — включая правки через блокнот.</div>
-              </div>
-              <div class="head-right" style="display:flex;gap:8px;">
-                <button class="btn btn-sm" id="btnListsCheck">Проверить</button>
-                <button class="btn btn-sm btn-warn" id="btnListsDedupe" hidden>Убрать дубли</button>
-              </div>
-            </div>
-            <div class="meta" id="listsHealthText">проверка при открытии…</div>
           </div>
 
           <div class="lists-grid">
@@ -696,7 +683,7 @@
             <div class="list-card">
               <div class="list-header">
                 <div class="list-title-row">
-                  <span class="list-title">Домены — включения</span>
+                  <span class="list-title">Домены — в обход</span>
                   <span class="count-badge" id="domIncCount">0</span>
                 </div>
                 <div class="list-desc">Заблокированный сайт, которого нет в стандартных списках, — Zapret будет обходить его всегда, при любой стратегии.</div>
@@ -715,7 +702,7 @@
             <div class="list-card">
               <div class="list-header">
                 <div class="list-title-row">
-                  <span class="list-title">Домены — исключения</span>
+                  <span class="list-title">Домены — не трогать</span>
                   <span class="count-badge" id="domExcCount">0</span>
                 </div>
                 <div class="list-desc">Сайт, которому обход мешает (не открывается, тормозит), — Zapret будет пропускать его как есть.</div>
@@ -731,14 +718,14 @@
               </div>
             </div>
 
-            <div class="list-card">
-              <div class="list-header">
+            <details class="list-card">
+              <summary class="list-header">
                 <div class="list-title-row">
-                  <span class="list-title">IP-сети — включения</span>
+                  <span class="list-title">IP-сети — в обход</span>
                   <span class="count-badge" id="ipIncCount">0</span>
                 </div>
                 <div class="list-desc">Подсети, которые обходятся всегда. Нужно при блокировке по IP-адресу, когда сайт не открывается независимо от имени.</div>
-              </div>
+              </summary>
               <div class="editor-wrapper">
                 <div class="line-gutter" id="ipIncNums" aria-hidden="true">1</div>
                 <textarea class="editor-textarea" id="ipIncTextarea" spellcheck="false" placeholder="1.2.3.0/24"></textarea>
@@ -748,16 +735,16 @@
                 <span class="meta list-result" id="ipIncResult"></span>
                 <button class="btn btn-sm" data-save="ipInc">Сохранить</button>
               </div>
-            </div>
+            </details>
 
-            <div class="list-card">
-              <div class="list-header">
+            <details class="list-card">
+              <summary class="list-header">
                 <div class="list-title-row">
-                  <span class="list-title">IP-сети — исключения</span>
+                  <span class="list-title">IP-сети — не трогать</span>
                   <span class="count-badge" id="ipExcCount">0</span>
                 </div>
                 <div class="list-desc">Свои и локальные сети, которые обход не должен трогать. По умолчанию — приватные диапазоны.</div>
-              </div>
+              </summary>
               <div class="editor-wrapper">
                 <div class="line-gutter" id="ipExcNums" aria-hidden="true">1</div>
                 <textarea class="editor-textarea" id="ipExcTextarea" spellcheck="false" placeholder="192.168.0.0/16"></textarea>
@@ -767,21 +754,22 @@
                 <span class="meta list-result" id="ipExcResult"></span>
                 <button class="btn btn-sm" data-save="ipExc">Сохранить</button>
               </div>
-            </div>
+            </details>
 
           </div>
-<div class="panel" id="settingsBackupPanel">
-            <div class="list-head">
-              <div>
-                <div class="panel-title">Резервная копия настроек</div>
-                <div class="panel-desc">Сохраняет ваши списки-включения/исключения, ipset-списки, пользовательские пресеты и настройки программы в один ZIP — и восстанавливает их обратно (например, после переустановки программы).</div>
+
+          <div class="panel" id="listsHealthPanel">
+            <div class="card-head">
+              <div class="head-text">
+                <div class="head-title">Здоровье списков</div>
+                <div class="head-desc">Дубли, повторы уже добавленных записей и конфликты «в обход ↔ не трогать» — включая правки через блокнот.</div>
+              </div>
+              <div class="head-right" style="display:flex;gap:8px;">
+                <button class="btn btn-sm" id="btnListsCheck">Проверить</button>
+                <button class="btn btn-sm btn-warn" id="btnListsDedupe" hidden>Убрать дубли</button>
               </div>
             </div>
-            <div class="probe-actions">
-              <button class="btn" id="btnSettingsExport">Экспорт настроек</button>
-              <label class="btn" for="settingsImportFile" style="cursor:pointer">Импорт настроек<input type="file" id="settingsImportFile" accept=".zip" hidden></label>
-              <span class="meta" id="settingsResult"></span>
-            </div>
+            <div class="meta" id="listsHealthText">проверка при открытии…</div>
           </div>
         </section>
 
@@ -805,9 +793,8 @@
               <span>Порядок действий:</span>
               <span class="step-pill">1. Проба</span>
               <span class="step-arrow">→</span>
-              <span class="step-pill">2. Переключить тумблер</span>
-              <span class="step-arrow">→</span>
-              <span class="step-pill">3. Перезапуск обхода</span>
+              <span class="step-pill">2. Переключить тумблер «в обход»</span>
+              <span class="meta">изменения применяются сразу — перезапуск обхода не нужен</span>
             </div>
 
             <div class="table-head">
