@@ -138,6 +138,11 @@ a { color: var(--accent); }
 .nav-link.active { background: var(--accent-soft); color: var(--text); font-weight: 600; }
 
 .nav-link { gap: 9px; }
+.nav-subgroup { margin-top: 4px; }
+.nav-sub-label {
+  font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--faint); padding: 4px 10px 3px 12px; user-select: none;
+}
 .nav-link span:not(.nav-badge) {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   min-width: 0;
