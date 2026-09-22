@@ -32,6 +32,18 @@ debug_winws2.log
 # Приватные ключи подписи релизов (в репозитории им не место)
 *update_signing_key*
 *_signing_key.txt
+
+# Рантайм-файлы апдейтера и игровых блокировок (генерируются на месте)
+backups/
+updates/
+games.json
+lists/list-games.txt
+lists/games/
+
+# Дампы трафика (pktmon/etl и pcap)
+*.etl
+*.pcap
+*.pcapng
 test_session.log
 hosts.bak
 zapret2_report_*/
