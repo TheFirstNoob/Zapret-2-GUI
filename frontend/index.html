@@ -29,6 +29,7 @@
           <summary class="nav-group-label">Экспертные инструменты</summary>
           <a href="#lists" data-page="lists" class="nav-link">Списки</a>
           <a href="#contested" data-page="contested" class="nav-link">Спорные домены</a>
+          <a href="#games" data-page="games" class="nav-link">Игровые блокировки</a>
           <a href="#cdn" data-page="cdn" class="nav-link">CDN-стабилизация</a>
           <a href="#asn" data-page="asn" class="nav-link">ASN-скан</a>
           <a href="#probe" data-page="probe" class="nav-link">Анализ приложения</a>
@@ -772,9 +773,34 @@
           </div>
         </section>
 
+        <!-- ═══ Игровые блокировки ═══ -->
+        <section id="page-games" class="page">
+          <div class="panel">
+            <div class="card-head">
+              <div class="head-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 12h4M8 10v4M15 11h.01M18 13h.01"/></svg>
+              </div>
+              <div class="head-text">
+                <div class="head-title">Игровые блокировки</div>
+                <div class="head-desc">Авторизация (домены) и подключение к серверам (UDP-фикс) для конфликтных игр</div>
+              </div>
+              <div class="head-right">
+                <button class="btn btn-sm btn-primary" id="gamesSaveBtn">Сохранить</button>
+              </div>
+            </div>
+
+            <div class="help-note">
+              <b>Домены</b> включаются в обход для авторизации/лобби и применяются сразу (к новым подключениям).
+              <b>UDP-фикс</b> помогает подключиться к игровому серверу (fake на старте соединения) —
+              применяется после перезапуска обхода; службу нужно переустановить.
+            </div>
+
+            <div id="gamesBody"></div>
+          </div>
+        </section>
+
         <!-- ═══ CDN-стабилизация ═══ -->
         <section id="page-cdn" class="page">
-
           <div class="info-banner">
             <div class="banner-bar">
               <div class="banner-left">

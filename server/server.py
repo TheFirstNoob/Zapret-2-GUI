@@ -1590,6 +1590,8 @@ class ZapretHandler(BaseHTTPRequestHandler):
                 self._handle_update_status()
             elif path == "/api/process-probe/status":
                 self._handle_probe_status()
+            elif path == "/api/games":
+                self._handle_games_get()
             else:
                 self._handle_static(path)
         except RuntimeError as e:
@@ -1839,6 +1841,8 @@ class ZapretHandler(BaseHTTPRequestHandler):
                 self._handle_probe_stop()
             elif path == "/api/process-probe/report":
                 self._handle_probe_report()
+            elif path == "/api/games/save":
+                self._handle_games_save(data)
             elif path == "/api/frontend-log":
                 self._handle_probe_debug(data)
             else:
@@ -1896,6 +1900,32 @@ class ZapretHandler(BaseHTTPRequestHandler):
         path = probe.save_report()
         self._send_json({"status": "ok", "report": probe.report_text(),
                          "path": str(path)})
+
+    def _handle_games_get(self) -> None:
+        from core import games as games_store
+        self._send_json({"status": "ok",
+                         "games": games_store.load_games(get_root_dir())})
+
+    def _handle_games_save(self, data: dict) -> None:
+        """Сохранение игровых блокировок: домены применяются сразу (hot-reload
+        hostlist), UDP-профили — при следующем запуске/переустановке службы."""
+        from core import games as games_store
+        payload = data.get("games") if isinstance(data, dict) else None
+        if not isinstance(payload, dict) or \
+                not isinstance(payload.get("games"), list):
+            self._send_json({"status": "error",
+                             "message": "некорректные данные"})
+            return
+        if not games_store.save_games(get_root_dir(), payload):
+            self._send_json({"status": "error",
+                             "message": "не удалось сохранить"})
+            return
+        games_store.sync_domain_list(get_root_dir(), payload)
+        self._send_json({
+            "status": "ok",
+            "message": "Сохранено. Домены применятся к новым подключениям; "
+                       "UDP-фикс — после перезапуска обхода (службу — "
+                       "переустановкой)"})
 
     def _handle_save_config(self, data: dict) -> None:
         cfg = get_config_manager().load()

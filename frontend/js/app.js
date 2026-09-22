@@ -183,7 +183,7 @@ const Status = {
 
 const App = {
   currentPage: 'main',
-  pages: ['main', 'tester', 'lists', 'contested', 'diagnostics', 'probe', 'cdn', 'asn'],
+  pages: ['main', 'tester', 'lists', 'contested', 'games', 'diagnostics', 'probe', 'cdn', 'asn'],
   testActive: false,
 
   // Кнопка «Инструкция и статусы» в info-баннере (единый механизм для всех страниц)
@@ -354,11 +354,12 @@ if (start) start.addEventListener('click', () => TesterPage.startProbe());
     // Смена вкладки — наверх: скролл не должен переезжать между страницами
     const content = document.querySelector('.content');
     if (content) content.scrollTop = 0;
-    const titles = { main: 'Главная', tester: 'Подбор стратегии', lists: 'Списки', contested: 'Спорные домены', diagnostics: 'Проверка системы', probe: 'Анализ приложения', cdn: 'CDN-стабилизация', asn: 'ASN-скан' };
+    const titles = { main: 'Главная', tester: 'Подбор стратегии', lists: 'Списки', contested: 'Спорные домены', games: 'Игровые блокировки', diagnostics: 'Проверка системы', probe: 'Анализ приложения', cdn: 'CDN-стабилизация', asn: 'ASN-скан' };
     $('pageTitle').textContent = titles[hash];
     if (hash === 'main') MainPage.onShow();
     if (hash === 'lists') ListsPage.onShow();
     if (hash === 'contested') ListsPage.onShow();
+    if (hash === 'games') GamesPage.onShow();
     if (hash === 'cdn') CdnStab.init();
     if (hash === 'asn') AsnPage.init();
     if (hash === 'diagnostics') DiagnosticsPage.onShow();
@@ -568,6 +569,7 @@ const MainPage = {
       if (this._blobProbing) this._cancelBlobProbe();
       else this.runBlobProbe();
     });
+    $('gamesSaveBtn').addEventListener('click', () => GamesPage.save());
   },
 
   async loadConfig() {
@@ -1296,6 +1298,90 @@ const DiagnosticsPage = {
 };
 
 // ══════════════════════════ СПИСКИ ══════════════════════════
+
+// ── Игровые блокировки: домены (авторизация) + UDP-фикс (коннект) ──
+// Домены применяются сразу (hot-reload hostlist), UDP-профили — при
+// следующем запуске обхода/переустановке службы.
+const GamesPage = {
+  _data: null,
+
+  async onShow() {
+    const body = $('gamesBody');
+    try {
+      const r = await apiGet('/games');
+      this._data = (r.games && Array.isArray(r.games.games))
+        ? r.games : { games: [] };
+      this.render();
+    } catch (e) {
+      body.innerHTML = '<div class="empty-note">Не удалось загрузить: '
+        + escapeHtml(e.message || String(e)) + '</div>';
+    }
+  },
+
+  render() {
+    const body = $('gamesBody');
+    const games = this._data.games || [];
+    if (!games.length) {
+      body.innerHTML = '<div class="empty-note">Список пуст</div>';
+      return;
+    }
+    body.innerHTML = games.map((g, gi) => `
+      <div class="param-row" style="flex-direction:column;align-items:stretch">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div class="param-title" style="flex:1">${escapeHtml(g.name || g.id)}</div>
+          <label class="switch" title="Включить игру">
+            <input type="checkbox" data-g-on="${gi}" ${g.enabled ? 'checked' : ''}>
+            <span class="switch-track"><span class="switch-knob"></span></span>
+          </label>
+        </div>
+        <div class="param-hint">Домены (авторизация/лобби):</div>
+        ${(g.domains || []).map((d, di) => `
+          <label class="opt-line">
+            <input type="checkbox" data-g-dom="${gi}:${di}" ${d.on ? 'checked' : ''}>
+            <span class="opt-text">
+              <span class="opt-title">${escapeHtml(d.domain)}</span>
+              ${d.note ? `<span class="opt-hint">${escapeHtml(d.note)}</span>` : ''}
+            </span>
+          </label>`).join('') || '<div class="empty-note">Доменов нет</div>'}
+        <div class="param-hint" style="margin-top:6px">UDP-фикс (подключение к серверам):</div>
+        ${(g.udp || []).map((u, ui) => `
+          <label class="opt-line">
+            <input type="checkbox" data-g-udp="${gi}:${ui}" ${u.on ? 'checked' : ''}>
+            <span class="opt-text">
+              <span class="opt-title">UDP ${escapeHtml(u.ports)}</span>
+              <span class="opt-hint">${escapeHtml((u.cidrs || []).join(', '))}</span>
+            </span>
+          </label>`).join('') || '<div class="empty-note">UDP-правил нет</div>'}
+      </div>`).join('');
+    body.querySelectorAll('[data-g-on]').forEach(cb =>
+      cb.addEventListener('change', () => {
+        games[+cb.dataset.gOn].enabled = cb.checked;
+        this.save();
+      }));
+    body.querySelectorAll('[data-g-dom]').forEach(cb =>
+      cb.addEventListener('change', () => {
+        const [gi, di] = cb.dataset.gDom.split(':').map(Number);
+        games[gi].domains[di].on = cb.checked;
+        this.save();
+      }));
+    body.querySelectorAll('[data-g-udp]').forEach(cb =>
+      cb.addEventListener('change', () => {
+        const [gi, ui] = cb.dataset.gUdp.split(':').map(Number);
+        games[gi].udp[ui].on = cb.checked;
+        this.save();
+      }));
+  },
+
+  async save() {
+    try {
+      const r = await apiPost('/games/save', { games: this._data });
+      if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
+      showToast(r.message || 'Сохранено', 'ok');
+    } catch (e) {
+      showToast('Игровые блокировки: ' + (e.message || e), 'error');
+    }
+  },
+};
 
 const ListsPage = {
   _loaded: false,
