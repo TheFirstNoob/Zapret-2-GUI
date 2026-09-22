@@ -57,6 +57,21 @@ VARIANTS = {
     # Весь высокий UDP (проверка «дело вообще в UDP-портах?»)
     "udplen_all": {"all_udp": True,
                    "desync": ["--lua-desync=udplen:increment=5:pattern=quic_google:payload=all"]},
+    # ── Минимальные варианты: порт 4192 + игровые диапазоны, только старт ──
+    # udplen: без фейков и дропов, просто +5 байт (самый лёгкий механизм)
+    "min_udplen": {"ports": [PORT], "ipset": True, "cutoff": "-d4",
+                   "desync": ["--lua-desync=udplen:increment=5:pattern=quic_google:payload=all"]},
+    # fake ×1 без drop (оригинал тоже уходит)
+    "min_fake1": {"ports": [PORT], "ipset": True, "cutoff": "-d4",
+                  "desync": ["--lua-desync=fake:blob=quic_google:repeats=1:payload=all"]},
+    # fake ×1 + drop
+    "min_fake1_drop": {"ports": [PORT], "ipset": True, "cutoff": "-d4",
+                       "desync": ["--lua-desync=fake:blob=quic_google:repeats=1:payload=all",
+                                  "--lua-desync=drop"]},
+    # fake ×3 + drop (если ×1 мало)
+    "min_fake3_drop": {"ports": [PORT], "ipset": True, "cutoff": "-d4",
+                       "desync": ["--lua-desync=fake:blob=quic_google:repeats=3:payload=all",
+                                  "--lua-desync=drop"]},
 }
 
 
@@ -70,7 +85,7 @@ def add_wf_udp_value(args: list[str], value: str) -> None:
 
 
 def build_extra(cfg: dict) -> list[str]:
-    """Профиль(и) для варианта: порт / ipset / весь UDP."""
+    """Профиль варианта: порт и/или ipset; cutoff; desync-функции."""
     extra: list[str] = []
     if cfg.get("no_cutoff"):
         cutoff = []
@@ -78,23 +93,24 @@ def build_extra(cfg: dict) -> list[str]:
         cutoff = ["--out-range", cfg["cutoff"]]
     else:
         cutoff = ["--out-range", "-d10"]
+
+    ports = cfg.get("ports", [])
     if cfg.get("all_udp"):
-        add_wf_udp_value(args, "1024-65535")
-        extra += ["--new", "--filter-udp=1024-65535"] + cutoff
-    elif cfg.get("ipset"):
+        port_csv = "1024-65535"
+    elif ports:
+        port_csv = ",".join(str(p) for p in ports)
+    else:
+        port_csv = "1024-65535"
+    add_wf_udp_value(args, port_csv)
+
+    extra += ["--new", f"--filter-udp={port_csv}"]
+    if cfg.get("ipset"):
         import tempfile
         from core.utils import short_path
         f = Path(tempfile.gettempdir()) / "z2_game_ipset.txt"
         f.write_text("\n".join(IPSET_CIDRS) + "\n", encoding="ascii")
-        add_wf_udp_value(args, "1024-65535")
-        extra += ["--new", "--filter-udp=1024-65535",
-                  f"--ipset={short_path(f)}"] + cutoff
-    else:
-        for p in cfg.get("ports", []):
-            add_wf_udp_value(args, str(p))
-        port_csv = ",".join(str(p) for p in cfg.get("ports", []))
-        extra += ["--new", f"--filter-udp={port_csv}"] + cutoff
-    return extra + list(cfg["desync"])
+        extra.append(f"--ipset={short_path(f)}")
+    return extra + cutoff + list(cfg["desync"])
 
 
 name = sys.argv[1] if len(sys.argv) > 1 else ""
