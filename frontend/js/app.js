@@ -2539,7 +2539,9 @@ const TesterPage = {
     // quirk-хосты не входят ни в rate, ни в счётчики
     if (isOk && !wasOk) { row.ok++; if (!isPing && isRated) row.netOk++; }
     if (!isOk && wasOk) { row.ok--; if (!isPing && isRated) row.netOk--; }
-    row.hostsCell.textContent = row.netOk + '/' + row.netTotal;
+    row.hostsCell.innerHTML = row.netOk + '/' + row.netTotal +
+      (row.total > row.netTotal
+        ? ` <span class="meta">(${row.total})</span>` : '');
     if (row.netTotal) {
       const rate = row.netOk / row.netTotal * 100;
       row.rateCell.innerHTML = `<span class="${rateClass(rate)}">${rate.toFixed(0)}%</span>`;
