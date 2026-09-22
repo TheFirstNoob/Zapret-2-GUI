@@ -1335,7 +1335,7 @@ const GamesPage = {
         (games.length ? 'Ничего не найдено' : 'Список пуст') + '</div>';
       return;
     }
-    const plural = (n) => n === 1 ? 'домен' : (n < 5 ? 'дома' : 'домов');
+    const plural = (n) => n === 1 ? 'домен' : (n < 5 ? 'домена' : 'доменов');
     body.innerHTML = visible.map(({ g, gi }) => {
       const open = !!this._open[g.id || gi];
       const domCount = (g.domains || []).length;
