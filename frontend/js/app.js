@@ -2663,6 +2663,9 @@ const TesterPage = {
               ' score=' + (item.success_rate != null ? item.success_rate.toFixed(0) : '?'));
           }
         }
+        // Надёжное закрытие строк: сервер отдаёт список завершённых стратегий,
+        // отдельное сообщение-финишер могло потеряться между опросами
+        for (const key of (state.completed || [])) this._finishRow(key);
         if (!state.running) {
           // финальная синхронизация: строка последней стратегии могла не
           // получить своё «Стратегия X: N%» (progress перезаписался) —

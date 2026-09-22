@@ -72,6 +72,9 @@ class TesterState:
         self.cancelled = False
         self.action_type: Optional[str] = None
         self.logger: Optional[TestLogger] = None
+        # ярлыки завершённых стратегий: UI закрывает их строки при каждом
+        # опросе (сообщение «Стратегия X: N%» могло перезаписаться следующим)
+        self.completed: list[str] = []
     def reset(self):
         self.progress_pct = 0
         self.progress_msg = ""
@@ -82,6 +85,7 @@ class TesterState:
         self.cancelled = False
         self.action_type = None
         self.logger = None
+        self.completed = []
 
     def to_dict(self) -> dict:
         with self.lock:
@@ -94,6 +98,7 @@ class TesterState:
                 "error": self.error,
                 "cancelled": self.cancelled,
                 "action": self.action_type,
+                "completed": list(self.completed),
             }
 
     def set_progress(self, pct: int, msg: str) -> None:
@@ -1248,6 +1253,8 @@ def _run_tester_action(data: dict) -> None:
                     else:
                         progress(int(6 + (idx + 1) / total * 94),
                                  f"Стратегия {label}: не запустилась")
+                    with state.lock:
+                        state.completed.append(label)
                 if all_results:
                     best = max(all_results, key=lambda r: (r.network_rate, r.net_ok_count))
                     blocked = sorted({r.domain for r in best.results
