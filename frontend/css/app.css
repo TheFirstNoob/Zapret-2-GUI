@@ -147,6 +147,15 @@ a { color: var(--accent); }
 .nav-link.active .nav-icon { color: var(--accent); }
 
 .sidebar-foot { margin-top: auto; padding: 10px 14px 0; }
+.side-actions { display: flex; gap: 6px; margin-top: 8px; }
+.side-btn {
+  flex: 1; height: 30px; display: inline-flex; align-items: center;
+  justify-content: center; border: 1px solid var(--line); border-radius: 6px;
+  background: var(--field); color: var(--dim); cursor: pointer;
+  transition: border-color .15s ease, color .15s ease;
+}
+.side-btn:hover { border-color: var(--accent-line); color: var(--text); }
+.side-btn svg { width: 15px; height: 15px; }
 .prot-chip {
   display: flex; align-items: center; gap: 7px;
   padding: 6px 9px;

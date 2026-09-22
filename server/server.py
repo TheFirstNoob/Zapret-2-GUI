@@ -1558,6 +1558,8 @@ class ZapretHandler(BaseHTTPRequestHandler):
                 self._handle_get_config()
             elif path == "/api/version":
                 self._handle_version()
+            elif path == "/api/app-info":
+                self._handle_app_info()
             elif path == "/api/status":
                 self._handle_status()
             elif path == "/api/profiles":
@@ -1643,6 +1645,27 @@ class ZapretHandler(BaseHTTPRequestHandler):
 
     def _handle_version(self) -> None:
         self._send_json({"status": "ok", "version": VERSION})
+
+    def _handle_app_info(self) -> None:
+        """Техническая информация: версия, тип сборки, SHA256 exe, ключ OTA."""
+        import hashlib
+        from core import update_verify
+        from core.utils import app_root
+        info = {"version": VERSION,
+                "frozen": bool(getattr(sys, "frozen", False)),
+                "path": str(app_root()),
+                "update_key": update_verify.pubkey_fingerprint(),
+                "exe_sha256": ""}
+        if info["frozen"]:
+            try:
+                h = hashlib.sha256()
+                with open(sys.executable, "rb") as f:
+                    for chunk in iter(lambda: f.read(1 << 20), b""):
+                        h.update(chunk)
+                info["exe_sha256"] = h.hexdigest()
+            except OSError:
+                pass
+        self._send_json({"status": "ok", "info": info})
 
     def _handle_status(self) -> None:
         controller = get_controller()

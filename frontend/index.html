@@ -72,6 +72,17 @@
           <span class="prot-text" id="protText">загрузка…</span>
         </div>
         <div class="prot-sub" id="protSub"></div>
+        <div class="side-actions">
+          <button class="side-btn" id="sideExport" title="Экспорт настроек: config, списки, пресеты — ZIP в папке программы">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          </button>
+          <label class="side-btn" for="settingsImportFile" title="Импорт настроек из ZIP (с другой версии или машины)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          </label>
+          <button class="side-btn" id="sideInfo" title="Обновления и техническая информация">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+          </button>
+        </div>
       </div>
     </aside>
 
@@ -1034,6 +1045,18 @@
       <div class="modal-actions">
         <button class="btn" id="needZ1CancelBtn">Отмена</button>
         <button class="btn btn-primary" id="checkZapret1Btn">Я запустил — продолжить</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="appInfoOverlay" class="modal-overlay" role="dialog" aria-modal="true">
+    <div class="modal">
+      <button class="modal-x" id="appInfoClose" aria-label="Закрыть">×</button>
+      <div class="modal-title">Обновления и техническая информация</div>
+      <p class="modal-desc" id="appInfoBody"></p>
+      <div class="modal-status" id="appInfoStatus"></div>
+      <div class="modal-actions">
+        <button class="btn btn-primary" id="appInfoCheck">Проверить обновления</button>
       </div>
     </div>
   </div>

@@ -572,6 +572,13 @@ const MainPage = {
     $('gamesSaveBtn').addEventListener('click', () => GamesPage.save());
     const gs = $('gamesSearch');
     if (gs) gs.addEventListener('input', () => GamesPage.render());
+    // Подвал меню: экспорт/импорт настроек и техинфо (обновления)
+    const impFile = $('settingsImportFile');
+    if (impFile) impFile.addEventListener('change', () => ListsPage.importSettings(impFile));
+    const sideExp = $('sideExport');
+    if (sideExp) sideExp.addEventListener('click', () => ListsPage.exportSettings());
+    const sideInfo = $('sideInfo');
+    if (sideInfo) sideInfo.addEventListener('click', () => AppInfo.open());
   },
 
   async loadConfig() {
@@ -1426,6 +1433,66 @@ const GamesPage = {
   },
 };
 
+// ── О программе: обновления и техническая информация (подвал меню) ──
+const AppInfo = {
+  _wired: false,
+
+  async open() {
+    try {
+      const r = await apiGet('/app-info');
+      const i = r.info || {};
+      const rows = [
+        `Версия: <b>${escapeHtml(i.version || '?')}</b>`,
+        `Сборка: ${i.frozen ? 'EXE (onefile)' : 'portable (Python)'}`,
+        `Папка: <span class="meta">${escapeHtml(i.path || '')}</span>`,
+      ];
+      if (i.exe_sha256) {
+        rows.push(`SHA256 exe: <span class="meta">${escapeHtml(i.exe_sha256)}</span>`);
+      }
+      if (i.update_key) {
+        rows.push(`Ключ подписи обновлений: <b>${escapeHtml(i.update_key)}</b>`);
+      }
+      $('appInfoBody').innerHTML = rows.join('<br>');
+      $('appInfoStatus').textContent = '';
+      $('appInfoOverlay').classList.add('open');
+      this._wire();
+    } catch (e) {
+      showToast('Не удалось получить сведения: ' + (e.message || e), 'error');
+    }
+  },
+
+  close() { $('appInfoOverlay').classList.remove('open'); },
+
+  _wire() {
+    if (this._wired) return;
+    this._wired = true;
+    $('appInfoClose').addEventListener('click', () => this.close());
+    $('appInfoOverlay').addEventListener('click', (ev) => {
+      if (ev.target.id === 'appInfoOverlay') this.close();
+    });
+    $('appInfoCheck').addEventListener('click', async () => {
+      const st = $('appInfoStatus');
+      st.textContent = 'Проверяю…';
+      try {
+        const r = await apiGet('/update-check');
+        if (r.error) throw new Error(r.error);
+        if (r.available) {
+          st.innerHTML = `Доступна версия <b>${escapeHtml(r.latest || '')}</b> — смотрите баннер вверху страницы.`;
+          $('updateVersion').textContent = r.latest || '';
+          $('updateLink').href = r.url || '#';
+          $('updateMirrorLink').href = r.mirror_url || '#';
+          App._updateTag = r.tag || '';
+          $('updateBanner').hidden = false;
+        } else {
+          st.textContent = `Установлена последняя версия (${r.current || ''})`;
+        }
+      } catch (e) {
+        st.textContent = 'Ошибка проверки: ' + (e.message || e);
+      }
+    });
+  },
+};
+
 const ListsPage = {
   _loaded: false,
   saved: {},
@@ -1463,8 +1530,6 @@ const ListsPage = {
       // резервная копия настроек (экспорт/импорт юзер-файлов)
       const exp = $('btnSettingsExport');
       if (exp) exp.addEventListener('click', () => this.exportSettings());
-      const imp = $('settingsImportFile');
-      if (imp) imp.addEventListener('change', () => this.importSettings(imp));
       const hc = $('btnListsCheck');
       if (hc) hc.addEventListener('click', () => this.checkHealth(true));
       const hd = $('btnListsDedupe');
