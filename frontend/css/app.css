@@ -681,6 +681,13 @@ select.input:disabled { opacity: .55; }
 }
 .test-options .opt-line + .opt-line { border-top: 1px solid var(--line); }
 .test-options .opt-line:hover { background: var(--panel-hi); }
+/* «Дополнительно» — редкие опции прячем, чтобы не выглядели равными основным */
+.test-options details.opt-more { border-top: 1px solid var(--line); background: var(--field); }
+.test-options details.opt-more > summary { cursor: pointer; list-style: none; user-select: none; padding: 7px 12px; font-size: 12px; color: var(--dim); }
+.test-options details.opt-more > summary::-webkit-details-marker { display: none; }
+.test-options details.opt-more > summary::after { content: ' ▾'; opacity: .55; }
+.test-options details.opt-more[open] > summary::after { content: ' ▴'; }
+.test-options details.opt-more .opt-line { border-top: 1px solid var(--line); }
 .opt-line .opt-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .opt-line .opt-title { color: var(--text); display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .opt-line .opt-title .opt-tag { margin-left: 0; }

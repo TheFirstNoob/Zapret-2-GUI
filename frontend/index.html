@@ -408,18 +408,11 @@
                       <div class="step-num">2</div>
                       <div>
                         <div class="step-name">Подбор стратегии</div>
-                        <div class="step-desc">Каждая стратегия тестируется на Discord, YouTube и других сервисах (~12 сек на стратегию). В конце — одна рекомендация.</div>
+                        <div class="step-desc">Каждая стратегия тестируется на Discord, YouTube и других сервисах (~12 сек на стратегию). Обычно весь подбор занимает 2–4 минуты, в конце — одна рекомендация.</div>
                       </div>
                     </div>
                   </div>
                   <div class="test-options">
-                    <label class="opt-line">
-                      <input type="checkbox" id="extendedCheck">
-                      <span class="opt-text">
-                        <span class="opt-title">Расширенный режим <span class="opt-tag">Zapret 1 + анализ</span></span>
-                        <span class="opt-hint">сравнение с Zapret 1 и без обхода, полный анализ комбинаций</span>
-                      </span>
-                    </label>
                     <label class="opt-line">
                       <input type="checkbox" id="altParamsCheck">
                       <span class="opt-text">
@@ -434,6 +427,16 @@
                         <span class="opt-hint">ZIP с результатами теста и данными о системе</span>
                       </span>
                     </label>
+                    <details class="opt-more">
+                      <summary>Дополнительно</summary>
+                      <label class="opt-line">
+                        <input type="checkbox" id="extendedCheck">
+                        <span class="opt-text">
+                          <span class="opt-title">Расширенный режим <span class="opt-tag">Zapret 1 + анализ</span></span>
+                          <span class="opt-hint">сравнение с Zapret 1 и обычным интернетом, полный анализ комбинаций — дольше; обычному пользователю не нужно</span>
+                        </span>
+                      </label>
+                    </details>
                   </div>
                   <div>
                     <button class="btn btn-primary" id="btnStartTest">Начать подбор</button>
@@ -442,7 +445,7 @@
 
                 <div class="warning-banner">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                  <span>На время подбора обход будет перезапускаться с каждой стратегией. Возможно кратковременное отключение от сети.</span>
+                  <span>На время подбора обход будет перезапускаться с каждой стратегией. Возможно кратковременное отключение от сети — после теста защита вернётся сама (в том состоянии, что было до теста).</span>
                 </div>
               </div>
             </div>
