@@ -159,12 +159,10 @@ def _check_windivert_service(root_dir: Path) -> Check:
                      "Нажмите «Починить» на главной или перезапустите обход — "
                      "программа исправит путь автоматически",
                      tech=f"ImagePath dead: {image}")
-    if start == 4:
-        return Check("windivert_service", "Служба драйвера WinDivert", "fail",
-                     "служба драйвера WinDivert ОТКЛЮЧЕНА (Start=Disabled) — "
-                     "перехват трафика невозможен. Нажмите «Починить» на главной "
-                     "или включите: sc config WinDivert start= demand",
-                     tech=f"Start={start}")
+    # Start=4 и DeleteFlag=1 у службы WinDivert — НОРМА: свой драйвер он
+    # ставит disabled, грузит напрямую (sc query = RUNNING) и помечает службу
+    # на удаление, чтобы она не висела в системе (проверено 2026-09-22).
+    # Реальная проблема — только несуществующий файл в ImagePath.
     return Check("windivert_service", "Служба драйвера WinDivert", "ok",
                  f"ImagePath: {windivert_image_path(image)}",
                  tech=f"Start={start}")
