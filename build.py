@@ -42,6 +42,10 @@ ADD_DATA.append(f"{str(REL_LISTS)}{os.pathsep}lists")
 
 # В рантайме не нужны — тянутся хуками и зависимостями сборки PyInstaller
 EXCLUDE = [
+    # тянется pywebview-ом статически (try/except import), но не используется:
+    # криптопроверка обновлений у нас на stdlib. ~15 МБ мусора в exe.
+    "cryptography",
+    "bcrypt",
     "numpy",
     "PIL",
     "pygments",
