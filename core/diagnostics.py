@@ -20,7 +20,7 @@ from core.admin import is_admin
 from core.config import AppConfig, DEFAULT_PROFILE, VERSION
 from core.launcher import build_args_from_preset, validate_args
 from core.utils import (known_desktop_dir, short_path, windivert_image_dead,
-                        windivert_service_state)
+                        windivert_image_path, windivert_service_state)
 
 # Хост аплоада: 403 от Google Storage = соединение живо.
 DISCORD_UPLOAD_HOST = "discord-attachments-uploads-prd.storage.googleapis.com"
@@ -165,12 +165,9 @@ def _check_windivert_service(root_dir: Path) -> Check:
                      "перехват трафика невозможен. Нажмите «Починить» на главной "
                      "или включите: sc config WinDivert start= demand",
                      tech=f"Start={start}")
-    img = image.strip().strip('"')
-    if img.startswith(chr(92) * 2 + "??" + chr(92)):
-        img = img[4:]
-    img_first = img.split(" ")[0]
     return Check("windivert_service", "Служба драйвера WinDivert", "ok",
-                 f"ImagePath: {img_first}", tech=f"Start={start}")
+                 f"ImagePath: {windivert_image_path(image)}",
+                 tech=f"Start={start}")
 
 
 def _check_launch_spot(root_dir: Path) -> Check:

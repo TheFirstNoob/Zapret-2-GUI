@@ -42,17 +42,35 @@ def get_temp_dir() -> Path:
     return d
 
 
-def windivert_image_dead(image: str) -> str:
-    """Путь ImagePath, если файл драйвера НЕ существует; иначе "".
+def windivert_image_path(image: str) -> str:
+    """Чистый путь .sys из ImagePath.
 
-    ImagePath вида «\\??\\C:\\...\\WinDivert64.sys» — префикс \\??\\ отрезаем,
-    аргументы после пути (если есть) отбрасываем."""
-    img = image.strip().strip('"')
-    if img.startswith(chr(92) * 2 + "??" + chr(92)):
-        img = img[4:]
-    img_first = img.split(" ")[0]
+    Формат Windows: ``\\??\\C:\\...\\WinDivert64.sys`` (одиночный слеш перед
+    ``??``), при этом путь может содержать пробелы. Поэтому сначала проверяем
+    полный путь и только потом пробуем отбросить аргументы."""
+    img = (image or "").strip().strip('"')
+    prefix = "\\??\\"
+    if img.startswith(prefix):
+        img = img[len(prefix):]
     try:
-        return "" if Path(img_first).exists() else img_first
+        if Path(img).exists():
+            return img
+    except OSError:
+        pass
+    first = img.split(" ")[0]
+    try:
+        if Path(first).exists():
+            return first
+    except OSError:
+        pass
+    return first or img
+
+
+def windivert_image_dead(image: str) -> str:
+    """Путь ImagePath, если файл драйвера НЕ существует; иначе ""."""
+    path = windivert_image_path(image)
+    try:
+        return "" if path and Path(path).exists() else path
     except OSError:
         return ""
 
