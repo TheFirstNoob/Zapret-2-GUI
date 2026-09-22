@@ -85,7 +85,7 @@ a { color: var(--accent); }
 .app { display: flex; height: 100vh; }
 
 .sidebar {
-  width: 200px;
+  width: 220px;
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
@@ -138,6 +138,10 @@ a { color: var(--accent); }
 .nav-link.active { background: var(--accent-soft); color: var(--text); font-weight: 600; }
 
 .nav-link { gap: 9px; }
+.nav-link span:not(.nav-badge) {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  min-width: 0;
+}
 .nav-icon { width: 16px; height: 16px; flex: 0 0 auto; color: var(--faint); }
 .nav-link:hover .nav-icon { color: var(--dim); }
 .nav-link.active .nav-icon { color: var(--accent); }
@@ -1189,7 +1193,8 @@ label.opt-line:has(input:disabled):hover { background: var(--field); }
 /* ── small screens (min 900px window) ── */
 
 @media (max-width: 1080px) {
-  .sidebar { width: 170px; }
+  .sidebar { width: 195px; }
+  .nav-link { font-size: 12.5px; }
 }
 
 /* ── Global scrollbars (webview + browser) ── */
