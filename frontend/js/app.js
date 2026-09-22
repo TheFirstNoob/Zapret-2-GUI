@@ -1304,6 +1304,7 @@ const DiagnosticsPage = {
 // следующем запуске обхода/переустановке службы.
 const GamesPage = {
   _data: null,
+  _open: {},
 
   async onShow() {
     const body = $('gamesBody');
@@ -1325,34 +1326,52 @@ const GamesPage = {
       body.innerHTML = '<div class="empty-note">Список пуст</div>';
       return;
     }
-    body.innerHTML = games.map((g, gi) => `
-      <div class="param-row" style="flex-direction:column;align-items:stretch">
-        <div style="display:flex;align-items:center;gap:10px">
-          <div class="param-title" style="flex:1">${escapeHtml(g.name || g.id)}</div>
+    body.innerHTML = games.map((g, gi) => {
+      const open = !!this._open[g.id || gi];
+      return `
+      <div class="game-item">
+        <div class="game-head">
+          <button class="game-toggle" data-g-expand="${gi}">
+            ${open ? '▾' : '▸'} Подробнее
+          </button>
+          <div class="game-name">${escapeHtml(g.name || g.id)}</div>
           <label class="switch" title="Включить игру">
             <input type="checkbox" data-g-on="${gi}" ${g.enabled ? 'checked' : ''}>
             <span class="switch-track"><span class="switch-knob"></span></span>
           </label>
         </div>
-        <div class="param-hint">Домены (авторизация/лобби):</div>
-        ${(g.domains || []).map((d, di) => `
-          <label class="opt-line">
-            <input type="checkbox" data-g-dom="${gi}:${di}" ${d.on ? 'checked' : ''}>
-            <span class="opt-text">
-              <span class="opt-title">${escapeHtml(d.domain)}</span>
-              ${d.note ? `<span class="opt-hint">${escapeHtml(d.note)}</span>` : ''}
-            </span>
-          </label>`).join('') || '<div class="empty-note">Доменов нет</div>'}
-        <div class="param-hint" style="margin-top:6px">UDP-фикс (подключение к серверам):</div>
-        ${(g.udp || []).map((u, ui) => `
-          <label class="opt-line">
-            <input type="checkbox" data-g-udp="${gi}:${ui}" ${u.on ? 'checked' : ''}>
-            <span class="opt-text">
-              <span class="opt-title">UDP ${escapeHtml(u.ports)}</span>
-              <span class="opt-hint">${escapeHtml((u.cidrs || []).join(', '))}</span>
-            </span>
-          </label>`).join('') || '<div class="empty-note">UDP-правил нет</div>'}
-      </div>`).join('');
+        <div class="game-details" ${open ? '' : 'hidden'}>
+          <div class="game-note">Домены — авторизация/лобби, применяются сразу
+            (к новым подключениям). UDP-фикс — подключение к серверу: fake
+            только на старте соединения, применяется после перезапуска обхода.</div>
+          <div class="game-section">Домены (авторизация/лобби):</div>
+          ${(g.domains || []).map((d, di) => `
+            <label class="opt-line">
+              <input type="checkbox" data-g-dom="${gi}:${di}" ${d.on ? 'checked' : ''}>
+              <span class="opt-text">
+                <span class="opt-title">${escapeHtml(d.domain)}</span>
+                ${d.note ? `<span class="opt-hint">${escapeHtml(d.note)}</span>` : ''}
+              </span>
+            </label>`).join('') || '<div class="empty-note">Доменов нет</div>'}
+          <div class="game-section">UDP-фикс (подключение к серверам):</div>
+          ${(g.udp || []).map((u, ui) => `
+            <label class="opt-line">
+              <input type="checkbox" data-g-udp="${gi}:${ui}" ${u.on ? 'checked' : ''}>
+              <span class="opt-text">
+                <span class="opt-title">Порт UDP ${escapeHtml(u.ports)}</span>
+                <span class="opt-hint">${escapeHtml((u.cidrs || []).join(', '))}</span>
+              </span>
+            </label>`).join('') || '<div class="empty-note">UDP-правил нет</div>'}
+        </div>
+      </div>`;
+    }).join('');
+    body.querySelectorAll('[data-g-expand]').forEach(btn =>
+      btn.addEventListener('click', () => {
+        const gi = +btn.dataset.gExpand;
+        const key = games[gi].id || gi;
+        this._open[key] = !this._open[key];
+        this.render();
+      }));
     body.querySelectorAll('[data-g-on]').forEach(cb =>
       cb.addEventListener('change', () => {
         games[+cb.dataset.gOn].enabled = cb.checked;
