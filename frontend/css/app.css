@@ -137,6 +137,11 @@ a { color: var(--accent); }
 .nav-link:hover { background: var(--panel-hi); color: var(--text); }
 .nav-link.active { background: var(--accent-soft); color: var(--text); font-weight: 600; }
 
+.nav-link { gap: 9px; }
+.nav-icon { width: 16px; height: 16px; flex: 0 0 auto; color: var(--faint); }
+.nav-link:hover .nav-icon { color: var(--dim); }
+.nav-link.active .nav-icon { color: var(--accent); }
+
 .sidebar-foot { margin-top: auto; padding: 10px 14px 0; }
 .prot-chip {
   display: flex; align-items: center; gap: 7px;
