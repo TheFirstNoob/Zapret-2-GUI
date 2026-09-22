@@ -27,10 +27,15 @@ def default_games() -> dict:
         "enabled": True,
         "domains": [
             {"domain": "live.wardogs.bulkhead.pragmaengine.com",
-             "on": True, "note": ""},
-            {"domain": "firstlook.gg", "on": True, "note": ""},
-            {"domain": "api.epicgames.dev", "on": True,
-             "note": "общий домен Epic (нужен всем их играм)"},
+             "on": True, "warn": False, "tag": "Основной бэкенд",
+             "note": "сервер лобби и поиска матча (без него нет сессии)"},
+            {"domain": "firstlook.gg", "on": True, "warn": False,
+             "tag": "Авторизация",
+             "note": "вход в профиль и токен сессии"},
+            {"domain": "api.epicgames.dev", "on": True, "warn": True,
+             "tag": "Общий сервис",
+             "note": "Epic Online Services — нужен всем играм Epic, "
+                     "не только этой"},
         ],
         "udp": [{
             "ports": "4192",
@@ -39,6 +44,8 @@ def default_games() -> dict:
             "on": True,
             "repeats": DEFAULT_REPEATS,
             "cutoff": DEFAULT_CUTOFF,
+            "tag": "Сетевой бой",
+            "note": "fake на старте коннекта, без флуда",
         }],
     }]}
 

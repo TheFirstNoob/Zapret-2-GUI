@@ -570,6 +570,8 @@ const MainPage = {
       else this.runBlobProbe();
     });
     $('gamesSaveBtn').addEventListener('click', () => GamesPage.save());
+    const gs = $('gamesSearch');
+    if (gs) gs.addEventListener('input', () => GamesPage.render());
   },
 
   async loadConfig() {
@@ -1322,52 +1324,74 @@ const GamesPage = {
   render() {
     const body = $('gamesBody');
     const games = this._data.games || [];
-    if (!games.length) {
-      body.innerHTML = '<div class="empty-note">Список пуст</div>';
+    const q = (($('gamesSearch') && $('gamesSearch').value) || '')
+      .trim().toLowerCase();
+    const visible = games.map((g, gi) => ({ g, gi })).filter(({ g }) =>
+      !q || String(g.name || '').toLowerCase().includes(q) ||
+      (g.domains || []).some(d =>
+        String(d.domain || '').toLowerCase().includes(q)));
+    if (!visible.length) {
+      body.innerHTML = '<div class="empty-note">' +
+        (games.length ? 'Ничего не найдено' : 'Список пуст') + '</div>';
       return;
     }
-    body.innerHTML = games.map((g, gi) => {
+    const plural = (n) => n === 1 ? 'домен' : (n < 5 ? 'дома' : 'домов');
+    body.innerHTML = visible.map(({ g, gi }) => {
       const open = !!this._open[g.id || gi];
+      const domCount = (g.domains || []).length;
+      const udpPorts = (g.udp || []).map(u => u.ports).join(', ');
       return `
-      <div class="game-item">
-        <div class="game-head">
-          <button class="game-toggle" data-g-expand="${gi}">
-            ${open ? '▾' : '▸'} Подробнее
-          </button>
-          <div class="game-name">${escapeHtml(g.name || g.id)}</div>
-          <label class="switch" title="Включить игру">
+      <div class="game-item${open ? ' open' : ''}">
+        <div class="game-row" data-g-expand="${gi}">
+          <div class="game-left">
+            <svg class="game-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+            <span class="game-title">${escapeHtml(g.name || g.id)}</span>
+            <div class="game-badges">
+              ${domCount ? `<span class="pill-badge">${domCount} ${plural(domCount)}</span>` : ''}
+              ${udpPorts ? `<span class="pill-badge">UDP: ${escapeHtml(udpPorts)}</span>` : ''}
+            </div>
+          </div>
+          <label class="switch" title="Включить игру" data-g-noexp="1">
             <input type="checkbox" data-g-on="${gi}" ${g.enabled ? 'checked' : ''}>
             <span class="switch-track"><span class="switch-knob"></span></span>
           </label>
         </div>
-        <div class="game-details" ${open ? '' : 'hidden'}>
-          <div class="game-note">Домены — авторизация/лобби, применяются сразу
-            (к новым подключениям). UDP-фикс — подключение к серверу: fake
-            только на старте соединения, применяется после перезапуска обхода.</div>
-          <div class="game-section">Домены (авторизация/лобби):</div>
-          ${(g.domains || []).map((d, di) => `
-            <label class="opt-line">
-              <input type="checkbox" data-g-dom="${gi}:${di}" ${d.on ? 'checked' : ''}>
-              <span class="opt-text">
-                <span class="opt-title">${escapeHtml(d.domain)}</span>
-                ${d.note ? `<span class="opt-hint">${escapeHtml(d.note)}</span>` : ''}
-              </span>
-            </label>`).join('') || '<div class="empty-note">Доменов нет</div>'}
-          <div class="game-section">UDP-фикс (подключение к серверам):</div>
-          ${(g.udp || []).map((u, ui) => `
-            <label class="opt-line">
-              <input type="checkbox" data-g-udp="${gi}:${ui}" ${u.on ? 'checked' : ''}>
-              <span class="opt-text">
-                <span class="opt-title">Порт UDP ${escapeHtml(u.ports)}</span>
-                <span class="opt-hint">${escapeHtml((u.cidrs || []).join(', '))}</span>
-              </span>
-            </label>`).join('') || '<div class="empty-note">UDP-правил нет</div>'}
+        <div class="game-details">
+          <div class="detail-group">
+            <div class="group-label">Домены авторизации и лобби</div>
+            ${(g.domains || []).map((d, di) => `
+              <label class="rule-item">
+                <input type="checkbox" data-g-dom="${gi}:${di}" ${d.on ? 'checked' : ''}>
+                <div class="rule-content">
+                  <div class="rule-main-line">
+                    <span class="rule-target">${escapeHtml(d.domain)}</span>
+                  </div>
+                  ${d.note ? `<div class="rule-comment">${d.tag ? `<span class="${d.warn ? 'comment-warning' : 'comment-tag'}">${escapeHtml(d.tag)}:</span> ` : ''}${escapeHtml(d.note)}</div>` : ''}
+                </div>
+              </label>`).join('') || '<div class="empty-note">Доменов нет</div>'}
+          </div>
+          <div class="detail-group">
+            <div class="group-label">UDP-фикс (подключение к игровым серверам)</div>
+            ${(g.udp || []).map((u, ui) => `
+              <label class="rule-item">
+                <input type="checkbox" data-g-udp="${gi}:${ui}" ${u.on ? 'checked' : ''}>
+                <div class="rule-content">
+                  <div class="rule-main-line">
+                    <span class="rule-target">Порт UDP ${escapeHtml(u.ports)}</span>
+                    <span class="pill-badge" style="color: var(--ok)">fake на старте</span>
+                  </div>
+                  ${u.note ? `<div class="rule-comment">${u.tag ? `<span class="comment-tag">${escapeHtml(u.tag)}:</span> ` : ''}${escapeHtml(u.note)}</div>` : ''}
+                  <div class="ip-subnets">Подсети: ${escapeHtml((u.cidrs || []).join(', '))}</div>
+                </div>
+              </label>`).join('') || '<div class="empty-note">UDP-правил нет</div>'}
+          </div>
         </div>
       </div>`;
     }).join('');
-    body.querySelectorAll('[data-g-expand]').forEach(btn =>
-      btn.addEventListener('click', () => {
-        const gi = +btn.dataset.gExpand;
+    body.querySelectorAll('[data-g-expand]').forEach(row =>
+      row.addEventListener('click', (ev) => {
+        if (ev.target.closest('[data-g-noexp]')) return;
+        const gi = +row.dataset.gExpand;
         const key = games[gi].id || gi;
         this._open[key] = !this._open[key];
         this.render();
