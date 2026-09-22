@@ -138,6 +138,11 @@ a { color: var(--accent); }
 .nav-link.active { background: var(--accent-soft); color: var(--text); font-weight: 600; }
 
 .nav-link { gap: 9px; }
+details.panel > summary { cursor: pointer; list-style: none; }
+details.panel > summary::-webkit-details-marker { display: none; }
+details.panel > summary .head-right::after { content: ' ▾'; opacity: .55; }
+details.panel[open] > summary .head-right::after { content: ' ▴'; }
+details.panel[open] > .param-rows { border-top: 1px solid var(--divider); }
 .nav-subgroup { margin-top: 4px; }
 .nav-sub-label {
   font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase;

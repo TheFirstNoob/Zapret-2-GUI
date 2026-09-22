@@ -547,7 +547,12 @@ const MainPage = {
 
   bind() {
     $('btnZ2Toggle').addEventListener('click', () => this.toggleZ2());
-    $('btnQuickCheck').addEventListener('click', () => { location.hash = 'diagnostics'; });
+    $('btnQuickCheck').addEventListener('click', () => {
+      location.hash = 'diagnostics';
+      // «Проверить работу» должна реально запускать проверку, а не просто
+      // переключать вкладку: небольшая задержка — пока страница активируется.
+      setTimeout(() => DiagnosticsPage.run(), 150);
+    });
     $('btnStopZ1Now').addEventListener('click', () => this.stopZ1());
     $('btnApplyToggles').addEventListener('click', () => this.restartZapret());
     $('btnSvcRepair').addEventListener('click', () => this.svcRepair());

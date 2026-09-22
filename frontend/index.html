@@ -175,7 +175,7 @@
               <div class="param-row wide">
                 <div class="param-main">
                   <div class="param-title">Активная стратегия<span class="param-tag">winws2</span></div>
-                  <div class="param-desc">Текущий алгоритм расщепления и модификации пакетов.</div>
+                  <div class="param-desc">Правила, которыми программа обходит блокировки. Не знаете, что выбрать — оставьте default.</div>
                   <div class="param-hint" id="strategyApplyHint" hidden></div>
                 </div>
                 <div class="param-ctl">
@@ -206,7 +206,7 @@
               <div class="row">
                 <span class="meta" id="svcStatusText"></span>
                 <span class="svc-actions">
-                  <button class="btn" id="btnSvcRepair" title="Проверить и починить службу драйвера WinDivert (repair ImagePath, включить disabled, отчёт о Zapret 1)">Починить</button>
+                  <button class="btn" id="btnSvcRepair" title="Проверить и починить службу драйвера WinDivert (repair ImagePath, включить disabled, отчёт о Zapret 1)">Починить драйвер</button>
                   <button class="btn" id="btnSvcInstall" hidden>Установить службу</button>
                   <button class="btn btn-go" id="btnSvcStart" hidden>Запустить службу</button>
                   <button class="btn btn-stop" id="btnSvcStop" hidden>Остановить службу</button>
@@ -216,17 +216,17 @@
             </div>
 
             <!-- Параметры запуска (только Zapret 2) -->
-            <div class="panel" id="togglesPanel">
-              <div class="card-head">
+            <details class="panel" id="togglesPanel">
+              <summary class="card-head">
                 <div class="head-icon">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
                 </div>
                 <div class="head-text">
                   <div class="head-title">Параметры запуска</div>
-                  <div class="head-desc">Применяются при старте Zapret 2.</div>
+                  <div class="head-desc">Дополнительно — обычно трогать не нужно.</div>
                 </div>
                 <div class="head-right"><span class="opt-tag">Только Zapret 2</span></div>
-              </div>
+              </summary>
 
               <div class="toggles-overlay" id="togglesOverlay" hidden>
                 Настройки ниже относятся к Zapret 2 — сейчас запущен Zapret 1.
@@ -331,22 +331,22 @@
                 <span class="meta" id="applyTogglesHint"></span>
                 <button class="btn btn-warn" id="btnApplyToggles" hidden>Перезапустить с новыми параметрами</button>
               </div>
-            </div>
+            </details>
 
             <!-- Zapret 1 — запасной вариант -->
-            <div class="panel panel-fallback" id="z1Panel">
-              <div class="card-head">
+            <details class="panel panel-fallback" id="z1Panel">
+              <summary class="card-head">
                 <div class="head-icon">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                 </div>
                 <div class="head-text">
                   <div class="head-title">Zapret 1</div>
-                  <div class="head-desc">запасной вариант — если Zapret 2 не справится</div>
+                  <div class="head-desc">запасной вариант — если Zapret 2 не справится (только для тех, у кого он есть)</div>
                 </div>
                 <div class="head-right">
                   <span class="state" id="z1State"><span class="dot dot-unknown"></span><span class="state-text">—</span></span>
                 </div>
-              </div>
+              </summary>
 
               <div class="grid-field">
                 <div class="grid-label">
@@ -364,7 +364,7 @@
                 <select class="input" id="z1StrategySelect" disabled><option value="">— сначала укажите папку —</option></select>
                 <button class="btn" id="btnZ1Toggle">Запустить</button>
               </div>
-            </div>
+            </details>
 
           </div><!-- /stack -->
 
