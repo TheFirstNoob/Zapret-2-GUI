@@ -559,7 +559,6 @@ const MainPage = {
     $('btnZ1Toggle').addEventListener('click', () => this.toggleZ1());
     $('updateBannerClose').addEventListener('click', () => { $('updateBanner').hidden = true; });
     $('updateNowBtn').addEventListener('click', () => this._onUpdateBtn());
-    $('updateNowBtn').addEventListener('click', () => this.runUpdate());
 
     ['toggleGameFilter', 'toggleAutoHostlist', 'toggleIpFilter',
       'toggleDiscordVoice', 'toggleDiscordAlt', 'toggleWinws2Debug', 'fakeBlobSelect'].forEach(id => {
