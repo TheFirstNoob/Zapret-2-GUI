@@ -7,9 +7,48 @@ WinDivert.dll, и они попадают в корень архива ВТОР�
 в bin\\ через datas). Выкидываем корневые дубликаты и документацию pythonnet.
 """
 import os
+import re
+import sys
 from pathlib import Path
 
 ROOT = Path(SPECPATH).resolve()
+
+# Версия exe-файла — из core.config.VERSION (единый источник; статический
+# version_info.txt больше не протухает)
+def _gen_version_file() -> str:
+    try:
+        sys.path.insert(0, str(ROOT))
+        from core.config import VERSION as ver
+    except Exception:
+        return str(ROOT / "version_info.txt")
+    m = re.search(r"(\d+)\.(\d+)(?:\.(\d+))?", ver or "")
+    n = [int(x) if x else 0 for x in (m.groups() if m else (0, 0, 0))]
+    quad = tuple((n + [0, 0, 0, 0])[:4])
+    out = ROOT / "build" / "version_info.gen"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(
+        "VSVersionInfo(\n"
+        "  ffi=FixedFileInfo(\n"
+        f"    filevers={quad},\n"
+        f"    prodvers={quad},\n"
+        "    mask=0x3f,\n    flags=0x0,\n    OS=0x40004,\n"
+        "    fileType=0x1,\n    subtype=0x0,\n    date=(0, 0)\n  ),\n"
+        "  kids=[\n    StringFileInfo([\n      StringTable('040904B0', [\n"
+        "        StringStruct('CompanyName', 'Zapret 2 GUI'),\n"
+        "        StringStruct('FileDescription', 'Zapret 2 DPI bypass GUI'),\n"
+        f"        StringStruct('FileVersion', '{'.'.join(map(str, quad))}'),\n"
+        "        StringStruct('InternalName', 'Zapret2GUI'),\n"
+        "        StringStruct('LegalCopyright', 'Open source (MIT)'),\n"
+        "        StringStruct('OriginalFilename', 'Zapret2GUI.exe'),\n"
+        "        StringStruct('ProductName', 'Zapret 2 GUI'),\n"
+        f"        StringStruct('ProductVersion', {ver!r})\n"
+        "      ])\n    ]),\n"
+        "    VarFileInfo([VarStruct('Translation', [1033, 1200])])\n"
+        "  ]\n)\n", encoding="utf-8")
+    return str(out)
+
+
+VERSION_FILE = _gen_version_file()
 NAME = "Zapret2GUI"
 
 DATAS = []
@@ -91,5 +130,5 @@ exe = EXE(
     console=False,
     disable_windowed_traceback=False,
     icon=str(ROOT / "frontend" / "logo.ico"),
-    version=str(ROOT / "version_info.txt"),
+    version=VERSION_FILE,
 )
