@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Optional
 
 from core.admin import enable_privilege, get_enabled_privileges
+from core import games as games_store
 from core.utils import short_path
 
 _GAME_PORT = "1024-65535"
@@ -95,6 +96,19 @@ def validate_lua(exe_path: Path, args: list[str], cwd: Optional[Path] = None, ti
         if any(marker in stripped for marker in _LUA_ERROR_MARKERS):
             return False, f"winws2: ошибка Lua: {stripped}"
     return True, ""
+
+
+def _append_wf_udp_ports(tokens: list[str], ports: str) -> None:
+    """Дописать порты в --wf-udp-out (его значение — следующий токен)."""
+    for i, t in enumerate(tokens):
+        if t == "--wf-udp-out" and i + 1 < len(tokens):
+            cur = tokens[i + 1]
+            have = cur.split(",")
+            missing = [p for p in ports.split(",") if p and p not in have]
+            if missing:
+                tokens[i + 1] = cur + "," + ",".join(missing)
+            return
+    tokens.insert(0, f"--wf-udp-out={ports}")
 
 
 def build_args_from_preset(
@@ -290,7 +304,10 @@ def build_args_from_preset(
     user_inc = ""
     if include_file.exists():
         user_inc = f"--hostlist={short_path(include_file)}"
-    if user_excl or user_inc:
+    # Домены включённых игр — управляемый файл фичи «Игровые блокировки»
+    games_list_path = games_store.sync_domain_list(root_dir)
+    games_inc = f"--hostlist={short_path(games_list_path)}"
+    if user_excl or user_inc or games_inc:
         # winws2 ANDs --ipset с --hostlist внутри профиля (§24.2): инжект
         # SNI-include в ipset-сегмент схлопнул бы catch-all до доменов юзера.
         # hostlist-exclude безопасен в обоих случаях.
@@ -313,6 +330,8 @@ def build_args_from_preset(
                         out.append(user_excl)
                     if user_inc and not has_ipset:
                         out.append(user_inc)
+                    if games_inc and not has_ipset:
+                        out.append(games_inc)
                     injected_once = True
                 out.append(t)
         tokens = out
@@ -352,6 +371,22 @@ def build_args_from_preset(
         tokens.append("--payload=discord_ip_discovery")
         tokens.append("--out-range=-d10")
         tokens.append("--lua-desync=fake:blob=quic_google")
+    # ── Игровые блокировки: UDP-фиксы (только старт соединения) ──
+    # fake с payload=all обязателен: lua не трогает unknown-UDP (игровой
+    # трафик) без явного аргумента. repeats=1 и cutoff — минимально.
+    game_rules = games_store.enabled_udp_rules(games_store.load_games(root_dir))
+    if game_rules:
+        if not any(t.startswith("quic_google:") for t in tokens):
+            tokens += ["--blob",
+                       "quic_google:@blobs/quic_initial_www_google_com.bin"]
+        for rule in game_rules:
+            cidr_path = games_store.write_cidr_file(root_dir, rule)
+            _append_wf_udp_ports(tokens, rule["ports"])
+            tokens += ["--new", f"--filter-udp={rule['ports']}",
+                       f"--ipset={short_path(cidr_path)}",
+                       "--out-range", f"-d{rule['cutoff']}",
+                       "--lua-desync=fake:blob=quic_google:"
+                       f"repeats={rule['repeats']}:payload=all"]
     # ── Юзерские IP-include, targeted-режим ──
     # winws2 ANDs --ipset с --hostlist внутри профиля, поэтому юзер-подсети
     # не могут жить в общем блоке. Дублируем каждый блок с list-general и

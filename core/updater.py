@@ -35,8 +35,10 @@ RELEASE_PRESETS = (
 
 USER_FILES: tuple[str, ...] = (
     "zapret2_config.json",
+    "games.json",
     "lists/list-include-user.txt",
     "lists/list-exclude-user.txt",
+    "lists/list-games.txt",
     "lists/ipset-include-user.txt",
     "lists/ipset-exclude-user.txt",
     "test_session.log",
@@ -62,6 +64,8 @@ def is_user_file(rel: str) -> bool:
         return True
     if p.parts[:1] == ("lists",) and p.name.endswith("-user.txt"):
         return True
+    if p.parts[:2] == ("lists", "games"):
+        return True  # сгенерированные CIDR-файлы игровых блокировок
     if p.parts[:1] == ("presets",) and p.name.endswith(".txt"):
         stem = p.stem
         if stem not in RELEASE_PRESETS and stem not in USER_PRESET_IGNORE:
