@@ -692,11 +692,12 @@ select.input:disabled { opacity: .55; }
 .opt-line .opt-title { color: var(--text); display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .opt-line .opt-title .opt-tag { margin-left: 0; }
 .opt-line .opt-hint { font-size: 11.5px; color: var(--faint); }
-.opt-line .opt-tag {
+.opt-tag {
   font-size: 10.5px; color: var(--dim);
   background: var(--panel-hi); border: 1px solid var(--line);
   padding: 1px 7px; border-radius: 8px; white-space: nowrap;
 }
+.opt-line .opt-tag { margin-left: 0; }
 /* ценовые теги (время/ресурсы) — отдельный смысл, отдельный цвет */
 .opt-tag-cost { color: var(--warn); background: var(--warn-bg); border-color: var(--warn-line); }
 /* вложенный подпункт (IPSets под «Проверкой CDN») */
