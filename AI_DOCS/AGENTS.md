@@ -222,8 +222,15 @@
   bcrypt), хотя наша проверка подписи — stdlib. Исключено в build.py
   (`cryptography`, `bcrypt`): exe 18.5 → **14.9 МБ**, zip 18.3 → 14.7 МБ
   (libcrypto/libssl остаются — это Python `_ssl` для HTTPS). Остаток: дубль
-  `cygwin1.dll` в корне архива (~1.4 МБ в сжатом) — источник не найден,
-  разобрать потом.
+  `cygwin1.dll`/`WinDivert.dll` — **причина найдена**: PyInstaller сканирует
+  наши `bin\*.exe/.dll` (добавленные `--add-data`) как PE и подтягивает их
+  импорты — `winws2.exe` требует `cygwin1.dll` и `WinDivert.dll`, поэтому они
+  попадают **в корень архива** вдобавок к копиям в `bin\` (TOC: BINARY vs
+  DATA). План фикса: свой spec-файл для build.py, после `Analysis` отфильтровать
+  корневые дубликаты (`a.binaries = [b for b in a.binaries if b[0] not in
+  ("cygwin1.dll", "WinDivert.dll")]`) + заодно выкинуть `Python.Runtime.xml`
+  (0.18 МБ доки) — экономия ~1.4 МБ в zip. Делать отдельным заходом с проверкой
+  запуска winws2.
 
 ## Сжатая хронология
 
