@@ -2462,8 +2462,11 @@ const TesterPage = {
   _setCurrent(key) {
     this._rowFor(key);
     if (this.state.currentKey && this.state.currentKey !== key) {
-      const prev = this.state.rows.get(this.state.currentKey);
-      if (prev) { prev.tr.classList.remove('is-current'); prev.detail.hidden = true; }
+      // Предыдущую стратегию закрываем честно: у «голого теста» отдельного
+      // сигнала о финише нет — строка висела «тестируется…»
+      const prevKey = this.state.currentKey;
+      this._finishRow(prevKey);
+      if (this._completedSeen) this._completedSeen.add(prevKey);
     }
     this.state.currentKey = key;
     const row = this.state.rows.get(key);
@@ -2615,6 +2618,7 @@ const TesterPage = {
     const { resultType, onResult, progressConfig, onError, onCancel, onIntermediate } = callbacks || {};
     const { startPercent = 0, scalePercent = 1, textTemplate = '' } = progressConfig || {};
     let known = this.state.knownResults = 0;
+    this._completedSeen = new Set();
     let started = false;
     let pollActive = true;
 
@@ -2663,9 +2667,16 @@ const TesterPage = {
               ' score=' + (item.success_rate != null ? item.success_rate.toFixed(0) : '?'));
           }
         }
-        // Надёжное закрытие строк: сервер отдаёт список завершённых стратегий,
-        // отдельное сообщение-финишер могло потеряться между опросами
-        for (const key of (state.completed || [])) this._finishRow(key);
+        // Надёжное закрытие строк: сервер отдаёт список завершённых стратегий;
+        // закрываем один раз на стратегию (повторный вызов сворачивал бы
+        // раскрытые пользователем списки доменов)
+        const seen = this._completedSeen || (this._completedSeen = new Set());
+        for (const key of (state.completed || [])) {
+          if (!seen.has(key)) {
+            seen.add(key);
+            this._finishRow(key);
+          }
+        }
         if (!state.running) {
           // финальная синхронизация: строка последней стратегии могла не
           // получить своё «Стратегия X: N%» (progress перезаписался) —
