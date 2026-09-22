@@ -573,7 +573,8 @@ const MainPage = {
       if (this._blobProbing) this._cancelBlobProbe();
       else this.runBlobProbe();
     });
-    $('gamesSaveBtn').addEventListener('click', () => GamesPage.save());
+    const gamesSave = $('gamesSaveBtn');
+    if (gamesSave) gamesSave.addEventListener('click', () => GamesPage.save());
     const gs = $('gamesSearch');
     if (gs) gs.addEventListener('input', () => GamesPage.render());
     // Подвал меню: экспорт/импорт настроек и техинфо (обновления)
@@ -1318,9 +1319,15 @@ const DiagnosticsPage = {
 const GamesPage = {
   _data: null,
   _open: {},
+  _svcWired: false,
 
   async onShow() {
     const body = $('gamesBody');
+    if (!this._svcWired) {
+      const svcBtn = $('gamesSvcBtn');
+      if (svcBtn) svcBtn.addEventListener('click', () => this.reinstallService());
+      this._svcWired = true;
+    }
     try {
       const r = await apiGet('/games');
       this._data = (r.games && Array.isArray(r.games.games))
@@ -1396,6 +1403,10 @@ const GamesPage = {
                 </div>
               </label>`).join('') || '<div class="empty-note">UDP-правил нет</div>'}
           </div>
+          <div class="game-actions" data-g-noexp="1">
+            <button class="btn btn-sm" data-g-analyze="${gi}" ${g.process ? '' : 'disabled'} title="${g.process ? 'Запустить сетевой анализ процесса игры' : 'У игры не задан процесс'}">Анализ приложения</button>
+            <span class="meta">${g.process ? 'процесс: ' + escapeHtml(g.process) : 'процесс не задан'}</span>
+          </div>
         </div>
       </div>`;
     }).join('');
@@ -1424,6 +1435,33 @@ const GamesPage = {
         games[gi].udp[ui].on = cb.checked;
         this.save();
       }));
+    body.querySelectorAll('[data-g-analyze]').forEach(btn =>
+      btn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        this.analyzeGame(+btn.dataset.gAnalyze);
+      }));
+  },
+
+  reinstallService() {
+    if (!window.confirm('Переустановить службу обхода? Это нужно, чтобы UDP-фикс игр вступил в силу. Обход на пару секунд прервётся.')) return;
+    MainPage.svcInstall();
+  },
+
+  analyzeGame(gi) {
+    const g = (this._data.games || [])[gi];
+    const proc = ((g && g.process) || '').trim();
+    if (!proc) {
+      showToast('У игры не задан процесс для анализа', 'error');
+      return;
+    }
+    location.hash = '#probe';
+    setTimeout(async () => {
+      const inp = $('probeProcInput');
+      if (inp) inp.value = proc;
+      try { await TesterPage.scanProbeProcesses(true); } catch (e) { /* не критично */ }
+      if (TesterPage._hintProbeProcess) TesterPage._hintProbeProcess();
+      TesterPage.startProbe();
+    }, 250);
   },
 
   async save() {

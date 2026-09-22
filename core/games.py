@@ -25,6 +25,7 @@ def default_games() -> dict:
         "id": "wardogs",
         "name": "Wardogs",
         "enabled": True,
+        "process": "WardogsClient.exe",
         "domains": [
             {"domain": "live.wardogs.bulkhead.pragmaengine.com",
              "on": True, "warn": False, "tag": "Основной бэкенд",
@@ -61,12 +62,27 @@ def load_games(root: Path) -> dict:
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
             if isinstance(data, dict) and isinstance(data.get("games"), list):
+                _backfill_process(data)
                 return data
         except (OSError, json.JSONDecodeError):
             pass
     data = default_games()
     save_games(root, data)
     return data
+
+
+def _backfill_process(data: dict) -> None:
+    """Дополняет записи старых games.json полем process из дефолтов."""
+    try:
+        defaults = {g.get("id"): g for g in default_games().get("games", [])}
+        for g in data.get("games", []):
+            if not isinstance(g, dict) or "process" in g:
+                continue
+            src = defaults.get(g.get("id")) or {}
+            if src.get("process"):
+                g["process"] = src["process"]
+    except Exception:
+        pass
 
 
 def save_games(root: Path, data: dict) -> bool:
