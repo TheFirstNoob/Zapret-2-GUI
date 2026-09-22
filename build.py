@@ -22,12 +22,7 @@ for pf in sorted((ROOT / "presets").glob("*.txt")):
     if RELEASE_PRESETS(pf.stem):
         shutil.copy2(pf, REL_PRESETS / pf.name)
 
-ADD_DATA = []
-for d in ("bin", "blobs", "lua", "windivert", "frontend"):
-    src = str(ROOT / d)
-    dst = d
-    ADD_DATA.append(f"{src}{os.pathsep}{dst}")
-ADD_DATA.append(f"{str(REL_PRESETS)}{os.pathsep}presets")
+# datas/excludes живут в Zapret2GUI.spec (там же фильтр корневых дубликатов)
 
 # lists попадают в onefile через staging: user-файлы обнуляются, чтобы данные
 # разработчика не утекли в дистрибутив (как в portable/lite)
@@ -38,58 +33,15 @@ shutil.copytree(ROOT / "lists", REL_LISTS)
 for name in ("list-include-user", "list-exclude-user",
              "ipset-include-user", "ipset-exclude-user"):
     (REL_LISTS / f"{name}.txt").write_text("", encoding="utf-8")
-ADD_DATA.append(f"{str(REL_LISTS)}{os.pathsep}lists")
-
-# В рантайме не нужны — тянутся хуками и зависимостями сборки PyInstaller
-EXCLUDE = [
-    # тянется pywebview-ом статически (try/except import), но не используется:
-    # криптопроверка обновлений у нас на stdlib. ~15 МБ мусора в exe.
-    "cryptography",
-    "bcrypt",
-    "numpy",
-    "PIL",
-    "pygments",
-    "setuptools",
-    "uvicorn",
-    "uvicorn.logging",
-    "uvicorn.loops",
-    "uvicorn.loops.auto",
-    "uvicorn.protocols",
-    "uvicorn.protocols.http",
-    "uvicorn.protocols.http.auto",
-    "uvicorn.protocols.websockets",
-    "uvicorn.protocols.websockets.auto",
-    "websockets",
-    "websockets.legacy",
-    "websockets.legacy.server",
-    "starlette",
-    "starlette.websockets",
-    "fastapi",
-    "pydantic",
-    "pydantic.v1",
-    "pydantic_core",
-    "h11",
-    "httptools",
-    "anyio",
-    "sniffio",
-    "multipart",
-]
 
 PyInstaller.__main__.run([
-    "--onefile",
-    "--noconsole",
-    "--name", NAME,
-    "--distpath", str(DIST),
-    "--workpath", str(ROOT / "build"),
-    "--specpath", str(ROOT / "build"),
     "--noconfirm",
     "--clean",
-    "--icon", str(ROOT / "frontend" / "logo.ico"),
-    "--version-file", str(ROOT / "version_info.txt"),
-    "--log-level", "WARN",
-    *[f"--exclude-module={e}" for e in EXCLUDE],
-    *[f"--add-data={a}" for a in ADD_DATA],
-    str(ROOT / "main.py"),
+    "--distpath", str(DIST),
+    # workpath отдельно от staging (build/presets_release, build/lists_release):
+    # --clean не должен трогать подготовленные данные
+    "--workpath", str(ROOT / "build" / "pyi"),
+    str(ROOT / "Zapret2GUI.spec"),
 ])
 
 out = DIST / f"{NAME}.exe"
