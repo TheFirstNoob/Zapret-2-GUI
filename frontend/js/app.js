@@ -487,6 +487,7 @@ const MainPage = {
     });
     $('btnStopZ1Now').addEventListener('click', () => this.stopZ1());
     $('btnApplyToggles').addEventListener('click', () => this.restartZapret());
+    $('btnRevertToggles').addEventListener('click', () => this._revertToggles());
     $('btnSvcRepair').addEventListener('click', () => this.svcRepair());
     $('btnSvcInstall').addEventListener('click', () => this.svcInstall());
     $('btnSvcStart').addEventListener('click', () => this.svcStart());
@@ -516,6 +517,15 @@ const MainPage = {
     if (sideExp) sideExp.addEventListener('click', () => ListsPage.exportSettings());
     const sideInfo = $('sideInfo');
     if (sideInfo) sideInfo.addEventListener('click', () => AppInfo.open());
+    // Статус-чип в подвале меню кликабелен: ведёт на главную
+    const protChip = $('protChip');
+    if (protChip) {
+      const goMain = () => { location.hash = '#main'; };
+      protChip.addEventListener('click', goMain);
+      protChip.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goMain(); }
+      });
+    }
   },
 
   async loadConfig() {
@@ -604,7 +614,7 @@ const MainPage = {
         if (st.progress && hint && !this._blobProbeCancelled) {
           hint.textContent = `${st.progress.message || ''} (${st.progress.percent ?? 0}%)`;
           Activity.set('main', 'Подбор блоба: ' + (st.progress.message || ''),
-                       st.progress.percent);
+                       st.progress.percent, true);
         }
         if (!st.running) final = st.final_result;
       }
@@ -967,16 +977,90 @@ const MainPage = {
       (a.fake_blob || '') === (b.fake_blob || '');
   },
 
+  _TOGGLE_NAMES: {
+    game_filter_mode: 'Игровые порты',
+    discord_voice_mode: 'Discord Voice',
+    discord_alt: 'Альт-режим Discord',
+    autohostlist: 'Авто-список',
+    ipset_catchall: 'Общий IP-обход',
+    winws2_debug: 'DEBUG-лог',
+    fake_blob: 'Блоб фейка',
+  },
+
+  _TOGGLE_VALUES: {
+    game_filter_mode: { off: 'Выключено', tcp: 'только TCP', udp: 'только UDP', both: 'TCP + UDP' },
+    discord_voice_mode: { off: 'Выключено', fake: 'Стандарт', udplen: 'UDP-длина' },
+  },
+
+  // Что расходится с запущенным обходом (для плашки «есть неприменённые»)
+  _pendingDiff() {
+    if (!this._z2Running || !this._runningToggles) return [];
+    const cur = this._collectToggles();
+    const ref = this._runningToggles;
+    const out = [];
+    const val = (k, v) => (this._TOGGLE_VALUES[k] || {})[v] || v;
+    for (const k of Object.keys(this._TOGGLE_NAMES)) {
+      if (k === 'discord_voice_mode') {
+        const av = ref.discord_voice_mode || (ref.discord_voice ? 'fake' : 'off');
+        const bv = cur.discord_voice_mode || (cur.discord_voice ? 'fake' : 'off');
+        if (av !== bv) out.push(`${this._TOGGLE_NAMES[k]}: ${val(k, av)} → ${val(k, bv)}`);
+        continue;
+      }
+      if (['discord_alt', 'autohostlist', 'ipset_catchall', 'winws2_debug'].includes(k)) {
+        if (!!ref[k] !== !!cur[k]) {
+          out.push(`${this._TOGGLE_NAMES[k]}: ${cur[k] ? 'включить' : 'выключить'}`);
+        }
+        continue;
+      }
+      const a = k === 'fake_blob' ? (ref[k] || '') : ref[k];
+      const b = k === 'fake_blob' ? (cur[k] || '') : cur[k];
+      if (a !== b) {
+        const show = (x) => (x || 'как в пресете').replace(/_/g, '.');
+        out.push(`${this._TOGGLE_NAMES[k]}: ${show(a)} → ${show(b)}`);
+      }
+    }
+    const sel = $('strategySelect');
+    if (sel && sel.value && this._z2Strategy && sel.value !== this._z2Strategy) {
+      out.push(`Стратегия: ${this._z2Strategy} → ${sel.value}`);
+    }
+    return out;
+  },
+
   _updateApplyHint() {
     const btn = $('btnApplyToggles');
+    const rev = $('btnRevertToggles');
     const hint = $('applyTogglesHint');
-    // Кнопка только когда обход запущен и сохранённые тогглы расходятся
-    // с тем, с чем процесс реально стартовал.
-    const pending = this._z2Running && !this._togglesEqual(this._runningToggles, this._collectToggles());
+    const diff = $('applyTogglesDiff');
+    // Кнопки только когда обход запущен и параметры расходятся с тем,
+    // с чем процесс реально стартовал.
+    const list = this._pendingDiff();
+    const pending = list.length > 0;
     btn.hidden = !pending;
+    if (rev) rev.hidden = !pending;
+    if (diff) diff.innerHTML = list.map(t => `<span>${escapeHtml(t)}</span>`).join('');
     hint.textContent = pending
-      ? 'Параметры изменены - применятся после перезапуска'
+      ? 'Есть неприменённые изменения:'
       : (this._z2Running ? '' : '');
+  },
+
+  // Вернуть переключатели к состоянию запущенного обхода
+  _revertToggles() {
+    const ref = this._runningToggles;
+    if (!ref) return;
+    $('toggleGameFilter').value = ref.game_filter_mode || 'off';
+    $('toggleDiscordVoice').value =
+      ref.discord_voice_mode || (ref.discord_voice ? 'fake' : 'off');
+    $('toggleWinws2Debug').checked = !!ref.winws2_debug;
+    $('toggleAutoHostlist').checked = !!ref.autohostlist;
+    $('toggleIpFilter').checked = !!ref.ipset_catchall;
+    $('toggleDiscordAlt').checked = !!ref.discord_alt;
+    const sel = $('fakeBlobSelect');
+    if (sel) sel.value = ref.fake_blob || '';
+    const st = $('strategySelect');
+    if (this._z2Strategy && st && [...st.options].some(o => o.value === this._z2Strategy)) {
+      st.value = this._z2Strategy;
+    }
+    this.saveToggles();
   },
 
   async toggleZ2() {
@@ -1845,7 +1929,7 @@ const ListsPage = {
     if (cnt) cnt.textContent = String(ok);
 
     const btn = document.querySelector(`[data-save="${key}"]`);
-    if (btn) btn.disabled = bad.length > 0;
+    if (btn) btn.disabled = bad.length > 0 || !dirty;
 
     const wrap = ta.closest('.editor-wrapper');
     if (wrap) wrap.classList.toggle('has-error', bad.length > 0);
@@ -2047,7 +2131,7 @@ const CdnStab = {
       const p = st.progress || {};
       $('cdnProgressTitle').textContent = p.message || 'Сканирование…';
       const pct = p.percent ?? 0;
-      Activity.set('cdn', p.message || 'Скан CDN', pct);
+      Activity.set('cdn', p.message || 'Скан CDN', pct, true);
       $('cdnProgressPct').textContent = Math.round(pct) + '%';
       $('cdnProgressFill').style.width = Math.min(100, Math.max(0, pct)) + '%';
       $('cdnProgressFill').setAttribute('aria-valuenow', Math.min(100, Math.max(0, pct)));
@@ -2318,7 +2402,7 @@ const AsnPage = {
         if (st.progress) {
           $('asnProgressTitle').textContent = st.progress.message || 'Сканирование…';
           const pct = st.progress.percent ?? 0;
-          Activity.set('asn', st.progress.message || 'ASN-скан', pct);
+          Activity.set('asn', st.progress.message || 'ASN-скан', pct, true);
           $('asnProgressPct').textContent = Math.round(pct) + '%';
           $('asnProgressFill').style.width = Math.min(100, Math.max(0, pct)) + '%';
           $('asnProgressFill').setAttribute('aria-valuenow', Math.min(100, Math.max(0, pct)));
@@ -2684,7 +2768,7 @@ const TesterPage = {
         if (state.progress) {
           this._setProgress(startPercent + (state.progress.percent || 0) * scalePercent);
           Activity.set(actPage, state.progress.message || 'Выполняется…',
-                       state.progress.percent);
+                       state.progress.percent, true);
           if (state.progress.message) {
             if (textTemplate) $('testProgressMsg').textContent = textTemplate.replace('{msg}', state.progress.message);
             this._handleProgressMessage(state.progress.message);
@@ -3810,29 +3894,48 @@ const Confirm = {
 // Жёлтая мигающая точка = выполняется, зелёная = готово, красная = ошибка.
 // Клик по плашке открывает вкладку с результатом.
 const Activity = {
-  _el: null, _text: null, _pct: null,
-  _page: '', _hideTimer: null,
+  _el: null, _text: null, _pct: null, _cancelBtn: null,
+  _page: '', _hideTimer: null, _cancelling: false,
 
   _ensure() {
     if (this._el) return;
-    const el = document.createElement('button');
-    el.type = 'button';
+    const el = document.createElement('div');
     el.className = 'activity-chip';
     el.hidden = true;
+    el.setAttribute('role', 'button');
+    el.setAttribute('tabindex', '0');
     el.innerHTML = '<span class="activity-dot"></span>' +
       '<span class="activity-text"></span>' +
       '<span class="activity-pct mono"></span>' +
       '<span class="activity-go" aria-hidden="true">→</span>';
-    el.addEventListener('click', () => {
-      if (this._page) location.hash = '#' + this._page;
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.className = 'activity-cancel';
+    cancel.textContent = 'Отменить';
+    cancel.hidden = true;
+    cancel.addEventListener('click', (e) => { e.stopPropagation(); this._cancel(); });
+    el.appendChild(cancel);
+    const go = () => { if (this._page) location.hash = '#' + this._page; };
+    el.addEventListener('click', go);
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); }
     });
     document.body.appendChild(el);
     this._el = el;
     this._text = el.querySelector('.activity-text');
     this._pct = el.querySelector('.activity-pct');
+    this._cancelBtn = cancel;
   },
 
-  set(page, label, pct) {
+  _cancel() {
+    if (this._cancelling) return;
+    this._cancelling = true;
+    this._cancelBtn.disabled = true;
+    this._cancelBtn.textContent = 'Отменяем…';
+    apiPost('/tester/action', { action: 'cancel' }).catch(() => {});
+  },
+
+  set(page, label, pct, cancelable) {
     this._ensure();
     clearTimeout(this._hideTimer);
     this._page = page || '';
@@ -3841,6 +3944,10 @@ const Activity = {
     this._el.classList.add('running');
     this._text.textContent = label || 'Выполняется…';
     this._pct.textContent = (pct != null) ? Math.round(pct) + '%' : '';
+    this._cancelling = false;
+    this._cancelBtn.hidden = !cancelable;
+    this._cancelBtn.disabled = false;
+    this._cancelBtn.textContent = 'Отменить';
   },
 
   done(label) {

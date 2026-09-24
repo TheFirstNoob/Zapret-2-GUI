@@ -70,7 +70,7 @@
       </nav>
 
       <div class="sidebar-foot">
-        <div class="prot-chip" id="protChip">
+        <div class="prot-chip" id="protChip" role="button" tabindex="0" aria-label="Открыть главную страницу">
           <span class="dot dot-unknown" id="protDot"></span>
           <span class="prot-text" id="protText">загрузка…</span>
         </div>
@@ -322,6 +322,8 @@
 
               <div class="panel-foot">
                 <span class="meta" id="applyTogglesHint"></span>
+                <span class="apply-diff" id="applyTogglesDiff"></span>
+                <button class="btn" id="btnRevertToggles" hidden>Вернуть как было</button>
                 <button class="btn btn-warn" id="btnApplyToggles" hidden>Перезапустить с новыми параметрами</button>
               </div>
             </details>
@@ -473,7 +475,7 @@
                     <tr class="strat-empty"><td colspan="6">Ожидание первых результатов…</td></tr>
                   </tbody>
                 </table>
-                <div class="meta" style="margin-top:6px">Нажмите на стратегию, чтобы раскрыть проверки по хостам.</div>
+                <div class="meta" style="margin-top:6px">Нажмите на стратегию, чтобы раскрыть проверки по хостам. «Хосты» - зачётные домены, по ним считается процент.</div>
               </div>
             </div>
 
