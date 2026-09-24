@@ -280,9 +280,8 @@ const App = {
     // Кнопки всех проверок - взаимоисключающие (бэкенд дублирует 409-ом).
     ['btnStartTest', 'cdnScanBtn', 'asnScanBtn', 'btnBlobProbe', 'diagRunBtn', 'btnDiagCheck']
       .forEach(id => { const el = $(id); if (el) el.disabled = active; });
-    if (active && this.currentPage !== 'tester') {
-      showToast('Идёт проверка - остальные запуски/остановки заблокированы', 'warn');
-    }
+    // Отдельный тост «идёт проверка» больше не нужен: задачу показывает
+    // плавающая плашка внизу справа, а кнопки видно отключёнными.
     if (Status.last) MainPage.renderStatus(Status.last);
   },
 

@@ -1194,8 +1194,11 @@ label.opt-line:has(input:disabled):hover { background: var(--field); }
 /* ── toast ── */
 
 .toast {
-  position: fixed; bottom: 16px; right: 16px; z-index: 1000;
+  position: fixed; bottom: 18px; left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
   display: flex; align-items: center; gap: 12px;
+  max-width: min(620px, 72vw);
   padding: 8px 14px; border-radius: 6px;
   background: var(--panel-hi); border: 1px solid var(--line);
   color: var(--text); font-size: 12.5px; box-shadow: 0 4px 12px rgba(0,0,0,0.4);
