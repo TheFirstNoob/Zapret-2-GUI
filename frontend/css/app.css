@@ -857,6 +857,37 @@ label.opt-line:has(input:disabled):hover { background: var(--field); }
 .st-ok { color: var(--ok); }
 .st-warn { color: var(--warn); }
 .st-err { color: var(--err); }
+
+/* ── Свои подсказки-поповеры (вместо системных title) ───────────── */
+.popover {
+  position: fixed; z-index: 1200;
+  max-width: 320px;
+  padding: 9px 11px;
+  background: var(--panel);
+  border: 1px solid var(--btn-line);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .45);
+  font-size: 12px; line-height: 1.4;
+  color: var(--muted);
+  pointer-events: none;
+  opacity: 0; transform: translateY(2px);
+  transition: opacity .12s, transform .12s;
+}
+.popover.visible { opacity: 1; transform: none; }
+.popover-title { font-weight: 600; color: var(--text); margin-bottom: 3px; }
+.popover::after {
+  content: ''; position: absolute; width: 10px; height: 10px;
+  background: var(--panel);
+  border-left: 1px solid var(--btn-line);
+  border-top: 1px solid var(--btn-line);
+  transform: rotate(45deg);
+}
+.popover[data-placement="bottom"]::after { top: -6px; left: var(--arrow-x, 50%); margin-left: -5px; }
+.popover[data-placement="top"]::after {
+  bottom: -6px; left: var(--arrow-x, 50%); margin-left: -5px;
+  transform: rotate(225deg);
+}
+[data-popover]:not(button):not(label) { cursor: help; }
 .st-mute { color: var(--faint); }
 
 .test-log {
@@ -1178,6 +1209,14 @@ details.list-card[open] > summary .list-title::after { content: ' ▴'; }
 .modal-status { font-size: 12px; color: var(--dim); min-height: 15px; }
 .modal .field .field-label { width: 88px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+.modal-links {
+  display: flex; flex-wrap: wrap; gap: 4px 14px;
+  margin-top: 10px; padding-top: 9px;
+  border-top: 1px solid var(--divider);
+  font-size: 12px;
+}
+.modal-links a { color: var(--accent); text-decoration: none; }
+.modal-links a:hover { text-decoration: underline; }
 
 .drop-zone {
   border: 1px dashed var(--line); border-radius: 5px;

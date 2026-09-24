@@ -287,6 +287,7 @@ const App = {
   },
 
   async init() {
+    Popover.init();
     this.bindNav();
     this.bindProbeButtons();
     this.handleHash();
@@ -1284,7 +1285,7 @@ const DiagnosticsPage = {
       <div class="diag-row chk-${c.status}">
         <div class="diag-icon">${ICONS[c.status] || ICONS.skip}</div>
         <div class="diag-param">${escapeHtml(c.name)}</div>
-        <div class="diag-value"${c.tech ? ` title="${escapeHtml(c.tech)}"` : ''}>${escapeHtml(c.detail || '')}</div>
+        <div class="diag-value"${c.tech ? ` data-popover-title="Технические детали" data-popover="${escapeHtml(c.tech)}"` : ''}>${escapeHtml(c.detail || '')}</div>
       </div>`).join('');
     $('diagList').innerHTML = rows || '<div class="empty-note">Нет результатов</div>';
 
@@ -2133,11 +2134,11 @@ const CdnStab = {
     }
 
     const metrics = `
-      <span class="m-badge success">✓ Чисто: ${sum('ok')}</span>
-      ${actionable ? `<span class="m-badge warning">● Требует правки: ${actionable}</span>` : ''}
-      <span class="m-badge danger">✕ Не лечится: ${sum('hard')}</span>
-      ${sum('covered') ? `<span class="m-badge neutral">Уже в ipset: ${sum('covered')}</span>` : ''}
-      <span class="m-badge neutral">Мёртвые: ${sum('dead')}</span>
+      <span class="m-badge success" data-popover="Эти хосты открываются и без обхода — с ними всё хорошо.">✓ Чисто: ${sum('ok')}</span>
+      ${actionable ? `<span class="m-badge warning" data-popover="Этим хостам обход мешает или их режет DPI — можно исправить кнопкой в строке.">● Требует правки: ${actionable}</span>` : ''}
+      <span class="m-badge danger" data-popover="Не отвечает даже без обхода — похоже, сервер недоступен, это не блокировка.">✕ Не лечится: ${sum('hard')}</span>
+      ${sum('covered') ? `<span class="m-badge neutral" data-popover="Уже покрыты общим IP-обходом — трогать не нужно.">Уже в ipset: ${sum('covered')}</span>` : ''}
+      <span class="m-badge neutral" data-popover="Не отвечают ни с обходом, ни без него — вероятно, хост выключен или устарел.">Мёртвые: ${sum('dead')}</span>
       <span class="metrics-mode">${modeTxt}</span>`;
 
     const badgeCls = { fix: 'action', break: 'action', ok: 'clean', hard: 'fatal', dead: 'dead', covered: 'clean', unknown: 'neutral' };
@@ -3641,5 +3642,87 @@ const TesterPage = {
 };
 
 // ── boot ──
+
+// ── Свои подсказки-поповеры: data-popover / data-popover-title ──────
+// Системные title не подходят для длинных текстов: долгая задержка,
+// нет переносов, нельзя стилизовать. Здесь: hover/focus, Esc, скролл.
+const Popover = {
+  _el: null, _anchor: null, _timer: null,
+
+  init() {
+    document.addEventListener('mouseover', (e) => {
+      const t = e.target.closest && e.target.closest('[data-popover]');
+      if (t) this._schedule(t, 140);
+    });
+    document.addEventListener('mouseout', (e) => {
+      const t = e.target.closest && e.target.closest('[data-popover]');
+      if (t && t.contains(e.relatedTarget)) return;
+      if (t) this._cancel(t);
+    });
+    document.addEventListener('focusin', (e) => {
+      const t = e.target.closest && e.target.closest('[data-popover]');
+      if (t) this._schedule(t, 0);
+    });
+    document.addEventListener('focusout', () => this.hide());
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') this.hide(); });
+    window.addEventListener('scroll', () => this.hide(), true);
+    window.addEventListener('resize', () => this.hide());
+  },
+
+  _schedule(anchor, delay) {
+    if (this._anchor === anchor && this._el) return;
+    if (this._timer) { clearTimeout(this._timer); this._timer = null; }
+    this._timer = setTimeout(() => { this._timer = null; this.show(anchor); }, delay);
+  },
+
+  _cancel(anchor) {
+    if (this._timer) { clearTimeout(this._timer); this._timer = null; }
+    if (this._anchor === anchor) this.hide();
+  },
+
+  show(anchor) {
+    const text = anchor.getAttribute('data-popover');
+    if (!text) return;
+    this.hide();
+    const el = document.createElement('div');
+    el.className = 'popover';
+    const title = anchor.getAttribute('data-popover-title');
+    if (title) {
+      const t = document.createElement('div');
+      t.className = 'popover-title';
+      t.textContent = title;
+      el.appendChild(t);
+    }
+    const body = document.createElement('div');
+    body.textContent = text;
+    el.appendChild(body);
+    document.body.appendChild(el);
+    this._el = el;
+    this._anchor = anchor;
+
+    const r = anchor.getBoundingClientRect();
+    const w = el.offsetWidth;
+    const h = el.offsetHeight;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const below = r.top < vh / 2;
+    let left = Math.round(r.left + r.width / 2 - w / 2);
+    let top = below ? r.bottom + 9 : r.top - h - 9;
+    left = Math.max(8, Math.min(left, vw - w - 8));
+    top = Math.max(8, Math.min(top, vh - h - 8));
+    el.style.left = left + 'px';
+    el.style.top = top + 'px';
+    el.dataset.placement = below ? 'bottom' : 'top';
+    const arrowX = Math.max(14, Math.min(r.left + r.width / 2 - left, w - 14));
+    el.style.setProperty('--arrow-x', arrowX + 'px');
+    requestAnimationFrame(() => el.classList.add('visible'));
+  },
+
+  hide() {
+    if (this._timer) { clearTimeout(this._timer); this._timer = null; }
+    if (this._el) { this._el.remove(); this._el = null; }
+    this._anchor = null;
+  },
+};
 
 document.addEventListener('DOMContentLoaded', () => App.init());

@@ -76,13 +76,13 @@
         </div>
         <div class="prot-sub" id="protSub"></div>
         <div class="side-actions">
-          <button class="side-btn" id="sideExport" title="Экспорт настроек: config, списки, пресеты — ZIP в папке программы">
+          <button class="side-btn" id="sideExport" data-popover-title="Экспорт настроек" data-popover="Сохранит config, пользовательские списки и пресеты в ZIP в папке программы. Пригодится перед переустановкой или для переноса на другой ПК.">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           </button>
-          <label class="side-btn" for="settingsImportFile" title="Импорт настроек из ZIP (с другой версии или машины)">
+          <label class="side-btn" for="settingsImportFile" data-popover-title="Импорт настроек" data-popover="Восстановит настройки и списки из ZIP-архива, сохранённого кнопкой экспорта.">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
           </label>
-          <button class="side-btn" id="sideInfo" title="Обновления и техническая информация">
+          <button class="side-btn" id="sideInfo" data-popover-title="О программе" data-popover="Версия, тип сборки, SHA256 exe, ключ подписи обновлений и кнопка проверки обновлений. Плюс ссылки на GitHub — там можно задать вопрос или сообщить о проблеме.">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
           </button>
         </div>
@@ -207,7 +207,7 @@
               <div class="row">
                 <span class="meta" id="svcStatusText"></span>
                 <span class="svc-actions">
-                  <button class="btn" id="btnSvcRepair" title="Проверить и починить службу драйвера WinDivert (repair ImagePath, включить disabled, отчёт о Zapret 1)">Починить драйвер</button>
+                  <button class="btn" id="btnSvcRepair" data-popover-title="Починка драйвера" data-popover="Проверит службу драйвера WinDivert: исправит битый путь и включит отключённую службу. Если драйвер помечен на удаление — подскажет, что нужна перезагрузка.">Починить драйвер</button>
                   <button class="btn" id="btnSvcInstall" hidden>Установить службу</button>
                   <button class="btn btn-go" id="btnSvcStart" hidden>Запустить службу</button>
                   <button class="btn btn-stop" id="btnSvcStop" hidden>Остановить службу</button>
@@ -258,7 +258,7 @@
                     <span class="opt-mode-hint" id="voiceModeHint"></span>
                   </div>
                   <div class="param-ctl">
-                    <select class="input input-sm" id="toggleDiscordVoice">
+                    <select class="input input-sm" id="toggleDiscordVoice" data-popover-title="Режимы Discord Voice" data-popover="Стандарт — обычная обработка голосового трафика. UDP-длина — меняет длину UDP-пакетов: помогает, если голос рвётся или не идёт совсем. Обычно достаточно «Выключено».">
                       <option value="off">Выключено</option>
                       <option value="fake">Стандарт</option>
                       <option value="udplen">UDP-длина</option>
@@ -295,7 +295,7 @@
                         </select>
                         <div class="dropdown-menu" id="fakeBlobMenu" role="listbox" hidden></div>
                       </div>
-                      <button class="btn btn-sm" id="btnBlobProbe" title="Переберёт блобы и поставит лучший">Подобрать блоба</button>
+                      <button class="btn btn-sm" id="btnBlobProbe" data-popover-title="Подбор блоба" data-popover="Программа по очереди перепроверит заготовки поддельного пакета и подставит ту, что работает лучше. Подбор можно остановить кнопкой.">Подобрать блоба</button>
                     </div>
                   </div>
                 </div>
@@ -474,7 +474,7 @@
                       <th class="col-rate">Доступность</th>
                       <th class="col-mini">Discord</th>
                       <th class="col-mini">YouTube</th>
-                      <th class="col-rate" title="Зачётные хосты (по ним считается итоговый процент), в скобках — всего проверено, включая контрольные и QUIC-хосты">Хосты</th>
+                      <th class="col-rate" data-popover-title="Хосты в тестере" data-popover="10/10 — зачётные хосты, по ним считается итоговый процент. В скобках — сколько всего проверено, включая контрольные и QUIC-хосты.">Хосты</th>
                     </tr>
                   </thead>
                   <tbody id="stratTbody">
@@ -819,7 +819,7 @@
                 <div class="head-desc">Авторизация (домены) и подключение к серверам (UDP-фикс) для конфликтных игр</div>
               </div>
               <div class="head-right">
-                <button class="btn btn-sm" id="gamesSvcBtn" title="Переустановить службу обхода, чтобы UDP-фикс вступил в силу">Переустановить службу</button>
+                <button class="btn btn-sm" id="gamesSvcBtn" data-popover-title="Переустановка службы" data-popover="Нужна, чтобы UDP-фикс игр вступил в силу: служба пересоздастся с текущими параметрами, обход на пару секунд прервётся.">Переустановить службу</button>
               </div>
             </div>
 
@@ -1050,6 +1050,10 @@
       <div class="modal-status" id="appInfoStatus"></div>
       <div class="modal-actions">
         <button class="btn btn-primary" id="appInfoCheck">Проверить обновления</button>
+      </div>
+      <div class="modal-links">
+        <a href="https://github.com/TheFirstNoob/Zapret-2-GUI/issues" target="_blank" rel="noopener">Вопрос или проблема — GitHub Issues</a>
+        <a href="https://github.com/TheFirstNoob/Zapret-2-GUI" target="_blank" rel="noopener">Репозиторий проекта</a>
       </div>
     </div>
   </div>
