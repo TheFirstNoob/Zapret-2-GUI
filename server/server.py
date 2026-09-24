@@ -1494,6 +1494,17 @@ class ZapretHandler(BaseHTTPRequestHandler):
 
     # ── Авторизация ──
 
+    def _host_allowed(self) -> bool:
+        """Только loopback-хост: защита от DNS-rebinding (см. do_GET)."""
+        host = (self.headers.get("Host") or "").strip().lower()
+        if not host:
+            return False
+        if host.startswith("["):
+            name = host.split("]")[0] + "]"
+        else:
+            name = host.rsplit(":", 1)[0]
+        return name in ("127.0.0.1", "localhost", "::1", "[::1]")
+
     def _check_token(self) -> bool:
         if _app_token:
             token = self.headers.get("x-app-token", "")
@@ -1509,7 +1520,6 @@ class ZapretHandler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
         self.wfile.write(body)
 
@@ -1553,6 +1563,13 @@ class ZapretHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path
         params = parse_qs(parsed.query)
+
+        # Защита от DNS-rebinding: сервер локальный, принимаем только
+        # loopback-хост. Иначе сторонний сайт мог бы обратиться к нашему
+        # порту «как к своему» и вычитать токен из стартовой страницы.
+        if not self._host_allowed():
+            self.send_error(403, "Forbidden")
+            return
 
         # Проверка токена для /api/
         if path.startswith("/api/") and not self._check_token():
@@ -1799,6 +1816,10 @@ class ZapretHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         parsed = urlparse(self.path)
         path = parsed.path
+
+        if not self._host_allowed():
+            self.send_error(403, "Forbidden")
+            return
 
         if not self._check_token():
             return

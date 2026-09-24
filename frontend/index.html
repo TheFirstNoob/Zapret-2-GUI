@@ -675,16 +675,16 @@
             </div>
           </div>
 
-          <div class="lists-grid">
+          <div class="lists-tabs" role="tablist">
+            <button class="list-tab active" data-list-tab="domInc" role="tab" aria-selected="true">Домены - в обход <span class="count-badge" id="domIncCount">0</span></button>
+            <button class="list-tab" data-list-tab="domExc" role="tab" aria-selected="false">Домены - не трогать <span class="count-badge" id="domExcCount">0</span></button>
+            <button class="list-tab" data-list-tab="ipInc" role="tab" aria-selected="false">IP-сети - в обход <span class="count-badge" id="ipIncCount">0</span></button>
+            <button class="list-tab" data-list-tab="ipExc" role="tab" aria-selected="false">IP-сети - не трогать <span class="count-badge" id="ipExcCount">0</span></button>
+          </div>
 
-            <div class="list-card">
-              <div class="list-header">
-                <div class="list-title-row">
-                  <span class="list-title">Домены - в обход</span>
-                  <span class="count-badge" id="domIncCount">0</span>
-                </div>
-                <div class="list-desc">Заблокированный сайт, которого нет в стандартных списках, - Zapret будет обходить его всегда, при любой стратегии.</div>
-              </div>
+          <div class="lists-panels">
+            <div class="list-card list-panel active" data-list-panel="domInc">
+              <div class="list-desc">Заблокированный сайт, которого нет в стандартных списках, - Zapret будет обходить его всегда, при любой стратегии.</div>
               <div class="editor-wrapper">
                 <div class="line-gutter" id="domIncNums" aria-hidden="true">1</div>
                 <textarea class="editor-textarea" id="domIncTextarea" spellcheck="false" placeholder="example.com"></textarea>
@@ -696,14 +696,8 @@
               </div>
             </div>
 
-            <div class="list-card">
-              <div class="list-header">
-                <div class="list-title-row">
-                  <span class="list-title">Домены - не трогать</span>
-                  <span class="count-badge" id="domExcCount">0</span>
-                </div>
-                <div class="list-desc">Сайт, которому обход мешает (не открывается, тормозит), - Zapret будет пропускать его как есть.</div>
-              </div>
+            <div class="list-card list-panel" data-list-panel="domExc">
+              <div class="list-desc">Сайт, которому обход мешает (не открывается, тормозит), - Zapret будет пропускать его как есть.</div>
               <div class="editor-wrapper">
                 <div class="line-gutter" id="domExcNums" aria-hidden="true">1</div>
                 <textarea class="editor-textarea" id="domExcTextarea" spellcheck="false" placeholder="bank.ru"></textarea>
@@ -715,14 +709,8 @@
               </div>
             </div>
 
-            <details class="list-card">
-              <summary class="list-header">
-                <div class="list-title-row">
-                  <span class="list-title">IP-сети - в обход</span>
-                  <span class="count-badge" id="ipIncCount">0</span>
-                </div>
-                <div class="list-desc">Подсети, которые обходятся всегда. Нужно при блокировке по IP-адресу, когда сайт не открывается независимо от имени.</div>
-              </summary>
+            <div class="list-card list-panel" data-list-panel="ipInc">
+              <div class="list-desc">Подсети, которые обходятся всегда. Нужно при блокировке по IP-адресу, когда сайт не открывается независимо от имени.</div>
               <div class="editor-wrapper">
                 <div class="line-gutter" id="ipIncNums" aria-hidden="true">1</div>
                 <textarea class="editor-textarea" id="ipIncTextarea" spellcheck="false" placeholder="1.2.3.0/24"></textarea>
@@ -732,16 +720,10 @@
                 <span class="meta list-result" id="ipIncResult"></span>
                 <button class="btn btn-sm" data-save="ipInc">Сохранить</button>
               </div>
-            </details>
+            </div>
 
-            <details class="list-card">
-              <summary class="list-header">
-                <div class="list-title-row">
-                  <span class="list-title">IP-сети - не трогать</span>
-                  <span class="count-badge" id="ipExcCount">0</span>
-                </div>
-                <div class="list-desc">Свои и локальные сети, которые обход не должен трогать. По умолчанию - приватные диапазоны.</div>
-              </summary>
+            <div class="list-card list-panel" data-list-panel="ipExc">
+              <div class="list-desc">Свои и локальные сети, которые обход не должен трогать. По умолчанию - приватные диапазоны.</div>
               <div class="editor-wrapper">
                 <div class="line-gutter" id="ipExcNums" aria-hidden="true">1</div>
                 <textarea class="editor-textarea" id="ipExcTextarea" spellcheck="false" placeholder="192.168.0.0/16"></textarea>
@@ -751,8 +733,7 @@
                 <span class="meta list-result" id="ipExcResult"></span>
                 <button class="btn btn-sm" data-save="ipExc">Сохранить</button>
               </div>
-            </details>
-
+            </div>
           </div>
 
           <div class="panel" id="listsHealthPanel">

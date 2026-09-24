@@ -604,6 +604,8 @@ const MainPage = {
         if (st.error) throw new Error(st.error);
         if (st.progress && hint && !this._blobProbeCancelled) {
           hint.textContent = `${st.progress.message || ''} (${st.progress.percent ?? 0}%)`;
+          Activity.set('main', 'Подбор блоба: ' + (st.progress.message || ''),
+                       st.progress.percent);
         }
         if (!st.running) final = st.final_result;
       }
@@ -618,21 +620,25 @@ const MainPage = {
       }
       if (this._blobProbeCancelled) {
         // частичный прогон: показываем, но лучший не подставляем
+        Activity.done('Подбор остановлен');
         showToast('Подбор остановлен - показаны частичные результаты', 'warn');
       } else {
         const best = results[0];
         const sel = $('fakeBlobSelect');
+        Activity.done('Подбор блоба завершён');
         showToast(`Лучший блоб: ${best.blob.replace(/_/g, '.')} (${best.rate}%)`, 'ok');
         if (Array.from(sel.options).some(o => o.value === best.blob) && sel.value !== best.blob) {
           sel.value = best.blob;
-              this.saveToggles();
+          this.saveToggles();
         }
       }
     } catch (e) {
       if (this._blobProbeCancelled) {
+        Activity.done('Подбор остановлен');
         showToast('Подбор остановлен', 'warn');
         if (hint) hint.textContent = '';
       } else {
+        Activity.fail('Подбор блоба: ' + e.message);
         showToast('Подбор блоба: ' + e.message, 'error');
         if (hint) hint.textContent = '';
       }
@@ -822,11 +828,14 @@ const MainPage = {
   async _svcAction(fn, busyText, okText, errText) {
     this._setSvcBusy(true);
     $('svcStatusText').textContent = busyText;
+    Activity.set('main', busyText);
     try {
       const r = await fn();
       if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
+      Activity.done(okText);
       showToast(okText, 'ok');
     } catch (e) {
+      Activity.fail(errText + e.message);
       showToast(errText + e.message, 'error');
     }
     this._setSvcBusy(false);
@@ -1175,9 +1184,11 @@ const DiagnosticsPage = {
         if (st.error) throw new Error(st.error);
         const cur = $('diagCurrent');
         if (cur && st.progress) cur.textContent = st.progress;
+        if (st.running) Activity.set('diagnostics', st.progress || 'Проверка системы');
         if (!st.running) report = st.report;
       }
       if (!report) throw new Error('нет результата');
+      Activity.done('Проверка системы завершена');
       localStorage.setItem('z2_diag_done', String(Date.now()));
       const note = $('diagDoneNote');
       if (note) note.hidden = false;
@@ -1288,10 +1299,12 @@ const GamesPage = {
         (games.length ? 'Ничего не найдено' : 'Список пуст') + '</div>';
       return;
     }
-    const plural = (n) => n === 1 ? 'домен' : (n < 5 ? 'домена' : 'доменов');
     body.innerHTML = visible.map(({ g, gi }) => {
       const open = !!this._open[g.id || gi];
       const domCount = (g.domains || []).length;
+      const domOn = (g.domains || []).filter(d => d.on).length;
+      const udpCount = (g.udp || []).length;
+      const udpOn = (g.udp || []).filter(u => u.on).length;
       const udpPorts = (g.udp || []).map(u => u.ports).join(', ');
       return `
       <div class="game-item${open ? ' open' : ''}">
@@ -1300,8 +1313,8 @@ const GamesPage = {
             <svg class="game-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
             <span class="game-title">${escapeHtml(g.name || g.id)}</span>
             <div class="game-badges">
-              ${domCount ? `<span class="pill-badge">${domCount} ${plural(domCount)}</span>` : ''}
-              ${udpPorts ? `<span class="pill-badge">UDP: ${escapeHtml(udpPorts)}</span>` : ''}
+              ${domCount ? `<span class="pill-badge" data-popover-title="Домены игры" data-popover="Включено ${domOn} из ${domCount}: ${escapeHtml((g.domains || []).map(d => d.domain).join(', '))}">домены: ${domOn}/${domCount}</span>` : ''}
+              ${udpCount ? `<span class="pill-badge" data-popover-title="UDP-фикс" data-popover="Включено ${udpOn} из ${udpCount}. Порт: ${escapeHtml(udpPorts || '')}">UDP-фикс: ${udpOn}/${udpCount}</span>` : ''}
             </div>
           </div>
           <label class="switch" title="Включить игру" data-g-noexp="1">
@@ -1483,6 +1496,21 @@ const ListsPage = {
   saved: {},
   _badLines: {},   // key -> массив номеров ошибочных строк (для гутера)
   _bundled: null,   // Set доменов из bundled-включений (для проверки приоритетов)
+  _activeList: 'domInc',
+
+  showList(key) {
+    if (!this.editors[key]) return;
+    this._activeList = key;
+    document.querySelectorAll('[data-list-tab]').forEach(t => {
+      const on = t.dataset.listTab === key;
+      t.classList.toggle('active', on);
+      t.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    document.querySelectorAll('[data-list-panel]').forEach(p =>
+      p.classList.toggle('active', p.dataset.listPanel === key));
+    const ta = $(key + 'Textarea');
+    if (ta) this._syncNums(key);
+  },
 
   editors: {
     domInc: { api: '/include-list', kind: 'domain' },
@@ -1503,6 +1531,10 @@ const ListsPage = {
       });
       document.querySelectorAll('[data-save]').forEach(btn =>
         btn.addEventListener('click', () => this.save(btn.dataset.save)));
+      // Вкладки списков: один большой редактор вместо четырёх окон
+      document.querySelectorAll('[data-list-tab]').forEach(tab =>
+        tab.addEventListener('click', () => this.showList(tab.dataset.listTab)));
+      this.showList(this._activeList || 'domInc');
       apiGet('/bundled-domains')
         .then(r => { this._bundled = new Set(r.domains || []); })
         .catch(() => {});
@@ -1986,6 +2018,7 @@ const CdnStab = {
 
   _fail(msg) {
     this._stop();
+    Activity.fail('Скан CDN: ' + msg);
     $('cdnIdle').hidden = true;
     $('cdnResults').hidden = false;
     $('cdnResults').innerHTML = `<div class="empty-note st-err">${escapeHtml(msg)}</div>`;
@@ -2015,6 +2048,7 @@ const CdnStab = {
       const p = st.progress || {};
       $('cdnProgressTitle').textContent = p.message || 'Сканирование…';
       const pct = p.percent ?? 0;
+      Activity.set('cdn', p.message || 'Скан CDN', pct);
       $('cdnProgressPct').textContent = Math.round(pct) + '%';
       $('cdnProgressFill').style.width = Math.min(100, Math.max(0, pct)) + '%';
       $('cdnProgressFill').setAttribute('aria-valuenow', Math.min(100, Math.max(0, pct)));
@@ -2028,6 +2062,7 @@ const CdnStab = {
         return;
       }
       this._render(fr);
+      Activity.done('Скан CDN завершён');
       if (fr.naked_done && fr.note) showToast(fr.note);
     } else {
       this._fail(fr?.error || 'Сканирование прервано.');
@@ -2284,6 +2319,7 @@ const AsnPage = {
         if (st.progress) {
           $('asnProgressTitle').textContent = st.progress.message || 'Сканирование…';
           const pct = st.progress.percent ?? 0;
+          Activity.set('asn', st.progress.message || 'ASN-скан', pct);
           $('asnProgressPct').textContent = Math.round(pct) + '%';
           $('asnProgressFill').style.width = Math.min(100, Math.max(0, pct)) + '%';
           $('asnProgressFill').setAttribute('aria-valuenow', Math.min(100, Math.max(0, pct)));
@@ -2291,9 +2327,12 @@ const AsnPage = {
         if (!st.running) final = st.final_result;
       }
       if (!final) throw new Error('скан не завершился вовремя');
-      if (final.type === 'asn_scan') this._render(final.probes || [], final.restored || '');
-      else throw new Error('неожиданный результат');
+      if (final.type === 'asn_scan') {
+        this._render(final.probes || [], final.restored || '');
+        Activity.done('ASN-скан завершён');
+      } else throw new Error('неожиданный результат');
     } catch (e) {
+      Activity.fail('ASN-скан: ' + e.message);
       $('asnScanning').hidden = true;
       $('asnResults').hidden = false;
       $('asnResults').innerHTML = `<div class="empty-note st-err">${escapeHtml(e.message)}</div>`;
@@ -2614,6 +2653,7 @@ const TesterPage = {
     this._completedSeen = new Set();
     let started = false;
     let pollActive = true;
+    const actPage = { cdn_scan: 'cdn', asn_scan: 'asn' }[actionData.action] || 'tester';
 
     fetch('/api/tester/action', {
       method: 'POST',
@@ -2636,6 +2676,7 @@ const TesterPage = {
         if (state.cancelled) {
           frontendLog('poll: cancelled');
           pollActive = false; clearInterval(pollId);
+          Activity.done('Отменено');
           $('testCurrentPhase').textContent = 'Тест отменён';
           this.clearElapsedTimer();
           setTimeout(() => this.resetToIntro('отменён пользователем'), 1300);
@@ -2643,6 +2684,8 @@ const TesterPage = {
         }
         if (state.progress) {
           this._setProgress(startPercent + (state.progress.percent || 0) * scalePercent);
+          Activity.set(actPage, state.progress.message || 'Выполняется…',
+                       state.progress.percent);
           if (state.progress.message) {
             if (textTemplate) $('testProgressMsg').textContent = textTemplate.replace('{msg}', state.progress.message);
             this._handleProgressMessage(state.progress.message);
@@ -2683,6 +2726,7 @@ const TesterPage = {
           if (state.error) {
             frontendLog('poll: finished with error: ' + state.error);
             pollActive = false; clearInterval(pollId);
+            Activity.fail('Ошибка: ' + state.error);
             this.clearElapsedTimer();
             $('testCurrentPhase').textContent = 'Ошибка: ' + state.error;
             showToast('Тест прерван: ' + state.error, 'error');
@@ -2692,6 +2736,7 @@ const TesterPage = {
           if (!fr) {
             frontendLog('poll: finished WITHOUT result (known=' + known + ')');
             pollActive = false; clearInterval(pollId);
+            Activity.fail('Тест завершился без результата');
             this.clearElapsedTimer();
             $('testCurrentPhase').textContent = 'Тест завершился без результата';
             showToast('Тест завершился без результата - запустите подбор заново', 'warn');
@@ -2700,6 +2745,7 @@ const TesterPage = {
           }
           frontendLog('poll: finished OK (type=' + (fr.type || '?') + ')');
           pollActive = false; clearInterval(pollId);
+          Activity.done('Готово');
           if (state.all_results && !fr.all_results) fr.all_results = state.all_results;
           if (fr.restored) showToast(fr.restored, /Не удалось|не восстановлен/.test(fr.restored) ? 'warn' : 'ok');
           if (resultType && fr.type === resultType) { if (onResult) onResult(fr); }
@@ -3758,6 +3804,70 @@ const Confirm = {
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && $('confirmOverlay').classList.contains('open')) this._done(false);
     });
+  },
+};
+
+// ── Плавающий индикатор задач: правый нижний угол, виден на всех вкладках ──
+// Жёлтая мигающая точка = выполняется, зелёная = готово, красная = ошибка.
+// Клик по плашке открывает вкладку с результатом.
+const Activity = {
+  _el: null, _text: null, _pct: null,
+  _page: '', _hideTimer: null,
+
+  _ensure() {
+    if (this._el) return;
+    const el = document.createElement('button');
+    el.type = 'button';
+    el.className = 'activity-chip';
+    el.hidden = true;
+    el.innerHTML = '<span class="activity-dot"></span>' +
+      '<span class="activity-text"></span>' +
+      '<span class="activity-pct mono"></span>';
+    el.addEventListener('click', () => {
+      if (this._page) location.hash = '#' + this._page;
+    });
+    document.body.appendChild(el);
+    this._el = el;
+    this._text = el.querySelector('.activity-text');
+    this._pct = el.querySelector('.activity-pct');
+  },
+
+  set(page, label, pct) {
+    this._ensure();
+    clearTimeout(this._hideTimer);
+    this._page = page || '';
+    this._el.hidden = false;
+    this._el.classList.remove('done', 'fail');
+    this._el.classList.add('running');
+    this._text.textContent = label || 'Выполняется…';
+    this._pct.textContent = (pct != null) ? Math.round(pct) + '%' : '';
+  },
+
+  done(label) {
+    if (!this._el || this._el.hidden) return;
+    clearTimeout(this._hideTimer);
+    this._el.classList.remove('running', 'fail');
+    this._el.classList.add('done');
+    this._text.textContent = label || 'Готово';
+    this._pct.textContent = '';
+    this._hideTimer = setTimeout(() => this.hide(), 3500);
+  },
+
+  fail(label) {
+    if (!this._el) return;
+    this._ensure();
+    clearTimeout(this._hideTimer);
+    this._el.hidden = false;
+    this._el.classList.remove('running', 'done');
+    this._el.classList.add('fail');
+    this._text.textContent = label || 'Ошибка';
+    this._pct.textContent = '';
+    this._hideTimer = setTimeout(() => this.hide(), 6000);
+  },
+
+  hide() {
+    clearTimeout(this._hideTimer);
+    if (this._el) this._el.hidden = true;
   },
 };
 

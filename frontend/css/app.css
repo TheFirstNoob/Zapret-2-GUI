@@ -450,8 +450,10 @@ select.input:disabled { opacity: .55; }
   grid-template-columns: 1fr 160px;
   gap: 20px;
   align-items: center;
-  padding: 8px 0;
+  padding: 10px 0;
 }
+/* описание каждого параметра отделено - читается как список карточек */
+.param-row + .param-row { border-top: 1px solid var(--divider); }
 .param-row + .param-row { border-top: 1px solid var(--divider); }
 .param-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .param-title { font-size: 13px; font-weight: 600; }
@@ -863,6 +865,33 @@ label.opt-line:has(input:disabled):hover { background: var(--field); }
   transform: rotate(225deg);
 }
 [data-popover]:not(button):not(label) { cursor: help; }
+
+/* ── Плавающий индикатор задач (правый нижний угол) ─────────────── */
+.activity-chip {
+  position: fixed; right: 18px; bottom: 16px; z-index: 1100;
+  display: inline-flex; align-items: center; gap: 8px;
+  max-width: 340px;
+  padding: 8px 12px;
+  background: var(--panel); border: 1px solid var(--btn-line);
+  border-radius: 10px; box-shadow: 0 8px 22px rgba(0, 0, 0, .45);
+  font-size: 12px; color: var(--text); cursor: pointer;
+  transition: border-color .12s, background .12s;
+}
+.activity-chip[hidden] { display: none; }
+.activity-chip:hover { border-color: var(--accent-line); background: var(--panel-hi); }
+.activity-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.activity-pct { color: var(--faint); flex: 0 0 auto; }
+.activity-dot {
+  width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto;
+  background: var(--warn);
+}
+.activity-chip.running .activity-dot { animation: act-blink 1s ease-in-out infinite; }
+.activity-chip.done .activity-dot { background: var(--ok); }
+.activity-chip.fail .activity-dot { background: var(--err); }
+@keyframes act-blink { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) {
+  .activity-chip.running .activity-dot { animation: none; }
+}
 .st-mute { color: var(--faint); }
 
 .test-log {
@@ -1048,13 +1077,24 @@ label.opt-line:has(input:disabled):hover { background: var(--field); }
 .help-note { margin-top: 10px; font-size: 11.5px; color: var(--faint); line-height: 1.5; }
 @media (max-width: 900px) { .help-grid { grid-template-columns: 1fr; } }
 
-/* ── lists: карточки 2×2 ── */
+/* ── lists: вкладки + одна большая область редактора ── */
 
-.lists-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap); }
 #listsHealthPanel { margin-top: 14px; }
-@media (max-width: 900px) {
-  .lists-grid { grid-template-columns: 1fr; }
+.lists-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.list-tab {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 6px 12px;
+  border: 1px solid var(--line); border-radius: 8px;
+  background: var(--field); color: var(--dim);
+  font-size: 12.5px; cursor: pointer;
+  transition: color .12s, border-color .12s, background .12s;
 }
+.list-tab:hover { color: var(--text); border-color: var(--btn-line); }
+.list-tab.active {
+  background: var(--panel); border-color: var(--btn-line);
+  color: var(--text); font-weight: 600;
+}
+.lists-panels { margin-top: 8px; }
 .list-card {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -1062,23 +1102,10 @@ label.opt-line:has(input:disabled):hover { background: var(--field); }
   display: flex; flex-direction: column;
   overflow: hidden;
 }
+.list-panel { display: none; }
+.list-panel.active { display: flex; flex-direction: column; }
 .list-card.is-dirty { border-color: var(--warn-line); }
 .list-card.is-error { border-color: var(--err); }
-/* IP-списки свёрнуты: настройка редкая, подробности - по запросу */
-details.list-card > summary { cursor: pointer; list-style: none; }
-details.list-card > summary::-webkit-details-marker { display: none; }
-details.list-card > summary.list-header { border-bottom: none; }
-details.list-card[open] > summary.list-header { border-bottom: 1px solid var(--divider); }
-details.list-card > summary .list-title::after { content: ' ▾'; opacity: .5; font-weight: 400; }
-details.list-card[open] > summary .list-title::after { content: ' ▴'; }
-.list-header {
-  padding: 10px 12px;
-  background: var(--field);
-  border-bottom: 1px solid var(--divider);
-  display: flex; flex-direction: column; gap: 3px;
-}
-.list-title-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.list-title { font-size: 13px; font-weight: 600; }
 .count-badge {
   font-size: 11px; font-weight: 600;
   padding: 1px 7px; border-radius: 10px;
@@ -1091,12 +1118,12 @@ details.list-card[open] > summary .list-title::after { content: ' ▴'; }
   border-color: var(--warn-line);
   background: var(--warn-bg);
 }
-.list-desc { font-size: 11.5px; color: var(--faint); line-height: 1.4; min-height: 32px; }
+.list-desc { font-size: 11.5px; color: var(--faint); line-height: 1.4; padding: 10px 12px 6px; }
 /* редактор с номерами строк: гутер и поле - одна высота строки (18px) */
 .editor-wrapper {
   display: flex;
   background: var(--field);
-  height: 180px;
+  height: 240px;
   min-height: 140px;
   overflow: hidden;
   resize: vertical;
