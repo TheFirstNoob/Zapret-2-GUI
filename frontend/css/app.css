@@ -881,6 +881,7 @@ label.opt-line:has(input:disabled):hover { background: var(--field); }
 .activity-chip:hover { border-color: var(--accent-line); background: var(--panel-hi); }
 .activity-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .activity-pct { color: var(--faint); flex: 0 0 auto; }
+.activity-go { color: var(--accent); flex: 0 0 auto; font-weight: 700; }
 .activity-dot {
   width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto;
   background: var(--warn);

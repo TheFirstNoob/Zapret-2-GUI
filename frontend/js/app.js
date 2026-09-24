@@ -3822,7 +3822,8 @@ const Activity = {
     el.hidden = true;
     el.innerHTML = '<span class="activity-dot"></span>' +
       '<span class="activity-text"></span>' +
-      '<span class="activity-pct mono"></span>';
+      '<span class="activity-pct mono"></span>' +
+      '<span class="activity-go" aria-hidden="true">→</span>';
     el.addEventListener('click', () => {
       if (this._page) location.hash = '#' + this._page;
     });
