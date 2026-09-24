@@ -1082,7 +1082,7 @@ label.opt-line:has(input:disabled):hover { background: var(--field); }
 
 /* ── lists: вкладки + одна большая область редактора ── */
 
-#listsHealthPanel { margin-top: 14px; }
+#listsHealthPanel { margin-bottom: 12px; }
 .lists-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
 .list-tab {
   display: inline-flex; align-items: center; gap: 7px;
