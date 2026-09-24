@@ -259,8 +259,8 @@
 37.230.192.51 api.jetbrains.ai
 37.230.192.51 api.spotify.com
 37.230.192.51 api.squareup.com
-37.230.192.51 auth0.openai.com
-37.230.192.51 cdn.platform.openai.com
+87.228.47.204 auth0.openai.com
+87.228.47.204 cdn.platform.openai.com
 37.230.192.51 checkout.www.deepl.com
 37.230.192.51 claude.ai
 37.230.192.51 clearance.deepl.com
@@ -272,7 +272,7 @@
 37.230.192.51 pump.fun
 37.230.192.51 sydney.bing.com
 37.230.192.51 tria.ge
-37.230.192.51 videos.openai.com
+87.228.47.204 videos.openai.com
 87.228.47.198 openrouter.ai
 37.230.192.51 voice-proxy.www.deepl.com
 37.230.192.51 web.archive.org
@@ -296,7 +296,7 @@
 45.155.204.190 api.imgur.com
 45.155.204.190 api.individual.githubcopilot.com
 45.155.204.190 api.manus.im
-45.155.204.190 api.openai.com
+87.228.47.204 api.openai.com
 45.155.204.190 api.trae.ai
 45.155.204.190 api.us.elevenlabs.io
 45.155.204.190 app.notion.com
@@ -311,7 +311,7 @@
 45.155.204.190 console.anthropic.com
 45.155.204.190 constellation.linear.app
 45.155.204.190 content-management-files.canva.com
-45.155.204.190 copilot.microsoft.com
+87.228.47.198 copilot.microsoft.com
 45.155.204.190 datalore.jetbrains.com
 45.155.204.190 deepl.com
 45.155.204.190 deezer.com
@@ -331,7 +331,7 @@
 45.155.204.190 gew1-dealer.spotify.com
 45.155.204.190 gew1-spclient.spotify.com
 45.155.204.190 gql.twitch.tv
-45.155.204.190 grok.com
+87.228.47.204 grok.com
 45.155.204.190 gtm.deepl.com
 45.155.204.190 guidedhacking.com
 45.155.204.190 images.pump.fun
@@ -417,7 +417,7 @@
 # =============================================================
 
 # --- 45.155.204.190 : Google AI geo (Gemini/AI Studio/NotebookLM) ---
-45.155.204.190 gemini.google.com
+87.228.47.202 gemini.google.com
 45.155.204.190 aistudio.google.com
 45.155.204.190 aisandbox-pa.googleapis.com
 45.155.204.190 generativelanguage.googleapis.com
