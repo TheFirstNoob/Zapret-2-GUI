@@ -1314,7 +1314,7 @@ const GamesPage = {
             <div class="group-label">Домены авторизации и лобби</div>
             ${(g.domains || []).map((d, di) => `
               <label class="rule-item">
-                <input type="checkbox" data-g-dom="${gi}:${di}" ${d.on ? 'checked' : ''}>
+                <input type="checkbox" class="cbx" data-g-dom="${gi}:${di}" ${d.on ? 'checked' : ''}>
                 <div class="rule-content">
                   <div class="rule-main-line">
                     <span class="rule-target">${escapeHtml(d.domain)}</span>
@@ -1327,7 +1327,7 @@ const GamesPage = {
             <div class="group-label">UDP-фикс (подключение к игровым серверам)</div>
             ${(g.udp || []).map((u, ui) => `
               <label class="rule-item">
-                <input type="checkbox" data-g-udp="${gi}:${ui}" ${u.on ? 'checked' : ''}>
+                <input type="checkbox" class="cbx" data-g-udp="${gi}:${ui}" ${u.on ? 'checked' : ''}>
                 <div class="rule-content">
                   <div class="rule-main-line">
                     <span class="rule-target">Порт UDP ${escapeHtml(u.ports)}</span>

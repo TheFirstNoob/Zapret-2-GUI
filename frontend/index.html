@@ -407,14 +407,14 @@
                   </div>
                   <div class="test-options">
                     <label class="opt-line">
-                      <input type="checkbox" id="altParamsCheck">
+                      <input type="checkbox" class="cbx" id="altParamsCheck">
                       <span class="opt-text">
                         <span class="opt-title">Альт-режим Discord <span class="opt-tag">+время</span></span>
                         <span class="opt-hint">дополнительно прогнать стратегии с альтернативной обработкой Discord (результаты справочно)</span>
                       </span>
                     </label>
                     <label class="opt-line">
-                      <input type="checkbox" id="logCheck">
+                      <input type="checkbox" class="cbx" id="logCheck">
                       <span class="opt-text">
                         <span class="opt-title">Отчёт для поддержки <span class="opt-tag">ZIP</span></span>
                         <span class="opt-hint">ZIP с результатами теста и данными о системе</span>
@@ -423,7 +423,7 @@
                     <details class="opt-more">
                       <summary>Дополнительно</summary>
                       <label class="opt-line">
-                        <input type="checkbox" id="extendedCheck">
+                        <input type="checkbox" class="cbx" id="extendedCheck">
                         <span class="opt-text">
                           <span class="opt-title">Расширенный режим <span class="opt-tag">Zapret 1 + анализ</span></span>
                           <span class="opt-hint">сравнение с Zapret 1 и обычным интернетом, полный анализ комбинаций — дольше; обычному пользователю не нужно</span>
@@ -514,6 +514,17 @@
                 <span class="check-pill">Тип блокировки</span>
               </div>
               <div class="diag-idle-note">Тест выявит проблемы окружения и сети. Нажмите «Проверить» в шапке.</div>
+            </div>
+
+            <div class="diag-scenarios">
+              <div class="diag-scen">
+                <b>YouTube открывается, а видео не идёт?</b>
+                <span>Плеер ходит на медиа-хосты через DNS-резолвер браузера (DoH) — смените провайдера в настройках браузера: Quad9 → Cloudflare → выключить DoH.</span>
+              </div>
+              <div class="diag-scen">
+                <b>Голос Discord не идёт?</b>
+                <span>Включите Discord Voice → «UDP-длина» в параметрах запуска; если не помогло — смените голосовой регион сервера в клиенте Discord.</span>
+              </div>
             </div>
 
             <div class="diag-loading" id="diagLoading" hidden>
@@ -885,6 +896,7 @@
               </div>
               <div class="idle-title">Тест стабильности CDN-сервисов</div>
               <div class="idle-note">Прогон выявляет хосты Cloudflare, AWS, Akamai, где обход ломает связь, и находит оптимальный режим для «Общего IP-обхода». Занимает 2–4 минуты. Нажмите «Сканировать CDN» в шапке.</div>
+              <div class="meta">На время скана обход будет кратко отключаться (нужно для честного сравнения) — после проверки вернётся сам.</div>
             </div>
 
             <div class="scan-progress-panel" id="cdnScanning" hidden>
@@ -999,7 +1011,7 @@
         <input type="file" accept=".bat" id="collectBatInput" hidden>
         <span id="collectBatLabel">Файл стратегии Zapret 1 (.bat) — по желанию</span>
       </div>
-      <label class="opt-line"><input type="checkbox" id="collectConsent"><span>Согласен предоставить данные для анализа</span></label>
+      <label class="opt-line"><input type="checkbox" class="cbx" id="collectConsent"><span>Согласен предоставить данные для анализа</span></label>
       <div class="modal-actions">
         <button class="btn" id="collectCancelBtn">Отмена</button>
         <button class="btn btn-primary" id="collectSubmitBtn">Сохранить отчёт</button>
