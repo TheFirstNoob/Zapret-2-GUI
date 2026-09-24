@@ -70,3 +70,9 @@ docs/
 # Local build/export leftovers
 /Zapret-2-GUI.zip
 tools/zapret2_diag.zip
+
+# Черновые UI-варианты от сторонних моделей (не коммитить, смотреть локально)
+/_*/
+/ui-variants/
+/variants/
+/ui-drafts/
