@@ -71,13 +71,18 @@ def _fetch_latest_mirror() -> Optional[str]:
 
 def merge_version_sources(raw: Optional[str],
                           mirror: Optional[str]) -> tuple[Optional[str], Optional[str]]:
-    """Сверить независимые источники версии (raw/зеркало). Оба доступны и
-    расходятся → (None, причина): возможна подмена, апдейт не предлагаем.
+    """Свести независимые источники версии (raw/зеркало).
+
+    Источники могут отставать друг от друга из-за кэшей CDN (raw ~минуты,
+    jsDelivr - часы), поэтому при расхождении берём БОЛЕЕ НОВУЮ версию, а не
+    считаем это подменой: сама установка защищена подписью
+    (core.update_verify), подмена версии может лишь показать лишний баннер.
     Возвращает (версия|None, ошибка|None)."""
     raw = (raw or "").strip() or None
     mirror = (mirror or "").strip() or None
-    if raw and mirror and raw != mirror:
-        return None, "источники версии расходятся"
+    if raw and mirror:
+        latest = raw if version_key(raw) >= version_key(mirror) else mirror
+        return latest, None
     latest = raw or mirror
     if not latest:
         return None, "не удалось получить версию"

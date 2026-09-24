@@ -290,18 +290,22 @@ class TestCrossImplementation(unittest.TestCase):
 
 
 class TestVersionSources(unittest.TestCase):
-    """Сверка независимых источников версии (raw/API)."""
+    """Сведение независимых источников версии (raw/зеркало jsDelivr)."""
 
     def test_agree(self):
         self.assertEqual(ups.merge_version_sources("Pre-Release 0.9",
                                                    "Pre-Release 0.9"),
                          ("Pre-Release 0.9", None))
 
-    def test_disagree_rejects(self):
-        latest, err = ups.merge_version_sources("Pre-Release 0.9",
-                                                "Pre-Release 0.8")
-        self.assertIsNone(latest)
-        self.assertIsNotNone(err)
+    def test_disagree_takes_newer(self):
+        # Кэши CDN отстают друг от друга - это норма, берём более новую;
+        # установка всё равно защищена подписью (update_verify).
+        self.assertEqual(ups.merge_version_sources("Pre-Release 0.9",
+                                                   "Pre-Release 0.8"),
+                         ("Pre-Release 0.9", None))
+        self.assertEqual(ups.merge_version_sources("Pre-Release 0.8",
+                                                   "Pre-Release 0.9"),
+                         ("Pre-Release 0.9", None))
 
     def test_single_source_ok(self):
         self.assertEqual(ups.merge_version_sources("Pre-Release 0.9", None),
