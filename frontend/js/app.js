@@ -1826,10 +1826,12 @@ const ListsPage = {
     const ICON_OK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
     const box = $(key + 'Valid');
     box.className = 'status-msg';
+    box.removeAttribute('data-popover');
     if (bad.length) {
       box.classList.add('status-error');
-      box.innerHTML = ICON_ERR +
-        `<span>строки с ошибкой: ${bad.slice(0, 12).join(', ')}${bad.length > 12 ? '…' : ''} — сохранение заблокировано</span>`;
+      const errText = `строки с ошибкой: ${bad.slice(0, 12).join(', ')}${bad.length > 12 ? '…' : ''} — сохранение заблокировано`;
+      box.innerHTML = ICON_ERR + `<span>${errText}</span>`;
+      box.setAttribute('data-popover', errText);
     } else if (dirty) {
       box.classList.add('status-unsaved');
       box.innerHTML = ICON_DOT + '<span>изменения не сохранены — нажмите «Сохранить»</span>';

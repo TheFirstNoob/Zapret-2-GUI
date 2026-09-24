@@ -1049,6 +1049,7 @@ label.opt-line:has(input:disabled):hover { background: var(--field); }
 /* ── lists: карточки 2×2 ── */
 
 .lists-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap); }
+#listsHealthPanel { margin-top: 14px; }
 @media (max-width: 900px) {
   .lists-grid { grid-template-columns: 1fr; }
 }
@@ -1133,13 +1134,20 @@ details.list-card[open] > summary .list-title::after { content: ' ▴'; }
   display: flex; align-items: center; gap: 10px;
   padding: 8px 12px;
   min-height: 44px;
+  flex-wrap: nowrap;
 }
 .list-footer .btn { margin-left: auto; }
 .list-result:empty { display: none; }
+.list-result { flex: 0 0 auto; white-space: nowrap; }
 .status-msg {
   display: inline-flex; align-items: center; gap: 6px;
   font-size: 12px; font-weight: 500; line-height: 1.3;
-  min-width: 0;
+  min-width: 0; flex: 0 1 auto;
+}
+/* статус не переносится на вторую строку (иначе карточка «дышит»);
+   полный текст длинной ошибки — в поповере */
+.status-msg span {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .status-msg svg { width: 14px; height: 14px; flex-shrink: 0; }
 .status-error { color: var(--err); }
