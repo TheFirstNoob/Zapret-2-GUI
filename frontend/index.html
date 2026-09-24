@@ -76,13 +76,13 @@
         </div>
         <div class="prot-sub" id="protSub"></div>
         <div class="side-actions">
-          <button class="side-btn" id="sideExport" data-popover-title="Экспорт настроек" data-popover="Сохранит config, пользовательские списки и пресеты в ZIP в папке программы. Пригодится перед переустановкой или для переноса на другой ПК.">
+          <button class="side-btn" id="sideExport" aria-label="Экспорт настроек" data-popover-title="Экспорт настроек" data-popover="Сохранит config, пользовательские списки и пресеты в ZIP в папке программы. Пригодится перед переустановкой или для переноса на другой ПК.">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           </button>
-          <label class="side-btn" for="settingsImportFile" data-popover-title="Импорт настроек" data-popover="Восстановит настройки и списки из ZIP-архива, сохранённого кнопкой экспорта.">
+          <label class="side-btn" for="settingsImportFile" aria-label="Импорт настроек" data-popover-title="Импорт настроек" data-popover="Восстановит настройки и списки из ZIP-архива, сохранённого кнопкой экспорта.">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
           </label>
-          <button class="side-btn" id="sideInfo" data-popover-title="О программе" data-popover="Версия, тип сборки, SHA256 exe, ключ подписи обновлений и кнопка проверки обновлений. Плюс ссылки на GitHub — там можно задать вопрос или сообщить о проблеме.">
+          <button class="side-btn" id="sideInfo" aria-label="О программе" data-popover-title="О программе" data-popover="Версия, тип сборки, SHA256 exe, ключ подписи обновлений и кнопка проверки обновлений. Плюс ссылки на GitHub — там можно задать вопрос или сообщить о проблеме.">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
           </button>
         </div>
@@ -284,17 +284,9 @@
                   </div>
                   <div class="param-ctl">
                     <div class="opt-ctl-stack">
-                      <div class="dropdown" id="fakeBlobDropdown">
-                        <button type="button" class="input input-sm dropdown-trigger" id="fakeBlobBtn"
-                                aria-haspopup="listbox" aria-expanded="false">
-                          <span class="dropdown-value" id="fakeBlobValue">Пресет (Google)</span>
-                          <span class="dropdown-caret">▾</span>
-                        </button>
-                        <select class="input input-sm" id="fakeBlobSelect" hidden>
-                          <option value="">Пресет (Google)</option>
-                        </select>
-                        <div class="dropdown-menu" id="fakeBlobMenu" role="listbox" hidden></div>
-                      </div>
+                      <select class="input input-sm" id="fakeBlobSelect" aria-label="Блоб фейка">
+                        <option value="">Пресет (Google)</option>
+                      </select>
                       <button class="btn btn-sm" id="btnBlobProbe" data-popover-title="Подбор блоба" data-popover="Программа по очереди перепроверит заготовки поддельного пакета и подставит ту, что работает лучше. Подбор можно остановить кнопкой.">Подобрать блоба</button>
                     </div>
                   </div>
@@ -462,7 +454,7 @@
                     <button class="btn btn-sm btn-danger-text" id="btnCancelTest">Отменить</button>
                   </div>
                 </div>
-                <div class="progress-track"><div class="fill" id="testProgressFill"></div></div>
+                <div class="progress-track"><div class="fill" id="testProgressFill" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div></div>
                 <div class="progress-msg" id="testProgressMsg"></div>
               </div>
               <div class="table-container">
@@ -474,7 +466,7 @@
                       <th class="col-rate">Доступность</th>
                       <th class="col-mini">Discord</th>
                       <th class="col-mini">YouTube</th>
-                      <th class="col-rate" data-popover-title="Хосты в тестере" data-popover="10/10 — зачётные хосты, по ним считается итоговый процент. В скобках — сколько всего проверено, включая контрольные и QUIC-хосты.">Хосты</th>
+                      <th class="col-rate" tabindex="0" data-popover-title="Хосты в тестере" data-popover="10/10 — зачётные хосты, по ним считается итоговый процент. В скобках — сколько всего проверено, включая контрольные и QUIC-хосты.">Хосты</th>
                     </tr>
                   </thead>
                   <tbody id="stratTbody">
@@ -827,7 +819,7 @@
               <div class="games-info-text"><b>Домены</b> включаются в обход сразу (к новым подключениям); переключатели сохраняются автоматически. <b>UDP-фикс</b> — после перезапуска обхода: нажмите «Переустановить службу» справа.</div>
               <div class="games-search">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                <input type="text" id="gamesSearch" placeholder="Поиск игры или домена…">
+                <input type="text" id="gamesSearch" aria-label="Поиск игры или домена" placeholder="Поиск игры или домена…">
               </div>
             </div>
 
@@ -906,7 +898,7 @@
                   <button class="btn btn-stop btn-sm" id="cdnCancelBtn">Отменить</button>
                 </div>
               </div>
-              <div class="progress-track"><div class="fill" id="cdnProgressFill"></div></div>
+                <div class="progress-track"><div class="fill" id="cdnProgressFill" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div></div>
             </div>
 
             <div id="cdnResults" hidden></div>
@@ -982,7 +974,7 @@
                   <span class="live-timer-badge mono" id="asnProgressPct">0%</span>
                 </div>
               </div>
-              <div class="progress-track"><div class="fill" id="asnProgressFill"></div></div>
+                <div class="progress-track"><div class="fill" id="asnProgressFill" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div></div>
             </div>
 
             <div id="asnResults" hidden></div>
@@ -1038,6 +1030,17 @@
       <div class="modal-actions">
         <button class="btn" id="needZ1CancelBtn">Отмена</button>
         <button class="btn btn-primary" id="checkZapret1Btn">Я запустил — продолжить</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="confirmOverlay" class="modal-overlay" role="dialog" aria-modal="true">
+    <div class="modal">
+      <div class="modal-title" id="confirmTitle">Подтвердите действие</div>
+      <p class="modal-desc" id="confirmText"></p>
+      <div class="modal-actions">
+        <button class="btn" id="confirmCancel">Отмена</button>
+        <button class="btn btn-primary" id="confirmOk">Продолжить</button>
       </div>
     </div>
   </div>

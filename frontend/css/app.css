@@ -21,7 +21,8 @@
 
   --text: #d9dde2;
   --dim: #98a1ab;
-  --faint: #6e767f;
+  --muted: #8b949e;
+  --faint: #8a939d;
 
   --accent: #4f87c7;
   --accent-bg: #2c5c93;
@@ -35,7 +36,7 @@
   --warn: #c7953f;
   --warn-bg: rgba(199, 149, 63, .13);
   --warn-line: rgba(199, 149, 63, .4);
-  --err: #d35f61;
+  --err: #e06c6e;
   --err-bg: rgba(211, 95, 97, .13);
   --err-line: rgba(211, 95, 97, .4);
   --skip: #6e767f;
@@ -78,6 +79,7 @@ a { color: var(--accent); }
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
+  .progress-track .fill::after { display: none; } /* гифку CSS не остановить */
 }
 
 /* ── layout ── */
@@ -115,7 +117,7 @@ a { color: var(--accent); }
 .nav-link {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 9px;
   flex-wrap: wrap;
   row-gap: 2px;
   padding: 9px 10px;
@@ -137,7 +139,6 @@ a { color: var(--accent); }
 .nav-link:hover { background: var(--panel-hi); color: var(--text); }
 .nav-link.active { background: var(--accent-soft); color: var(--text); font-weight: 600; }
 
-.nav-link { gap: 9px; }
 details.panel > summary { cursor: pointer; list-style: none; transition: background .12s; }
 details.panel > summary::-webkit-details-marker { display: none; }
 /* Свёрнутая панель не должна оставлять пустую полосу под шапкой */
@@ -257,7 +258,6 @@ details.panel[open] > .param-rows { border-top: 1px solid var(--divider); }
   display: flex; align-items: center; gap: 10px;
   margin-top: 8px; min-height: 0;
 }
-#togglesPanel .panel-foot:has(> .btn[hidden]):has(> .meta:empty) { display: none; }
 .panel-foot .btn { margin-left: auto; }
 
 .panel-details { padding: 0; }
@@ -413,10 +413,6 @@ select.input:disabled { opacity: .55; }
 .field .input { flex: 1; min-width: 0; }
 .field-label { font-size: 12px; color: var(--dim); flex: 0 0 auto; }
 
-.state { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; }
-.state-text { font-size: 13px; }
-.state .meta, .row .meta { font-weight: 400; }
-
 /* статус-пилюли: нейтральная — серая, по состоянию — тинт + цвет текста */
 .state {
   display: inline-flex; align-items: center; gap: 7px;
@@ -482,41 +478,6 @@ select.input:disabled { opacity: .55; }
    Длинные имена блобов не могут растянуть селект — текст обрезается,
    полное имя видно в выпадающем списке. Кнопка — в ту же ширину. */
 .opt-ctl-stack > * { width: 100%; }
-
-/* Кастомный дропдаун блоба: триггер фиксированной ширины, список — отдельным
-   слоем в ширину имён (длинные имена не раздувают селектор) */
-.dropdown { position: relative; }
-.dropdown-trigger {
-  width: 100%;
-  display: inline-flex; align-items: center; gap: 6px;
-  cursor: pointer;
-  text-align: left;
-}
-.dropdown-value {
-  flex: 1; min-width: 0;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.dropdown-caret {
-  flex: 0 0 auto;
-  font-size: 9px; color: var(--faint);
-}
-.dropdown-menu {
-  position: absolute; right: 0; top: calc(100% + 4px);
-  width: auto; min-width: 150px; max-width: min(420px, calc(100vw - 48px));
-  background: var(--panel-hi); border: 1px solid var(--line);
-  border-radius: 6px; box-shadow: 0 8px 22px rgba(0,0,0,.5);
-  max-height: 260px; overflow-y: auto;
-  padding: 4px; z-index: 50;
-}
-.dropdown-menu[hidden] { display: none; }
-.dropdown-item {
-  padding: 6px 10px; border-radius: 4px;
-  font-size: 12px; color: var(--text);
-  cursor: pointer; white-space: nowrap;
-  overflow: hidden; text-overflow: ellipsis;
-}
-.dropdown-item:hover { background: var(--accent-soft); }
-.dropdown-item.selected { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 
 /* «есть неприменённые изменения»: вся нижняя зона — жёлтая плашка */
 #togglesPanel .panel-foot {
@@ -685,7 +646,6 @@ select.input:disabled { opacity: .55; }
   width: 30px; height: 30px;
   background: url('/static/CatLoading.gif') no-repeat center / contain;
 }
-.progress-msg { font-size: 11.5px; color: var(--faint); min-height: 16px; }
 
 .table-container { width: 100%; overflow-x: auto; margin-top: 10px; }
 
@@ -1380,26 +1340,6 @@ details.list-card[open] > summary .list-title::after { content: ' ▴'; }
 .scan-status-title { font-size: 13.5px; font-weight: 600; }
 .scan-status-sub { font-size: 12px; color: var(--faint); margin-top: 2px; }
 .scan-right { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; }
-
-/* состояние «ожидание» (общее для probe/cdn/asn) */
-.idle-view {
-  padding: 34px 0 26px;
-  display: flex; flex-direction: column; align-items: center;
-  text-align: center; gap: 10px;
-  color: var(--faint);
-}
-.idle-view[hidden] { display: none; }
-.idle-icon {
-  width: 44px; height: 44px; border-radius: 50%;
-  background: rgba(255,255,255,.03);
-  border: 1px solid var(--line);
-  display: flex; align-items: center; justify-content: center;
-  color: var(--dim);
-  margin-bottom: 4px;
-}
-.idle-icon svg { width: 20px; height: 20px; }
-.idle-title { font-size: 13.5px; font-weight: 600; color: var(--text); }
-.idle-note { font-size: 12px; max-width: 520px; line-height: 1.45; }
 
 /* ── Анализ приложения: живой перехват ── */
 .capture-live-bar {

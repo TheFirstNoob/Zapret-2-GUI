@@ -288,6 +288,7 @@ const App = {
 
   async init() {
     Popover.init();
+    Modal.init();
     this.bindNav();
     this.bindProbeButtons();
     this.handleHash();
@@ -456,74 +457,6 @@ if (start) start.addEventListener('click', () => TesterPage.startProbe());
   },
 };
 
-// Кастомный дропдаун выбора блоба: триггер фиксированной ширины, список —
-// отдельным слоем в ширину имён. Нативный select остаётся в DOM скрытым и
-// хранит value — вся остальная логика работает как раньше.
-const BlobSelect = {
-  _ready: false,
-
-  init() {
-    if (this._ready) return;
-    this._ready = true;
-    this.btn = $('fakeBlobBtn');
-    this.menu = $('fakeBlobMenu');
-    this.select = $('fakeBlobSelect');
-    if (!this.btn || !this.menu || !this.select) return;
-    this.select.hidden = true;
-    this.btn.addEventListener('click', e => {
-      e.stopPropagation();
-      this.menu.hidden ? this.open() : this.close();
-    });
-    this.select.addEventListener('change', () => this.render());
-    document.addEventListener('click', e => {
-      if (!this.menu.hidden && !this.menu.contains(e.target)) this.close();
-    });
-    document.addEventListener('keydown', e => {
-      if (e.key === 'Escape' && !this.menu.hidden) this.close();
-    });
-    this.render();
-  },
-
-  open() {
-    this.syncMenu();
-    this.menu.hidden = false;
-    this.btn.setAttribute('aria-expanded', 'true');
-  },
-
-  close() {
-    this.menu.hidden = true;
-    this.btn.setAttribute('aria-expanded', 'false');
-  },
-
-  syncMenu() {
-    this.menu.innerHTML = '';
-    for (const o of this.select.options) {
-      const it = document.createElement('div');
-      it.className = 'dropdown-item' + (o.value === this.select.value ? ' selected' : '');
-      it.textContent = o.textContent;
-      it.title = o.textContent;
-      it.dataset.value = o.value;
-      it.addEventListener('click', () => this.pick(o.value));
-      this.menu.appendChild(it);
-    }
-  },
-
-  pick(value) {
-    this.select.value = value;
-    this.select.dispatchEvent(new Event('change', { bubbles: true }));
-    this.close();
-  },
-
-  render() {
-    if (!this._ready) return;
-    const o = Array.from(this.select.options).find(x => x.value === this.select.value);
-    const label = o ? o.textContent : 'Пресет (Google)';
-    const v = $('fakeBlobValue');
-    if (v) { v.textContent = label; v.title = o ? o.textContent : ''; }
-    if (this.btn) this.btn.title = o ? o.textContent : '';
-  },
-};
-
 // ══════════════════════════ ГЛАВНАЯ ══════════════════════════
 
 const MainPage = {
@@ -537,7 +470,6 @@ const MainPage = {
   onShow() {
     if (!this._loaded) {
       this._loaded = true;
-      BlobSelect.init();
       this.populateFakeBlobs();
       this.loadConfig();
       this.bind();
@@ -602,7 +534,6 @@ const MainPage = {
       if (fbSel && Array.from(fbSel.options).some(o => o.value === this._pendingFakeBlob)) {
         fbSel.value = this._pendingFakeBlob;
       }
-      BlobSelect.render();
       $('toggleWinws2Debug').checked = !!c.winws2_debug;
       $('z1DirPath').value = c.zapret1_dir || '';
       if (c.last_profile) {
@@ -644,7 +575,6 @@ const MainPage = {
         sel.appendChild(o);
       }
       sel.value = this._pendingFakeBlob || '';
-      BlobSelect.render();
     } catch (e) { /* список не критичен */ }
   },
 
@@ -695,8 +625,7 @@ const MainPage = {
         showToast(`Лучший блоб: ${best.blob.replace(/_/g, '.')} (${best.rate}%)`, 'ok');
         if (Array.from(sel.options).some(o => o.value === best.blob) && sel.value !== best.blob) {
           sel.value = best.blob;
-          BlobSelect.render();
-          this.saveToggles();
+              this.saveToggles();
         }
       }
     } catch (e) {
@@ -917,13 +846,12 @@ const MainPage = {
       async () => {
         let r = await apiPost('/service/install', payload);
         if (r.status !== 'ok' && /Zapret 1/.test(r.message || '')) {
-          const go = window.confirm(
-            'Обнаружен Zapret 1 (служба «zapret» или процесс winws.exe).\n\n' +
-            'Остановить и удалить его? Это то же действие, что «Remove Services» ' +
-            'в service.bat Zapret 1:\n' +
-            '• служба zapret будет остановлена и удалена\n' +
-            '• процесс winws.exe будет остановлен\n\n' +
-            'После этого установка продолжится автоматически.');
+          const go = await Confirm.ask({
+            title: 'Обнаружен Zapret 1',
+            text: 'Остановить и удалить его? Это то же действие, что «Remove Services» в service.bat Zapret 1: служба zapret будет остановлена и удалена, процесс winws.exe будет остановлен. После этого установка продолжится автоматически.',
+            ok: 'Удалить Zapret 1 и продолжить',
+            danger: true,
+          });
           if (!go) return r;
           r = await apiPost('/service/install', { ...payload, cleanup_zapret1: true });
         }
@@ -944,8 +872,14 @@ const MainPage = {
       'Остановка…', 'Служба остановлена', 'Не удалось остановить службу: ');
   },
 
-  svcRemove() {
-    if (!window.confirm('Удалить службу Zapret 2? Автозапуск обхода после перезагрузки отключится (сам обход это не затронет).')) return;
+  async svcRemove() {
+    const ok = await Confirm.ask({
+      title: 'Удалить службу Zapret 2?',
+      text: 'Автозапуск обхода после перезагрузки отключится (сам обход это не затронет).',
+      ok: 'Удалить службу',
+      danger: true,
+    });
+    if (!ok) return;
     this._svcAction(async () => {
       if (Status.svc && Status.svc.running) await apiPost('/service/stop', {}).catch(() => {});
       return apiPost('/service/remove', {});
@@ -1443,8 +1377,13 @@ const GamesPage = {
       }));
   },
 
-  reinstallService() {
-    if (!window.confirm('Переустановить службу обхода? Это нужно, чтобы UDP-фикс игр вступил в силу. Обход на пару секунд прервётся.')) return;
+  async reinstallService() {
+    const ok = await Confirm.ask({
+      title: 'Переустановить службу?',
+      text: 'Это нужно, чтобы UDP-фикс игр вступил в силу. Обход на пару секунд прервётся.',
+      ok: 'Переустановить',
+    });
+    if (!ok) return;
     MainPage.svcInstall();
   },
 
@@ -1497,19 +1436,22 @@ const AppInfo = {
       }
       $('appInfoBody').innerHTML = rows.join('<br>');
       $('appInfoStatus').textContent = '';
-      $('appInfoOverlay').classList.add('open');
+      Modal.open('appInfoOverlay');
       this._wire();
     } catch (e) {
       showToast('Не удалось получить сведения: ' + (e.message || e), 'error');
     }
   },
 
-  close() { $('appInfoOverlay').classList.remove('open'); },
+  close() { Modal.close('appInfoOverlay'); },
 
   _wire() {
     if (this._wired) return;
     this._wired = true;
     $('appInfoClose').addEventListener('click', () => this.close());
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && $('appInfoOverlay').classList.contains('open')) this.close();
+    });
     $('appInfoOverlay').addEventListener('click', (ev) => {
       if (ev.target.id === 'appInfoOverlay') this.close();
     });
@@ -1792,7 +1734,13 @@ const ListsPage = {
   },
 
   async dedupeLists() {
-    if (!window.confirm('Убрать дубли во всех редактируемых списках? Несохранённые правки в полях будут потеряны.')) return;
+    const ok = await Confirm.ask({
+      title: 'Убрать дубли во всех списках?',
+      text: 'Несохранённые правки в полях будут потеряны.',
+      ok: 'Убрать дубли',
+      danger: true,
+    });
+    if (!ok) return;
     const btn = $('btnListsDedupe');
     btn.disabled = true;
     try {
@@ -2067,6 +2015,7 @@ const CdnStab = {
       const pct = p.percent ?? 0;
       $('cdnProgressPct').textContent = Math.round(pct) + '%';
       $('cdnProgressFill').style.width = Math.min(100, Math.max(0, pct)) + '%';
+      $('cdnProgressFill').setAttribute('aria-valuenow', Math.min(100, Math.max(0, pct)));
       setTimeout(() => this._poll(), 1200);
       return;
     }
@@ -2335,6 +2284,7 @@ const AsnPage = {
           const pct = st.progress.percent ?? 0;
           $('asnProgressPct').textContent = Math.round(pct) + '%';
           $('asnProgressFill').style.width = Math.min(100, Math.max(0, pct)) + '%';
+          $('asnProgressFill').setAttribute('aria-valuenow', Math.min(100, Math.max(0, pct)));
         }
         if (!st.running) final = st.final_result;
       }
@@ -2478,7 +2428,6 @@ const TesterPage = {
     const toggleDetail = () => { detail.hidden = !detail.hidden; tr.setAttribute('aria-expanded', detail.hidden ? 'false' : 'true'); };
     tr.addEventListener('click', toggleDetail);
     tr.tabIndex = 0;
-    tr.setAttribute('role', 'button');
     tr.setAttribute('aria-expanded', 'false');
     tr.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleDetail(); }
@@ -2756,7 +2705,7 @@ const TesterPage = {
           else if (fr.type === 'need_zapret1') {
             this.clearElapsedTimer();
             $('testRun').hidden = true;
-            $('needZapret1Overlay').classList.add('open');
+            Modal.open('needZapret1Overlay');
             $('needZapret1Status').textContent = '';
           }
           else if (fr.type === 'check_result') { if (onResult) onResult(fr); }
@@ -2808,7 +2757,7 @@ const TesterPage = {
         if (final.vpn_active) {
           $('vpnDetails').textContent = final.details || '';
           $('testRun').hidden = true;
-          $('vpnOverlay').classList.add('open');
+          Modal.open('vpnOverlay');
           $('vpnStatus').textContent = '';
         } else {
           this.runPipeline();
@@ -2820,7 +2769,7 @@ const TesterPage = {
 
   runPipeline() {
     App.setTestActive(true);
-    $('vpnOverlay').classList.remove('open');
+    Modal.close('vpnOverlay');
     $('testerIntro').hidden = true;
     $('testRun').hidden = false;
     $('testCurrentPhase').textContent = 'Подготовка…';
@@ -2840,7 +2789,9 @@ const TesterPage = {
 
   _setProgress(pct) {
     const fill = $('testProgressFill');
-    fill.style.width = Math.min(100, Math.max(0, pct)) + '%';
+    const v = Math.min(100, Math.max(0, pct));
+    fill.style.width = v + '%';
+    fill.setAttribute('aria-valuenow', v);
     // Кот на краю заливки имеет смысл только когда заливка уже видна.
     fill.parentElement.classList.toggle('has-cat', pct >= 5);
   },
@@ -3121,11 +3072,11 @@ const TesterPage = {
 
   bindModals() {
     $('vpnCancelBtn').addEventListener('click', () => {
-      $('vpnOverlay').classList.remove('open');
+      Modal.close('vpnOverlay');
       this.resetToIntro();
     });
     $('retryVpnBtn').addEventListener('click', () => {
-      $('vpnOverlay').classList.remove('open');
+      Modal.close('vpnOverlay');
       $('testRun').hidden = false;
       $('vpnStatus').textContent = 'Проверяю…';
       this.runVpnCheck();
@@ -3136,7 +3087,7 @@ const TesterPage = {
       this.runPipeline();
     });
     $('needZ1CancelBtn').addEventListener('click', () => {
-      $('needZapret1Overlay').classList.remove('open');
+      Modal.close('needZapret1Overlay');
       this.resetToIntro();
     });
     $('checkZapret1Btn').addEventListener('click', () => {
@@ -3146,7 +3097,7 @@ const TesterPage = {
         onResult: (d) => {
           $('checkZapret1Btn').disabled = false;
           if (d.running) {
-            $('needZapret1Overlay').classList.remove('open');
+            Modal.close('needZapret1Overlay');
             $('testRun').hidden = false;
             this.runFullPipelinePhase0();
           } else {
@@ -3218,10 +3169,10 @@ const TesterPage = {
     $('collectSubmitBtn').disabled = false;
     $('collectSubmitBtn').textContent = 'Сохранить отчёт';
     this.state.collectBatFile = null;
-    $('collectFormOverlay').classList.add('open');
+    Modal.open('collectFormOverlay');
   },
 
-  closeCollectForm() { $('collectFormOverlay').classList.remove('open'); },
+  closeCollectForm() { Modal.close('collectFormOverlay'); },
 
   handleCollectBat(e) { this._setCollectFile(e.target.files[0]); },
   handleCollectDrop(e) { this._setCollectFile(e.dataTransfer.files[0]); },
@@ -3722,6 +3673,89 @@ const Popover = {
     if (this._timer) { clearTimeout(this._timer); this._timer = null; }
     if (this._el) { this._el.remove(); this._el = null; }
     this._anchor = null;
+  },
+};
+
+// ── Модалки: фокус, Tab-ловушка, возврат фокуса ─────────────────────
+const Modal = {
+  _last: null,
+
+  open(id) {
+    const ov = $(id);
+    if (!ov || ov.classList.contains('open')) return;
+    this._last = document.activeElement;
+    ov.classList.add('open');
+    const f = ov.querySelector('.modal button, .modal input, .modal select, .modal textarea, .modal a[href]');
+    if (f) setTimeout(() => f.focus(), 0);
+  },
+
+  close(id) {
+    const ov = $(id);
+    if (!ov || !ov.classList.contains('open')) return;
+    ov.classList.remove('open');
+    const last = this._last;
+    this._last = null;
+    if (last && last.focus && document.contains(last)) last.focus();
+  },
+
+  _top() {
+    const all = document.querySelectorAll('.modal-overlay.open');
+    return all.length ? all[all.length - 1] : null;
+  },
+
+  init() {
+    document.addEventListener('keydown', (e) => {
+      const ov = this._top();
+      if (!ov || e.key !== 'Tab') return;
+      const items = Array.from(ov.querySelectorAll(
+        'button:not([disabled]):not([hidden]), [href], input:not([disabled]):not([hidden]), select:not([hidden]), textarea:not([hidden]), [tabindex]:not([tabindex="-1"])'
+      )).filter(el => el.offsetParent !== null);
+      if (!items.length) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (!ov.contains(document.activeElement)) { e.preventDefault(); first.focus(); return; }
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    });
+  },
+};
+
+// ── Своё подтверждение вместо window.confirm ────────────────────────
+const Confirm = {
+  _resolve: null,
+  _wired: false,
+
+  ask({ title, text, ok = 'Продолжить', danger = false } = {}) {
+    return new Promise((resolve) => {
+      this._resolve = resolve;
+      $('confirmTitle').textContent = title || 'Подтвердите действие';
+      $('confirmText').textContent = text || '';
+      const btn = $('confirmOk');
+      btn.textContent = ok;
+      btn.className = 'btn ' + (danger ? 'btn-danger' : 'btn-primary');
+      this._wire();
+      Modal.open('confirmOverlay');
+    });
+  },
+
+  _done(val) {
+    Modal.close('confirmOverlay');
+    const r = this._resolve;
+    this._resolve = null;
+    if (r) r(val);
+  },
+
+  _wire() {
+    if (this._wired) return;
+    this._wired = true;
+    $('confirmOk').addEventListener('click', () => this._done(true));
+    $('confirmCancel').addEventListener('click', () => this._done(false));
+    $('confirmOverlay').addEventListener('mousedown', (e) => {
+      if (e.target.id === 'confirmOverlay') this._done(false);
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && $('confirmOverlay').classList.contains('open')) this._done(false);
+    });
   },
 };
 
