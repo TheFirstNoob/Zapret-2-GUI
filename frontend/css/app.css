@@ -138,10 +138,25 @@ a { color: var(--accent); }
 .nav-link.active { background: var(--accent-soft); color: var(--text); font-weight: 600; }
 
 .nav-link { gap: 9px; }
-details.panel > summary { cursor: pointer; list-style: none; }
+details.panel > summary { cursor: pointer; list-style: none; transition: background .12s; }
 details.panel > summary::-webkit-details-marker { display: none; }
-details.panel > summary .head-right::after { content: ' ▾'; opacity: .55; }
-details.panel[open] > summary .head-right::after { content: ' ▴'; }
+/* Свёрнутая панель не должна оставлять пустую полосу под шапкой */
+details.panel > summary.card-head { margin-bottom: -12px; }
+details.panel[open] > summary.card-head { margin-bottom: 10px; }
+details.panel > summary:hover { background: var(--panel-hi); }
+details.panel > summary:focus-visible { outline: 2px solid var(--accent-line); outline-offset: -2px; }
+/* Заметный шеврон-кнопка: сразу видно, что шапку можно свернуть/развернуть */
+details.panel > summary .head-right::after {
+  content: '▾';
+  width: 27px; height: 27px; box-sizing: border-box;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 16px; font-weight: 600; line-height: 1; color: var(--muted);
+  border: 1px solid var(--btn-line); border-radius: 9px;
+  background: var(--panel-hi);
+  transition: color .12s, border-color .12s, background .12s;
+}
+details.panel[open] > summary .head-right::after { content: '▴'; }
+details.panel > summary:hover .head-right::after { color: var(--accent); border-color: var(--accent-line); }
 details.panel[open] > .param-rows { border-top: 1px solid var(--divider); }
 .nav-subgroup { margin-top: 4px; }
 .nav-sub-label {
@@ -251,12 +266,22 @@ details.panel[open] > .param-rows { border-top: 1px solid var(--divider); }
   cursor: pointer;
   padding: var(--pad-panel);
   display: flex; align-items: center; gap: 10px;
+  transition: background .12s;
 }
 .panel-details > .panel-summary::-webkit-details-marker { display: none; }
+.panel-details > .panel-summary:hover { background: var(--panel-hi); }
+.panel-details > .panel-summary:focus-visible { outline: 2px solid var(--accent-line); outline-offset: -2px; }
 .panel-details > .panel-summary::after {
-  content: "▸"; margin-left: auto; color: var(--faint); font-size: 11px;
+  content: "▸"; margin-left: auto;
+  width: 27px; height: 27px; box-sizing: border-box;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 16px; font-weight: 600; line-height: 1; color: var(--muted);
+  border: 1px solid var(--btn-line); border-radius: 9px;
+  background: var(--panel-hi);
+  transition: color .12s, border-color .12s, background .12s;
 }
 .panel-details[open] > .panel-summary::after { content: "▾"; }
+.panel-details > .panel-summary:hover::after { color: var(--accent); border-color: var(--accent-line); }
 .panel-details > :not(summary) { padding: 0 14px; }
 .panel-details[open] > :last-child { padding-bottom: 10px; }
 .panel-details .panel-title::before { content: none; }
