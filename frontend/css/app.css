@@ -138,16 +138,18 @@ a { color: var(--accent); }
   text-decoration: none;
   font-size: 13.5px;
 }
-.nav-badge {
+/* «Идёт проверка» на вкладке: маленькая мигающая точка вместо текста */
+.nav-dot {
   margin-left: auto;
-  font-size: 10px; font-weight: 600;
-  color: var(--warn); background: var(--warn-bg);
-  border: 1px solid var(--warn-line);
-  border-radius: 8px;
-  padding: 0 6px;
-  white-space: nowrap;
+  width: 9px; height: 9px; border-radius: 50%;
+  flex: 0 0 auto;
+  background: var(--warn);
+  animation: act-blink 1s ease-in-out infinite;
 }
-.nav-badge[hidden] { display: none; }
+.nav-dot[hidden] { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .nav-dot { animation: none; }
+}
 .nav-link:hover { background: var(--panel-hi); color: var(--text); }
 .nav-link.active { background: var(--accent-soft); color: var(--text); font-weight: 600; }
 

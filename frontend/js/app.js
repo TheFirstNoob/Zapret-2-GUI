@@ -264,14 +264,14 @@ const App = {
 
   // Идёт проверка (стратегии/CDN/ASN/blob/диагностика): обходом управляет
   // тестер - блокируем ручной запуск/остановку, службу и другие кнопки
-  // проверок, показываем бейдж на вкладке-источнике.
+  // проверок, показываем мигающую точку на вкладке-источнике.
   setTestActive(active) {
     if (this.testActive === active) return;
     this.testActive = active;
     const badge = $('testerBadge');
     if (badge) {
       badge.hidden = !active;
-      // Бейдж «идёт проверка» - на странице-источнике, а не всегда на «Подборе»
+      // Точка «идёт проверка» - на странице-источнике, а не всегда на «Подборе»
       if (active) {
         const link = document.querySelector(`.nav-link[data-page="${this.currentPage}"]`);
         if (link && link !== badge.parentElement) link.appendChild(badge);
