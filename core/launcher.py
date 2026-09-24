@@ -12,7 +12,7 @@ from core.utils import short_path
 _GAME_PORT = "1024-65535"
 
 # Маркеры ошибок winws2 на неверные параметры (exit code ненадёжен: даже на
-# "unknown option" возвращает 0 — вывод приходится сканировать).
+# "unknown option" возвращает 0 - вывод приходится сканировать).
 _DRY_RUN_ERROR_MARKERS = (
     "unknown option",
     "bad file",
@@ -30,7 +30,7 @@ def validate_args(exe_path: Path, args: list[str], cwd: Optional[Path] = None, t
 
     Гоняет настоящий бинарник в режиме проверки (~0.1-0.3с) и ищет в выводе
     известные маркеры ошибок.  Возвращает (True, "") при валидных аргументах
-    или (False, первая проблемная строка вывода).  WinDivert не грузится —
+    или (False, первая проблемная строка вывода).  WinDivert не грузится -
     состояние драйвера не затрагивается.
     """
     try:
@@ -71,7 +71,7 @@ def validate_lua(exe_path: Path, args: list[str], cwd: Optional[Path] = None, ti
     --dry-run НЕ инициализирует Lua, поэтому опечатка в кастомном lua-файле
     (например, zapret-custom.lua) проходит её и валит winws2 при реальном
     запуске.  --intercept=0 загружает и компилирует lua-init-файлы и выходит
-    без захвата.  Передаются только lua/blob-токены — без фильтров, поэтому
+    без захвата.  Передаются только lua/blob-токены - без фильтров, поэтому
     хендл WinDivert не трогается даже при работающем другом экземпляре.
     """
     lua_tokens = [t for t in args if t.startswith("--lua-init") or t.startswith("--blob") or t.startswith("--lua-gc")]
@@ -99,7 +99,7 @@ def validate_lua(exe_path: Path, args: list[str], cwd: Optional[Path] = None, ti
 
 
 def _append_wf_udp_ports(tokens: list[str], ports: str) -> None:
-    """Дописать порты в --wf-udp-out (его значение — следующий токен)."""
+    """Дописать порты в --wf-udp-out (его значение - следующий токен)."""
     for i, t in enumerate(tokens):
         if t == "--wf-udp-out" and i + 1 < len(tokens):
             cur = tokens[i + 1]
@@ -135,11 +135,11 @@ def build_args_from_preset(
     вырезается.  ipset_catchall заменяет list-general на IP-catch-all,
     отбрасывая SNI-include: winws2 AND-ит ipset с hostlist, и включение
     обнулило бы catch-all; list-exclude и юзер-исключения действуют.
-    debug дописывает --debug=@debug_winws2.log.  Токены НЕ квотируются —
+    debug дописывает --debug=@debug_winws2.log.  Токены НЕ квотируются -
     это делает write_run_bat через subprocess.list2cmdline.
 
     discord_alt: альтернативный режим Discord (вернуть :nodrop в Discord-профили)
-    — для сетей, где базовый drop-режим не пробивает «холодный старт».
+    - для сетей, где базовый drop-режим не пробивает «холодный старт».
     """
     if lists_dir is None:
         lists_dir = root_dir / "lists"
@@ -160,7 +160,7 @@ def build_args_from_preset(
             auto_file.write_text("", encoding="utf-8")
         auto_path = short_path(auto_file)
 
-    # User IP-include list: только непустой файл меняет args — пустой не
+    # User IP-include list: только непустой файл меняет args - пустой не
     # должен трогать конфиг вообще (байт-в-байт прежний default).
     ipset_inc_file = lists_dir / "ipset-include-user.txt"
     ipset_inc_path = ""
@@ -174,7 +174,7 @@ def build_args_from_preset(
             ipset_inc_path = str(short_path(ipset_inc_file))
 
     # User IP-exclude list: exclude всегда сильнее include (ipset.c проверяет
-    # ips_exclude первым) — без этой связки редактор «IP-сети — исключения»
+    # ips_exclude первым) - без этой связки редактор «IP-сети - исключения»
     # писал в файл, который winws2 никогда не получал.
     ipset_excl_file = lists_dir / "ipset-exclude-user.txt"
     ipset_excl_path = ""
@@ -196,7 +196,7 @@ def build_args_from_preset(
             tokens.append(f"--ipset={short_lists}\\ipset-all.txt.gz")
             if ipset_inc_path:
                 # Несколько --ipset OR-ятся (winws2 help: "multiple ipsets
-                # allowed") — юзер-подсети десинкаются тоже.
+                # allowed") - юзер-подсети десинкаются тоже.
                 tokens.append(f"--ipset={ipset_inc_path}")
             tokens.append(f"--ipset-exclude={short_lists}\\ipset-exclude.txt")
             if ipset_excl_path:
@@ -221,12 +221,12 @@ def build_args_from_preset(
             tokens.append(f"--hostlist-auto={auto_path}")
     # ── Fake blob selector: подмена TLS-фейка без записи в пресет ──
     # Регистрируется отдельное имя alt_tls на новый файл и переписываются
-    # ТОЛЬКО fake:blob=<tls-blob> — seqovl_pattern (выравнивание перекрытия)
+    # ТОЛЬКО fake:blob=<tls-blob> - seqovl_pattern (выравнивание перекрытия)
     # и QUIC/HTTP блобы остаются родными.
     if fake_blob:
         alt_file = blobs_dir / f"tls_clienthello_{fake_blob}.bin"
         if alt_file.exists():
-            # имена --blob, чьи файлы — TLS clienthello (не quic/http)
+            # имена --blob, чьи файлы - TLS clienthello (не quic/http)
             tls_blob_names = set()
             for i, t in enumerate(tokens):
                 if t == "--blob" and i + 1 < len(tokens) and "tls_clienthello_" in tokens[i + 1]:
@@ -246,7 +246,7 @@ def build_args_from_preset(
     # ── Discord Voice udplen: переписать инлайн голосовой блок ──
     # Гипотеза (STRATEGY_ROADMAP §1): UDP-сегментации нет, DPI с жёсткой
     # привязкой к длине/сигнатуре голосовых пакетов промахивается при сдвиге
-    # длины. Блок независим (сегментация --new) — переписывается на месте:
+    # длины. Блок независим (сегментация --new) - переписывается на месте:
     # без --payload/--out-range (медиа-поток непрерывный), udplen вместо fake.
     if voice_mode == "udplen":
         segs: list[list[str]] = [[]]
@@ -272,7 +272,7 @@ def build_args_from_preset(
                 rebuilt.append(t)
         tokens = rebuilt
     # CRITICAL (AGENTS.md §23): --lua-init @path отдельным аргументом с путём
-    # БЕЗ пробелов убивает парсинг winws2 — все опции после молча отбрасываются,
+    # БЕЗ пробелов убивает парсинг winws2 - все опции после молча отбрасываются,
     # остаётся 1 профиль no_action → десинка нет, результаты всех пресетов
     # идентичны. Форма `=` работает с любым путём.
     merged: list[str] = []
@@ -290,7 +290,7 @@ def build_args_from_preset(
     # dp_match/dp_find) матчит hostlist ПО ПРОФИЛЮ и берёт ПЕРВЫЙ подходящий
     # профиль; несколько --hostlist внутри профиля объединяются (hostlist.c
     # AppendHostList). Добавление в конец затрагивало только последний
-    # (QUIC) блок — TCP-блоки юзерских доменов не видели. Инжект — сразу
+    # (QUIC) блок - TCP-блоки юзерских доменов не видели. Инжект - сразу
     # после первого hostlist-токена.
     # Ссылаемся на user-файлы ВСЕГДА (даже пустые): winws2 перечитывает
     # hostlist/ipset на лету по mtime (проверено 2026-09-14), поэтому первая
@@ -304,7 +304,7 @@ def build_args_from_preset(
     user_inc = ""
     if include_file.exists():
         user_inc = f"--hostlist={short_path(include_file)}"
-    # Домены включённых игр — управляемый файл фичи «Игровые блокировки»
+    # Домены включённых игр - управляемый файл фичи «Игровые блокировки»
     games_list_path = games_store.sync_domain_list(root_dir)
     games_inc = f"--hostlist={short_path(games_list_path)}"
     if user_excl or user_inc or games_inc:
@@ -354,10 +354,10 @@ def build_args_from_preset(
         tokens.append("--out-range")
         tokens.append("-d10")
         # payload=all обязателен: lua fake по умолчанию не трогает unknown-UDP
-        # (игровой трафик) — без него тоггл «Игровые порты» был холостым
+        # (игровой трафик) - без него тоггл «Игровые порты» был холостым
         tokens.append("--lua-desync=fake:blob=quic_google:repeats=10:payload=all")
     # ── Discord Voice: фикс UDP ──
-    # fake — стандартный блок; udplen — для пресетов без инлайн голосового
+    # fake - стандартный блок; udplen - для пресетов без инлайн голосового
     # блока (у default блок уже переписан трансформацией выше).
     if voice_mode == "udplen":
         tokens.append("--new")
@@ -373,7 +373,7 @@ def build_args_from_preset(
         tokens.append("--lua-desync=fake:blob=quic_google")
     # ── Игровые блокировки: UDP-фиксы (только старт соединения) ──
     # fake с payload=all обязателен: lua не трогает unknown-UDP (игровой
-    # трафик) без явного аргумента. repeats=1 и cutoff — минимально.
+    # трафик) без явного аргумента. repeats=1 и cutoff - минимально.
     game_rules = games_store.enabled_udp_rules(games_store.load_games(root_dir))
     if game_rules:
         if not any(t.startswith("quic_google:") for t in tokens):
@@ -477,17 +477,17 @@ def launch_winws2_bat(
     текущий токен. Привилегия включается заранее: у UAC-elevated Python она
     часто выключена, из-за чего WinDivert не грузится.
     """
-    # Мёртвая служба драйвера «WinDivert» (ImagePath на удалённую папку —
+    # Мёртвая служба драйвера «WinDivert» (ImagePath на удалённую папку -
     # кейс друга 2026-09-13) даёт вечный ERROR_FILE_NOT_FOUND при
     # WinDivertOpen. Лечим до запуска: repair ImagePath на наш .sys, при
-    # невозможности — удаление (и только когда winws2 не запущен).
+    # невозможности - удаление (и только когда winws2 не запущен).
     try:
         from core.utils import fix_stale_windivert_services
         fix_stale_windivert_services(root_dir)
     except Exception:
         pass
 
-    # Привилегия включается в текущем токене — её наследуют дочерние процессы.
+    # Привилегия включается в текущем токене - её наследуют дочерние процессы.
     privileges_before = get_enabled_privileges()
     se_load_enabled_before = "SeLoadDriverPrivilege" in privileges_before
 
@@ -500,7 +500,7 @@ def launch_winws2_bat(
 
     if not se_load_enabled_after:
         print(
-            f"[zapret2] SeLoadDriverPrivilege still OFF — all privs: {privileges_after}"
+            f"[zapret2] SeLoadDriverPrivilege still OFF - all privs: {privileges_after}"
         )
 
     # Пауза на случай перезапуска сразу после taskkill.

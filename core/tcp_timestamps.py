@@ -7,7 +7,7 @@ from typing import Optional
 # Состояние TCP timestamps на современных Windows живёт в шаблонах
 # NetTCPSetting ("Internet" default), НЕ в legacy-реестре Tcp1323Opts.
 # На Win11 legacy-значение может читаться как 0x2 (timestamps "off") при
-# включённом шаблоне — авторитетен шаблон. ts-fooling (tcp_ts=...) требует
+# включённом шаблоне - авторитетен шаблон. ts-fooling (tcp_ts=...) требует
 # включённых timestamps.
 
 _KEY = r"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters"
@@ -59,7 +59,7 @@ def timestamps_enabled() -> bool:
 
 
 def _set_modern(enabled: bool) -> bool:
-    # Set-NetTCPSetting ничего не печатает при успехе — судим по коду
+    # Set-NetTCPSetting ничего не печатает при успехе - судим по коду
     # возврата, затем подтверждаем авторитетным геттером.
     try:
         r = subprocess.run(
@@ -99,6 +99,6 @@ def enable_for_engine() -> tuple[bool, str]:
         return True, ""
     if _set_modern(True) or _set_legacy_netsh(True):
         if timestamps_enabled():
-            return True, "TCP timestamps включены (были выключены — tcp_ts не работал)"
+            return True, "TCP timestamps включены (были выключены - tcp_ts не работал)"
         return False, "timestamps включить не удалось"
     return False, "включить TCP timestamps не удалось (нужны права администратора)"

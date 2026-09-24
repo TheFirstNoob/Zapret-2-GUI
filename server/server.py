@@ -119,7 +119,7 @@ class TesterState:
 
 _tester_state = TesterState()
 
-# Probe сетевой активности процесса (анализ игры/приложения) — singleton
+# Probe сетевой активности процесса (анализ игры/приложения) - singleton
 _process_probe = None
 
 
@@ -132,7 +132,7 @@ def get_process_probe():
 
 
 def _debug_append(file_name: str, msg: str) -> None:
-    """Debug-лог с ротацией (L7): >5MB — старый уходит в .old.log."""
+    """Debug-лог с ротацией (L7): >5MB - старый уходит в .old.log."""
     import datetime as _dt
     try:
         from core.utils import get_temp_dir
@@ -155,7 +155,7 @@ def _probe_debug(msg: str) -> None:
 
 
 def _ui_debug(msg: str) -> None:
-    """UI/flow-логи (вкладки, кнопки, сбросы тестера) — ui_debug.log.
+    """UI/flow-логи (вкладки, кнопки, сбросы тестера) - ui_debug.log.
 
     Всегда активен: ловит «выкинуло на главный блок посреди теста»."""
     _debug_append("ui_debug.log", msg)
@@ -203,7 +203,7 @@ def _run_update_worker(kind: str, tag: str, info: dict) -> None:
         manifest_bytes, sig_text = fetch_release_manifest(tag, update_dir)
         if not verify_signature(manifest_bytes, sig_text):
             raise RuntimeError(
-                "обновление не прошло проверку подлинности — скачайте версию "
+                "обновление не прошло проверку подлинности - скачайте версию "
                 "вручную с GitHub и сверьте SHA256 из описания релиза")
         try:
             manifest = json.loads(manifest_bytes.decode("utf-8"))
@@ -241,7 +241,7 @@ def _run_update_worker(kind: str, tag: str, info: dict) -> None:
             result["restart_required"] = True
 
         # Служба установлена? Сравнить её аргументы с собранными из НОВЫХ
-        # файлов — при расхождении предложить переустановку службы
+        # файлов - при расхождении предложить переустановку службы
         prog(95, "Проверка конфигурации службы…")
         if svc_installed():
             cfg = ConfigManager(root_dir).load()
@@ -294,7 +294,7 @@ def get_root_dir() -> Path:
 
 
 def _ui_presets() -> list[str]:
-    """Профили для GUI: exp-/test-/cand- префиксы — стенды экспериментов и
+    """Профили для GUI: exp-/test-/cand- префиксы - стенды экспериментов и
     кандидатов, пользователь не должен видеть их в интерфейсе."""
     presets_dir = get_root_dir() / "presets"
     if not presets_dir.is_dir():
@@ -326,14 +326,14 @@ def _checkers_busy() -> Optional[str]:
     остановка обхода и службы во время проверки тоже запрещены."""
     with _tester_state.lock:
         if _tester_state.running:
-            return "Тестер занят — завершите текущую проверку"
+            return "Тестер занят - завершите текущую проверку"
     with _diag_lock:
         if _diag_state.get("running"):
-            return "Диагностика выполняется — дождитесь завершения"
+            return "Диагностика выполняется - дождитесь завершения"
     return None
 
 
-# Списки, редактируемые через GUI: нормализуются при старте — BOM/zero-width
+# Списки, редактируемые через GUI: нормализуются при старте - BOM/zero-width
 # в первой строке не даёт движку сматчить домен/подсеть (кейс 2026-09-14).
 _USER_LIST_FILES = ("list-include-user.txt", "list-exclude-user.txt",
                     "ipset-include-user.txt", "ipset-exclude.txt")
@@ -419,7 +419,7 @@ def _make_result_cb(state: TesterState, profile: Optional[str] = None) -> Callab
             "time_ms": r.time_ms,
             "error": r.error,
             "cdn_provider": CDN_PROVIDERS.get(r.domain, "") if is_cdn else "",
-            # фронт считает live-счётчики «Хосты» только по этим категориям —
+            # фронт считает live-счётчики «Хосты» только по этим категориям -
             # чтобы не прыгали (17/17 → 8/8) на финальном network_rate
             "rated": (r.domain not in CONTROL_DOMAINS
                       and r.domain not in QUIC_QUIRK_DOMAINS),
@@ -489,7 +489,7 @@ def _svc_was_running() -> bool:
 
 
 def _resolve_many(domains: list[str], concurrency: int = 8) -> set[str]:
-    """Параллельный резолв набора доменов — protection-множество для
+    """Параллельный резолв набора доменов - protection-множество для
     «какой префикс трогать безопасно» при ipset-правках CDN."""
     from concurrent.futures import ThreadPoolExecutor, as_completed
     out: set[str] = set()
@@ -536,31 +536,31 @@ def _plan_cdn_action(domain: str, action: str, ips: list[str],
                      protection: set[str], ipset_mode: bool) -> tuple[bool, str, list[tuple[str, list[str]]]]:
     """Чистое планирование одной CDN-правки без записи на диск.
 
-    Возвращает (ok, err_msg, entries), где entries = [(fname, values)] —
+    Возвращает (ok, err_msg, entries), где entries = [(fname, values)] -
     значения, которые НУЖНО дописать в списки (дедуп по текущему
-    содержимому выполнен).  Проверки наложений — как в ручном хендлере:
+    содержимому выполнен).  Проверки наложений - как в ручном хендлере:
     ipset-include не включает сети из ipset-exclude[-user], general в
-    ipset-режиме пишет сырые IP, ipset-include — префиксы _safe_prefixes
+    ipset-режиме пишет сырые IP, ipset-include - префиксы _safe_prefixes
     относительно protection.
     """
     values: list[str] = []
     if action in ("ipset-include", "ipset-exclude"):
         fname = "ipset-include-user.txt" if action == "ipset-include" else "ipset-exclude-user.txt"
         if not ips:
-            return False, "у кандидата нет резолвнутых IP — добавьте вручную", []
+            return False, "у кандидата нет резолвнутых IP - добавьте вручную", []
         try:
             ip_list = [str(ipaddress.ip_address(i)) for i in ips]
         except ValueError:
             return False, "Некорректный IP в запросе", []
         prefixes = Zapret2Tester._safe_prefixes(ip_list, protection)
         if not prefixes:
-            return False, f"{domain}: все адреса пересекаются с рабочими IP — пропускаем", []
+            return False, f"{domain}: все адреса пересекаются с рабочими IP - пропускаем", []
         if action == "ipset-include":
             blocked = [p for p in prefixes
                        if any(ipaddress.ip_network(p, strict=False).overlaps(n)
                               for n in _read_networks(["ipset-exclude.txt", "ipset-exclude-user.txt"]))]
             if blocked:
-                return False, f"Наложение: {domain} ({', '.join(blocked)}) уже в ipset-исключениях — пропускаем", []
+                return False, f"Наложение: {domain} ({', '.join(blocked)}) уже в ipset-исключениях - пропускаем", []
         existing = _read_lines(fname)
         values = [p for p in prefixes if p not in existing]
         if not values:
@@ -581,7 +581,7 @@ def _plan_cdn_action(domain: str, action: str, ips: list[str],
     if ipset_mode:
         fname = "ipset-include-user.txt"
         if not ips:
-            return False, "ipset-режим: у кандидата нет резолвнутых IP — добавьте вручную", []
+            return False, "ipset-режим: у кандидата нет резолвнутых IP - добавьте вручную", []
         try:
             ip_list = [str(ipaddress.ip_address(i)) for i in ips]
         except ValueError:
@@ -590,7 +590,7 @@ def _plan_cdn_action(domain: str, action: str, ips: list[str],
                    if any(ipaddress.ip_address(ip) in n
                           for n in _read_networks(["ipset-exclude.txt", "ipset-exclude-user.txt"]))]
         if blocked:
-            return False, f"Наложение: {domain} ({', '.join(blocked)}) уже в ipset-исключениях — пропускаем", []
+            return False, f"Наложение: {domain} ({', '.join(blocked)}) уже в ipset-исключениях - пропускаем", []
         existing = _read_lines(fname)
         values = [ip for ip in ip_list if ip not in existing]
         if not values:
@@ -600,7 +600,7 @@ def _plan_cdn_action(domain: str, action: str, ips: list[str],
     from core import list_health
     cov = list_health.coverage(get_root_dir(), [domain]).get(domain, {})
     if any(n in list_health.DOMAIN_EXCLUDE_BUNDLED for n in cov.get("excludes", [])):
-        return False, (f"{domain} уже в стандартных исключениях — исключение "
+        return False, (f"{domain} уже в стандартных исключениях - исключение "
                        "сильнее, пропускаем"), []
     if cov.get("includes"):
         return True, f"уже в обходе ({', '.join(cov['includes'])})", []
@@ -614,10 +614,10 @@ def _plan_cdn_action(domain: str, action: str, ips: list[str],
 def _restore_protection_after_naked(z2_was: bool, z1_was: bool, state, svc_was: bool = False) -> str:
     """Восстановление защиты, активной до голого теста: naked гасит
     winws/winws2, оставлять пользователя без защиты нельзя.
-    Best effort — ошибки возвращаем, не бросаем."""
+    Best effort - ошибки возвращаем, не бросаем."""
     try:
         if z2_was:
-            # Если обход жил в службе — поднимаем службу (sc start с её же
+            # Если обход жил в службе - поднимаем службу (sc start с её же
             # binPath), а не голый процесс: иначе после скана служба остаётся
             # «остановлена», хотя winws2 работает вручную.
             if svc_was:
@@ -710,7 +710,7 @@ def _scan_winws_exe() -> dict:
 
 # ── Запуск действий тестера (фоновый поток) ──────────────────
 
-# Самые важные для пользователя хосты — показываются в финальном вердикте.
+# Самые важные для пользователя хосты - показываются в финальном вердикте.
 KEY_HOST_LABELS: list[tuple[str, str]] = [
     ("discord.com", "Discord"),
     ("gateway.discord.gg", "Discord (шлюз)"),
@@ -726,10 +726,10 @@ def _build_recommendation(all_results, naked, sanity: dict) -> dict:
         return {"verdict": "no_data", "message": "Нет результатов тестов", "best_profile": ""}
 
     best = max(all_results, key=lambda r: (r.network_rate, r.net_ok_count))
-    # «Не пробито» — провалы ЛУЧШЕЙ стратегии, а не объединение по всем
+    # «Не пробито» - провалы ЛУЧШЕЙ стратегии, а не объединение по всем
     # пресетам: домен, который пробила другая стратегия, не должен выглядеть
     # нерабочим (union вводил в заблуждение). QUIC-хосты (youtube-класс) и
-    # control-канарейки (google/vk/ya/gosuslugi) вне «не пробито»: их 000 —
+    # control-канарейки (google/vk/ya/gosuslugi) вне «не пробито»: их 000 -
     # свойство TCP-пробы сторонним клиентом или мёртвая сеть, не стратегия.
     blocked = sorted({r.domain for r in best.results
                       if r.test_type != "ping" and r.status not in ("OK", "QUIC")
@@ -752,24 +752,24 @@ def _build_recommendation(all_results, naked, sanity: dict) -> dict:
     engine_broken = (not dry.get("ok", True)
                      or (profiles_loaded is not None and profiles_loaded <= 1))
     misses = [c for c in sanity.get("list_coverage", []) if not c.get("covered")]
-    # Пробелы покрытия — НЕ блок: обход работает, но домены вне списков
+    # Пробелы покрытия - НЕ блок: обход работает, но домены вне списков
     # пресета (например, случайные CDN-хосты). Пишем заметкой, не «не пробито».
     miss_note = ""
     if misses:
         doms = ", ".join(c["domain"] for c in misses[:6])
         if len(misses) > 6:
             doms += f" и ещё {len(misses) - 6}"
-        miss_note = (f" (не покрыты списками: {doms} — стратегия к ним не применяется, "
+        miss_note = (f" (не покрыты списками: {doms} - стратегия к ним не применяется, "
                      "доступность может быть нестабильна)")
 
-    # QUIC-хосты (youtube-класс) вне network_rate — ютуб-«прикол» не влияет
+    # QUIC-хосты (youtube-класс) вне network_rate - ютуб-«прикол» не влияет
     # на вердикт и «не пробито»-чипсы.
 
     # Равные/почти равные проценты (2026-09-13): при 100/100/100 пользователь
     # не понимает, кого выбирает тестер. Прогон детерминирован (default
-    # первым), при полном равенстве побеждает первая протестированная — но
+    # первым), при полном равенстве побеждает первая протестированная - но
     # это НЕ «эталон»: пресеты равнозначны, для разных сетей лучший бывает
-    # разный. ПЛЮС погрешность флаков: 8 хостов — один случайный домен
+    # разный. ПЛЮС погрешность флаков: 8 хостов - один случайный домен
     # двигает рейтинг на ±12.5%, поэтому стратегии в пределах ±1 домена от
     # лучшей считаются «практически равными» и объясняются так же.
     ranked = sorted(all_results,
@@ -783,9 +783,9 @@ def _build_recommendation(all_results, naked, sanity: dict) -> dict:
     tie_note = ""
     if len(ties) > 1:
         tie_note = (f" Практически равный результат (с учётом погрешности "
-                    f"прогона ±1 домен) у: {', '.join(ties)} — стратегии "
+                    f"прогона ±1 домен) у: {', '.join(ties)} - стратегии "
                     f"равнозначны, рекомендуем {best.profile_name} (первая "
-                    "протестированная); если начнёт флакать — переключайтесь "
+                    "протестированная); если начнёт флакать - переключайтесь "
                     "на другую из списка.")
 
     # Топ-3 для UI (пользователь видит лучших, а не только рекомендацию)
@@ -796,7 +796,7 @@ def _build_recommendation(all_results, naked, sanity: dict) -> dict:
     if engine_broken:
         verdict = "engine_broken"
         if profiles_loaded is not None and profiles_loaded <= 1:
-            message = (f"⚠ winws2 загрузил только {profiles_loaded} профиль(-я) вместо ожидаемых 4-7 — "
+            message = (f"⚠ winws2 загрузил только {profiles_loaded} профиль(-я) вместо ожидаемых 4-7 - "
                        "сигнатура старого бага с короткими путями (@lua/@blobs). "
                        "Результаты стратегий недостоверны. Обновите программу и повторите тест.")
         else:
@@ -811,11 +811,11 @@ def _build_recommendation(all_results, naked, sanity: dict) -> dict:
                    "Запустите «Диагностику» и сохраните отчёт.")
     elif net_rate >= 100:
         verdict = "ok"
-        message = f"✅ Лучшая стратегия: {best.profile_name} — {best.net_ok_count}/{best.net_total} доступно.{tie_note}{miss_note}"
+        message = f"✅ Лучшая стратегия: {best.profile_name} - {best.net_ok_count}/{best.net_total} доступно.{tie_note}{miss_note}"
     elif net_rate > 0:
         verdict = "partial"
-        message = (f"⚠ Лучшая стратегия: {best.profile_name} — {best.net_ok_count}/{best.net_total} "
-                   f"({net_rate:.0f}%). Не пробито: {', '.join(blocked) or '—'}{tie_note}{miss_note}")
+        message = (f"⚠ Лучшая стратегия: {best.profile_name} - {best.net_ok_count}/{best.net_total} "
+                   f"({net_rate:.0f}%). Не пробито: {', '.join(blocked) or '-'}{tie_note}{miss_note}")
     else:
         verdict = "no_bypass"
         message = "❌ Ни одна стратегия не пробила блокировку."
@@ -828,10 +828,10 @@ def _build_recommendation(all_results, naked, sanity: dict) -> dict:
             status = tr.status
             note = ""
             # QUIC-класс: TCP-проба сторонним клиентом под десинком не
-            # показательная — браузер идёт через QUIC; не красный крест.
+            # показательная - браузер идёт через QUIC; не красный крест.
             if domain in QUIC_QUIRK_DOMAINS and status not in ("OK",):
                 status = "QUIC_OK"
-                note = "TCP-проверка неприменима — в браузере работает через QUIC"
+                note = "TCP-проверка неприменима - в браузере работает через QUIC"
             key_hosts.append({"domain": domain, "label": label,
                               "status": status, "time_ms": tr.time_ms, "note": note})
         else:
@@ -847,7 +847,7 @@ def _build_recommendation(all_results, naked, sanity: dict) -> dict:
         "best_total": best.net_total,
         "same_as_naked": same_as_naked,
         "blocked_domains": blocked,
-        # Домены, чей 000 — свойство QUIC-пробы, а не блок: речек спорных
+        # Домены, чей 000 - свойство QUIC-пробы, а не блок: речек спорных
         # доменов (§29) их не перепроверяет и не помечает «заблокирован».
         "quirk_skip": ["www.youtube.com", "redirector.googlevideo.com",
                        "i.ytimg.com", "youtu.be"],
@@ -860,16 +860,16 @@ def _build_recommendation(all_results, naked, sanity: dict) -> dict:
     }
 
 
-# Ручной приоритет блобов — по живучести на Т2 (STRATEGY_TRIALS батарея
+# Ручной приоритет блобов - по живучести на Т2 (STRATEGY_TRIALS батарея
 # блобов 2026-09-11, все ниже проверены 6/6 на discord с repeats=7). Ключи =
-# имена файлов blobs/tls_clienthello_<key>.bin. www_google_com — эталон
+# имена файлов blobs/tls_clienthello_<key>.bin. www_google_com - эталон
 # (пустой fake_blob в конфиге = как в пресете = google). Новые блобы
 # добавлять сюда ПОСЛЕ проверки.
 _BLOB_PRIORITY = [
     "www_google_com",        # эталон, по умолчанию
-    "sochi_park",            # проверен в бою 2026-09-10 (отвалы) — стабилен как google
+    "sochi_park",            # проверен в бою 2026-09-10 (отвалы) - стабилен как google
     "mail_ru",               # реальный браузерный hello
-    "vk_com",                # реальный, 18 расширений, SNI pos 4 — работает
+    "vk_com",                # реальный, 18 расширений, SNI pos 4 - работает
     "iana_org",              # реальный, 13 расширений
     "hcaptcha_com",          # реальный
     "alfabank_ru",           # реальный
@@ -877,16 +877,16 @@ _BLOB_PRIORITY = [
     "max_ru",                # большой (664), работал в general
     "web_max_ru",            # мелкий, работал в general
 ]
-# Проверено НЕ пробивающие (Т2): example_com — RFC-заглушка, нереальный
-# домен; sni2gis/snimail — тестовые артефакты скрещиваний.
+# Проверено НЕ пробивающие (Т2): example_com - RFC-заглушка, нереальный
+# домен; sni2gis/snimail - тестовые артефакты скрещиваний.
 _BLOB_STOPLIST = {"example_com", "sni2gis", "snimail"}
 
 
 def _recommended_blob_keys() -> list[str]:
-    """Рекомендованные TLS-фейк-блобы: проверенные на Т2 — в РУЧНОМ порядке
+    """Рекомендованные TLS-фейк-блобы: проверенные на Т2 - в РУЧНОМ порядке
     _BLOB_PRIORITY (живучесть на Т2, батарея блобов). Фильтры: размер ≤700,
     без _kyber, без имени с цифры (баг winws2, AGENTS правило 2), без
-    стоп-листа. Неизвестные блобы — в конец по алфавиту, не рекомендованы."""
+    стоп-листа. Неизвестные блобы - в конец по алфавиту, не рекомендованы."""
     blobs_dir = get_root_dir() / "blobs"
     known: dict[str, int] = {}
     others: list[str] = []
@@ -914,16 +914,16 @@ def _recommended_blob_keys() -> list[str]:
 def _recheck_contested(tester, best, rec: dict, progress) -> dict:
     """Речек спорных доменов (§29): «заблокирован» vs «временно недоступен».
 
-    В _curl_test пер-хостовых ретраев нет — 000 фиксируется как есть.
+    В _curl_test пер-хостовых ретраев нет - 000 фиксируется как есть.
     RATED-домен, не пробитый лучшей стратегией, один раз перепроверяется в
-    конце прогона: ожившие — «временно недоступен», стабильные 000 —
+    конце прогона: ожившие - «временно недоступен», стабильные 000 -
     «заблокирован». Этап 2 (2026-09-11): перепроверка с альтернативными
-    блобами (рекомендованный список, ≤3) — блоб влияет на живучесть у разных
-    провайдеров (STRATEGY_TRIALS) — «пробит с блобом X».
+    блобами (рекомендованный список, ≤3) - блоб влияет на живучесть у разных
+    провайдеров (STRATEGY_TRIALS) - «пробит с блобом X».
     """
     best_failed = {r.domain for r in best.results
                    if r.test_type != "ping" and r.status != "OK"}
-    # Домены с известным «приколом» (YouTube TCP/QUIC) не спорны — их 000
+    # Домены с известным «приколом» (YouTube TCP/QUIC) не спорны - их 000
     # ожидаем, вердикт уже объясняет QUIC-путь (§17).
     skip = set(rec.get("quirk_skip") or [])
     contested = [d for d in RATED_HOSTS if d in best_failed and d not in skip]
@@ -956,7 +956,7 @@ def _recheck_contested(tester, best, rec: dict, progress) -> dict:
     if confirmed and not tester.shutdown_event.is_set():
         progress(99, "Пробуем альтернативные блобы для заблокированных...")
         blob_keys = _recommended_blob_keys()
-        # текущий блоб пропускаем — он уже не сработал
+        # текущий блоб пропускаем - он уже не сработал
         cfg = get_config_manager().load()
         current = cfg.fake_blob or ""
         tried = 0
@@ -995,7 +995,7 @@ def _recheck_contested(tester, best, rec: dict, progress) -> dict:
         rec["recheck"]["blocked"] = [d for d in rec["recheck"]["blocked"]
                                      if d not in blob_saves]
     if note:
-        rec["message"] = ((rec.get("message") or "").rstrip() + " — " + "; ".join(note))
+        rec["message"] = ((rec.get("message") or "").rstrip() + " - " + "; ".join(note))
     return rec
 
 
@@ -1003,7 +1003,7 @@ def _run_asn_scan() -> None:
     """ASN-пробы (110 IP): мериют ТСПУ напрямую, БЕЗ нашего десинка в пути.
 
     Обязателен чистый путь: под десинком замер показывает смесь «ТСПУ + наш
-    обман» — SYN DROP могли вызывать мы сами. Защита останавливается на
+    обман» - SYN DROP могли вызывать мы сами. Защита останавливается на
     время скана и восстанавливается (сервис-осведомлённо)."""
     state = _tester_state
     tester = get_tester()
@@ -1036,7 +1036,7 @@ def _run_asn_scan() -> None:
 
 def _run_blob_probe(data: dict) -> None:
     """Перебор TLS-фейк-блобов на короткой батарее. Защита на время прогона
-    перезапускается по одному разу на блоб — восстановление
+    перезапускается по одному разу на блоб - восстановление
     сервис-осведомлённое."""
     state = _tester_state
     tester = get_tester()
@@ -1092,7 +1092,7 @@ def _run_tester_action(data: dict) -> None:
         state.reset()
         state.action_type = action
         # гонка cancel→start: cancelled остаётся True от прошлого прогона до
-        # reset() в потоке — первый poll (350мс) видел «Тест отменён» (M2)
+        # reset() в потоке - первый poll (350мс) видел «Тест отменён» (M2)
         state.cancelled = False
 
     tester = get_tester()
@@ -1100,9 +1100,9 @@ def _run_tester_action(data: dict) -> None:
     _ui_debug(f"tester worker: start action={action!r} data={dict(data)}")
 
     try:
-        # Длительные фазы гасят winws2 — SCM-recovery на это время выключается
+        # Длительные фазы гасят winws2 - SCM-recovery на это время выключается
         # (иначе перезапускает службовый winws2 посреди прогона: конфликт
-        # WinDivert, обрыв теста — баг 2026-09-12). ВНУТРИ try: зависший
+        # WinDivert, обрыв теста - баг 2026-09-12). ВНУТРИ try: зависший
         # sc.exe не должен уронить поток до входа в try и застревать
         # running=True навсегда (H2).
         if action in ("test", "test_profiles", "naked", "full_analysis", "cdn_scan"):
@@ -1139,7 +1139,7 @@ def _run_tester_action(data: dict) -> None:
                     profile_name=cfg.last_profile or DEFAULT_PROFILE))
                 note = ""
                 # Скан сам перезапускает защиту (A/B-прогон, naked,
-                # верификация) — восстанавливаем всегда, через службу, если
+                # верификация) - восстанавливаем всегда, через службу, если
                 # она жила.
                 if scan.naked_done or scan.protection_touched:
                     note = _restore_protection_after_naked(scan.z2_was, scan.z1_was, state, svc_was)
@@ -1182,7 +1182,7 @@ def _run_tester_action(data: dict) -> None:
                 profiles = data.get("profiles", None)
                 if not profiles:
                     profiles = _ui_presets() or ["default"]
-                # Порядок ВСЕГДА: default первым, auto/custom последними —
+                # Порядок ВСЕГДА: default первым, auto/custom последними -
                 # проверенная стратегия должна тестироваться первой (порядок
                 # задаём здесь, а не только для glob-пути из /api/status).
                 def _order_key(p: str):
@@ -1193,12 +1193,12 @@ def _run_tester_action(data: dict) -> None:
                     return (1, p)
                 profiles = sorted(profiles, key=_order_key)
                 # custom генерируется ЭТИМ же тестом: стухшая копия из
-                # прошлого запуска бессмысленна — не тратим на неё прогон;
+                # прошлого запуска бессмысленна - не тратим на неё прогон;
                 # свежая сборка получает одну проверочную сессию ниже.
                 profiles = [p for p in profiles if p != "custom"]
                 all_results = []
                 alt_params = bool(data.get("alt_params", False))
-                # Прогоны: база для всех пресетов; с галочкой — ещё и ALT
+                # Прогоны: база для всех пресетов; с галочкой - ещё и ALT
                 # (справочно: в рекомендацию идут только базовые прогоны).
                 runs: list[tuple[str, bool]] = []
                 for p in profiles:
@@ -1214,7 +1214,7 @@ def _run_tester_action(data: dict) -> None:
 
                 # Защита, которая была у пользователя ДО прогона, захватывается
                 # ДО naked-baseline: тот гасит winws2, и чтение после свеепа
-                # всегда даёт False (восстановление становилось мёртвым — H1)
+                # всегда даёт False (восстановление становилось мёртвым - H1)
                 z2_was = get_controller().status().running
                 svc_was = _svc_was_running()
 
@@ -1317,7 +1317,7 @@ def _run_tester_action(data: dict) -> None:
                                     except (subprocess.TimeoutExpired, OSError):
                                         pass
                                     # Страховка: winws2 мог отцепиться от
-                                    # cmd-дерева — в этот момент любой живой
+                                    # cmd-дерева - в этот момент любой живой
                                     # winws2 только наш.
                                     if tester.is_running():
                                         tester._ensure_winws2_dead()
@@ -1374,7 +1374,7 @@ def _run_tester_action(data: dict) -> None:
                             custom["rate"] = round(c_rate, 1)
 
                     # ── Речек спорных доменов (§29) ──
-                    # Подробности — в докстринге _recheck_contested.
+                    # Подробности - в докстринге _recheck_contested.
                     rec = _recheck_contested(tester, best, rec, progress)
                     final["recommendation"] = rec
                     _ui_debug(f"tester: sweep done best={best.profile_name} "
@@ -1383,7 +1383,7 @@ def _run_tester_action(data: dict) -> None:
                     # Вернуть защиту, которая была у пользователя до теста
                     # (было: после basic-прогона обход пропадал молча).
                     # z2_was/svc_was захвачены В НАЧАЛЕ прогона (до naked),
-                    # здесь они уже не читаются — winws2 к этому моменту гашен.
+                    # здесь они уже не читаются - winws2 к этому моменту гашен.
                     if not tester.shutdown_event.is_set():
                         final["restored"] = _restore_protection_after_naked(
                             z2_was, False, state, svc_was)
@@ -1452,12 +1452,12 @@ def _run_tester_action(data: dict) -> None:
                             state.results.append(ev.payload)
 
                 # run_full_analysis сам берёт _tester_lock (нереентерабельный
-                # Lock — оборачивать в _run_tester = гарантированный дедлок)
+                # Lock - оборачивать в _run_tester = гарантированный дедлок)
                 fa_ipset = bool(get_config_manager().load().ipset_catchall)
                 final_all = run_full_analysis(tester, profiles, _tester_lock, on_event=_on_event,
                                               ipset_catchall=fa_ipset)
                 
-                # Финальный poll: чистим промежуточные результаты —
+                # Финальный poll: чистим промежуточные результаты -
                 # оставляем только test_result (есть домен и статус)
                 with state.lock:
                     state.results = [r for r in state.results
@@ -1529,7 +1529,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
-        # no-store: локальный HTTP — дёшево; иначе WebView2 кэширует и правки
+        # no-store: локальный HTTP - дёшево; иначе WebView2 кэширует и правки
         # фронтенда не доходят до пользователя после обновления
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
@@ -1616,7 +1616,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
             html = index_path.read_text(encoding="utf-8")
             token = params.get("token", [""])[0]
             html = html.replace("__APP_TOKEN__", token)
-            # Кэш-buster: версия по mtime app.js / app.css — WebView2
+            # Кэш-buster: версия по mtime app.js / app.css - WebView2
             # кэширует статику, свежие правки не доходили (случай 2026-09-12)
             try:
                 js_mtime = int((frontend / "js" / "app.js").stat().st_mtime)
@@ -1700,7 +1700,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
         path = get_root_dir() / "lists" / filename
         content = ""
         if path.exists():
-            # utf-8-sig: не тащим BOM (Notepad) в текстовое поле — иначе он
+            # utf-8-sig: не тащим BOM (Notepad) в текстовое поле - иначе он
             # станет частью первой строки и сломает матчинг домена/подсети.
             content = path.read_text(encoding="utf-8-sig")
         self._send_json({"status": "ok", "content": content})
@@ -1708,9 +1708,9 @@ class ZapretHandler(BaseHTTPRequestHandler):
     def _handle_fake_blobs(self) -> None:
         """Ключи доступных TLS-фейк-блобов (blobs/tls_clienthello_<key>.bin).
 
-        Порядок — РУЧНОЙ приоритет _BLOB_PRIORITY (живучесть на Т2, батарея
+        Порядок - РУЧНОЙ приоритет _BLOB_PRIORITY (живучесть на Т2, батарея
         блобов 2026-09-11); остальные после по алфавиту. Огромные (>700:
-        снижают долю google-фейков) — помечаются. Имена с цифры в начале —
+        снижают долю google-фейков) - помечаются. Имена с цифры в начале -
         через префикс (баг winws2, AGENTS правило 2)."""
         blobs_dir = get_root_dir() / "blobs"
         items = []
@@ -1732,7 +1732,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
                          "recommended": [it["key"] for it in items if it["recommended"]]})
 
     def _handle_bundled_domains(self) -> None:
-        """Домены из наших (не пользовательских) включений — для клиентского
+        """Домены из наших (не пользовательских) включений - для клиентского
         guard'а приоритетов список/исключение на странице «Списки»."""
         domains: set[str] = set()
         for name in ("list-general.txt", "list-google.txt", "list-discord.txt"):
@@ -1779,7 +1779,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
         if rel.startswith("static/"):
             rel = rel[7:]
         file_path = frontend / rel
-        # Защита от path traversal (is_relative_to — не строковый
+        # Защита от path traversal (is_relative_to - не строковый
         # префикс: sibling-папка frontend2/backup не проходит)
         try:
             file_path = file_path.resolve()
@@ -1885,7 +1885,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
 
     # ── Probe сетевой активности процессов (игра/приложение) ──
     def _handle_probe_scan(self) -> None:
-        """Список процессов с сетью — ТОЛЬКО по явной кнопке (AV-safe)."""
+        """Список процессов с сетью - ТОЛЬКО по явной кнопке (AV-safe)."""
         try:
             from core.process_probe import list_processes
             procs = list_processes()
@@ -1908,7 +1908,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
             duration = 60
         ok, msg = get_process_probe().start(proc, duration)
         if not ok:
-            _probe_debug(f"start: FAIL — {msg}")
+            _probe_debug(f"start: FAIL - {msg}")
         self._send_json({"status": "ok" if ok else "error", "message": msg})
 
     def _handle_probe_stop(self) -> None:
@@ -1916,7 +1916,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
         self._send_json({"status": "ok", "state": st})
 
     def _handle_probe_debug(self, data: dict) -> None:
-        """Frontend-логи (вкладки, кнопки, ошибки JS) — в ui_debug.log."""
+        """Frontend-логи (вкладки, кнопки, ошибки JS) - в ui_debug.log."""
         msg = str(data.get("msg") or "")
         if msg:
             _ui_debug(f"frontend: {msg}")
@@ -1938,7 +1938,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
 
     def _handle_games_save(self, data: dict) -> None:
         """Сохранение игровых блокировок: домены применяются сразу (hot-reload
-        hostlist), UDP-профили — при следующем запуске/переустановке службы."""
+        hostlist), UDP-профили - при следующем запуске/переустановке службы."""
         from core import games as games_store
         payload = data.get("games") if isinstance(data, dict) else None
         if not isinstance(payload, dict) or \
@@ -1954,7 +1954,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
         self._send_json({
             "status": "ok",
             "message": "Сохранено. Домены применятся к новым подключениям; "
-                       "UDP-фикс — после перезапуска обхода (службу — "
+                       "UDP-фикс - после перезапуска обхода (службу - "
                        "переустановкой)"})
 
     def _handle_save_config(self, data: dict) -> None:
@@ -2088,11 +2088,11 @@ class ZapretHandler(BaseHTTPRequestHandler):
         except OSError as e:
             self._send_json({"status": "error", "message": str(e)})
 
-    # ── Спорные домены (нужен десинк одним, ломается у других — §15) ──
+    # ── Спорные домены (нужен десинк одним, ломается у других - §15) ──
     _CONTESTED = [
         {"id": "aws", "domain": "amazonaws.com", "probe": "s3.amazonaws.com",
          "title": "AWS (S3 / DynamoDB)",
-         "why": "Часть провайдеров режет AWS по SNI — нужен десинк. У других "
+         "why": "Часть провайдеров режет AWS по SNI - нужен десинк. У других "
                 "AWS жив в голую, а наш десинк ломает DynamoDB/S3. Проверь "
                 "пробой и включай только если без десинка не живёт."},
     ]
@@ -2137,7 +2137,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
             prefix = ("Убрано из Включений" if removed
                       else "Домен и так не был включён")
         self._send_json({"status": "ok",
-                         "message": prefix + " — применится к новым подключениям "
+                         "message": prefix + " - применится к новым подключениям "
                                              "(перезапуск не нужен)"})
 
     def _handle_contested_check(self, data: dict) -> None:
@@ -2149,9 +2149,9 @@ class ZapretHandler(BaseHTTPRequestHandler):
             self._send_json({"status": "error", "message": "Неизвестный домен"})
             return
         engine_running = get_controller().status().running
-        # «В обходе» — это про КОНКРЕТНЫЙ домен: движок запущен И домен
+        # «В обходе» - это про КОНКРЕТНЫЙ домен: движок запущен И домен
         # добавлен в обход (тумблер). Раньше учитывался только статус
-        # движка — при выключенном тумблере вердикт врал («оставьте
+        # движка - при выключенном тумблере вердикт врал («оставьте
         # включённым», хотя домен обходом не обрабатывается).
         enabled = item["domain"].lower() in self._include_user_domains()
         with_protection = engine_running and enabled
@@ -2211,7 +2211,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
     def _prepare_service_args(self, data: dict) -> tuple[Optional[list[str]], str]:
         """Сборка и валидация аргументов winws2 для службы (direct-exe):
         служба запускает winws2.exe сама, аргументы вшиты в binPath
-        и обновляются при install/start — без cmd/bat-обёртки."""
+        и обновляются при install/start - без cmd/bat-обёртки."""
         cfg = get_config_manager().load()
         profile = data.get("profile") or cfg.last_profile or DEFAULT_PROFILE
         game_filter = data.get("game_filter") or cfg.game_filter_mode or "off"
@@ -2249,13 +2249,13 @@ class ZapretHandler(BaseHTTPRequestHandler):
             return
         args, err = self._prepare_service_args(data)
         if err:
-            self._send_json({"status": "error", "message": f"Установка отменена — {err}"})
+            self._send_json({"status": "error", "message": f"Установка отменена - {err}"})
             return
         cleanup = bool(data.get("cleanup_zapret1")) if isinstance(data, dict) else False
         ok, msg = svc_install(root_dir=get_root_dir(), args=args,
                               cleanup_zapret1=cleanup)
         if ok:
-            # статус на главной показывал «стратегия «?»» — служба запускается
+            # статус на главной показывал «стратегия «?»» - служба запускается
             # вне controller, и тот не знал профиль
             try:
                 profile = str(data.get("profile") or "").strip()
@@ -2294,7 +2294,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
         # вшиты, устаревшая cmdline молча запустит старую стратегию.
         args, err = self._prepare_service_args({})
         if err:
-            self._send_json({"status": "error", "message": f"Служба не запущена — {err}"})
+            self._send_json({"status": "error", "message": f"Служба не запущена - {err}"})
             return
         ok, msg = svc_start(args)
         if ok:
@@ -2321,13 +2321,13 @@ class ZapretHandler(BaseHTTPRequestHandler):
         import threading as _th
         import time as _time
         from core.diagnostics import run_diagnostics, format_report_text
-        # Диагностика и тестер — взаимно исключающие проверки: во время прогона
+        # Диагностика и тестер - взаимно исключающие проверки: во время прогона
         # тестера отчёт был бы смесью «стабильно/перезапускается».
         busy = _checkers_busy()
         if busy:
             self._send_json({"status": "error", "message": busy})
             return
-        # Атомарная отметка «занято» — закрывает окно для параллельного POST.
+        # Атомарная отметка «занято» - закрывает окно для параллельного POST.
         with _diag_lock:
             if _diag_state.get("running"):
                 self._send_json({"status": "error", "message": "Проверка уже выполняется"})
@@ -2435,7 +2435,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
 
         bat_path = None
         if zapret1_filename and zapret1_strategy:
-            # Клиент-контролируемое имя: только базовое имя, без разделителей —
+            # Клиент-контролируемое имя: только базовое имя, без разделителей -
             # иначе запись вне корня (path traversal).
             if Path(zapret1_filename).name != zapret1_filename or any(
                     c in zapret1_filename for c in "/\\:*?\"<>|") or \
@@ -2516,7 +2516,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
         # running=True здесь же закрывает окно для второго параллельного POST.
         with _tester_state.lock:
             if _tester_state.running:
-                self._send_json({"status": "error", "message": "Тестер уже занят — дождитесь завершения"},
+                self._send_json({"status": "error", "message": "Тестер уже занят - дождитесь завершения"},
                                 HTTPStatus.CONFLICT)
                 return
             _tester_state.running = True
@@ -2527,11 +2527,11 @@ class ZapretHandler(BaseHTTPRequestHandler):
     def _handle_cdn_recommendation(self, data: dict) -> None:
         """Полу-автономное применение вердикта CDN-скана без наложений.
 
-        general — домен → list-general.txt (в ipset-режиме IP кандидата →
+        general - домен → list-general.txt (в ipset-режиме IP кандидата →
         ipset-include-user.txt, с проверкой пересечения с ipset-exclude);
-        exclude — домен → list-exclude.txt (работает в обоих режимах);
-        ipset-include/ipset-exclude — IP → ipset-include-user.txt.
-        Применение перезапускает обход — busy-чек не даёт делать это во время
+        exclude - домен → list-exclude.txt (работает в обоих режимах);
+        ipset-include/ipset-exclude - IP → ipset-include-user.txt.
+        Применение перезапускает обход - busy-чек не даёт делать это во время
         теста (M1: кнопки строк CDN активны во время прогона).
         """
         busy = _checkers_busy()
@@ -2589,7 +2589,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
     def _handle_cdn_apply_all(self, data: dict) -> None:
         """«Применить всё по матрице»: батч вердиктов CDN-скана за один перезапуск.
 
-        actions = [{domain, action, ips}, ...]; working_domains — живые в основном
+        actions = [{domain, action, ips}, ...]; working_domains - живые в основном
         прогоне (protection для safe_prefixes). Каждая правка планируется как в
         ручном хендлере; наложения/ошибки не валят батч, а пропускаются с причиной.
         Записи дедуплицируются по файлам, затем один перезапуск.
@@ -2644,10 +2644,10 @@ class ZapretHandler(BaseHTTPRequestHandler):
                 with path.open("a", encoding="utf-8") as f:
                     f.write("\n".join(values) + "\n")
                 written[fname] = values
-        # После дедупа могло не остаться реальных записей — перезапуск не нужен.
+        # После дедупа могло не остаться реальных записей - перезапуск не нужен.
         if not written:
             self._send_json({"status": "ok",
-                             "message": "Нечего применять — правки уже в списках",
+                             "message": "Нечего применять - правки уже в списках",
                              "applied": [], "skipped": skipped})
             return
         profile = cfg.last_profile or DEFAULT_PROFILE
@@ -2666,7 +2666,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
                              "message": f"Применено {len(applied)} правок, но перезапуск не удался: {restart_msg}",
                              "applied": applied, "skipped": skipped})
             return
-        files_touched = ", ".join(sorted(written)) if written else "—"
+        files_touched = ", ".join(sorted(written)) if written else "-"
         self._send_json({"status": "ok",
                          "message": f"Применено {len(applied)} правок ({files_touched}), пресет {profile} перезапущен",
                          "applied": applied, "skipped": skipped})

@@ -11,7 +11,7 @@ repo-файлы даже на сетях, где объекты GitHub IP-бло
 
 Подлинность: подписанный release.json (Ed25519, core.update_verify). Без
 валидной подписи и подтверждённого sha256 обновление не применяется
-(fail-closed) — зеркало считается недоверенным кэшем.
+(fail-closed) - зеркало считается недоверенным кэшем.
 """
 from __future__ import annotations
 
@@ -45,7 +45,7 @@ USER_FILES: tuple[str, ...] = (
     "debug_winws2.log",
 )
 
-USER_PRESET_IGNORE = ("custom",)  # генерируется тестером — не трогаем
+USER_PRESET_IGNORE = ("custom",)  # генерируется тестером - не трогаем
 
 
 def _sha256(path: Path) -> str:
@@ -95,7 +95,7 @@ def fetch_release_manifest(tag: str, dest_dir: Path) -> tuple[bytes, str]:
     """Скачать манифест релиза и подпись: GitHub asset → jsDelivr-зеркало.
 
     Возвращает (байты манифеста, текст подписи). Подпись проверяет
-    вызывающий (core.update_verify) — здесь только доставка."""
+    вызывающий (core.update_verify) - здесь только доставка."""
     last_err: Optional[Exception] = None
     for base in (f"https://github.com/{_REPO}/releases/download/{tag}/",
                  f"https://cdn.jsdelivr.net/gh/{_REPO}@{tag}/"):
@@ -106,7 +106,7 @@ def fetch_release_manifest(tag: str, dest_dir: Path) -> tuple[bytes, str]:
             _download(base + MANIFEST_SIG_NAME, s_dest, timeout=30)
             return (m_dest.read_bytes(),
                     s_dest.read_text(encoding="utf-8").strip())
-        except Exception as e:  # noqa: BLE001 — пробуем следующий источник
+        except Exception as e:  # noqa: BLE001 - пробуем следующий источник
             last_err = e
     raise RuntimeError(f"манифест обновления недоступен: {last_err}")
 
@@ -202,7 +202,7 @@ def _backup_user_files(root_dir: Path, old_version: str) -> Optional[Path]:
 
 
 def export_settings_zip(root_dir: Path) -> Optional[Path]:
-    """Экспорт настроек: config + *-user.txt + юзерские пресеты — один zip
+    """Экспорт настроек: config + *-user.txt + юзерские пресеты - один zip
     в корне программы (страховка сценария «снёс всё и поставил заново»)."""
     name = f"zapret2_settings_{datetime.now():%Y%m%d_%H%M%S}.zip"
     export_path = root_dir / name
@@ -284,7 +284,7 @@ def apply_portable(zip_path: Path, root_dir: Path,
     skipped_user = 0
     with zipfile.ZipFile(zip_path) as zf:
         names = zf.namelist()
-        # portable-архив кладёт код в app/, lite — в корне архива
+        # portable-архив кладёт код в app/, lite - в корне архива
         prefix = "app/" if any(n.startswith("app/") for n in names) else ""
         try:
             manifest_raw = zf.read(prefix + "update_manifest.json")
@@ -345,11 +345,11 @@ def apply_portable(zip_path: Path, root_dir: Path,
 def prepare_exe_update(zip_path: Path, root_dir: Path,
                        exe_name: str = "Zapret2GUI.exe",
                        exe_sha256: Optional[str] = None) -> Path:
-    """exe-версия обновляет СЕБЯ через батник: zip уже скачан — извлечь exe
+    """exe-версия обновляет СЕБЯ через батник: zip уже скачан - извлечь exe
     рядом, сверить его sha256 (из подписанного манифеста), создать
     updater-bat, который после закрытия текущего процесса заменит exe и
     запустит новый. Возвращает путь к батнику (его запускает вызывающий
-    через Popen detached — иначе батник умрёт вместе с нами).
+    через Popen detached - иначе батник умрёт вместе с нами).
     Fail-closed: без совпадения хеша .new и батник не создаются."""
     import sys as _sys
 
@@ -381,7 +381,7 @@ def prepare_exe_update(zip_path: Path, root_dir: Path,
 
 def write_manifest(base_dir: Path, version: str) -> Path:
     """update_manifest.json: версия + SHA256 всех SYSTEM-файлов дистрибутива
-    (юзер-файлы в манифест не попадают — updater их никогда не трогает)."""
+    (юзер-файлы в манифест не попадают - updater их никогда не трогает)."""
     files: dict[str, str] = {}
     for p in sorted(base_dir.rglob("*")):
         if not p.is_file():
@@ -400,7 +400,7 @@ def write_manifest(base_dir: Path, version: str) -> Path:
 
 def service_args_stale(stored_binpath: str, new_args: list[str]) -> bool:
     """True, если аргументы установленной службы отличаются от собранных
-    из НОВЫХ файлов (после обновления) — службе нужен пересбор."""
+    из НОВЫХ файлов (после обновления) - службе нужен пересбор."""
     try:
         if not stored_binpath:
             return False
@@ -417,4 +417,4 @@ def service_args_stale(stored_binpath: str, new_args: list[str]) -> bool:
                 return True
         return False
     except Exception:
-        return False  # не смогли прочитать — не пугаем пользователя
+        return False  # не смогли прочитать - не пугаем пользователя

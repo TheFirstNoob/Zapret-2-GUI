@@ -1,9 +1,9 @@
 /* ═══════════════════════════════════════════════════════════
-   Zapret2 Manager — UI утилиты.
+   Zapret2 Manager - UI утилиты.
    Структура 0.6 + цветовое выделение статусов (стиль 0.4):
    панели-блоки с рамками, tint-подложки ok/warn/err,
    левые цветные грани у строк таблиц, цветные вердикты/чипы.
-   Без эмодзи. Один акцент (синий), статусные цвета — по смыслу.
+   Без эмодзи. Один акцент (синий), статусные цвета - по смыслу.
    ═══════════════════════════════════════════════════════════ */
 
 :root {
@@ -212,7 +212,7 @@ details.panel[open] > .param-rows { border-top: 1px solid var(--divider); }
 .dot-ok { background: var(--ok); }
 .dot-warn { background: var(--warn); }
 .dot-err { background: var(--err); }
-/* «Выключен» — нейтральное состояние, не ошибка */
+/* «Выключен» - нейтральное состояние, не ошибка */
 .dot-off { background: var(--faint); }
 .dot-unknown { background: var(--skip); }
 .dot-idle { background: var(--faint); }
@@ -242,6 +242,7 @@ details.panel[open] > .param-rows { border-top: 1px solid var(--divider); }
 .content {
   flex: 1;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   padding: 10px 16px 20px;
 }
 
@@ -337,8 +338,8 @@ details.panel[open] > .param-rows { border-top: 1px solid var(--divider); }
 .btn-primary:hover:not(:disabled) { background: var(--accent-bg-hi); }
 .btn-sm { height: 24px; padding: 0 9px; font-size: 12px; min-width: 64px; }
 .btn-danger-text { color: var(--err); }
-/* Семантика действий: запуск — зелёный (мягкий), остановка — красный, но мягкий
-   (обратимо), удаление — залитый красный с белым текстом (разрушающее действие) */
+/* Семантика действий: запуск - зелёный (мягкий), остановка - красный, но мягкий
+   (обратимо), удаление - залитый красный с белым текстом (разрушающее действие) */
 .btn-go {
   background: var(--ok-bg); border-color: var(--ok-line); color: var(--ok-text);
   font-weight: 600;
@@ -375,7 +376,7 @@ select.input { cursor: pointer; }
 .input-sm { height: 24px; font-size: 12px; }
 .input.invalid { border-color: var(--err); box-shadow: 0 0 0 1px var(--err-line); }
 
-/* Нативные селекты — в стиле приложения: своя стрелка вместо системной,
+/* Нативные селекты - в стиле приложения: своя стрелка вместо системной,
    ховер рамки. Текст не растягивает: длинные значения обрезаются. */
 select.input {
   appearance: none;
@@ -425,7 +426,7 @@ select.input:disabled { opacity: .55; }
 .field .input { flex: 1; min-width: 0; }
 .field-label { font-size: 12px; color: var(--dim); flex: 0 0 auto; }
 
-/* статус-пилюли: нейтральная — серая, по состоянию — тинт + цвет текста */
+/* статус-пилюли: нейтральная - серая, по состоянию - тинт + цвет текста */
 .state {
   display: inline-flex; align-items: center; gap: 7px;
   font-size: 12px; font-weight: 600;
@@ -464,8 +465,9 @@ select.input:disabled { opacity: .55; }
 }
 .param-desc { font-size: 12px; color: var(--dim); }
 .param-hint {
-  font-size: 11.5px; color: var(--faint);
+  font-size: 11.5px; color: var(--faint); font-style: italic;
 }
+.param-hint a { color: var(--accent); }
 .param-ctl { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
 .param-ctl > select.input { width: 100%; }
 .param-ctl > .dropdown,
@@ -473,7 +475,7 @@ select.input:disabled { opacity: .55; }
 /* строки «Обход DPI»: контрольная колонка по содержимому (компактный селект) */
 .param-row.wide { grid-template-columns: 1fr auto; }
 #strategySelect { width: 200px; flex: 0 0 auto; }
-/* подсказка о расхождении стратегии — заметная, янтарная */
+/* подсказка о расхождении стратегии - заметная, янтарная */
 #strategyApplyHint { color: var(--warn); font-weight: 600; }
 /* danger-строка (DEBUG): красная грань, тинт, красный заголовок, красный свитч */
 .param-row.danger {
@@ -487,11 +489,11 @@ select.input:disabled { opacity: .55; }
 
 .opt-ctl-stack { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
 /* Блоб-селект: ширина как у остальных селектов колонки управления.
-   Длинные имена блобов не могут растянуть селект — текст обрезается,
-   полное имя видно в выпадающем списке. Кнопка — в ту же ширину. */
+   Длинные имена блобов не могут растянуть селект - текст обрезается,
+   полное имя видно в выпадающем списке. Кнопка - в ту же ширину. */
 .opt-ctl-stack > * { width: 100%; }
 
-/* «есть неприменённые изменения»: вся нижняя зона — жёлтая плашка */
+/* «есть неприменённые изменения»: вся нижняя зона - жёлтая плашка */
 #togglesPanel .panel-foot {
   background: var(--warn-bg);
   border: 1px solid var(--warn-line);
@@ -531,7 +533,7 @@ select.input:disabled { opacity: .55; }
   display: inline-flex; align-items: center; gap: 10px;
   flex: 0 0 auto;
 }
-/* верхняя полоса первой секции — прижата к скруглённым углам карточки */
+/* верхняя полоса первой секции - прижата к скруглённым углам карточки */
 #z2Panel > .card-head:first-child,
 #z1Panel > .card-head:first-child,
 #diagPanel > .card-head:first-child,
@@ -544,8 +546,8 @@ select.input:disabled { opacity: .55; }
   border-top-right-radius: 5px;
 }
 
-/* Zapret 2: обход, служба и параметры — один модуль-карточка:
-   секции состыкованы без зазоров, между ними — линия-разделитель */
+/* Zapret 2: обход, служба и параметры - один модуль-карточка:
+   секции состыкованы без зазоров, между ними - линия-разделитель */
 #z2Panel { border-bottom-left-radius: 0; border-bottom-right-radius: 0; border-bottom: none; }
 #svcPanel { border-top: 1px solid var(--divider); border-bottom: none;
   border-top-left-radius: 0; border-top-right-radius: 0;
@@ -559,7 +561,7 @@ select.input:disabled { opacity: .55; }
 /* Zapret 2: акцентная группа (Обход DPI + Параметры) */
 .panel-accent { border-color: var(--accent-line); }
 
-/* Zapret 1: запасной — нейтральная карточка без акцента */
+/* Zapret 1: запасной - нейтральная карточка без акцента */
 .panel-fallback { border-color: var(--line); }
 
 /* Zapret 1: строки «метка | поле | кнопка» (3 колонки, кнопки ровные) */
@@ -577,7 +579,7 @@ select.input:disabled { opacity: .55; }
 #z1Panel .grid-field .btn { width: 100%; }
 #z1DirPath { font-size: 12px; }
 
-/* предупреждение: запущен Zapret 1 — настройки не применяются */
+/* предупреждение: запущен Zapret 1 - настройки не применяются */
 .toggles-overlay {
   background: var(--warn-bg);
   border: 1px solid var(--warn-line);
@@ -678,7 +680,7 @@ select.input:disabled { opacity: .55; }
 }
 .test-options .opt-line + .opt-line { border-top: 1px solid var(--line); }
 .test-options .opt-line:hover { background: var(--panel-hi); }
-/* «Дополнительно» — редкие опции прячем, чтобы не выглядели равными основным */
+/* «Дополнительно» - редкие опции прячем, чтобы не выглядели равными основным */
 .test-options details.opt-more { border-top: 1px solid var(--line); background: var(--field); }
 .test-options details.opt-more > summary { cursor: pointer; list-style: none; user-select: none; padding: 7px 12px; font-size: 12px; color: var(--dim); }
 .test-options details.opt-more > summary::-webkit-details-marker { display: none; }
@@ -695,7 +697,7 @@ select.input:disabled { opacity: .55; }
   padding: 1px 7px; border-radius: 8px; white-space: nowrap;
 }
 .opt-line .opt-tag { margin-left: 0; }
-/* ценовые теги (время/ресурсы) — отдельный смысл, отдельный цвет */
+/* ценовые теги (время/ресурсы) - отдельный смысл, отдельный цвет */
 .opt-tag-cost { color: var(--warn); background: var(--warn-bg); border-color: var(--warn-line); }
 /* вложенный подпункт (IPSets под «Проверкой CDN») */
 .opt-line.opt-sub { padding-left: 38px; background: var(--panel); }
@@ -804,7 +806,7 @@ label.opt-line:has(input:disabled):hover { background: var(--field); }
   border-top: 1px solid var(--divider);
 }
 
-/* строки хостов: цветная левая грань по статусу, красная — ошибка */
+/* строки хостов: цветная левая грань по статусу, красная - ошибка */
 .hrow-ok td:first-child { border-left: 3px solid var(--ok); }
 .hrow-warn td:first-child { border-left: 3px solid var(--warn); }
 .hrow-err td:first-child { border-left: 3px solid var(--err); }
@@ -819,9 +821,9 @@ label.opt-line:has(input:disabled):hover { background: var(--field); }
   background: var(--info-bg); color: var(--info);
 }
 
-/* Кластеры кнопок одного назначения — единая ширина по самой длинной подписи
+/* Кластеры кнопок одного назначения - единая ширина по самой длинной подписи
    (замерено по реальному рендеру: 141px = «Остановить службу» в semibold,
-   127px = «Сохранить отчёт»). Кнопка «Запустить/Остановить» в шапке — та же ширина. */
+   127px = «Сохранить отчёт»). Кнопка «Запустить/Остановить» в шапке - та же ширина. */
 .svc-actions .btn,
 .card-head .head-right .btn { min-width: 141px; }
 .diag-actions .btn,
@@ -897,15 +899,15 @@ label.opt-line:has(input:disabled):hover { background: var(--field); }
   padding: 4px 10px; border-radius: 6px;
 }
 .diag-idle-note { font-size: 12px; color: var(--faint); max-width: 480px; }
-/* частые сценарии (YouTube-видео, голос Discord) — видимые подсказки */
-.diag-scenarios {
-  margin-top: 12px; padding-top: 10px;
-  border-top: 1px solid var(--divider);
-  display: flex; flex-direction: column; gap: 8px;
+/* отдельный блок с частыми сценариями (не мешается в тексте проверки) */
+.diag-tips { display: flex; flex-direction: column; gap: 8px; margin-top: var(--gap); }
+.diag-tips-title {
+  font-size: 11px; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--faint);
 }
-.diag-scen { display: flex; gap: 8px; font-size: 12px; line-height: 1.45; }
-.diag-scen b { color: var(--text); font-weight: 600; flex: 0 0 auto; }
-.diag-scen span { color: var(--faint); }
+.diag-tip { display: flex; flex-direction: column; gap: 2px; font-size: 12.5px; }
+.diag-tip b { color: var(--text); font-weight: 600; }
+.diag-tip span { color: var(--dim); }
 
 /* состояние «идёт проверка»: спиннер + шаг + таймер */
 .diag-loading {
@@ -1062,7 +1064,7 @@ label.opt-line:has(input:disabled):hover { background: var(--field); }
 }
 .list-card.is-dirty { border-color: var(--warn-line); }
 .list-card.is-error { border-color: var(--err); }
-/* IP-списки свёрнуты: настройка редкая, подробности — по запросу */
+/* IP-списки свёрнуты: настройка редкая, подробности - по запросу */
 details.list-card > summary { cursor: pointer; list-style: none; }
 details.list-card > summary::-webkit-details-marker { display: none; }
 details.list-card > summary.list-header { border-bottom: none; }
@@ -1090,7 +1092,7 @@ details.list-card[open] > summary .list-title::after { content: ' ▴'; }
   background: var(--warn-bg);
 }
 .list-desc { font-size: 11.5px; color: var(--faint); line-height: 1.4; min-height: 32px; }
-/* редактор с номерами строк: гутер и поле — одна высота строки (18px) */
+/* редактор с номерами строк: гутер и поле - одна высота строки (18px) */
 .editor-wrapper {
   display: flex;
   background: var(--field);
@@ -1145,7 +1147,7 @@ details.list-card[open] > summary .list-title::after { content: ' ▴'; }
   min-width: 0; flex: 0 1 auto;
 }
 /* статус не переносится на вторую строку (иначе карточка «дышит»);
-   полный текст длинной ошибки — в поповере */
+   полный текст длинной ошибки - в поповере */
 .status-msg span {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
@@ -1565,7 +1567,7 @@ details.list-card[open] > summary .list-title::after { content: ' ▴'; }
 /* Диагностика: панели с отступом (не прилипают друг к другу) */
 #page-diagnostics > .panel + .panel { margin-top: 14px; }
 
-/* Спорные домены — карточка с шапкой, порядком действий и блоками сервисов */
+/* Спорные домены - карточка с шапкой, порядком действий и блоками сервисов */
 #contestedPanel { margin-top: 0; }
 
 .workflow-strip {

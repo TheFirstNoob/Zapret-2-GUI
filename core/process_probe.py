@@ -1,7 +1,7 @@
-"""process_probe.py — анализ сетевых соединений процесса (игры/приложения).
+"""process_probe.py - анализ сетевых соединений процесса (игры/приложения).
 
 Собирает для выбранного процесса: TCP endpoints (Get-NetTCPConnection),
-UDP connected (Get-NetUDPEndpoint), UDP-захват через pktmon (pkt-size 64 —
+UDP connected (Get-NetUDPEndpoint), UDP-захват через pktmon (pkt-size 64 -
 только заголовки, без раздувания логов), DNS-маппинг (Get-DnsClientCache).
 Агрегация уникальных IP:port + state + частота. Вердикт по паттернам
 (STRATEGY_TRIALS 2026-09-11: SynSent = возможный IP-блок, десинк бессилен).
@@ -18,8 +18,8 @@ from typing import Optional
 
 import core.utils as utils
 
-# RemoteSigned (а не Bypass): скрипты — read-only Get-* cmdlets, политика их
-# не трогает, а Bypass — классический эвристический паттерн для AV/EDR.
+# RemoteSigned (а не Bypass): скрипты - read-only Get-* cmdlets, политика их
+# не трогает, а Bypass - классический эвристический паттерн для AV/EDR.
 # Проверено 2026-09-12: вывод идентичен Bypass на всех вызовах _ps/_ps_json.
 PS_BASE = ["powershell", "-NoProfile", "-ExecutionPolicy", "RemoteSigned", "-Command"]
 
@@ -159,7 +159,7 @@ def _run_pktmon(pids: list[int], etl: Path, txt: Path) -> Optional[dict]:
     """UDP-захват через pktmon (только заголовки). Возвращает {ip:port: count}.
 
     Без известных UDP-портов процесса захват НЕ запускается: pktmon не фильтрует
-    по PID, и без фильтра ловится весь UDP машины (браузер, Discord) — шум и
+    по PID, и без фильтра ловится весь UDP машины (браузер, Discord) - шум и
     раздутый ETL."""
     utils.run_quiet(["pktmon", "stop"])
     utils.run_quiet(["pktmon", "filter", "remove"])
@@ -170,7 +170,7 @@ def _run_pktmon(pids: list[int], etl: Path, txt: Path) -> Optional[dict]:
             pass
     ports = _udp_ports(pids)
     if not ports:
-        # нет связанных UDP-сокетов — фильтровать было бы нечем (ALL UDP =
+        # нет связанных UDP-сокетов - фильтровать было бы нечем (ALL UDP =
         # мусор со всей машины); TCP-наблюдение snapshot'ами этого покрывает
         return None
     if ports:
@@ -187,7 +187,7 @@ def _run_pktmon(pids: list[int], etl: Path, txt: Path) -> Optional[dict]:
 
 
 def _read_pktmon_txt(txt: Path) -> str:
-    """pktmon etl2txt пишет UTF-16 (иногда UTF-8) — читаем оба варианта."""
+    """pktmon etl2txt пишет UTF-16 (иногда UTF-8) - читаем оба варианта."""
     raw = txt.read_bytes()
     if raw[:2] in (b"\xff\xfe", b"\xfe\xff"):
         return raw.decode("utf-16", errors="replace")
@@ -200,8 +200,8 @@ def _read_pktmon_txt(txt: Path) -> str:
 def _parse_pktmon_txt(txt: Path, ports: list[int]) -> dict:
     """Разбор etl2txt: {ips: {remote: {sent, recv}}, sent, recv}.
 
-    Направление — по НАШЕМУ порту сокета (source.port in ports = исходящий к
-    серверу, destination.port in ports = входящий ответ) — это позволяет
+    Направление - по НАШЕМУ порту сокета (source.port in ports = исходящий к
+    серверу, destination.port in ports = входящий ответ) - это позволяет
     вердикту отличить «шлём, но не получаем» (UDP глушится) от диалога."""
     ips: dict[str, dict[str, int]] = {}
     sent = 0
@@ -275,12 +275,12 @@ def _capture_into_history(hist: dict, cap: dict, now: float) -> None:
 def _verdict(hist: dict, ipv6: bool, no_conn: bool,
              dns: Optional[dict] = None) -> str:
     if no_conn:
-        return ("Нет соединений — включите анализ и воспроизведите проблему "
+        return ("Нет соединений - включите анализ и воспроизведите проблему "
                 "(зайдите в игру/попробуйте обновление) во время наблюдения.")
     dns = dns or {}
     parts = []
     if ipv6:
-        parts.append("обнаружен IPv6 — обход работает только по IPv4")
+        parts.append("обнаружен IPv6 - обход работает только по IPv4")
 
     def _name(ip: str) -> str:
         doms = dns.get(ip)
@@ -299,17 +299,17 @@ def _verdict(hist: dict, ipv6: bool, no_conn: bool,
     if syn_fail:
         hint = ("SynSent без ответа: "
                 + ", ".join(_name(k.rsplit(":", 1)[0]) for k in syn_fail[:4])
-                + " — SYN не получает ответа (возможен IP-блок провайдера). "
-                "Десинк SYN-дроп не лечит — нужен WARP.")
+                + " - SYN не получает ответа (возможен IP-блок провайдера). "
+                "Десинк SYN-дроп не лечит - нужен WARP.")
         if established:
             hint += f" Остальные соединения работают ({len(established)})."
         parts.append(hint)
     elif established:
-        parts.append("TCP-соединения устанавливаются — сеть работает, проблема, "
+        parts.append("TCP-соединения устанавливаются - сеть работает, проблема, "
                      "вероятно, на стороне приложения/сервиса.")
     if udp_dead:
         parts.append("UDP без ответа: " + ", ".join(udp_dead[:4])
-                     + " — исходящие идут, входящих нет (глушится ТСПУ/сервером). "
+                     + " - исходящие идут, входящих нет (глушится ТСПУ/сервером). "
                        "Нужен WARP.")
     return " ".join(parts) if parts else "Соединения не обнаружены."
 
@@ -327,12 +327,12 @@ class ProcessProbe:
             return self._thread is not None and self._thread.is_alive()
 
     def start(self, process: str, duration: int = 60, wait_sec: int = 120) -> tuple[bool, str]:
-        """Запуск анализа. process — имя процесса (маска) или числовой PID.
-        Если процесс ещё не запущен — ждём появления до wait_sec секунд
+        """Запуск анализа. process - имя процесса (маска) или числовой PID.
+        Если процесс ещё не запущен - ждём появления до wait_sec секунд
         (захват «с нуля»: пользователь запускает игру после старта анализа)."""
         with self._lock:
             # двойной POST: до старта потока is_alive()==False и второй старт
-            # перетирал _thread/_state (L8) — вся процедура под локом
+            # перетирал _thread/_state (L8) - вся процедура под локом
             if self._thread is not None and self._thread.is_alive():
                 return False, "Анализ уже запущен"
             if duration < 5:

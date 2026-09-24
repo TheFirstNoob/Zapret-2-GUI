@@ -19,7 +19,7 @@ from core.launcher import build_args_from_preset, write_run_bat, launch_winws2_b
 
 # ── Уровни хостов ──────────────────────────────────────────────────
 
-# Реалистичные браузерные заголовки — иначе CDN отвечают 403 на bot-подобные
+# Реалистичные браузерные заголовки - иначе CDN отвечают 403 на bot-подобные
 # запросы без User-Agent.
 BROWSER_USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) "
@@ -32,7 +32,7 @@ BROWSER_HEADERS = [
     "-H", "Accept-Encoding: identity",
 ]
 
-# Домены, которые идут в network_rate — ОБЯЗАНЫ быть покрыты нашими
+# Домены, которые идут в network_rate - ОБЯЗАНЫ быть покрыты нашими
 # hostlist'ами (иначе блок вне контроля пресета исказит скор стратегии).
 RATED_HOSTS = [
     "discord.com", "gateway.discord.gg", "cdn.discordapp.com", "updates.discord.com",
@@ -40,10 +40,10 @@ RATED_HOSTS = [
     "github.com", "raw.githubusercontent.com", "storage.googleapis.com",
 ]
 
-# QUIC-класс (§15/§17): браузер ходит к этим хостам через QUIC, а тестер —
+# QUIC-класс (§15/§17): браузер ходит к этим хостам через QUIC, а тестер -
 # «чужим» TLS-клиентом (curl): google-блок (fake+multisplit) рвёт сторонний
 # ClientHello → 000 ПРИ работающем браузере. Измеряют «чужого клиента», а не
-# стратегию: из network_rate исключены, статус при 000 — QUIC (не BLOCKED).
+# стратегию: из network_rate исключены, статус при 000 - QUIC (не BLOCKED).
 QUIC_QUIRK_DOMAINS = frozenset({
     "www.youtube.com", "youtu.be", "i.ytimg.com",
     "redirector.googlevideo.com", "storage.googleapis.com",
@@ -51,9 +51,9 @@ QUIC_QUIRK_DOMAINS = frozenset({
 
 # Пробуются, но НЕ в network_rate: excluded/непокрытые хосты показывают сырую
 # сеть без искажения сравнения стратегий. Чистка 2026-09-11: убраны мёртвые
-# (telegram/x/fb/inst/linkedin/whatsapp/fcm/apple — глубокий IP-блок, не лечится
+# (telegram/x/fb/inst/linkedin/whatsapp/fcm/apple - глубокий IP-блок, не лечится
 # движком, только шум и +50с к прогону); оставлены живые канарейки и РФ-домены
-# (vk/ya/gosuslugi — «сеть жива»).
+# (vk/ya/gosuslugi - «сеть жива»).
 CONTROL_HOSTS = [
     "www.google.com", "www.gstatic.com",
     "www.cloudflare.com", "cdnjs.cloudflare.com",
@@ -92,7 +92,7 @@ HOST_TEST: dict[str, str] = {
     "www.gosuslugi.ru":         "http",
 }
 
-# Пинги — только DNS-канарейки (IP): доменные пинги убраны 2026-09-13 —
+# Пинги - только DNS-канарейки (IP): доменные пинги убраны 2026-09-13 -
 # ICMP к discord/открытым сервисам всегда блокирован и краснил рабочие хосты.
 PING_HOSTS: list[str] = [
     "1.1.1.1", "1.0.0.1",
@@ -101,17 +101,17 @@ PING_HOSTS: list[str] = [
 ]
 
 # Хосты голого теста (без защиты) перед прогоном профилей: если все стратегии
-# дают тот же результат — winws2 не перехватывает трафик или DPI экстремальный.
-# 2026-09-12: расширен до полного RATED-набора (без www-алиасов) — «Голый тест
+# дают тот же результат - winws2 не перехватывает трафик или DPI экстремальный.
+# 2026-09-12: расширен до полного RATED-набора (без www-алиасов) - «Голый тест
 # N/4» был слишком узким для same_as_naked; QUIC-класс НЕ включён (их TCP-проба
-# в голую всегда 000), www.google.com — канарейка «сеть жива».
+# в голую всегда 000), www.google.com - канарейка «сеть жива».
 NAKED_BASELINE_HOSTS: list[str] = [
     "discord.com", "gateway.discord.gg", "cdn.discordapp.com", "updates.discord.com",
     "github.com", "raw.githubusercontent.com",
     "www.google.com",
 ]
 
-# Размер тела TCP 16-20 теста: 64 КБ случайных данных — stateful DPI режет поток в середине передачи.
+# Размер тела TCP 16-20 теста: 64 КБ случайных данных - stateful DPI режет поток в середине передачи.
 TCP1620_BODY = 64 * 1024
 
 # CDN-хосты теста (опционально, через галочку)
@@ -210,13 +210,13 @@ class _TestAbort(Exception):
 class CdnScanVerdict:
     domain: str
     provider: str
-    alive: str            # "A" — жив под защитой, "x" — мёртв
-    dpi: str              # "DET" — stateful DPI режет, "ok" — не режет, "—" — не проверялось
-    naked: str            # "A"/"x"/"—" — живой/мёртвый без защиты (— если не проверялось)
+    alive: str            # "A" - жив под защитой, "x" - мёртв
+    dpi: str              # "DET" - stateful DPI режет, "ok" - не режет, "-" - не проверялось
+    naked: str            # "A"/"x"/"-" - живой/мёртвый без защиты (- если не проверялось)
     verdict: str          # fix / ok / break / dead / unknown / hard / covered
     ips: list[str] = field(default_factory=list)   # IP кандидата (для ipset-включений)
-    covered: bool = False  # все IP уже внутри ipset-all — наложения нет
-    ipset: str = "—"       # A/B: чинит | ломает | — (эффект IP-обхода для хоста)
+    covered: bool = False  # все IP уже внутри ipset-all - наложения нет
+    ipset: str = "-"       # A/B: чинит | ломает | - (эффект IP-обхода для хоста)
 
 
 @dataclass
@@ -227,7 +227,7 @@ class CdnScanResult:
     z1_was: bool = False
     error: str = ""
     ipset_mode: bool = False
-    protection_touched: bool = False  # скан сам перезапускал защиту — рестор обязателен
+    protection_touched: bool = False  # скан сам перезапускал защиту - рестор обязателен
     ab_done: bool = False             # A/B-прогон (второй режим ipset) состоялся
     ab_fixed: int = 0                 # хостов, которые чинит IP-обход
     ab_broken: int = 0                # хостов, которые IP-обход ломает
@@ -246,7 +246,7 @@ class Zapret2Tester:
         self._process: Optional[subprocess.Popen] = None
         self._logger: Optional["TestLogger"] = None
         # TTL-проба кэшируется: позиция хопа провайдера не меняется между
-        # профилями одной сессии — tracert гоняем один раз.
+        # профилями одной сессии - tracert гоняем один раз.
         self._ttl_cache: Optional[dict] = None
         self._ipset_net_cache: Optional[list] = None
 
@@ -254,7 +254,7 @@ class Zapret2Tester:
         self._logger = logger
 
     def _ipset_networks(self) -> list:
-        """CIDR-сети из ipset-all.txt.gz (кэш на инстанс) — для проверки
+        """CIDR-сети из ipset-all.txt.gz (кэш на инстанс) - для проверки
         «IP кандидата уже десинкается ipset-режимом» (нет наложений)."""
         if self._ipset_net_cache is None:
             nets: list = []
@@ -287,9 +287,9 @@ class Zapret2Tester:
 
     @staticmethod
     def _safe_prefixes(ips: list[str], protection: set[str], max_prefix: int = 24) -> list[str]:
-        """Для каждого IP — НАИБОЛЬШИЙ чистый префикс, не пересекающийся с
+        """Для каждого IP - НАИБОЛЬШИЙ чистый префикс, не пересекающийся с
         защищёнными адресами: /max_prefix (натуральная аллокация, переживает
-        ротацию) или /32 (Anycast — общие адреса тысяч доменов). «ip/prefix»."""
+        ротацию) или /32 (Anycast - общие адреса тысяч доменов). «ip/prefix»."""
         out: list[str] = []
         prot_objs: set[ipaddress.IPv4Address | ipaddress.IPv6Address] = set()
         for p in protection:
@@ -326,7 +326,7 @@ class Zapret2Tester:
         if not self._any_winws2_running():
             return
 
-        # Чужой winws2 ещё жив — blanket kill (крайняя мера)
+        # Чужой winws2 ещё жив - blanket kill (крайняя мера)
         self._taskkill_safe("winws2.exe")
 
         # Поллинг: ждём освобождения WinDivert вместо фиксированного sleep
@@ -363,7 +363,7 @@ class Zapret2Tester:
 
     def _wait_windivert_free(self, timeout: float = WINDIVERT_CLEANUP_DELAY * 4) -> None:
         """Poll пока winws2 процессы не исчезнут (WinDivert освобождается).
-        _TIMEOUT — upper bound, обычно <100ms если kill уже отработал."""
+        _TIMEOUT - upper bound, обычно <100ms если kill уже отработал."""
         deadline = time.time() + timeout
         while time.time() < deadline:
             if not self._any_winws2_running():
@@ -498,13 +498,13 @@ class Zapret2Tester:
             elapsed = (time.time() - start) * 1000
             return TestResult(domain, "ping", "ERROR", time_ms=elapsed, error=str(e))
 
-    # ── curl-тесты (как в zapret_test_final.py — проверено, работает) ──
+    # ── curl-тесты (как в zapret_test_final.py - проверено, работает) ──
 
     def _curl_attempt(self, url: str, head: bool, timeout: float) -> tuple[Optional[int], int, float, str]:
         """Один curl к url: (http_code | None, returncode, elapsed_ms, stderr).
 
-        head=True — HEAD (-I), иначе полный GET; timeout — curl -m, а
-        --connect-timeout всегда 2с. TimeoutExpired/OSError — наружу (ловит _curl_test)."""
+        head=True - HEAD (-I), иначе полный GET; timeout - curl -m, а
+        --connect-timeout всегда 2с. TimeoutExpired/OSError - наружу (ловит _curl_test)."""
         t0 = time.time()
         args = ["curl.exe", "-4", "-s", "-m", str(int(timeout)),
                 "--connect-timeout", "2", "--show-error"]
@@ -525,10 +525,10 @@ class Zapret2Tester:
         timeout = float(min(int(self.timeout), 6))
         if domain in QUIC_QUIRK_DOMAINS:
             # QUIC-класс: 000 для стороннего TLS-клиента неизбежен, статус
-            # всё равно QUIC — не ждём полные 6с
+            # всё равно QUIC - не ждём полные 6с
             timeout = 3.0
         try:
-            # HEAD быстрый, но не все серверы отвечают (#14: ложные 403/418) —
+            # HEAD быстрый, но не все серверы отвечают (#14: ложные 403/418) -
             # при «000» GET-фолбэк. Пер-хостовых ретраев НЕТ: флак фиксируется
             # как есть, спорные домены перепроверяет ОДИН общий речек (§29).
             code, _, _, _ = self._curl_attempt(url, head=True, timeout=timeout)
@@ -540,10 +540,10 @@ class Zapret2Tester:
             if code is not None and code >= 100:
                 return TestResult(domain, test_type, "OK", code, elapsed)
             if code is not None:
-                # GET вернул «000» — нет HTTP-ответа.
+                # GET вернул «000» - нет HTTP-ответа.
                 if domain in QUIC_QUIRK_DOMAINS:
                     # QUIC-класс: TCP-проба под десинком не показательная
-                    # (браузер ходит через QUIC) — нейтральный статус, не BLOCKED.
+                    # (браузер ходит через QUIC) - нейтральный статус, не BLOCKED.
                     return TestResult(domain, test_type, "QUIC", code, elapsed)
                 return TestResult(domain, test_type, "BLOCKED", code, elapsed)
             if test_type == "tls:443" and rc == 0:
@@ -559,7 +559,7 @@ class Zapret2Tester:
 
     def _expand_with_www(self, domains: list[str]) -> list[str]:
         """Расширяет список www-вариантами (плоский, без дублей). Поддомены
-        (redirector./gateway./cdn./cdnjs./i./updates.) и youtu.be — без www;
+        (redirector./gateway./cdn./cdnjs./i./updates.) и youtu.be - без www;
         указанные с www. тестируются только как www (non-www часто редиректит)."""
         CDN_PREFIXES = ("redirector.", "gateway.", "cdn.", "cdnjs.", "i.", "updates.")
         NO_WWW = {"youtu.be"}
@@ -575,7 +575,7 @@ class Zapret2Tester:
                     seen.add(base)
                 continue
             if d.startswith("www."):
-                # домен указан с www — тестируем только www-вариант
+                # домен указан с www - тестируем только www-вариант
                 if d not in seen:
                     expanded.append(d)
                     seen.add(d)
@@ -587,7 +587,7 @@ class Zapret2Tester:
         return expanded
 
     def _host_test_type(self, domain: str) -> str:
-        """Тип теста для домена; если www-варианта нет в HOST_TEST — по базовому."""
+        """Тип теста для домена; если www-варианта нет в HOST_TEST - по базовому."""
         t = HOST_TEST.get(domain)
         if t:
             return t
@@ -625,7 +625,7 @@ class Zapret2Tester:
 
     # ── TCP 16-20 тест (из dpi-checkers) ───────────────────────────
     # POST с 64 КБ случайного тела: если HEAD прошёл, а POST-соединение
-    # умирает (timeout/reset) — stateful DPI оборвал поток по контенту.
+    # умирает (timeout/reset) - stateful DPI оборвал поток по контенту.
 
     def _run_tcp1620_tests(self, domains: list[str], concurrency: int = 5) -> list[TestResult]:
         """TCP 16-20: curl POST с 64 КБ случайного тела."""
@@ -669,18 +669,18 @@ class Zapret2Tester:
             code = int(parts[0]) if parts and parts[0].isdigit() else 0
             uploaded = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
             if code >= 200 and code < 500:
-                # Сервер ответил — загрузка 64 КБ пережила поток: обрыва нет.
+                # Сервер ответил - загрузка 64 КБ пережила поток: обрыва нет.
                 return TestResult(domain, "tcp1620", "OK", code, elapsed)
             if uploaded >= TCP1620_BODY:
-                # Полный объём ушёл, ответа нет (сервер молчит/таймаут) —
+                # Полный объём ушёл, ответа нет (сервер молчит/таймаут) -
                 # поток НЕ резан: это не сигнатура stateful DPI.
                 return TestResult(domain, "tcp1620", "OK", 0, elapsed,
                                   "upload OK, ответа нет")
             if uploaded > 0:
-                # Поток обрезан на N КБ — сигнатура stateful DPI (dpich Detected).
+                # Поток обрезан на N КБ - сигнатура stateful DPI (dpich Detected).
                 return TestResult(domain, "tcp1620", "TCP16_20", 0, elapsed,
-                                  f"обрыв на {uploaded // 1024} КБ — stateful DPI")
-            # uploaded == 0: соединение умерло до/в начале загрузки — фаза.
+                                  f"обрыв на {uploaded // 1024} КБ - stateful DPI")
+            # uploaded == 0: соединение умерло до/в начале загрузки - фаза.
             err = (r.stderr or "").lower()
             if "reset by peer" in err or "recv failure" in err:
                 return TestResult(domain, "tcp1620", "BLOCKED", 0, elapsed, "TCP RST")
@@ -702,7 +702,7 @@ class Zapret2Tester:
     @staticmethod
     def _net_stats(results: list[TestResult]) -> tuple[int, int, int, float, int, int]:
         """Сетевые счётчики (curl/TLS) отдельно от пингов: (net_ok, net_fail,
-        net_total, network_rate, ping_ok, ping_total). network_rate — скор
+        net_total, network_rate, ping_ok, ping_total). network_rate - скор
         стратегии: пинги меряют голую связность и завышают скор (все 8 пресетов
         «20/30 (67%)» при реальной связности 4/13)."""
         net = [r for r in results
@@ -718,7 +718,7 @@ class Zapret2Tester:
         return net_ok, net_fail, net_total, rate, ping_ok, len(pings)
 
     # ── TTL-проба ──────────────────────────────────────────────────
-    # Traceroute до первого хопа вне локальной сети — вероятный DPI-бокс
+    # Traceroute до первого хопа вне локальной сети - вероятный DPI-бокс
     # провайдера; результат в ProfileTestResult для autottl-оптимизации.
 
     @staticmethod
@@ -735,7 +735,7 @@ class Zapret2Tester:
         if self._ttl_cache is not None:
             return self._ttl_cache
 
-        # 5 хопов / 900 мс на пробу — достаточно, чтобы увидеть DPI-бокс
+        # 5 хопов / 900 мс на пробу - достаточно, чтобы увидеть DPI-бокс
         # провайдера (обычно хоп 1-4); худший случай ~14с вместо 25с+.
         tracert_targets = ["google.com", "discord.com", "github.com"]
         for target in tracert_targets:
@@ -767,14 +767,14 @@ class Zapret2Tester:
                     if not Zapret2Tester._is_private_ip(ip):
                         self._ttl_cache = {"hop": hop, "ip": ip, "target": target}
                         return self._ttl_cache
-                    # все хопы приватные — отдаём последний
+                    # все хопы приватные - отдаём последний
                     if hop >= 5:
                         self._ttl_cache = {"hop": hop, "ip": ip, "target": target}
                         return self._ttl_cache
             except (subprocess.TimeoutExpired, OSError):
                 continue
 
-        # Ни один target не дал результата — идём без TTL
+        # Ни один target не дал результата - идём без TTL
         self._ttl_cache = {"hop": 0, "ip": "", "target": ""}
         return self._ttl_cache
 
@@ -784,7 +784,7 @@ class Zapret2Tester:
     def _setup_profile(self, profile: str, progress_cb, _logged_progress, ipset_catchall: bool = False, discord_alt: bool = False) -> tuple[str, str, str, float]:
         """Запустить winws2 для пресета, измерить RTT, пробить хоп ТСПУ.
         Возвращает (profile_name, provider_hop, provider_ip, timeout);
-        при сбое запуска — raise _TestAbort с результатом-ошибкой."""
+        при сбое запуска - raise _TestAbort с результатом-ошибкой."""
         profile_name = profile
         preset = self.root_dir / "presets" / f"{profile_name}.txt"
         if not preset.exists():
@@ -811,7 +811,7 @@ class Zapret2Tester:
 
         _logged_progress(7, f"[{profile_name}] ждём готовность WinDivert (1.5s)...")
         # launch_winws2_bat уже подтвердил жизнь процесса; WinDivert открывает
-        # хендл за сотни мс — 1.5s хватает (был фиксированный 5s на профиль).
+        # хендл за сотни мс - 1.5s хватает (был фиксированный 5s на профиль).
         time.sleep(1.5)
 
         if not self._any_winws2_running():
@@ -889,7 +889,7 @@ class Zapret2Tester:
             progress_cb(pct, msg)
 
         # _setup_profile бросает _TestAbort ДО try ниже (нет пресета, winws2
-        # не стартует). Один битый профиль не должен валить весь свеп — его
+        # не стартует). Один битый профиль не должен валить весь свеп - его
         # ошибка возвращается, вызывающий продолжает.
         try:
             profile_name, provider_hop, provider_ip, _ = self._setup_profile(
@@ -929,7 +929,7 @@ class Zapret2Tester:
 
             # Пинг-фаза считается отдельно: tests_done включал curl-результаты,
             # бар прыгал с 55% сразу на ~88%. Пинги только на DNS-канарейках (IP);
-            # доменные убраны 2026-09-13 — «сеть жива».
+            # доменные убраны 2026-09-13 - «сеть жива».
             ping_total = len(PING_HOSTS)
             ping_done = 0
 
@@ -944,7 +944,7 @@ class Zapret2Tester:
 
         except _TestAbort as e:
             # Отмена/сбой посреди прогона: winws2 с параметрами пресета может
-            # остаться жив и перехватывать трафик — гасим обязательно.
+            # остаться жив и перехватывать трафик - гасим обязательно.
             try:
                 self._ensure_winws2_dead()
             except Exception:
@@ -957,11 +957,11 @@ class Zapret2Tester:
         """CDN-стабилизация: вердикты по CDN-хостам для полу-автономного ведения списков.
 
         Три фазы: (1) CDN-батарея (Alive + TCP16-20) под защитой; (2) для
-        мёртвых — naked-перепроверка «мёртв» vs «десинк ломает»; (3) для
-        живых+режущихся — верификация десинком (пробный список, fake+multisplit):
+        мёртвых - naked-перепроверка «мёртв» vs «десинк ломает»; (3) для
+        живых+режущихся - верификация десинком (пробный список, fake+multisplit):
         вылечился → fix, режется/умер → hard (не лечится, не трогать).
 
-        ipset_mode=True — защита через ipset-all: fix-кандидат проверяется на
+        ipset_mode=True - защита через ipset-all: fix-кандидат проверяется на
         ПОКРЫТИЕ (все IP в ipset-all → covered; иначе fix с резолвнутыми IP для
         ipset-include-user). При naked_done=True вызывающий обязан восстановить
         защиту (флаги z2_was/z1_was)."""
@@ -969,7 +969,7 @@ class Zapret2Tester:
         result = CdnScanResult(ipset_mode=ipset_mode)
         try:
             if not self._any_winws2_running():
-                result.error = "winws2 не запущен — запустите защиту перед сканированием"
+                result.error = "winws2 не запущен - запустите защиту перед сканированием"
                 return result
             progress_cb(5, "Проверка CDN-хостов под защитой...")
             protected = self._run_domain_tests(CDN_HOSTS, concurrency=15, http_only=True, result_cb=result_cb)
@@ -983,8 +983,8 @@ class Zapret2Tester:
                     dpi_map[r.domain] = "DET" if r.status == "TCP16_20" else "ok"
             # ── A/B: второй прогон в противоположном режиме ipset ──
             # Включение/выключение IP-обхода меняет картину «пробило/сломало»:
-            # ipset-all чинит одних и ломает других — один прогон этого не
-            # видит. Сканер сам перезапускает защиту — вызывающий обязан её
+            # ipset-all чинит одних и ломает других - один прогон этого не
+            # видит. Сканер сам перезапускает защиту - вызывающий обязан её
             # восстановить (protection_touched).
             alive2_map: dict[str, bool] = {}
             det2_map: dict[str, str] = {}
@@ -1035,7 +1035,7 @@ class Zapret2Tester:
                     verify_map = self._verify_with_desync(candidates, result_cb,
                                                           ipset_catchall=ipset_mode)
                 # верификация ВСЕГДА снимает защиту (finally в verify-функциях),
-                # даже если пробный прогон не состоялся — рестор обязателен
+                # даже если пробный прогон не состоялся - рестор обязателен
                 result.naked_done = True
             # покрытие ipset-all для fix-кандидатов (только ipset-режим)
             ip_map: dict[str, list[str]] = {}
@@ -1051,8 +1051,8 @@ class Zapret2Tester:
             progress_cb(90, "Сборка вердиктов...")
             ab_fixed = ab_broken = 0
             for r in protected:
-                dpi = dpi_map.get(r.domain, "—")
-                naked = naked_map.get(r.domain, "—")
+                dpi = dpi_map.get(r.domain, "-")
+                naked = naked_map.get(r.domain, "-")
                 verdict = ""
                 if r.status == "OK":
                     if dpi == "DET":
@@ -1069,7 +1069,7 @@ class Zapret2Tester:
                     verdict = "unknown"
                 # Эффект IP-обхода (A/B-прогоны): жив в hostlist и мёртв в ipset
                 # → ломает; мёртв в hostlist и жив в ipset → чинит.
-                ipset_eff = "—"
+                ipset_eff = "-"
                 if result.ab_done:
                     a1 = (r.status == "OK")
                     a2 = alive2_map.get(r.domain)
@@ -1084,7 +1084,7 @@ class Zapret2Tester:
                             ab_fixed += 1
                 result.verdicts.append(CdnScanVerdict(
                     domain=r.domain,
-                    provider=CDN_PROVIDERS.get(r.domain, "—"),
+                    provider=CDN_PROVIDERS.get(r.domain, "-"),
                     alive="A" if r.status == "OK" else "x",
                     dpi=dpi, naked=naked, verdict=verdict,
                     ips=ip_map.get(r.domain, []),
@@ -1117,9 +1117,9 @@ class Zapret2Tester:
 
     def probe_blobs(self, progress_cb, blob_keys: list[str],
                     profile_name: str = "default") -> list[dict]:
-        """Перебор TLS-фейк-блобов: для каждого — перезапуск защиты с
+        """Перебор TLS-фейк-блобов: для каждого - перезапуск защиты с
         подменённым блобом и короткая батарея. Возвращает [{blob, ok, total,
-        rate}]. Защиту не восстанавливает — задача вызывающего."""
+        rate}]. Защиту не восстанавливает - задача вызывающего."""
         self.shutdown_event.clear()
         out: list[dict] = []
         try:
@@ -1144,24 +1144,24 @@ class Zapret2Tester:
         return out
 
     # ── ASN-скан (110 IP-проб из dpi-detector): белый SNI на конкретный IP,
-    # загрузка ~32 КБ, классификация обрыва — как в оригинальном инструменте ──
+    # загрузка ~32 КБ, классификация обрыва - как в оригинальном инструменте ──
     ASN_SNI = "example.com"           # IANA-домен: в реестре РКН быть не может,
     # пропускает максимум (батарея SNI 07.09: example 104/110, sferum 100,
-    # hcaptcha 84, google 79; чёрный rutracker.org = 0/110 — ТСПУ режет по SNI)
+    # hcaptcha 84, google 79; чёрный rutracker.org = 0/110 - ТСПУ режет по SNI)
     ASN_BODY = 32 * 1024
 
     def asn_scan(self, progress_cb, result_cb=None, sni: str = "") -> list[dict]:
         """IP-пробы по ASN: IP:443 с белым SNI и загрузкой ~32 КБ. Статусы:
-        OK / DETECTED (обрыв на N КБ — stateful DPI) / TCP RST / SYN DROP /
+        OK / DETECTED (обрыв на N КБ - stateful DPI) / TCP RST / SYN DROP /
         TIMEOUT / ERROR. Работает под текущей защитой, ничего не перезапускает.
 
-        sni — SNI пробы (по умолчанию example.com). 2026-09-07: на «чёрном»
-        SNI (rutracker.org) валится всё, на «белых» картина одинаковая —
+        sni - SNI пробы (по умолчанию example.com). 2026-09-07: на «чёрном»
+        SNI (rutracker.org) валится всё, на «белых» картина одинаковая -
         DPI режет по IP, а не по белому SNI."""
         from concurrent.futures import ThreadPoolExecutor, as_completed
         import subprocess
         self.shutdown_event.clear()
-        # Конкурентность 8 — компромисс: у dpi-detector 30-50 и комьюнити
+        # Конкурентность 8 - компромисс: у dpi-detector 30-50 и комьюнити
         # спокойно это терпит; 4 было перестраховкой от «пачки SYN в один ASN».
         concurrency = 8
         probes = []
@@ -1170,24 +1170,24 @@ class Zapret2Tester:
             import json
             probes = json.loads(probe_file.read_text(encoding="utf-8"))
         except (OSError, ValueError) as e:
-            return [{"id": "—", "asn": "—", "provider": "—", "status": "ERROR",
+            return [{"id": "-", "asn": "-", "provider": "-", "status": "ERROR",
                      "detail": f"не читается {probe_file.name}: {e}"}]
         if not probes:
-            return [{"id": "—", "asn": "—", "provider": "—", "status": "ERROR",
+            return [{"id": "-", "asn": "-", "provider": "-", "status": "ERROR",
                      "detail": "список проб пуст"}]
 
         body_file = self.root_dir / "asn_probe_body.bin"
         try:
             body_file.write_bytes(os.urandom(self.ASN_BODY))
         except OSError:
-            return [{"id": "—", "asn": "—", "provider": "—", "status": "ERROR",
+            return [{"id": "-", "asn": "-", "provider": "-", "status": "ERROR",
                      "detail": "не удалось создать тестовое тело"}]
 
         sni = sni or self.ASN_SNI
 
         def probe_one(p: dict) -> dict:
             # Мобильные сети теряют SYN рывками: «не отвечает» подтверждаем
-            # повтором, иначе результат — снимок на одну минуту.
+            # повтором, иначе результат - снимок на одну минуту.
             first = _probe_once(p)
             if first.get("status") in ("SYN DROP", "TIMEOUT"):
                 time.sleep(1.2)
@@ -1278,7 +1278,7 @@ class Zapret2Tester:
                             ipset_catchall: bool = False) -> dict[str, str]:
         """Пробный прогон с десинком кандидатов: вердикт fix/hard по факту.
 
-        Вердикт для КАЖДОГО домена (fix — вылечился, hard — умер или режется
+        Вердикт для КАЖДОГО домена (fix - вылечился, hard - умер или режется
         дальше); пустой словарь = проверка не состоялась (unknown у вызывающего)."""
         result: dict[str, str] = {}
         probe_list = self.root_dir / "lists" / "list-probe.txt"
@@ -1366,7 +1366,7 @@ class Zapret2Tester:
         result_cb: Optional[Callable[[TestResult], None]] = None,
         kill_processes: bool = False,
     ) -> ProfileTestResult:
-        # _setup_profile масштабирует self.timeout по RTT — сбрасываем, чтобы
+        # _setup_profile масштабирует self.timeout по RTT - сбрасываем, чтобы
         # базовые прогоны не использовали устаревший таймаут прошлого пресета.
         self.timeout = self._original_timeout
         self.shutdown_event.clear()
@@ -1443,7 +1443,7 @@ class Zapret2Tester:
         tier: str = "smoke",
         result_cb: Optional[Callable[[TestResult], None]] = None,
     ) -> ProfileTestResult:
-        """Тест ТЕКУЩЕЙ конфигурации (что запущено — вероятно Zapret 1)."""
+        """Тест ТЕКУЩЕЙ конфигурации (что запущено - вероятно Zapret 1)."""
         return self._test_baseline("__current__", progress_cb, tier, result_cb, kill_processes=False)
 
     def test_naked(
@@ -1463,13 +1463,13 @@ class Zapret2Tester:
         """Быстрая проверка связности без защиты (NAKED_BASELINE_HOSTS, ~3-5с).
 
         Гоняется перед свепом профилей, чтобы финальная рекомендация поймала
-        случай «все стратегии == naked» — winws2 не меняет трафик на этой
+        случай «все стратегии == naked» - winws2 не меняет трафик на этой
         машине или DPI блокирует все попытки десинка. None при отмене."""
         self.shutdown_event.clear()
         self._ensure_winws2_dead()
         if self.shutdown_event.is_set():
             return None
-        progress_cb(2, "Голый тест (без защиты) — базовый уровень...")
+        progress_cb(2, "Голый тест (без защиты) - базовый уровень...")
         results = self._run_domain_tests(
             NAKED_BASELINE_HOSTS, concurrency=4, expand_www=False,
             result_cb=result_cb,
@@ -1488,9 +1488,9 @@ class Zapret2Tester:
 
         Два дешёвых теста (без debug-логов):
         1. dry-run тех же args, что строит тестер: winws2 печатает число
-           загруженных desync-профилей. 0-1 вместо ожидаемых 4-7 для default.txt —
+           загруженных desync-профилей. 0-1 вместо ожидаемых 4-7 для default.txt -
            сигнатура старого бага короткого пути (§1): пресет битый на ЭТОЙ машине.
-        2. Покрытие списков: домена нет ни в одном @lists/*.txt из пресета —
+        2. Покрытие списков: домена нет ни в одном @lists/*.txt из пресета -
            его desync-профиль не срабатывает (no_action, §15)."""
         exe = self.bin_dir / "winws2.exe"
         if not exe.exists():
@@ -1514,9 +1514,9 @@ class Zapret2Tester:
             m = None
             if "already running with the same filter" in output:
                 # Другой winws2 с теми же фильтрами запущен (например служба):
-                # dry-run обрывается рано («1 profile») и счётчик бессмыслен —
+                # dry-run обрывается рано («1 profile») и счётчик бессмыслен -
                 # но проверка покрытия списков всё ещё применима.
-                dry["note"] = "winws2 уже запущен — dry-run не показателен"
+                dry["note"] = "winws2 уже запущен - dry-run не показателен"
             else:
                 m = _re.search(r"(\d+)\s+user defined desync profile", output)
             if m:

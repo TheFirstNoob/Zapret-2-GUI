@@ -1,4 +1,4 @@
-"""Сборка персональной стратегии — лучшие сегменты пресетов в один custom.
+"""Сборка персональной стратегии - лучшие сегменты пресетов в один custom.
 
 После прогона тестера каждый probe-домен относится к family (discord /
 google / general по hostlist).  Сегмент family берётся из пресета с лучшим
@@ -60,7 +60,7 @@ def make_family_fn(root: Path) -> Callable[[str], Optional[str]]:
 
 
 def parse_preset(preset_path: Path) -> tuple[list[str], dict[str, list[str]]]:
-    """(строки заголовка, {имя_сегмента: строки}) — сегменты делятся по '--new'."""
+    """(строки заголовка, {имя_сегмента: строки}) - сегменты делятся по '--new'."""
     text = preset_path.read_text(encoding="utf-8", errors="replace")
     blocks: list[list[str]] = []
     cur: list[str] = []
@@ -117,9 +117,9 @@ def build_custom(
     """
     fam_fn = make_family_fn(root)
     rates = _family_rates(results_by_profile, fam_fn)
-    # Custom собирает ЛУЧШИЕ СЕГМЕНТЫ пресетов. auto — исключён: его механика
+    # Custom собирает ЛУЧШИЕ СЕГМЕНТЫ пресетов. auto - исключён: его механика
     # (circular-перебор) требует собственного lua (--lua-init zapret-auto.lua)
-    # и «стратегии внутри стратегии» — это не сегмент, а режим. Притаскивание
+    # и «стратегии внутри стратегии» - это не сегмент, а режим. Притаскивание
     # circular-сегмента в custom ломало запуск (баг 2026-09-13: «desync
     # function 'circular' does not exist»). auto остаётся отдельным пресетом.
     profiles = [p for p in results_by_profile
@@ -140,11 +140,11 @@ def build_custom(
         sources[fam] = best_p
 
     # Заголовок должен покрыть ВСЕ источники: сегмент может зависеть от
-    # глобальных флагов своего пресета — у auto это --wf-tcp-in (для
+    # глобальных флагов своего пресета - у auto это --wf-tcp-in (для
     # --in-range) и --lua-init @lua/zapret-auto.lua (для circular). Берём
     # объединение полных заголовков всех не-default источников.
     #
-    # 2026-09-13: дедуп РАНЬШЕ был по ОДИНОЧНОЙ строке — пара
+    # 2026-09-13: дедуп РАНЬШЕ был по ОДИНОЧНОЙ строке - пара
     # «--lua-init + @lua/zapret-auto.lua» разваливалась: второй --lua-init
     # дедупнулся, а значение-сирота осталось без опции → zapret-auto.lua не
     # загружался → winws2 падал с «desync function 'circular' does not

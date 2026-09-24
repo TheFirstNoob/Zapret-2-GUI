@@ -19,7 +19,7 @@ def relaunch_as_admin() -> bool:
         args = " ".join(
             f'"{a}"' if " " in a else a for a in sys.argv[1:]
         )
-        # ShellExecuteW возвращает код ошибки (<32) при отказе в UAC —
+        # ShellExecuteW возвращает код ошибки (<32) при отказе в UAC -
         # без проверки «Нет» в диалоге выглядело бы как успешный запуск.
         ret = ctypes.windll.shell32.ShellExecuteW(
             None, "runas", sys.executable, f'"{sys.argv[0]}" {args}', None, 1
@@ -29,7 +29,7 @@ def relaunch_as_admin() -> bool:
                 0,
                 "Запуск отменён: не выданы права администратора.\n"
                 "Zapret 2 требует права администратора для работы WinDivert.",
-                "Zapret2 — требуются права администратора", 0x30)
+                "Zapret2 - требуются права администратора", 0x30)
             return False
         return True
     except (AttributeError, OSError):
@@ -38,7 +38,7 @@ def relaunch_as_admin() -> bool:
 
 # ── Хелперы привилегий ──
 # Загрузке драйвера WinDivert нужен включённый SeLoadDriverPrivilege в токене.
-# У UAC-elevated Python он часто выключен — включаем до запуска winws2.
+# У UAC-elevated Python он часто выключен - включаем до запуска winws2.
 
 SE_PRIVILEGE_ENABLED = 0x00000002
 TOKEN_QUERY = 0x0008
@@ -60,7 +60,7 @@ class _TOKEN_PRIVILEGES(ctypes.Structure):
 
 # ── Фикс обрезки 64-битных HANDLE в ctypes ──
 # ctypes.windll по умолчанию берёт c_int (32 бита) для возвратов и параметров.
-# HANDLE на x64 — 64 бита → restype/argtypes задаются явно.
+# HANDLE на x64 - 64 бита → restype/argtypes задаются явно.
 _kernel32 = ctypes.WinDLL("kernel32", use_last_error=False)
 _advapi32 = ctypes.WinDLL("advapi32", use_last_error=False)
 

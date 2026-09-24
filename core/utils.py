@@ -10,7 +10,7 @@ from typing import Optional
 
 
 def short_path(path: Path) -> Path:
-    """Короткий путь 8.3; если короткие имена недоступны — исходный путь."""
+    """Короткий путь 8.3; если короткие имена недоступны - исходный путь."""
     try:
         long_name = str(path.resolve())
         buf = ctypes.create_unicode_buffer(260)
@@ -26,7 +26,7 @@ def app_root() -> Path:
     """Каталог программы: рядом с exe (frozen onefile) или корень проекта.
 
     ВАЖНО: в PyInstaller-onefile `Path(__file__).parent.parent` указывает в
-    ВРЕМЕННУЮ папку `_MEI*` — её нельзя использовать для путей службы и
+    ВРЕМЕННУЮ папку `_MEI*` - её нельзя использовать для путей службы и
     драйвера: папка исчезает после закрытия программы, а запущенный из неё
     процесс ещё и блокирует удаление («Failed to remove temporary
     directory _MEI…», кейс 0.7.1)."""
@@ -80,10 +80,10 @@ def stale_windivert_services() -> list[tuple[str, str]]:
 
     Служба драйвера «WinDivert» ставится ОДИН РАЗ и навсегда запоминает путь
     к .sys. Если на машине раньше стоял другой zapret (Zapret 1 / Flowseal-
-    бандл — WinDivert той же мажорной версии) и его папку удалили — служба
+    бандл - WinDivert той же мажорной версии) и его папку удалили - служба
     остаётся с мёртвым ImagePath → наш winws2 видит «служба уже есть» (версия
     совпадает), StartService по мёртвому пути → windivert: error opening
-    filter: The system cannot find the file specified — НАВСЕГДА, пока службу
+    filter: The system cannot find the file specified - НАВСЕГДА, пока службу
     не удалить вручную (кейс друга 2026-09-13)."""
     import winreg
     bad: list[tuple[str, str]] = []
@@ -143,7 +143,7 @@ def winws2_running() -> bool:
 
 
 def _local_windivert_sys(root_dir: Optional[Path]) -> Optional[Path]:
-    """НАШ WinDivert64.sys — цель для перезаписи битого ImagePath."""
+    """НАШ WinDivert64.sys - цель для перезаписи битого ImagePath."""
     candidates: list[Path] = []
     if root_dir is not None:
         candidates += [Path(root_dir) / "bin" / "WinDivert64.sys",
@@ -160,7 +160,7 @@ def _local_windivert_sys(root_dir: Optional[Path]) -> Optional[Path]:
 
 
 def windivert_service_state() -> Optional[tuple[str, int]]:
-    """(ImagePath, Start) службы драйвера «WinDivert» — общий ридер для
+    """(ImagePath, Start) службы драйвера «WinDivert» - общий ридер для
     heal'а и диагностики (None, если службы нет)."""
     import winreg
     try:
@@ -185,7 +185,7 @@ def fix_stale_windivert_services(root_dir: Optional[Path] = None) -> list[str]:
     (2) Start=Disabled у живой службы включаем (start= demand); (3) удаляем
     только когда иначе нельзя и winws2 НЕ запущен (иначе служба получит
     «marked for deletion» (1072) и починится только перезагрузкой);
-    (4) чужие службы windivert* с битым путём — прежний путь удаления.
+    (4) чужие службы windivert* с битым путём - прежний путь удаления.
     Возвращает список действий (для логов/диагностики)."""
     actions: list[str] = []
     winws2_busy = winws2_running()
@@ -200,9 +200,9 @@ def fix_stale_windivert_services(root_dir: Optional[Path] = None) -> list[str]:
                 actions.append(f"{name}: ImagePath перезаписан на {local_sys}")
                 continue
             if _is_marked_for_delete(out):
-                actions.append(f"{name}: помечена на удаление — нужна перезагрузка")
+                actions.append(f"{name}: помечена на удаление - нужна перезагрузка")
                 continue
-            actions.append(f"{name}: repair не удался — {out.strip()[:100]}")
+            actions.append(f"{name}: repair не удался - {out.strip()[:100]}")
         if is_main and winws2_busy:
             actions.append(f"{name}: удаление отложено (winws2 запущен)")
             continue
@@ -211,9 +211,9 @@ def fix_stale_windivert_services(root_dir: Optional[Path] = None) -> list[str]:
         if code == 0:
             actions.append(f"{name}: удалена (драйвер пересоздастся сам)")
         elif _is_marked_for_delete(out):
-            actions.append(f"{name}: помечена на удаление — нужна перезагрузка")
+            actions.append(f"{name}: помечена на удаление - нужна перезагрузка")
         else:
-            actions.append(f"{name}: удаление не удалось — {out.strip()[:100]}")
+            actions.append(f"{name}: удаление не удалось - {out.strip()[:100]}")
 
     state = windivert_service_state()
     if state is not None and state[1] == 4 and not any(
@@ -222,17 +222,17 @@ def fix_stale_windivert_services(root_dir: Optional[Path] = None) -> list[str]:
         if code == 0:
             actions.append("WinDivert: включена (start= demand)")
         elif _is_marked_for_delete(out):
-            actions.append("WinDivert: отключена и помечена на удаление — нужна перезагрузка")
+            actions.append("WinDivert: отключена и помечена на удаление - нужна перезагрузка")
         else:
-            actions.append(f"WinDivert: включить не удалось — {out.strip()[:100]}")
+            actions.append(f"WinDivert: включить не удалось - {out.strip()[:100]}")
     return actions
 
 
 def known_desktop_dir() -> Path:
     """Реальный рабочий стол через SHGetKnownFolderPath (учитывает
-    OneDrive-редирект Known Folder). Фолбэк — профиль\\Desktop.
+    OneDrive-редирект Known Folder). Фолбэк - профиль\\Desktop.
 
-    Явные argtypes/restype — best practice ctypes на x64 (сигнатуры
+    Явные argtypes/restype - best practice ctypes на x64 (сигнатуры
     снимают вопросы по умолчанию)."""
     try:
         import ctypes

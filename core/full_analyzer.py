@@ -21,7 +21,7 @@ def run_full_analysis(
     ipset_catchall: bool = False,
 ) -> list[dict]:
     """Тестирует список профилей на smoke tier. Топ-3 валидирует на full tier.
-    Без блоб-тестирования — только чистые профили."""
+    Без блоб-тестирования - только чистые профили."""
 
     total = len(profiles)
 
@@ -105,7 +105,7 @@ def run_full_analysis(
                         progress_range=75 / total)
         all_screened.append(entry)
 
-    # Ранжирование по network_rate — как в быстром тесте (§22): пинги и
+    # Ранжирование по network_rate - как в быстром тесте (§22): пинги и
     # control-хосты не искажают «лучшую» стратегию.
     all_screened.sort(key=lambda x: x.get("network_rate", 0) or 0, reverse=True)
     top3 = all_screened[:3]

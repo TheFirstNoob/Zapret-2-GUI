@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from typing import List, Optional
 
 # Известные DPI-bypass-тулы, использующие драйвер WinDivert: работа рядом
-# с winws2 — ЖЁСТКИЙ конфликт (один из них перестаёт видеть пакеты).
+# с winws2 - ЖЁСТКИЙ конфликт (один из них перестаёт видеть пакеты).
 DPI_TOOL_IMAGES = {
     "winws.exe": "Zapret 1",
     "byedpi.exe": "ByeDPI",
@@ -16,7 +16,7 @@ DPI_TOOL_IMAGES = {
     "intosy.exe": "Intosy",
 }
 
-# VPN-клиенты/туннели — не фатальны (WinDivert не делят), но могут
+# VPN-клиенты/туннели - не фатальны (WinDivert не делят), но могут
 # перекрывать обход или быть перекрытыми им; повод для предупреждения.
 VPN_IMAGES = {
     "openvpn.exe": "OpenVPN",
@@ -142,11 +142,11 @@ def describe(report: ConflictReport) -> Optional[str]:
     """Человекочитаемый текст для диагностики или None, если ничего не найдено."""
     lines = []
     for t in report.dpi_tools:
-        lines.append(f"Чужой DPI-тулз {t} — жёсткий конфликт (общий WinDivert), остановите его")
+        lines.append(f"Чужой DPI-тулз {t} - жёсткий конфликт (общий WinDivert), остановите его")
     for s in report.vpn_services:
-        lines.append(f"VPN-служба {s} активна — может перехватывать трафик")
+        lines.append(f"VPN-служба {s} активна - может перехватывать трафик")
     for c in report.vpn_clients:
-        lines.append(f"VPN-клиент {c} запущен — может перехватывать трафик")
+        lines.append(f"VPN-клиент {c} запущен - может перехватывать трафик")
     for a in report.tun_adapters:
         lines.append(f"Туннельный адаптер: {a}")
     return "; ".join(lines) if lines else None

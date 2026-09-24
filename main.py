@@ -12,7 +12,7 @@ import time
 from pathlib import Path
 
 # Embeddable Python (portable-сборка) с ._pth не добавляет папку скрипта
-# в sys.path — без этого импорт core на portable-сборке падает.
+# в sys.path - без этого импорт core на portable-сборке падает.
 if not getattr(sys, "frozen", False):
     _app_dir = os.path.dirname(os.path.abspath(__file__))
     if _app_dir not in sys.path:
@@ -50,7 +50,7 @@ def _cleanup_stale_mei() -> None:
 def _warn_if_bad_path(exe_dir: Path) -> bool:
     """True, если путь установки безопасен для winws2.
 
-    ASCII-путь (с пробелами) безопасен — лаунчеры его квотируют. Не-ASCII
+    ASCII-путь (с пробелами) безопасен - лаунчеры его квотируют. Не-ASCII
     работает только при наличии короткого имени 8.3 (bat-лаунчеры пишутся
     в ASCII через короткие пути). Предупреждаем лишь о реальном провале:
     не-ASCII путь без короткой формы.
@@ -59,7 +59,7 @@ def _warn_if_bad_path(exe_dir: Path) -> bool:
     if all(ord(c) < 128 for c in s):
         return True
     if str(short_path(exe_dir)) != s:
-        return True  # короткая форма есть — лаунчер справится
+        return True  # короткая форма есть - лаунчер справится
 
     title = "Zapret2 \u2014 \u041f\u0440\u0435\u0434\u0443\u043f\u0440\u0435\u0436\u0434\u0435\u043d\u0438\u0435"
     msg = (
@@ -82,7 +82,7 @@ def _ensure_data_dir() -> Path:
 
     # Обновляем данные только при смене версии: правки пользователя в
     # presets/lists переживают обычные запуски. copytree не удаляет лишние
-    # файлы — user-пресеты и *-user.txt в безопасности.
+    # файлы - user-пресеты и *-user.txt в безопасности.
     marker = exe_dir / "data_version.txt"
     try:
         current = marker.read_text(encoding="utf-8").strip() if marker.exists() else ""
@@ -94,14 +94,14 @@ def _ensure_data_dir() -> Path:
             try:
                 shutil.copytree(src / d, target, dirs_exist_ok=True)
             except OSError as e:
-                # файл под локом AV/OneDrive — молчаливая смерть pythonw
+                # файл под локом AV/OneDrive - молчаливая смерть pythonw
                 # недопустима (M3): показываем причину и выходим чисто
                 ctypes.windll.user32.MessageBoxW(
                     0,
                     "Не удалось подготовить данные программы:\n\n"
                     f"{e}\n\nЗакройте антивирус/OneDrive, снимите залоченные "
                     "файлы и запустите снова.",
-                    "Zapret2 — ошибка", 0x30)
+                    "Zapret2 - ошибка", 0x30)
                 return
         try:
             marker.write_text(VERSION, encoding="utf-8")
@@ -113,11 +113,11 @@ def _ensure_data_dir() -> Path:
 
 def _check_launch_location(exe_dir: Path) -> None:
     """Предупреждения о «болевых» местах запуска (0.8): архив/временная папка
-    и рабочий стол напрямую — важные; Загрузки/Документы — некритичные
+    и рабочий стол напрямую - важные; Загрузки/Документы - некритичные
     (есть чек в «Проверке системы»)."""
     def show(msg: str) -> None:
         ctypes.windll.user32.MessageBoxW(
-            0, msg, "Zapret2 — предупреждение", 0x30)
+            0, msg, "Zapret2 - предупреждение", 0x30)
 
     s = str(exe_dir)
     low = s.lower() + "\\"
@@ -131,7 +131,7 @@ def _check_launch_location(exe_dir: Path) -> None:
             "Программа запущена из архива (временная папка):\n\n"
             f"{s}\n\n"
             "При запуске из архива Windows распаковывает программу во временную "
-            "папку — списки, пресеты и настройки будут потеряны при её очистке.\n\n"
+            "папку - списки, пресеты и настройки будут потеряны при её очистке.\n\n"
             "Распакуйте ZIP в отдельную папку (например C:\\Zapret2GUI\\) "
             "и запускайте программу оттуда.")
         return
@@ -140,14 +140,14 @@ def _check_launch_location(exe_dir: Path) -> None:
         show(
             "Программа запущена прямо с рабочего стола.\n\n"
             "При первом обновлении данных рядом с программой появятся папки "
-            "и файлы (bin, lua, presets...) — рабочий стол замусорится.\n\n"
+            "и файлы (bin, lua, presets...) - рабочий стол замусорится.\n\n"
             "Создайте папку (например C:\\Zapret2GUI\\), перенесите программу "
             "туда и запускайте из подпапки.")
         return
     if "\\downloads\\" in low or low.rstrip("\\").endswith("\\downloads"):
         show(
             "Программа запущена из папки Загрузки.\n\n"
-            "Файлы из браузера несут пометку «из интернета» — антивирус проверяет "
+            "Файлы из браузера несут пометку «из интернета» - антивирус проверяет "
             "их агрессивнее, а папка часто чистится. Рекомендую перенести "
             "программу в отдельную папку (например C:\\Zapret2GUI\\).")
         return
@@ -181,7 +181,7 @@ def main_gui() -> None:
             "Не удалось загрузить интерфейс (webview).\n\n"
             "Убедитесь, что установлен WebView2 Runtime:\n"
             "https://developer.microsoft.com/microsoft-edge/webview2/",
-            "Zapret2 — ошибка", 0x30)
+            "Zapret2 - ошибка", 0x30)
         return
 
     from server.server import init, create_server, stop_server
@@ -242,13 +242,13 @@ def main_gui() -> None:
         window.events.closing += on_closing
         webview.start()
     except Exception:
-        # у pythonw нет консоли — молча падать нельзя.
+        # у pythonw нет консоли - молча падать нельзя.
         ctypes.windll.user32.MessageBoxW(
             0,
             "Ошибка запуска интерфейса (WebView2).\n\n"
             "Убедитесь, что установлен WebView2 Runtime:"
             " https://developer.microsoft.com/microsoft-edge/webview2/",
-            "Zapret2 — ошибка", 0x30)
+            "Zapret2 - ошибка", 0x30)
     print("[zapret2] Goodbye.")
 
 

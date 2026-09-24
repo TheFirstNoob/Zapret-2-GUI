@@ -14,7 +14,7 @@
         <div class="brand-logo">Z2</div>
         <div class="brand-text">
           <div class="brand-name">Zapret2</div>
-          <div class="brand-ver" id="appVersion">—</div>
+          <div class="brand-ver" id="appVersion">-</div>
         </div>
       </div>
 
@@ -82,7 +82,7 @@
           <label class="side-btn" for="settingsImportFile" aria-label="Импорт настроек" data-popover-title="Импорт настроек" data-popover="Восстановит настройки и списки из ZIP-архива, сохранённого кнопкой экспорта.">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
           </label>
-          <button class="side-btn" id="sideInfo" aria-label="О программе" data-popover-title="О программе" data-popover="Версия, тип сборки, SHA256 exe, ключ подписи обновлений и кнопка проверки обновлений. Плюс ссылки на GitHub — там можно задать вопрос или сообщить о проблеме.">
+          <button class="side-btn" id="sideInfo" aria-label="О программе" data-popover-title="О программе" data-popover="Версия, тип сборки, SHA256 exe, ключ подписи обновлений и кнопка проверки обновлений. Плюс ссылки на GitHub - там можно задать вопрос или сообщить о проблеме.">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
           </button>
         </div>
@@ -110,7 +110,7 @@
         <section id="page-main" class="page active">
 
             <div id="conflictBanner" class="notice notice-fail" hidden>
-              <span>Одновременно запущены Zapret 1 и Zapret 2 — обход не будет работать.</span>
+              <span>Одновременно запущены Zapret 1 и Zapret 2 - обход не будет работать.</span>
               <button class="btn btn-sm" id="btnStopZ1Now">Остановить Zapret 1</button>
             </div>
 
@@ -138,19 +138,19 @@
               </div>
             </div>
 
-            <!-- О программе: честное «что делает и какие данные» — один раз -->
+            <!-- О программе: честное «что делает и какие данные» - один раз -->
             <div class="notice-card" id="noticeCard" hidden>
               <div class="tour-head">
-                <span class="tour-title">О программе — коротко и честно</span>
+                <span class="tour-title">О программе - коротко и честно</span>
                 <button class="banner-x" id="noticeClose" aria-label="Понятно" title="Понятно">×</button>
               </div>
               <ul class="notice-list">
-                <li><b>Что делает:</b> обход блокировок через драйвер WinDivert (ставится автоматически при запуске обхода); служба автозапуска — только по вашему желанию; для части стратегий включается системная настройка TCP timestamps.</li>
+                <li><b>Что делает:</b> обход блокировок через драйвер WinDivert (ставится автоматически при запуске обхода); служба автозапуска - только по вашему желанию; для части стратегий включается системная настройка TCP timestamps.</li>
                 <li><b>Данные:</b> телеметрии нет. Журналы программы лежат в её папке и никуда не уходят; отчёты для поддержки создаются локально и передаются только если вы сами их отправите.</li>
-                <li><b>Сеть:</b> только проверка обновлений (GitHub) и сетевые пробы для диагностики. Права администратора — лишь для драйвера и службы.</li>
+                <li><b>Сеть:</b> только проверка обновлений (GitHub) и сетевые пробы для диагностики. Права администратора - лишь для драйвера и службы.</li>
               </ul>
               <div class="notice-foot">
-                <span class="meta">Подробнее — README в папке программы.</span>
+                <span class="meta">Подробнее - README в папке программы.</span>
                 <button class="btn btn-sm" id="noticeOk">Понятно</button>
               </div>
             </div>
@@ -168,7 +168,7 @@
                 <div class="head-right">
                   <button class="btn btn-go" id="btnZ2Toggle">Запустить</button>
                   <span class="state" id="z2State">
-                    <span class="dot dot-unknown"></span><span class="state-text">—</span>
+                    <span class="dot dot-unknown"></span><span class="state-text">-</span>
                   </span>
                 </div>
               </div>
@@ -176,7 +176,7 @@
               <div class="param-row wide">
                 <div class="param-main">
                   <div class="param-title">Активная стратегия<span class="param-tag">winws2</span></div>
-                  <div class="param-desc">Правила, которыми программа обходит блокировки. Не знаете, что выбрать — оставьте default.</div>
+                  <div class="param-desc">Правила, которыми программа обходит блокировки. Не знаете, что выбрать - оставьте default.</div>
                   <div class="param-hint" id="strategyApplyHint" hidden></div>
                 </div>
                 <div class="param-ctl">
@@ -201,13 +201,13 @@
                   <div class="head-desc">автозапуск Zapret 2 при загрузке</div>
                 </div>
                 <div class="head-right">
-                  <span class="state" id="svcState"><span class="dot dot-off"></span><span class="state-text st-mute">—</span></span>
+                  <span class="state" id="svcState"><span class="dot dot-off"></span><span class="state-text st-mute">-</span></span>
                 </div>
               </div>
               <div class="row">
                 <span class="meta" id="svcStatusText"></span>
                 <span class="svc-actions">
-                  <button class="btn" id="btnSvcRepair" data-popover-title="Починка драйвера" data-popover="Проверит службу драйвера WinDivert: исправит битый путь и включит отключённую службу. Если драйвер помечен на удаление — подскажет, что нужна перезагрузка.">Починить драйвер</button>
+                  <button class="btn" id="btnSvcRepair" data-popover-title="Починка драйвера" data-popover="Проверит службу драйвера WinDivert: исправит битый путь и включит отключённую службу. Если драйвер помечен на удаление - подскажет, что нужна перезагрузка.">Починить драйвер</button>
                   <button class="btn" id="btnSvcInstall" hidden>Установить службу</button>
                   <button class="btn btn-go" id="btnSvcStart" hidden>Запустить службу</button>
                   <button class="btn btn-stop" id="btnSvcStop" hidden>Остановить службу</button>
@@ -224,21 +224,21 @@
                 </div>
                 <div class="head-text">
                   <div class="head-title">Параметры запуска</div>
-                  <div class="head-desc">Дополнительно — обычно трогать не нужно.</div>
+                  <div class="head-desc">Дополнительно - обычно трогать не нужно.</div>
                 </div>
                 <div class="head-right"><span class="opt-tag">Только Zapret 2</span></div>
               </summary>
 
               <div class="toggles-overlay" id="togglesOverlay" hidden>
-                Настройки ниже относятся к Zapret 2 — сейчас запущен Zapret 1.
+                Настройки ниже относятся к Zapret 2 - сейчас запущен Zapret 1.
               </div>
 
               <div class="param-rows">
                 <div class="param-row">
                   <div class="param-main">
                     <div class="param-title">Игровые порты<span class="param-tag">GameFilter</span></div>
-                    <div class="param-desc">Открывает обходу порты 1024–65535 (игры, голосовые чаты).</div>
-                    <div class="param-hint">Если игра не работает без него — включите.</div>
+                    <div class="param-desc">Открывает обходу порты 1024-65535 (игры, голосовые чаты).</div>
+                    <div class="param-hint">Простой вариант - включите, если игра не подключается. Точечно под конкретную игру - вкладка <a href="#games">Игровые блокировки</a>.</div>
                   </div>
                   <div class="param-ctl">
                     <select class="input input-sm" id="toggleGameFilter">
@@ -258,7 +258,7 @@
                     <span class="opt-mode-hint" id="voiceModeHint"></span>
                   </div>
                   <div class="param-ctl">
-                    <select class="input input-sm" id="toggleDiscordVoice" data-popover-title="Режимы Discord Voice" data-popover="Стандарт — обычная обработка голосового трафика. UDP-длина — меняет длину UDP-пакетов: помогает, если голос рвётся или не идёт совсем. Обычно достаточно «Выключено».">
+                    <select class="input input-sm" id="toggleDiscordVoice" data-popover-title="Режимы Discord Voice" data-popover="Стандарт - обычная обработка голосового трафика. UDP-длина - меняет длину UDP-пакетов: помогает, если голос рвётся или не идёт совсем. Обычно достаточно «Выключено».">
                       <option value="off">Выключено</option>
                       <option value="fake">Стандарт</option>
                       <option value="udplen">UDP-длина</option>
@@ -269,7 +269,7 @@
                 <div class="param-row">
                   <div class="param-main">
                     <div class="param-title">Альт-режим Discord<span class="param-tag">nodrop</span></div>
-                    <div class="param-desc">Прежний режим обработки Discord — для сетей, где базовый не пробивает «холодный старт».</div>
+                    <div class="param-desc">Прежний режим обработки Discord - для сетей, где базовый не пробивает «холодный старт».</div>
                     <div class="param-hint">Включайте, если Discord не открывается, а остальное работает.</div>
                   </div>
                   <div class="param-ctl"><label class="switch"><input type="checkbox" id="toggleDiscordAlt"><span class="switch-track"><span class="switch-knob"></span></span></label></div>
@@ -296,7 +296,7 @@
                   <div class="param-main">
                     <div class="param-title">Авто-список<span class="param-tag">Auto Hostlist</span></div>
                     <div class="param-desc">Zapret сам добавит домен в обход, когда заметит блокировку.</div>
-                    <div class="param-hint">Держите включённым.</div>
+                    <div class="param-hint">Дело добровольное: помогает самому добирать новые блокировки. Особенно полезен для стратегии auto.</div>
                   </div>
                   <div class="param-ctl"><label class="switch"><input type="checkbox" id="toggleAutoHostlist"><span class="switch-track"><span class="switch-knob"></span></span></label></div>
                 </div>
@@ -305,7 +305,7 @@
                   <div class="param-main">
                     <div class="param-title">Общий IP-обход<span class="param-tag">ipset</span></div>
                     <div class="param-desc">Обрабатывать весь трафик в известных блокируемых подсетях, а не только по спискам доменов.</div>
-                    <div class="param-hint">Сильнее грузит систему.</div>
+                    <div class="param-hint">Включайте осознанно: может «задушить» то, что работало по доменам. Сравнить варианты с ipset и без - вкладка <a href="#cdn">CDN-стабилизация</a>.</div>
                   </div>
                   <div class="param-ctl"><label class="switch"><input type="checkbox" id="toggleIpFilter"><span class="switch-track"><span class="switch-knob"></span></span></label></div>
                 </div>
@@ -326,7 +326,7 @@
               </div>
             </details>
 
-            <!-- Zapret 1 — запасной вариант -->
+            <!-- Zapret 1 - запасной вариант -->
             <details class="panel panel-fallback" id="z1Panel">
               <summary class="card-head">
                 <div class="head-icon">
@@ -334,10 +334,10 @@
                 </div>
                 <div class="head-text">
                   <div class="head-title">Zapret 1</div>
-                  <div class="head-desc">запасной вариант — если Zapret 2 не справится (только для тех, у кого он есть)</div>
+                  <div class="head-desc">запасной вариант - если Zapret 2 не справится (только для тех, у кого он есть)</div>
                 </div>
                 <div class="head-right">
-                  <span class="state" id="z1State"><span class="dot dot-unknown"></span><span class="state-text">—</span></span>
+                  <span class="state" id="z1State"><span class="dot dot-unknown"></span><span class="state-text">-</span></span>
                 </div>
               </summary>
 
@@ -354,7 +354,7 @@
                   <span class="grid-title">Стратегия</span>
                   <span class="grid-tag">.bat</span>
                 </div>
-                <select class="input" id="z1StrategySelect" disabled><option value="">— сначала укажите папку —</option></select>
+                <select class="input" id="z1StrategySelect" disabled><option value="">- сначала укажите папку -</option></select>
                 <button class="btn" id="btnZ1Toggle">Запустить</button>
               </div>
             </details>
@@ -385,7 +385,7 @@
                       <div class="step-num">1</div>
                       <div>
                         <div class="step-name">Проверка системы</div>
-                        <div class="step-desc">Права, конфликты, тип блокировки — обычно несколько секунд.</div>
+                        <div class="step-desc">Права, конфликты, тип блокировки - обычно несколько секунд.</div>
                       </div>
                     </div>
                     <div class="step-actions">
@@ -401,7 +401,7 @@
                       <div class="step-num">2</div>
                       <div>
                         <div class="step-name">Подбор стратегии</div>
-                        <div class="step-desc">Каждая стратегия тестируется на Discord, YouTube и других сервисах (~12 сек на стратегию). Обычно весь подбор занимает 2–4 минуты, в конце — одна рекомендация.</div>
+                        <div class="step-desc">Каждая стратегия тестируется на Discord, YouTube и других сервисах (~12 сек на стратегию). Обычно весь подбор занимает 2-4 минуты, в конце - одна рекомендация.</div>
                       </div>
                     </div>
                   </div>
@@ -426,7 +426,7 @@
                         <input type="checkbox" class="cbx" id="extendedCheck">
                         <span class="opt-text">
                           <span class="opt-title">Расширенный режим <span class="opt-tag">Zapret 1 + анализ</span></span>
-                          <span class="opt-hint">сравнение с Zapret 1 и обычным интернетом, полный анализ комбинаций — дольше; обычному пользователю не нужно</span>
+                          <span class="opt-hint">сравнение с Zapret 1 и обычным интернетом, полный анализ комбинаций - дольше; обычному пользователю не нужно</span>
                         </span>
                       </label>
                     </details>
@@ -438,7 +438,7 @@
 
                 <div class="warning-banner">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                  <span>На время подбора обход будет перезапускаться с каждой стратегией. Возможно кратковременное отключение от сети — после теста защита вернётся сама (в том состоянии, что было до теста).</span>
+                  <span>На время подбора обход будет перезапускаться с каждой стратегией. Возможно кратковременное отключение от сети - после теста защита вернётся сама (в том состоянии, что было до теста).</span>
                 </div>
               </div>
             </div>
@@ -466,7 +466,7 @@
                       <th class="col-rate">Доступность</th>
                       <th class="col-mini">Discord</th>
                       <th class="col-mini">YouTube</th>
-                      <th class="col-rate" tabindex="0" data-popover-title="Хосты в тестере" data-popover="10/10 — зачётные хосты, по ним считается итоговый процент. В скобках — сколько всего проверено, включая контрольные и QUIC-хосты.">Хосты</th>
+                      <th class="col-rate" tabindex="0" data-popover-title="Хосты в тестере" data-popover="10/10 - зачётные хосты, по ним считается итоговый процент. В скобках - сколько всего проверено, включая контрольные и QUIC-хосты.">Хосты</th>
                     </tr>
                   </thead>
                   <tbody id="stratTbody">
@@ -495,7 +495,7 @@
               </div>
               <div class="head-text">
                 <div class="head-title">Диагностика программы</div>
-                <div class="head-desc">Права, конфликты, служба, пресет, связь и тип блокировки — обычно 5–15 секунд.</div>
+                <div class="head-desc">Права, конфликты, служба, пресет, связь и тип блокировки - обычно 5-15 секунд.</div>
               </div>
               <div class="head-right">
                 <button class="btn" id="diagCopyBtn" hidden>Скопировать отчёт</button>
@@ -516,17 +516,6 @@
               <div class="diag-idle-note">Тест выявит проблемы окружения и сети. Нажмите «Проверить» в шапке.</div>
             </div>
 
-            <div class="diag-scenarios">
-              <div class="diag-scen">
-                <b>YouTube открывается, а видео не идёт?</b>
-                <span>Плеер ходит на медиа-хосты через DNS-резолвер браузера (DoH) — смените провайдера в настройках браузера: Quad9 → Cloudflare → выключить DoH.</span>
-              </div>
-              <div class="diag-scen">
-                <b>Голос Discord не идёт?</b>
-                <span>Включите Discord Voice → «UDP-длина» в параметрах запуска; если не помогло — смените голосовой регион сервера в клиенте Discord.</span>
-              </div>
-            </div>
-
             <div class="diag-loading" id="diagLoading" hidden>
               <div class="spinner"></div>
               <div class="diag-loading-step">Выполняется проверка: <strong id="diagCurrent">…</strong></div>
@@ -540,12 +529,17 @@
                 <div class="rec-icon">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
                 </div>
-                <div class="rec-text">Есть проблемы с доступом к сервисам. Если нужно подобрать стратегию под ваш интернет — начните подбор.</div>
+                <div class="rec-text">Есть проблемы с доступом к сервисам. Если нужно подобрать стратегию под ваш интернет - начните подбор.</div>
                 <button class="btn btn-warn" onclick="location.hash='tester'">Начать подбор стратегии</button>
               </div>
             </div>
           </div>
 
+          <div class="panel diag-tips">
+            <div class="diag-tips-title">Если что-то не работает</div>
+            <div class="diag-tip"><b>YouTube открывается, а видео не идёт</b><span>смените DNS-провайдера (DoH) в настройках браузера: Quad9 → Cloudflare → выключить</span></div>
+            <div class="diag-tip"><b>Голос Discord не идёт</b><span>включите Discord Voice → «UDP-длина»; если не помогло - смените голосовой регион сервера</span></div>
+          </div>
         </section>
 
         <!-- ═══ Анализ приложения ═══ -->
@@ -576,7 +570,7 @@
                 <div class="probe-input-row">
                   <input class="input" id="probeProcInput" placeholder="напр. WardogsClient.exe или выберите из списка →" />
                   <select class="input" id="probeProcSelect">
-                    <option value="">— список процессов —</option>
+                    <option value="">- список процессов -</option>
                   </select>
                   <button class="btn" id="probeScanBtn" title="Обновить список процессов с сетью">Сканировать</button>
                 </div>
@@ -677,7 +671,7 @@
                   <div class="help-ok">Правильно: <code class="code-tag">1.2.3.4</code> · <code class="code-tag">198.51.100.0/24</code></div>
                 </div>
               </div>
-              <div class="help-note"><b>В обход</b> — Zapret обходит принудительно; <b>не трогать</b> — пропускает как есть. «Не трогать» сильнее: если домен есть в обоих списках, обход на него действовать не будет. Ошибочные строки подсвечиваются и блокируют сохранение.</div>
+              <div class="help-note"><b>В обход</b> - Zapret обходит принудительно; <b>не трогать</b> - пропускает как есть. «Не трогать» сильнее: если домен есть в обоих списках, обход на него действовать не будет. Ошибочные строки подсвечиваются и блокируют сохранение.</div>
             </div>
           </div>
 
@@ -686,10 +680,10 @@
             <div class="list-card">
               <div class="list-header">
                 <div class="list-title-row">
-                  <span class="list-title">Домены — в обход</span>
+                  <span class="list-title">Домены - в обход</span>
                   <span class="count-badge" id="domIncCount">0</span>
                 </div>
-                <div class="list-desc">Заблокированный сайт, которого нет в стандартных списках, — Zapret будет обходить его всегда, при любой стратегии.</div>
+                <div class="list-desc">Заблокированный сайт, которого нет в стандартных списках, - Zapret будет обходить его всегда, при любой стратегии.</div>
               </div>
               <div class="editor-wrapper">
                 <div class="line-gutter" id="domIncNums" aria-hidden="true">1</div>
@@ -705,10 +699,10 @@
             <div class="list-card">
               <div class="list-header">
                 <div class="list-title-row">
-                  <span class="list-title">Домены — не трогать</span>
+                  <span class="list-title">Домены - не трогать</span>
                   <span class="count-badge" id="domExcCount">0</span>
                 </div>
-                <div class="list-desc">Сайт, которому обход мешает (не открывается, тормозит), — Zapret будет пропускать его как есть.</div>
+                <div class="list-desc">Сайт, которому обход мешает (не открывается, тормозит), - Zapret будет пропускать его как есть.</div>
               </div>
               <div class="editor-wrapper">
                 <div class="line-gutter" id="domExcNums" aria-hidden="true">1</div>
@@ -724,7 +718,7 @@
             <details class="list-card">
               <summary class="list-header">
                 <div class="list-title-row">
-                  <span class="list-title">IP-сети — в обход</span>
+                  <span class="list-title">IP-сети - в обход</span>
                   <span class="count-badge" id="ipIncCount">0</span>
                 </div>
                 <div class="list-desc">Подсети, которые обходятся всегда. Нужно при блокировке по IP-адресу, когда сайт не открывается независимо от имени.</div>
@@ -743,10 +737,10 @@
             <details class="list-card">
               <summary class="list-header">
                 <div class="list-title-row">
-                  <span class="list-title">IP-сети — не трогать</span>
+                  <span class="list-title">IP-сети - не трогать</span>
                   <span class="count-badge" id="ipExcCount">0</span>
                 </div>
-                <div class="list-desc">Свои и локальные сети, которые обход не должен трогать. По умолчанию — приватные диапазоны.</div>
+                <div class="list-desc">Свои и локальные сети, которые обход не должен трогать. По умолчанию - приватные диапазоны.</div>
               </summary>
               <div class="editor-wrapper">
                 <div class="line-gutter" id="ipExcNums" aria-hidden="true">1</div>
@@ -765,7 +759,7 @@
             <div class="card-head">
               <div class="head-text">
                 <div class="head-title">Здоровье списков</div>
-                <div class="head-desc">Дубли, повторы уже добавленных записей и конфликты «в обход ↔ не трогать» — включая правки через блокнот.</div>
+                <div class="head-desc">Дубли, повторы уже добавленных записей и конфликты «в обход ↔ не трогать» - включая правки через блокнот.</div>
               </div>
               <div class="head-right" style="display:flex;gap:8px;">
                 <button class="btn btn-sm" id="btnListsCheck">Проверить</button>
@@ -788,7 +782,7 @@
                 <div class="head-desc">Обход одним провайдерам необходим, у других ломает доступ</div>
               </div>
               <div class="head-right">
-                <span class="state" id="contestedProt"><span class="dot dot-unknown"></span><span class="state-text st-mute">—</span></span>
+                <span class="state" id="contestedProt"><span class="dot dot-unknown"></span><span class="state-text st-mute">-</span></span>
               </div>
             </div>
 
@@ -797,7 +791,7 @@
               <span class="step-pill">1. Проба</span>
               <span class="step-arrow">→</span>
               <span class="step-pill">2. Переключить тумблер «в обход»</span>
-              <span class="meta">изменения применяются сразу — перезапуск обхода не нужен</span>
+              <span class="meta">изменения применяются сразу - перезапуск обхода не нужен</span>
             </div>
 
             <div class="table-head">
@@ -827,7 +821,7 @@
             </div>
 
             <div class="games-info-strip">
-              <div class="games-info-text"><b>Домены</b> включаются в обход сразу (к новым подключениям); переключатели сохраняются автоматически. <b>UDP-фикс</b> — после перезапуска обхода: нажмите «Переустановить службу» справа.</div>
+              <div class="games-info-text"><b>Домены</b> включаются в обход сразу (к новым подключениям); переключатели сохраняются автоматически. <b>UDP-фикс</b> - после перезапуска обхода: нажмите «Переустановить службу» справа.</div>
               <div class="games-search">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                 <input type="text" id="gamesSearch" aria-label="Поиск игры или домена" placeholder="Поиск игры или домена…">
@@ -858,21 +852,21 @@
                 <div class="help-item">
                   <h4>Когда запускать скан</h4>
                   <p>Если зависают игровые обновления, не подгружаются голосовые каналы или картинки в Discord, после смены провайдера или пресета.</p>
-                  <div class="help-ok"><b>Рекомендация:</b> не чаще раза в пару недель — каждая кнопка «В обход» добавляет хост в постоянную обработку.</div>
+                  <div class="help-ok"><b>Рекомендация:</b> не чаще раза в пару недель - каждая кнопка «В обход» добавляет хост в постоянную обработку.</div>
                 </div>
                 <div class="help-item">
                   <h4>Значения статусов и кнопок</h4>
                   <div class="legend">
-                    <div class="lh-row"><code>«В обход»</code><span>хост жив без защиты, но режется под обходом и лечится. Домен — в «Включения», применится к новым подключениям.</span></div>
-                    <div class="lh-row"><code>«В стоп-лист»</code><span>хост живой, но под обходом умирает. Домен — в «Исключения».</span></div>
-                    <div class="lh-row"><code>«чинит»</code><span>мёртв без IP-обхода, с ним жив — кнопка добавляет IP в ipset-включения.</span></div>
-                    <div class="lh-row"><code>«ломает»</code><span>IP-обход глушит хост — кнопка исключает IP из модификации трафика.</span></div>
-                    <div class="lh-row"><code>не лечится</code><span>ТСПУ режет глубже обычного — обход бессилен, нужен WARP.</span></div>
-                    <div class="lh-row"><code>хост мёртв</code><span>не отвечает даже без защиты — это не блокировка.</span></div>
+                    <div class="lh-row"><code>«В обход»</code><span>хост жив без защиты, но режется под обходом и лечится. Домен - в «Включения», применится к новым подключениям.</span></div>
+                    <div class="lh-row"><code>«В стоп-лист»</code><span>хост живой, но под обходом умирает. Домен - в «Исключения».</span></div>
+                    <div class="lh-row"><code>«чинит»</code><span>мёртв без IP-обхода, с ним жив - кнопка добавляет IP в ipset-включения.</span></div>
+                    <div class="lh-row"><code>«ломает»</code><span>IP-обход глушит хост - кнопка исключает IP из модификации трафика.</span></div>
+                    <div class="lh-row"><code>не лечится</code><span>ТСПУ режет глубже обычного - обход бессилен, нужен WARP.</span></div>
+                    <div class="lh-row"><code>хост мёртв</code><span>не отвечает даже без защиты - это не блокировка.</span></div>
                   </div>
                 </div>
               </div>
-              <div class="help-note">Правки «В обход»/«В стоп-лист» идут в списки доменов (hostlist-режим) или ipset-списки (ipset-режим) — по текущему положению тоггла. Во время скана защита на короткое время выключается и возвращается автоматически.</div>
+              <div class="help-note">Правки «В обход»/«В стоп-лист» идут в списки доменов (hostlist-режим) или ipset-списки (ipset-режим) - по текущему положению тоггла. Во время скана защита на короткое время выключается и возвращается автоматически.</div>
             </div>
           </div>
 
@@ -895,8 +889,8 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
               </div>
               <div class="idle-title">Тест стабильности CDN-сервисов</div>
-              <div class="idle-note">Прогон выявляет хосты Cloudflare, AWS, Akamai, где обход ломает связь, и находит оптимальный режим для «Общего IP-обхода». Занимает 2–4 минуты. Нажмите «Сканировать CDN» в шапке.</div>
-              <div class="meta">На время скана обход будет кратко отключаться (нужно для честного сравнения) — после проверки вернётся сам.</div>
+              <div class="idle-note">Прогон выявляет хосты Cloudflare, AWS, Akamai, где обход ломает связь, и находит оптимальный режим для «Общего IP-обхода». Занимает 2-4 минуты. Нажмите «Сканировать CDN» в шапке.</div>
+              <div class="meta">На время скана обход будет кратко отключаться (нужно для честного сравнения) - после проверки вернётся сам.</div>
             </div>
 
             <div class="scan-progress-panel" id="cdnScanning" hidden>
@@ -936,21 +930,21 @@
               <div class="help-grid">
                 <div class="help-item">
                   <h4>Что это</h4>
-                  <p>110 проб к IP-диапазонам разных хостинг-провайдеров (Hetzner, DigitalOcean, OVH, Cloudflare, AWS…) с «белым» SNI и загрузкой ~32 КБ — проверка ТСПУ напрямую: какой диапазон режется целиком, где stateful DPI режет поток на середине.</p>
+                  <p>110 проб к IP-диапазонам разных хостинг-провайдеров (Hetzner, DigitalOcean, OVH, Cloudflare, AWS…) с «белым» SNI и загрузкой ~32 КБ - проверка ТСПУ напрямую: какой диапазон режется целиком, где stateful DPI режет поток на середине.</p>
                   <div class="help-ok"><b>Когда запускать:</b> сайты/игры не работают при живом обходе; при обращениях в поддержку. Редкий диагностический инструмент.</div>
                 </div>
                 <div class="help-item">
                   <h4>Значения статусов</h4>
                   <div class="legend">
                     <div class="lh-row"><code>OK</code><span>диапазон отвечает: соединение, TLS и загрузка 32 КБ прошли без обрыва.</span></div>
-                    <div class="lh-row"><code>DETECTED</code><span>поток обрезан на N КБ — stateful DPI. Характерно для CDN-класса: лечится (см. «CDN-стабилизация»).</span></div>
-                    <div class="lh-row"><code>SYN DROP</code><span>нет ответа на SYN — режется диапазон целиком (иногда список протухает).</span></div>
-                    <div class="lh-row"><code>TCP RST / TLS RST</code><span>соединение рвётся на этапе TCP или TLS — точечный блок.</span></div>
+                    <div class="lh-row"><code>DETECTED</code><span>поток обрезан на N КБ - stateful DPI. Характерно для CDN-класса: лечится (см. «CDN-стабилизация»).</span></div>
+                    <div class="lh-row"><code>SYN DROP</code><span>нет ответа на SYN - режется диапазон целиком (иногда список протухает).</span></div>
+                    <div class="lh-row"><code>TCP RST / TLS RST</code><span>соединение рвётся на этапе TCP или TLS - точечный блок.</span></div>
                     <div class="lh-row"><code>TIMEOUT / ERROR</code><span>не дождались ответа / ошибка проверки.</span></div>
                   </div>
                 </div>
               </div>
-              <div class="help-note"><b>Не паникуйте из-за статусов:</b> 100% «OK» не требуется — с моими пресетами работает ~99% сайтов. Если большинство проб «OK» и сайты открываются — делать ничего не надо. Мобильная сеть меняет картину от часа к часу: перед выводами прогоните скан повторно с паузой. На время скана обход останавливается и возвращается автоматически.</div>
+              <div class="help-note"><b>Не паникуйте из-за статусов:</b> 100% «OK» не требуется - с моими пресетами работает ~99% сайтов. Если большинство проб «OK» и сайты открываются - делать ничего не надо. Мобильная сеть меняет картину от часа к часу: перед выводами прогоните скан повторно с паузой. На время скана обход останавливается и возвращается автоматически.</div>
             </div>
           </div>
 
@@ -961,7 +955,7 @@
               </div>
               <div class="head-text">
                 <div class="head-title">Скан диапазонов (110 IP)</div>
-                <div class="head-desc">Защита временно останавливается и возвращается автоматически. Скан 3–8 минут, потом — таблица статусов и что делать.</div>
+                <div class="head-desc">Защита временно останавливается и возвращается автоматически. Скан 3-8 минут, потом - таблица статусов и что делать.</div>
               </div>
               <div class="head-right">
                 <button class="btn btn-primary" id="asnScanBtn">Запустить ASN-скан</button>
@@ -973,14 +967,14 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
               </div>
               <div class="idle-title">Прямая проверка сети через ТСПУ</div>
-              <div class="idle-note">110 проб к IP-диапазонам хостинг-провайдеров покажут, какие подсети режутся целиком, где stateful DPI режет поток на середине, а что отвечает нормально. Занимает 3–8 минут. Нажмите «Запустить ASN-скан» в шапке.</div>
+              <div class="idle-note">110 проб к IP-диапазонам хостинг-провайдеров покажут, какие подсети режутся целиком, где stateful DPI режет поток на середине, а что отвечает нормально. Занимает 3-8 минут. Нажмите «Запустить ASN-скан» в шапке.</div>
             </div>
 
             <div class="scan-progress-panel" id="asnScanning" hidden>
               <div class="scan-top">
                 <div class="scan-status">
                   <div class="scan-status-title" id="asnProgressTitle">Подготовка…</div>
-                  <div class="scan-status-sub">Пробы идут при выключенном обходе — меряем ТСПУ напрямую</div>
+                  <div class="scan-status-sub">Пробы идут при выключенном обходе - меряем ТСПУ напрямую</div>
                 </div>
                 <div class="scan-right">
                   <span class="live-timer-badge mono" id="asnProgressPct">0%</span>
@@ -1004,12 +998,12 @@
     <div class="modal">
       <button class="modal-x" id="collectClose" aria-label="Закрыть">×</button>
       <div class="modal-title" id="collectFormTitle">Отчёт для поддержки</div>
-      <p class="modal-desc">Будет сохранён ZIP с результатами теста, версией Windows и сетевыми настройками. Личные файлы и пароли не собираются. Отчёт сохраняется на вашем компьютере — программа никуда его не отправляет.</p>
+      <p class="modal-desc">Будет сохранён ZIP с результатами теста, версией Windows и сетевыми настройками. Личные файлы и пароли не собираются. Отчёт сохраняется на вашем компьютере - программа никуда его не отправляет.</p>
       <label class="field"><span class="field-label">Город</span><input class="input" id="collectCity" placeholder="Москва"></label>
       <label class="field"><span class="field-label">Провайдер</span><input class="input" id="collectIsp" placeholder="Ростелеком"></label>
       <div class="drop-zone" id="collectBatZone">
         <input type="file" accept=".bat" id="collectBatInput" hidden>
-        <span id="collectBatLabel">Файл стратегии Zapret 1 (.bat) — по желанию</span>
+        <span id="collectBatLabel">Файл стратегии Zapret 1 (.bat) - по желанию</span>
       </div>
       <label class="opt-line"><input type="checkbox" class="cbx" id="collectConsent"><span>Согласен предоставить данные для анализа</span></label>
       <div class="modal-actions">
@@ -1023,7 +1017,7 @@
   <div id="vpnOverlay" class="modal-overlay" role="dialog" aria-modal="true">
     <div class="modal">
       <div class="modal-title">Обнаружен туннель WARP/VPN</div>
-      <p class="modal-desc">Туннель исказит результаты теста — отключите Cloudflare WARP и проверьте снова.<br><span class="meta" id="vpnDetails"></span></p>
+      <p class="modal-desc">Туннель исказит результаты теста - отключите Cloudflare WARP и проверьте снова.<br><span class="meta" id="vpnDetails"></span></p>
       <div class="modal-status" id="vpnStatus"></div>
       <div class="modal-actions">
         <button class="btn" id="vpnCancelBtn">Отмена</button>
@@ -1041,7 +1035,7 @@
       <div class="modal-status" id="needZapret1Status"></div>
       <div class="modal-actions">
         <button class="btn" id="needZ1CancelBtn">Отмена</button>
-        <button class="btn btn-primary" id="checkZapret1Btn">Я запустил — продолжить</button>
+        <button class="btn btn-primary" id="checkZapret1Btn">Я запустил - продолжить</button>
       </div>
     </div>
   </div>
@@ -1067,7 +1061,7 @@
         <button class="btn btn-primary" id="appInfoCheck">Проверить обновления</button>
       </div>
       <div class="modal-links">
-        <a href="https://github.com/TheFirstNoob/Zapret-2-GUI/issues" target="_blank" rel="noopener">Вопрос или проблема — GitHub Issues</a>
+        <a href="https://github.com/TheFirstNoob/Zapret-2-GUI/issues" target="_blank" rel="noopener">Вопрос или проблема - GitHub Issues</a>
         <a href="https://github.com/TheFirstNoob/Zapret-2-GUI" target="_blank" rel="noopener">Репозиторий проекта</a>
       </div>
     </div>

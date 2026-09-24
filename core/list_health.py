@@ -1,8 +1,8 @@
-"""list_health.py — здоровье списков: дубли, пересечения, покрытие доменов.
+"""list_health.py - здоровье списков: дубли, пересечения, покрытие доменов.
 
 Универсальный слой для всех блоков, которые добавляют записи в списки
 (probe, «Спорные домены», CDN-стабилизатор), и для фоновой проверки при
-старте. Пользователь может править списки и в блокноте — поэтому проверка
+старте. Пользователь может править списки и в блокноте - поэтому проверка
 идёт по файлам, а не по истории API.
 """
 from __future__ import annotations
@@ -47,7 +47,7 @@ def _files(root: Path) -> dict[str, list[str]]:
 
 
 def coverage(root: Path, domains: list[str]) -> dict[str, dict]:
-    """Для каждого домена: где он уже есть — {includes: [файлы], excludes: [...]}."""
+    """Для каждого домена: где он уже есть - {includes: [файлы], excludes: [...]}."""
     files = _files(root)
     out: dict[str, dict] = {}
     for raw in domains:
@@ -110,7 +110,7 @@ def check_health(root: Path) -> dict:
         })
 
     # Пользователю показываем только то, что он может исправить: дубли/кросс/
-    # конфликты с участием его файлов. Пересечения bundled-файлов — наша зона
+    # конфликты с участием его файлов. Пересечения bundled-файлов - наша зона
     # (не должны вечно висеть у него предупреждением).
     dups_user = [d for d in dups if d["file"] in USER_EDITABLE]
     cross_user = [c for c in cross if any(n in USER_EDITABLE for n in c["files"])]
@@ -233,7 +233,7 @@ def add_domain(root: Path, domain: str, mode: str = "include") -> dict:
     blocked = [n for n in exc_files if n in DOMAIN_EXCLUDE_BUNDLED]
     if blocked:
         return {"result": "blocked", "files": blocked,
-                "message": f"Домен в стандартных исключениях ({blocked[0]}) — "
+                "message": f"Домен в стандартных исключениях ({blocked[0]}) - "
                            "исключение сильнее, обход не сработает"}
     moved = _remove_entry(root / "lists" / DOMAIN_EXCLUDE_USER, d)
     _append_entry(root / "lists" / DOMAIN_INCLUDE_USER, d)

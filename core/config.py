@@ -60,7 +60,7 @@ class ConfigManager:
     def save(self, config: AppConfig) -> bool:
         try:
             # атомарная запись (L5): обрыв посреди write_text делал конфиг
-            # битым json — сбрасывался в дефолт
+            # битым json - сбрасывался в дефолт
             tmp = self.config_path.with_suffix(".tmp")
             tmp.write_text(
                 json.dumps(asdict(config), indent=2, ensure_ascii=False),

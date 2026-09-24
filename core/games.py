@@ -1,10 +1,10 @@
 """Игровые блокировки: домены (авторизация) + UDP-правила (сессия) по играм.
 
-Данные — ``games.json`` в корне программы (USER-файл, обновления не трогают).
+Данные - ``games.json`` в корне программы (USER-файл, обновления не трогают).
 Домены включённых игр собираются в ``lists/list-games.txt`` (рефкаунт: домен
 держится, пока нужен хотя бы одной включённой игре) и инжектятся лаунчером.
-UDP-правила превращаются в профили winws2 (fake + payload=all — иначе lua не
-трогает unknown-UDP — только старт соединения, 1 фейк).
+UDP-правила превращаются в профили winws2 (fake + payload=all - иначе lua не
+трогает unknown-UDP - только старт соединения, 1 фейк).
 """
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ def default_games() -> dict:
              "note": "вход в профиль и токен сессии"},
             {"domain": "api.epicgames.dev", "on": True, "warn": True,
              "tag": "Общий сервис",
-             "note": "Epic Online Services — нужен всем играм Epic, "
+             "note": "Epic Online Services - нужен всем играм Epic, "
                      "не только этой"},
         ],
         "udp": [{
@@ -56,7 +56,7 @@ def _games_path(root: Path) -> Path:
 
 
 def load_games(root: Path) -> dict:
-    """Читает games.json; при отсутствии/поломке — дефолт (и создаёт файл)."""
+    """Читает games.json; при отсутствии/поломке - дефолт (и создаёт файл)."""
     path = _games_path(root)
     if path.exists():
         try:
@@ -103,7 +103,7 @@ def save_games(root: Path, data: dict) -> bool:
 
 
 def enabled_domains(data: dict) -> list[str]:
-    """Домены включённых игр (on=true), без дублей — рефкаунт через union."""
+    """Домены включённых игр (on=true), без дублей - рефкаунт через union."""
     out: list[str] = []
     for game in data.get("games", []):
         if not game.get("enabled"):
@@ -153,7 +153,7 @@ def sync_domain_list(root: Path, data: dict | None = None) -> Path:
 
 
 def write_cidr_file(root: Path, rule: dict) -> Path:
-    """lists/games/<id>.txt — CIDR-файл для --ipset одного UDP-правила."""
+    """lists/games/<id>.txt - CIDR-файл для --ipset одного UDP-правила."""
     root = Path(root)
     folder = root / "lists" / CIDR_DIR
     folder.mkdir(parents=True, exist_ok=True)

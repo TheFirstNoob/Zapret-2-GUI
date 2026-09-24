@@ -25,14 +25,14 @@ from core.utils import (known_desktop_dir, short_path, windivert_image_dead,
 # Хост аплоада: 403 от Google Storage = соединение живо.
 DISCORD_UPLOAD_HOST = "discord-attachments-uploads-prd.storage.googleapis.com"
 
-# Проверки связи: хост, имя, тип ожидаемого кода (канарейка — обязательно 2xx-3xx).
+# Проверки связи: хост, имя, тип ожидаемого кода (канарейка - обязательно 2xx-3xx).
 # i.ytimg.com проверяется ДО www.youtube.com, чтобы YouTube TCP-квирк (§17:
 # TCP режется везде, браузер идёт через QUIC) объяснялся результатом CDN
 # вместо ложного красного креста.
 #
-# Discord-аплоад-хост ВЫЧЕРСНУТ из чеков (2026-09-12): его путь — клиентский
+# Discord-аплоад-хост ВЫЧЕРСНУТ из чеков (2026-09-12): его путь - клиентский
 # QUIC (§15), curl-проба сквозь десинк всегда 000 и неинформативна; постоянная
-# серая строка — только шум. Если файлы не отправляются — смотри «Анализ
+# серая строка - только шум. Если файлы не отправляются - смотри «Анализ
 # приложения» (UDP/захват).
 _NET_CHECKS = [
     ("www.google.com", "Интернет (канарейка)", "canary"),
@@ -44,7 +44,7 @@ _NET_CHECKS = [
 # QUIC-класс (§15/§17): браузер и клиент Дискорда ходят к этим хостам через
 # QUIC/свой TLS, а диагностика пробует «чужой» TLS-клиент (curl/openssl)
 # сквозь движок обхода. google-блок (fake+multisplit, drop+repeats) ломает
-# сторонний ClientHello — пробы дают 000 при работающем интернете. Для таких
+# сторонний ClientHello - пробы дают 000 при работающем интернете. Для таких
 # хостов красный крест = ложный: измеряется чужой клиент, не реальный опыт.
 _QUIC_QUIRK_HOSTS = {
     "www.google.com",
@@ -113,18 +113,18 @@ def _check_path(root_dir: Path) -> Check:
         return Check("path", "Путь установки", "ok", s)
     if str(short_path(root_dir)) != s:
         return Check("path", "Путь установки", "warn",
-                     f"{s} — в пути кириллица; программа работает через короткие имена. "
+                     f"{s} - в пути кириллица; программа работает через короткие имена. "
                      "Если появятся проблемы, перенесите в C:\\Zapret2GUI\\",
                      tech="8.3 short path fallback active")
     return Check("path", "Путь установки", "fail",
-                 f"{s} — в пути кириллица, а короткие имена недоступны: winws2 не запустится. "
+                 f"{s} - в пути кириллица, а короткие имена недоступны: winws2 не запустится. "
                  "Перенесите программу в папку без кириллицы.",
                  tech="no 8.3 names available")
 
 
 def _check_windivert_files(root_dir: Path) -> Check:
     """WinDivert-файлы на месте? AV (RiskTool-классификация) часто
-    УДАЛЯЕТ WinDivert64.sys — winws2 тогда стартует, но перехват не
+    УДАЛЯЕТ WinDivert64.sys - winws2 тогда стартует, но перехват не
     открывается: «windivert: error opening filter: file not found»
     (кейс друга 2026-09-13)."""
     bin_dir = root_dir / "bin"
@@ -133,7 +133,7 @@ def _check_windivert_files(root_dir: Path) -> Check:
                if not (bin_dir / f).exists()]
     if missing:
         return Check("windivert_files", "Файлы WinDivert", "fail",
-                     f"отсутствуют: {', '.join(missing)} — вероятно, антивирус их "
+                     f"отсутствуют: {', '.join(missing)} - вероятно, антивирус их "
                      "удалил (WinDivert классифицируется как RiskTool). Добавьте "
                      "папку программы в исключения антивируса и переустановите "
                      "программу из архива",
@@ -149,20 +149,20 @@ def _check_windivert_service(root_dir: Path) -> Check:
     state = windivert_service_state()
     if state is None:
         return Check("windivert_service", "Служба драйвера WinDivert", "ok",
-                     "не установлена — создастся при первом запуске обхода")
+                     "не установлена - создастся при первом запуске обхода")
     image, start = state
     dead = windivert_image_dead(image)
     if dead:
         return Check("windivert_service", "Служба драйвера WinDivert", "fail",
-                     f"службе драйвера указан несуществующий файл: {dead} — "
+                     f"службе драйвера указан несуществующий файл: {dead} - "
                      "вероятно, от старой установки (другой zapret/переезд папки). "
-                     "Нажмите «Починить» на главной или перезапустите обход — "
+                     "Нажмите «Починить» на главной или перезапустите обход - "
                      "программа исправит путь автоматически",
                      tech=f"ImagePath dead: {image}")
-    # Start=4 и DeleteFlag=1 у службы WinDivert — НОРМА: свой драйвер он
+    # Start=4 и DeleteFlag=1 у службы WinDivert - НОРМА: свой драйвер он
     # ставит disabled, грузит напрямую (sc query = RUNNING) и помечает службу
     # на удаление, чтобы она не висела в системе (проверено 2026-09-22).
-    # Реальная проблема — только несуществующий файл в ImagePath.
+    # Реальная проблема - только несуществующий файл в ImagePath.
     return Check("windivert_service", "Служба драйвера WinDivert", "ok",
                  f"ImagePath: {windivert_image_path(image)}",
                  tech=f"Start={start}")
@@ -188,19 +188,19 @@ def _check_launch_spot(root_dir: Path) -> Check:
     if "\\downloads\\" in low or low.rstrip("\\").endswith("\\downloads"):
         return Check("launch_spot", "Расположение программы", "warn",
                      "папка Загрузки: файлы несут пометку «из интернета» (антивирус "
-                     "агрессивнее) и часто чистятся — лучше отдельная папка, "
+                     "агрессивнее) и часто чистятся - лучше отдельная папка, "
                      "например C:\\Zapret2GUI\\",
                      tech="exe_dir inside Downloads")
     if "\\documents\\" in low or low.rstrip("\\").endswith("\\documents"):
         return Check("launch_spot", "Расположение программы", "warn",
                      "папка Документы может синхронизироваться (OneDrive) и "
-                     "блокировать файлы — лучше папка вне синхронизации",
+                     "блокировать файлы - лучше папка вне синхронизации",
                      tech="exe_dir inside Documents")
     desktop = known_desktop_dir()
     if desktop and root_dir == desktop:
         return Check("launch_spot", "Расположение программы", "warn",
                      "программа лежит прямо на рабочем столе: при первом обновлении "
-                     "данных рядом появятся папки и файлы программы — стол замусорится. "
+                     "данных рядом появятся папки и файлы программы - стол замусорится. "
                      "Перенесите в подпапку",
                      tech="exe_dir == Desktop directly")
     return Check("launch_spot", "Расположение программы", "ok", s)
@@ -236,18 +236,18 @@ def _check_debug_log(root_dir: Path, debug_enabled: bool) -> Check:
     size = log.stat().st_size
     if size > _DEBUG_LOG_WARN_BYTES:
         return Check("debug_log", "Debug-лог winws2", "fail",
-                     f"{size / 1024 / 1024:.0f} МБ — лог огромен! Выключите DEBUG-тоггл и удалите файл")
+                     f"{size / 1024 / 1024:.0f} МБ - лог огромен! Выключите DEBUG-тоггл и удалите файл")
     if debug_enabled:
         return Check("debug_log", "Debug-лог winws2", "warn",
-                     f"{size / 1024:.0f} КБ — DEBUG включён, это замедляет работу")
+                     f"{size / 1024:.0f} КБ - DEBUG включён, это замедляет работу")
     return Check("debug_log", "Debug-лог winws2", "ok",
-                 f"{size / 1024:.0f} КБ — остался от прошлого запуска с DEBUG, можно удалить")
+                 f"{size / 1024:.0f} КБ - остался от прошлого запуска с DEBUG, можно удалить")
 
 
 def _check_net() -> list[Check]:
     # Все пробы параллельно: TLS-проба сквозь десинк доходит до таймаута (6с)
-    # и HTTP-фолбэк добавляет свои секунды — последовательный перебор
-    # растягивал этап связи до ~40с. Пары задач по хосту — один этап ~6-8с.
+    # и HTTP-фолбэк добавляет свои секунды - последовательный перебор
+    # растягивал этап связи до ~40с. Пары задач по хосту - один этап ~6-8с.
     from concurrent.futures import ThreadPoolExecutor
 
     executor = ThreadPoolExecutor(max_workers=10)
@@ -271,32 +271,32 @@ def _check_net() -> list[Check]:
             # тогда как реальный опыт идёт через QUIC. Порядок:
             # 1) HTTP-80 фолбэк: живой HTTP = интернет жив;
             # 2) QUIC-квирк-хосты: warn вместо красного креста;
-            # 3) если HTTP тоже мёртв — classify_block (SNI-swap) отличает
+            # 3) если HTTP тоже мёртв - classify_block (SNI-swap) отличает
             #    «десинк ломает клиент/движок не берёт» от реального блока.
             if http_code is not None and http_code >= 100:
                 checks.append(Check(f"net_{host}", name, "ok",
-                                    "сайт отвечает (HTTP) — интернет работает",
+                                    "сайт отвечает (HTTP) - интернет работает",
                                     tech=f"TLS probe: no code (сторонний TLS-клиент "
                                          f"под обходом не проходит, квирк google-класса); "
-                                         f"HTTP {http_code} — сеть жива"))
+                                         f"HTTP {http_code} - сеть жива"))
                 continue
             quirk = host in _QUIC_QUIRK_HOSTS
             if quirk:
                 if kind == "upload_check":
                     # проба не измеряет клиентскую функцию: файлы Discord шлёт
-                    # через QUIC (§15) — curl-путь не показателен ни в какую
+                    # через QUIC (§15) - curl-путь не показателен ни в какую
                     # сторону, врать зелёным/пугать жёлтым нельзя
                     checks.append(Check(f"net_{host}", name, "skip",
                                         "автопроверка этот путь не измеряет: клиент Discord "
                                         "отправляет файлы через QUIC. Проверьте отправкой файла "
-                                        "в клиенте — если работает, всё в порядке",
+                                        "в клиенте - если работает, всё в порядке",
                                         tech="curl TLS: no code (сторонний клиент под обходом); "
                                              "этот чек неинформативен для QUIC-пути"))
                 else:
                     checks.append(Check(f"net_{host}", name, "warn",
                                         "сторонний TLS-клиент не проходит под обходом на этом хосте "
                                         "(известный квирк google-класса). Реальные браузер/клиент идут "
-                                        "через QUIC — проверьте в браузере: если работает, всё в порядке",
+                                        "через QUIC - проверьте в браузере: если работает, всё в порядке",
                                         tech="curl TLS: no code; HTTP also dead; "
                                              "IPv4 forced (браузер может ходить по IPv6/QUIC)"))
                 continue
@@ -305,45 +305,45 @@ def _check_net() -> list[Check]:
             bkind = kind_block.get("kind", "")
             if bkind == "sni_block":
                 checks.append(Check(f"net_{host}", name, "warn",
-                                    "IP живой, блокировка только по SNI — обход обязан брать этот хост. "
-                                    "Если сайт всё же не открывается — проблема в стратегии/списках, "
+                                    "IP живой, блокировка только по SNI - обход обязан брать этот хост. "
+                                    "Если сайт всё же не открывается - проблема в стратегии/списках, "
                                     "проверьте её в «Подборе стратегии»",
                                     tech=f"classify: {bkind}; {kind_block.get('tech', '')}"))
             else:
                 checks.append(Check(f"net_{host}", name, "fail",
-                                    "сайт не отвечает — соединение блокируется или обрывается",
+                                    "сайт не отвечает - соединение блокируется или обрывается",
                                     tech=f"curl: no HTTP code; classify: {bkind}"))
             continue
         if kind == "canary":
             if 200 <= code < 400:
                 checks.append(Check(f"net_{host}", name, "ok",
-                                    "сайт отвечает — интернет работает",
+                                    "сайт отвечает - интернет работает",
                                     tech=f"HTTP {code}"))
             else:
                 checks.append(Check(f"net_{host}", name, "warn",
-                                    "сайт отвечает, но с необычным ответом — соединение всё же есть",
+                                    "сайт отвечает, но с необычным ответом - соединение всё же есть",
                                     tech=f"HTTP {code}"))
         else:
             # Любой HTTP-код >= 100 = TLS-соединение прошло DPI.
-            # 403/404/520 — штатные ответы CDN на анонимный запрос.
+            # 403/404/520 - штатные ответы CDN на анонимный запрос.
             if code == 403:
-                detail = ("соединение работает — код 403 это нормальный ответ CDN "
+                detail = ("соединение работает - код 403 это нормальный ответ CDN "
                           "на анонимный запрос, это не блокировка")
             else:
-                detail = "сайт отвечает — соединение работает"
+                detail = "сайт отвечает - соединение работает"
             checks.append(Check(f"net_{host}", name, "ok", detail, tech=f"HTTP {code}"))
 
     # Зеркальная сторона YouTube-прикола (§17/§22): i.ytimg.com по TCP не
     # проходит (сторонний TLS-клиент под десинком), но youtube.com доступен,
-    # а браузер ходит через QUIC — аватары/видео работают.
+    # а браузер ходит через QUIC - аватары/видео работают.
     if any(c.id == "net_i.ytimg.com" and c.status in ("fail", "warn") for c in checks) and any(
             c.id == "net_www.youtube.com" and c.status == "ok" for c in checks):
         for c in checks:
             if c.id == "net_i.ytimg.com" and c.status in ("fail", "warn"):
                 c.status = "ok"
-                c.detail = ("YouTube работает (аватары, видео, комментарии) — сторонняя TLS-проба "
+                c.detail = ("YouTube работает (аватары, видео, комментарии) - сторонняя TLS-проба "
                             "к CDN не проходит, браузер ходит через QUIC, это не блокировка")
-                c.tech = "TLS probe dropped; www.youtube.com reachable — QUIC path OK"
+                c.tech = "TLS probe dropped; www.youtube.com reachable - QUIC path OK"
     return checks
 
 
@@ -356,11 +356,11 @@ def classify_block(host: str, timeout: float = 2.5, max_ips: int = 2) -> dict:
     3. TLS-рукопожатие с РЕАЛЬНЫМ SNI -> "ok" (сайт доступен);
     4. TLS к ТОМУ ЖЕ IP с чужим SNI
        (google/cloudflare)            -> "sni_block": IP чист, блок только по
-       SNI — именно это обязан обходить десинк; если и чужой SNI не проходит
+       SNI - именно это обязан обходить десинк; если и чужой SNI не проходит
        -> "tls_block" (блок не по SNI: уровень IP/порта или глубокий DPI).
 
-    SNI-swap — ключевой валидатор: при "sni_block" работающий zapret ОБЯЗАН
-    пробить сайт; если ни один пресет не пробивает — проблема в движке/списках,
+    SNI-swap - ключевой валидатор: при "sni_block" работающий zapret ОБЯЗАН
+    пробить сайт; если ни один пресет не пробивает - проблема в движке/списках,
     а не «DPI слишком сильный». Исключений не бросает; TLS-сертификаты
     игнорируются (важен сам факт рукопожатия).
     """
@@ -373,7 +373,7 @@ def classify_block(host: str, timeout: float = 2.5, max_ips: int = 2) -> dict:
         infos = socket.getaddrinfo(host, 443, socket.AF_INET, socket.SOCK_STREAM)
     except OSError as e:
         return {"kind": "dns",
-                "detail": "домен не удалось превратить в IP-адрес — вероятна блокировка DNS",
+                "detail": "домен не удалось превратить в IP-адрес - вероятна блокировка DNS",
                 "tech": f"getaddrinfo: {e}", "steps": steps}
     ips = list(dict.fromkeys(i[4][0] for i in infos))[:max_ips]
     steps["ips"] = ips
@@ -403,7 +403,7 @@ def classify_block(host: str, timeout: float = 2.5, max_ips: int = 2) -> dict:
     def _first_success(ips, sni) -> bool:
         # НЕ `with`: выход из контекстного менеджера зовёт shutdown(wait=True)
         # и ждёт пробы, застрявшие в чёрной дыре, добавляя ~timeout к каждому
-        # шагу. wait=False — пусть умирают сами.
+        # шагу. wait=False - пусть умирают сами.
         pool = ThreadPoolExecutor(max_workers=max_ips)
         futs = [pool.submit(_probe, ip, sni) for ip in ips]
         try:
@@ -417,7 +417,7 @@ def classify_block(host: str, timeout: float = 2.5, max_ips: int = 2) -> dict:
     tcp_ok = _first_success(ips, None)
     if not tcp_ok:
         return {"kind": "ip_block",
-                "detail": "к сайту не открывается соединение — блокировка на уровне IP-адреса",
+                "detail": "к сайту не открывается соединение - блокировка на уровне IP-адреса",
                 "tech": "TCP connect :443 failed", "steps": steps}
     steps["tcp"] = "ok"
 
@@ -435,18 +435,18 @@ def classify_block(host: str, timeout: float = 2.5, max_ips: int = 2) -> dict:
     steps["benign_sni"] = "ok" if benign else "blocked"
     if benign:
         return {"kind": "sni_block",
-                "detail": ("сайт заблокирован по имени — именно такой блок Zapret 2 "
+                "detail": ("сайт заблокирован по имени - именно такой блок Zapret 2 "
                            "и должен обходить"),
                 "tech": f"real SNI blocked, benign SNI ({benign}) passes",
                 "steps": steps}
     return {"kind": "tls_block",
-            "detail": "соединение режется глубже, чем по имени сайта — обход может не помочь",
+            "detail": "соединение режется глубже, чем по имени сайта - обход может не помочь",
             "tech": "TLS blocked even with foreign SNI", "steps": steps}
 
 
 def _check_block_types(net_checks: list[Check]) -> list[Check]:
     """Классифицирует, ПОЧЕМУ упавшие хосты связи заблокированы (не более 1
-    хоста, приоритет — youtube: самый частый и информативный кейс)."""
+    хоста, приоритет - youtube: самый частый и информативный кейс)."""
     failed = {c.id.removeprefix("net_"): c for c in net_checks if c.status == "fail"}
     names = {h: n for h, n, _k in _NET_CHECKS}
     if "www.youtube.com" in failed:
@@ -502,9 +502,9 @@ def _check_dns_health() -> Check:
     if dot_ok and doh_ok:
         status, detail = "ok", "; ".join(results)
     elif not dot_ok and not doh_ok and "молчит" in results[0]:
-        status, detail = "fail", "; ".join(results) + " — блокируется весь DNS"
+        status, detail = "fail", "; ".join(results) + " - блокируется весь DNS"
     elif not dot_ok and not doh_ok:
-        status, detail = "fail", "; ".join(results) + " — защищённый DNS недоступен"
+        status, detail = "fail", "; ".join(results) + " - защищённый DNS недоступен"
     else:
         status, detail = "warn", "; ".join(results)
     return Check("dns_health", "DNS (обычный и защищённый)", status, detail)
@@ -512,9 +512,9 @@ def _check_dns_health() -> Check:
 
 def _check_dns_poison() -> Check:
     """Подмена DNS: системный резолвер vs чистый DoH для «заблокированных»
-    доменов. Домены выбраны за Cloudflare (anycast — IP одинаковы глобально,
+    доменов. Домены выбраны за Cloudflare (anycast - IP одинаковы глобально,
     гео-вариаций нет): непересечение IP-множеств или NXDOMAIN у системы при
-    живом ответе DoH = подмена. Если DoH недоступен — проверка невозможна.
+    живом ответе DoH = подмена. Если DoH недоступен - проверка невозможна.
     """
     domains = ("rutracker.org", "discord.com")
     poisoned: list[str] = []
@@ -547,7 +547,7 @@ def _check_dns_poison() -> Check:
                      "не удалось проверить (защищённый DNS недоступен)")
     if poisoned:
         return Check("dns_poison", "DNS подмена", "fail",
-                     "; ".join(poisoned) + " — смените DNS на 8.8.8.8 или 1.1.1.1, "
+                     "; ".join(poisoned) + " - смените DNS на 8.8.8.8 или 1.1.1.1, "
                      "обход без этого работать не будет",
                      tech=f"system vs DoH mismatch ({checked} domains)")
     return Check("dns_poison", "DNS подмена", "ok",
@@ -561,7 +561,7 @@ def _check_lan_peers() -> Check:
     Локальные машины WinDivert друг друга не перехватывают, но ТСПУ видит их
     как одного абонента (один публичный IP за NAT): агрессивные фейки с двух
     ПК складываются в общую пер-IP статистику DPI. Кейс (Zapret 1): два ПК на
-    одной Wi-Fi — «стратегии глушили друг друга». Заплатка — подсказка,
+    одной Wi-Fi - «стратегии глушили друг друга». Заплатка - подсказка,
     стратегию выбирает пользователь.
     """
     try:
@@ -578,14 +578,14 @@ def _check_lan_peers() -> Check:
             if int(mac[:2], 16) & 0x01:
                 continue  # multicast-адресации
             macs.add(mac)
-        # Виртуальные адаптеры (WSL/VirtualBox) дают 1-2 лишних MAC —
+        # Виртуальные адаптеры (WSL/VirtualBox) дают 1-2 лишних MAC -
         # поэтому чек всегда ok и только информирует.
         if len(macs) >= 2:
             return Check(
                 "lan_peers", "Другие устройства в сети", "ok",
                 f"в сети есть другие активные устройства ({len(macs)} MAC). "
                 "Прямо обходу они не мешают. Но если обход нестабилен и на других "
-                "ПК тоже запущен zapret/VPN — включите на всех одну и ту же стратегию: "
+                "ПК тоже запущен zapret/VPN - включите на всех одну и ту же стратегию: "
                 "для провайдера это один адрес, и агрессивные фейки с двух машин "
                 "суммируются в общую статистику",
                 tech=f"arp macs: {', '.join(sorted(macs))}")
@@ -602,7 +602,7 @@ _IP_RE = re.compile(r"\b(\d{1,3}(?:\.\d{1,3}){3})\b")
 def _check_dns_spoof_servers() -> Check:
     """Какие публичные DNS-серверы подменяют ответы для заблокированных
     доменов (метод dpi-detector): эталон берём через DoH Google, ответы
-    серверов — через nslookup (UDP 53 проходит через ТСПУ и может
+    серверов - через nslookup (UDP 53 проходит через ТСПУ и может
     перехватываться). Отвечает на вопрос «какой DNS включить»."""
     test_domain = "rutor.info"
     servers = [("8.8.8.8", "Google"), ("1.1.1.1", "Cloudflare"),
@@ -627,15 +627,15 @@ def _check_dns_spoof_servers() -> Check:
             answers = {a for a in _IP_RE.findall(r2.stdout or "")
                        if a != ip and not a.startswith(("127.", "10.", "192.168."))}
             if not answers:
-                clean_srv.append(name + " — не отвечает")
+                clean_srv.append(name + " - не отвечает")
             elif answers & clean:
-                clean_srv.append(name + " — чисто")
+                clean_srv.append(name + " - чисто")
             else:
                 spoofed.append(name + " (" + ", ".join(sorted(answers))[:40] + ")")
         if spoofed:
             return Check("dns_spoof", "DNS-подмена по серверам", "warn",
                          "подмену ответов ловят: " + "; ".join(spoofed)
-                         + " — эти DNS включать не стоит; чистые: "
+                         + " - эти DNS включать не стоит; чистые: "
                          + "; ".join(clean_srv),
                          tech="clean=" + str(sorted(clean)))
         return Check("dns_spoof", "DNS-подмена по серверам", "ok",
@@ -663,13 +663,13 @@ def run_diagnostics(root_dir: Path, cfg: AppConfig, progress_cb=None) -> dict:
     # права
     _add(Check("admin", "Права администратора",
                "ok" if is_admin() else "fail",
-               "есть" if is_admin() else "нет — WinDivert не загрузится"))
+               "есть" if is_admin() else "нет - WinDivert не загрузится"))
 
     # путь установки
     _add(_check_path(root_dir))
     _add(_check_launch_spot(root_dir))
 
-    # winws2.exe + WinDivert64.sys + WinDivert.dll (AV удаляет sys — кейс друга)
+    # winws2.exe + WinDivert64.sys + WinDivert.dll (AV удаляет sys - кейс друга)
     _add(_check_windivert_files(root_dir))
     _add(_check_windivert_service(root_dir))
 
@@ -681,13 +681,13 @@ def run_diagnostics(root_dir: Path, cfg: AppConfig, progress_cb=None) -> dict:
                             f"запущен (PID {pid}), пресет «{strategy}»"))
     else:
         _add(Check("winws2", "Процесс winws2", "fail",
-                            "не запущен — обход неактивен"))
+                            "не запущен - обход неактивен"))
 
     # конфликт с Zapret 1
     z1 = _pid_of("winws.exe")
     if z1 is not None:
         _add(Check("zapret1", "Zapret 1", "warn",
-                            f"winws.exe запущен (PID {z1}) — два WinDivert-фильтра конфликтуют"))
+                            f"winws.exe запущен (PID {z1}) - два WinDivert-фильтра конфликтуют"))
     else:
         _add(Check("zapret1", "Zapret 1", "ok", "не запущен"))
 
@@ -717,11 +717,11 @@ def run_diagnostics(root_dir: Path, cfg: AppConfig, progress_cb=None) -> dict:
         from core.tcp_timestamps import timestamps_enabled as ts_enabled
         if ts_enabled():
             _add(Check("tcp_ts", "TCP timestamps", "ok",
-                       "включены — обход работает в полную силу",
+                       "включены - обход работает в полную силу",
                        tech="timestamps enabled"))
         else:
             _add(Check("tcp_ts", "TCP timestamps", "warn",
-                       "выключены — часть приёмов обхода молча не работает",
+                       "выключены - часть приёмов обхода молча не работает",
                        tech="timestamps disabled, tcp_ts= silent"))
     except Exception as e:
         _add(Check("tcp_ts", "TCP timestamps", "skip", f"не удалось проверить: {e}"))
@@ -741,7 +741,7 @@ def run_diagnostics(root_dir: Path, cfg: AppConfig, progress_cb=None) -> dict:
                                     "установлена, но не запущена (автозапуск после перезагрузки)"))
         else:
             _add(Check("service", "Служба zapret2", "skip",
-                                "не установлена — обход только при открытом GUI"))
+                                "не установлена - обход только при открытом GUI"))
     except Exception as e:
         _add(Check("service", "Служба zapret2", "warn", f"не удалось проверить: {e}"))
 
@@ -751,7 +751,7 @@ def run_diagnostics(root_dir: Path, cfg: AppConfig, progress_cb=None) -> dict:
     # debug-лог
     _add(_check_debug_log(root_dir, bool(cfg.winws2_debug)))
 
-    # связь (независимо от обхода; контекст — в чеке winws2)
+    # связь (независимо от обхода; контекст - в чеке winws2)
     if progress_cb is not None:
         try:
             progress_cb("Связь (канарейки)")
@@ -790,13 +790,13 @@ def format_report_text(report: dict) -> str:
     """Текстовый отчёт для копирования в поддержку."""
     icon = {"ok": "[OK]  ", "warn": "[ВНИМ]", "fail": "[FAIL]", "skip": "[----]"}
     lines = [
-        f"Zapret2 GUI — диагностика {report.get('timestamp', '')} (v{VERSION})",
+        f"Zapret2 GUI - диагностика {report.get('timestamp', '')} (v{VERSION})",
         "",
     ]
     for c in report.get("checks", []):
         line = f"{icon.get(c['status'], '[??]')} {c['name']}"
         if c.get("detail"):
-            line += f" — {c['detail']}"
+            line += f" - {c['detail']}"
         if c.get("tech"):
             line += f"  [{c['tech']}]"
         lines.append(line)

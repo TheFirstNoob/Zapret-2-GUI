@@ -11,7 +11,7 @@ from core.utils import app_root, run_sc as _sc
 SERVICE_NAME = "zapret2"
 
 # Короткий TTL-кэш состояния службы: фронтенд поллит /api/service/status
-# каждые ~9с, а sc query — подпроцесс. Сбрасывается на любой мутирующей
+# каждые ~9с, а sc query - подпроцесс. Сбрасывается на любой мутирующей
 # операции (install/remove/start/stop/reconfigure).
 _STATUS_TTL = 10.0
 _status_cache_at = 0.0
@@ -56,9 +56,9 @@ def status() -> str:
     if code != 0:
         _status_cache_value = "not_installed"
     else:
-        # Парсим ЗНАЧЕНИЕ из sc query: заголовок локализован («STATE» —
+        # Парсим ЗНАЧЕНИЕ из sc query: заголовок локализован («STATE» -
         # «СОСТОЯНИЕ» на русской Windows), но значение всегда английское
-        # ("4  RUNNING") — ищем значение, не подпись.
+        # ("4  RUNNING") - ищем значение, не подпись.
         upper = out.upper()
         _status_cache_value = "running" if "RUNNING" in upper else "stopped"
     _status_cache_at = now
@@ -71,7 +71,7 @@ def _zapret1_service_exists() -> bool:
 
 
 def _service_cmdline(exe: Path, args: list[str]) -> str:
-    """binPath в формате Zapret 1: \"exe\" \"arg\" ... — обратные слэш-кавычки
+    """binPath в формате Zapret 1: \"exe\" \"arg\" ... - обратные слэш-кавычки
     обрабатываются парсером cmd.exe, ровно как в v1's service.bat. Обычные
     кавычки через argv заставляют sc ронять путь или хранить экранированный
     вид буквально."""
@@ -104,34 +104,34 @@ def _path_from_token(t: str) -> Optional[str]:
 
 def _verify_binpath(exe: Path, args: list[str]) -> tuple[bool, str]:
     """Проверяет, что SCM сохранил всю командную строку: старый/кривой SCM
-    Win10 мог молча исказить binPath (случай кривой установки 2026-09-12) —
+    Win10 мог молча исказить binPath (случай кривой установки 2026-09-12) -
     сверяем число аргументов и существование всех путей."""
     stored = _read_stored_binpath()
     if not stored:
-        return False, "binPath пуст — SCM не сохранил командную строку"
+        return False, "binPath пуст - SCM не сохранил командную строку"
     s = stored.replace('\\"', '"')
     tokens = [m.group(1) if m.group(1) is not None else m.group(2)
               for m in re.finditer(r'"([^"]*)"|(\S+)', s)]
     if len(tokens) != 1 + len(args):
         return False, (f"binPath содержит {len(tokens)} аргументов вместо "
-                       f"{1 + len(args)} — часть командной строки потеряна "
+                       f"{1 + len(args)} - часть командной строки потеряна "
                        f"(нестандартный путь установки?)")
     for t in tokens[1:]:
         p = _path_from_token(t)
         if p and not Path(p).exists():
-            return False, f"путь из binPath не существует: {p} — установка кривая"
+            return False, f"путь из binPath не существует: {p} - установка кривая"
     return True, ""
 
 
 def _sc_run_bat(lines: list[str]) -> tuple[int, str]:
-    """sc через временный .bat — единственный способ честно передать
+    """sc через временный .bat - единственный способ честно передать
     v1-style binPath с backslash-кавычками (их понимает парсер cmd;
     argv и даже cmd /c <string> их искажают)."""
     import tempfile
     bat = Path(tempfile.gettempdir()) / "zapret2_svc.bat"
-    # OEM (cp866 на русской Windows) — cmd читает bat в кодовой странице
+    # OEM (cp866 на русской Windows) - cmd читает bat в кодовой странице
     # консоли; ascii ронял установку у пользователей с кириллицей в пути
-    # (UnicodeEncodeError — случай 2026-09-12).
+    # (UnicodeEncodeError - случай 2026-09-12).
     try:
         bat.write_text("\r\n".join(["@echo off"] + lines) + "\r\n", encoding="oem")
     except UnicodeEncodeError:
@@ -182,7 +182,7 @@ def _taskkill_winws() -> bool:
 
 
 def zapret1_cleanup() -> tuple[bool, str]:
-    """Остановить и удалить службу Zapret 1 (zapret) + winws.exe — как
+    """Остановить и удалить службу Zapret 1 (zapret) + winws.exe - как
     «Remove Services» в service.bat Flowseal-бандла. Вызывается только после
     ЯВНОГО подтверждения пользователя во фронтенде."""
     actions: list[str] = []
@@ -192,7 +192,7 @@ def zapret1_cleanup() -> tuple[bool, str]:
         code, out = _sc(["delete", "zapret"])
         if code != 0:
             if "1072" in out or "отмечен" in out.lower():
-                return False, "Служба zapret помечена на удаление — нужна перезагрузка"
+                return False, "Служба zapret помечена на удаление - нужна перезагрузка"
             return False, f"Не удалось удалить службу zapret: {out.strip()[:120]}"
         actions.append("служба zapret удалена")
     if _winws_running() and _taskkill_winws():
@@ -236,7 +236,7 @@ def install(root_dir: Optional[Path] = None, args: Optional[list[str]] = None,
     if root_dir is None:
         root_dir = app_root()
     # Драйвер лечим ПОСЛЕ остановки winws2 (кейс 2026-09-13): править или
-    # удалять службу драйвера при живых хендлах нельзя — она получит
+    # удалять службу драйвера при живых хендлах нельзя - она получит
     # «marked for deletion» (1072) и починится только перезагрузкой.
     try:
         from core.utils import fix_stale_windivert_services
@@ -252,8 +252,8 @@ def install(root_dir: Optional[Path] = None, args: Optional[list[str]] = None,
         return False, f"winws2.exe вне каталога программы: {exe}"
     if args is None:
         args = []
-    # winws2.exe — бинарник службы НАПРЯМУЮ (как service.bat у Zapret 1:
-    # binPath = "winws.exe <args>", start= auto). cmd-обёртка — то, что
+    # winws2.exe - бинарник службы НАПРЯМУЮ (как service.bat у Zapret 1:
+    # binPath = "winws.exe <args>", start= auto). cmd-обёртка - то, что
     # поведенческие детекты Defender помечают подозрительным.
     cmdline = _service_cmdline(exe, args)
     code, out = _sc_run_bat([
@@ -264,14 +264,14 @@ def install(root_dir: Optional[Path] = None, args: Optional[list[str]] = None,
         return False, f"sc create failed: {out.strip()}"
     _sc(["description", SERVICE_NAME, "zapret DPI bypass (Zapret 2)"])
     # Verify BEFORE start: old/broken SCM может молча исказить binPath
-    # (аргументы по пробелам рвутся, кириллические пути не читаются) —
+    # (аргументы по пробелам рвутся, кириллические пути не читаются) -
     # тогда служба «стоит», но обхода нет и автозапуск валится.
     okv, msgv = _verify_binpath(exe, args)
     if not okv:
         remove()
         return False, f"Установка отменена (кривой binPath): {msgv}"
     # SCM recovery: если winws2 умрёт (случай 2026-09-12: три падения за утро,
-    # обход пропадал до ручного перезапуска) — перезапустить службу через 60 с.
+    # обход пропадал до ручного перезапуска) - перезапустить службу через 60 с.
     _sc(["failure", SERVICE_NAME,
          "reset=", "86400",
          "actions=", "restart/60000/restart/60000/restart/60000"])
@@ -315,7 +315,7 @@ def start(args: Optional[list[str]] = None):
     stop()
     # Даём SCM время закрыть состояние (иначе первый sc start может дать 1053).
     time.sleep(0.5)
-    # Драйвер мог сломаться между запусками (кейс 2026-09-13) — лечим до
+    # Драйвер мог сломаться между запусками (кейс 2026-09-13) - лечим до
     # sc start, иначе winws2 упадёт на WinDivertOpen.
     try:
         from core.utils import fix_stale_windivert_services
@@ -331,7 +331,7 @@ def start(args: Optional[list[str]] = None):
 
 
 def stop():
-    # Сначала — корректный sc stop (SCM состояние), taskkill как страховка
+    # Сначала - корректный sc stop (SCM состояние), taskkill как страховка
     # для вручную запущенного winws2.
     _invalidate_service_cache()
     _sc(["stop", SERVICE_NAME])

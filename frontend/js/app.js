@@ -1,5 +1,5 @@
 /**
- * Zapret2 Manager — frontend.
+ * Zapret2 Manager - frontend.
  * Vanilla JS, single script. Backend contract: /api/* polling.
  */
 
@@ -10,7 +10,7 @@ const SCORE_OK = 80;
 const SCORE_MID = 40;
 
 // QUIC-класс хостов (синхронно с core.tester QUIC_QUIRK_DOMAINS):
-// браузер идёт через QUIC, TCP-проба curl-ом под десинком не показательная —
+// браузер идёт через QUIC, TCP-проба curl-ом под десинком не показательная -
 // вне «доступности» и нейтральный серый статус вместо красного креста.
 const QUIRK_HOSTS = new Set([
   'www.youtube.com', 'youtu.be', 'i.ytimg.com',
@@ -60,7 +60,7 @@ function formatTime(ms) {
   return n < 1000 ? n.toFixed(0) + 'ms' : (n / 1000).toFixed(1) + 's';
 }
 
-// Локальный backend может задуматься (запуск winws2, sc query) — но не навсегда.
+// Локальный backend может задуматься (запуск winws2, sc query) - но не навсегда.
 const API_TIMEOUT_MS = 30000;
 
 async function apiGet(path) {
@@ -83,7 +83,7 @@ async function apiPost(path, body) {
 let _toastTimer = null, _toastHideTimer = null;
 function showToast(msg, type, action) {
   const t = $('toast');
-  // action: {label, onClick} — кнопка внутри тоста (например «Перезапустить сейчас»)
+  // action: {label, onClick} - кнопка внутри тоста (например «Перезапустить сейчас»)
   t.textContent = '';
   const span = document.createElement('span');
   span.textContent = msg;
@@ -164,7 +164,7 @@ const Status = {
     chip.className = 'prot-chip state-' + state;
     if (state === 'ok') {
       txt.textContent = 'Обход работает';
-      sub.textContent = (svc && svc.running) ? 'через службу' : 'PID ' + (z2.pid || '—');
+      sub.textContent = (svc && svc.running) ? 'через службу' : 'PID ' + (z2.pid || '-');
     } else if (state === 'warn') {
       txt.textContent = 'Работает Zapret 1';
       sub.textContent = 'Zapret 2 остановлен';
@@ -216,7 +216,7 @@ const App = {
     });
     $('tourStep1').addEventListener('click', () => {
       if (MainPage._z2Running) {
-        showToast('Обход уже запущен — переходите к шагу 2', 'ok');
+        showToast('Обход уже запущен - переходите к шагу 2', 'ok');
         return;
       }
       $('btnZ2Toggle').click();
@@ -225,7 +225,7 @@ const App = {
     $('tourStep3').addEventListener('click', () => { location.hash = 'tester'; });
   },
 
-  // Честное уведомление «что делает программа и какие данные» — один раз
+  // Честное уведомление «что делает программа и какие данные» - один раз
   // (флаг notice_done в конфиге; закрывается крестиком или «Понятно»).
   async initNotice() {
     const card = $('noticeCard');
@@ -245,7 +245,7 @@ const App = {
     $('noticeOk').addEventListener('click', dismiss);
   },
 
-  // Фоновая проверка списков при старте: только уведомление (чистит юзер —
+  // Фоновая проверка списков при старте: только уведомление (чистит юзер -
   // кнопкой в «Списках»), чтобы дубли из блокнота не путали со временем.
   async checkListsHealth() {
     try {
@@ -257,13 +257,13 @@ const App = {
       if (r.total_redundant) bits.push(`повторы: ${r.total_redundant}`);
       if (r.total_conflicts) bits.push(`конфликты: ${r.total_conflicts}`);
       if (bits.length) {
-        showToast('Списки: ' + bits.join(', ') + ' — вкладка «Списки» → «Проверить»', 'warn');
+        showToast('Списки: ' + bits.join(', ') + ' - вкладка «Списки» → «Проверить»', 'warn');
       }
     } catch (e) { /* фоновая проверка не должна мешать запуску */ }
   },
 
   // Идёт проверка (стратегии/CDN/ASN/blob/диагностика): обходом управляет
-  // тестер — блокируем ручной запуск/остановку, службу и другие кнопки
+  // тестер - блокируем ручной запуск/остановку, службу и другие кнопки
   // проверок, показываем бейдж на вкладке-источнике.
   setTestActive(active) {
     if (this.testActive === active) return;
@@ -271,17 +271,17 @@ const App = {
     const badge = $('testerBadge');
     if (badge) {
       badge.hidden = !active;
-      // Бейдж «идёт проверка» — на странице-источнике, а не всегда на «Подборе»
+      // Бейдж «идёт проверка» - на странице-источнике, а не всегда на «Подборе»
       if (active) {
         const link = document.querySelector(`.nav-link[data-page="${this.currentPage}"]`);
         if (link && link !== badge.parentElement) link.appendChild(badge);
       }
     }
-    // Кнопки всех проверок — взаимоисключающие (бэкенд дублирует 409-ом).
+    // Кнопки всех проверок - взаимоисключающие (бэкенд дублирует 409-ом).
     ['btnStartTest', 'cdnScanBtn', 'asnScanBtn', 'btnBlobProbe', 'diagRunBtn', 'btnDiagCheck']
       .forEach(id => { const el = $(id); if (el) el.disabled = active; });
     if (active && this.currentPage !== 'tester') {
-      showToast('Идёт проверка — остальные запуски/остановки заблокированы', 'warn');
+      showToast('Идёт проверка - остальные запуски/остановки заблокированы', 'warn');
     }
     if (Status.last) MainPage.renderStatus(Status.last);
   },
@@ -353,7 +353,7 @@ if (start) start.addEventListener('click', () => TesterPage.startProbe());
     }
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     $('page-' + hash).classList.add('active');
-    // Смена вкладки — наверх: скролл не должен переезжать между страницами
+    // Смена вкладки - наверх: скролл не должен переезжать между страницами
     const content = document.querySelector('.content');
     if (content) content.scrollTop = 0;
     const titles = { main: 'Главная', tester: 'Подбор стратегии', lists: 'Списки', contested: 'Спорные домены', games: 'Игровые блокировки', diagnostics: 'Проверка системы', probe: 'Анализ приложения', cdn: 'CDN-стабилизация', asn: 'ASN-скан' };
@@ -366,7 +366,7 @@ if (start) start.addEventListener('click', () => TesterPage.startProbe());
     if (hash === 'asn') AsnPage.init();
     if (hash === 'diagnostics') DiagnosticsPage.onShow();
     if (hash === 'tester') TesterPage.onShow();
-    // Список процессов заполняем сами при открытии вкладки — ручная
+    // Список процессов заполняем сами при открытии вкладки - ручная
     // кнопка «Сканировать» не нужна, интерфейс не дублирует действия.
     if (hash === 'probe' && !TesterPage._probePollTimer && !TesterPage._probeStarting) {
       TesterPage.scanProbeProcesses(true);
@@ -394,7 +394,7 @@ if (start) start.addEventListener('click', () => TesterPage.startProbe());
   },
 
   // Обновление из программы (0.8): скачать → бэкап → применить (portable/lite)
-  // или подготовить замену EXE → предложит перезапуск; после — проверка службы
+  // или подготовить замену EXE → предложит перезапуск; после - проверка службы
   async runUpdate() {
     const btn = $('updateNowBtn');
     btn.disabled = true;
@@ -416,12 +416,12 @@ if (start) start.addEventListener('click', () => TesterPage.startProbe());
           const res = st.result || {};
           $('updateBanner').hidden = true;
           if (res.service_mismatch) {
-            showToast('Обновление проверено по подписи и применено. Служба стоит на старой конфигурации — переустановите её кнопкой', 'warn');
+            showToast('Обновление проверено по подписи и применено. Служба стоит на старой конфигурации - переустановите её кнопкой', 'warn');
             btn.disabled = false;
             btn.textContent = 'Переустановить службу';
             this._updateStage = 'service';
           } else {
-            showToast('Обновление проверено по подписи и применено — перезапустите программу', 'ok');
+            showToast('Обновление проверено по подписи и применено - перезапустите программу', 'ok');
             setTimeout(() => { location.reload(); }, 1500);
           }
         } catch (e) {
@@ -444,7 +444,7 @@ if (start) start.addEventListener('click', () => TesterPage.startProbe());
       btn.textContent = 'Переустановка службы…';
       apiPost('/service/install', {}).then(r => {
         if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
-        showToast('Служба переустановлена — перезапустите программу', 'ok');
+        showToast('Служба переустановлена - перезапустите программу', 'ok');
         setTimeout(() => { location.reload(); }, 1500);
       }).catch(e => {
         showToast('Ошибка переустановки: ' + (e.message || e), 'error');
@@ -483,7 +483,7 @@ const MainPage = {
     $('btnQuickCheck').addEventListener('click', () => {
       location.hash = 'diagnostics';
       // «Проверить работу» должна реально запускать проверку, а не просто
-      // переключать вкладку: небольшая задержка — пока страница активируется.
+      // переключать вкладку: небольшая задержка - пока страница активируется.
       setTimeout(() => DiagnosticsPage.run(), 150);
     });
     $('btnStopZ1Now').addEventListener('click', () => this.stopZ1());
@@ -544,7 +544,7 @@ const MainPage = {
       if (c.zapret1_last_strategy) this._z1SavedStrategy = c.zapret1_last_strategy;
       if (c.zapret1_dir) this.scanZ1Strategies();
       this._configLoaded = true;
-      // Обход уже был запущен до загрузки конфига — снимок тогглов делаем
+      // Обход уже был запущен до загрузки конфига - снимок тогглов делаем
       // только теперь, когда DOM показывает сохранённые значения.
       if (this._z2Running && !this._runningToggles) {
         this._runningToggles = this._collectToggles();
@@ -554,7 +554,7 @@ const MainPage = {
   },
 
   // Список доступных TLS-фейк-блобов (blobs/tls_clienthello_*.bin).
-  // Рекомендованные (проверенные, ≤700 байт) — первыми, с меткой ★.
+  // Рекомендованные (проверенные, ≤700 байт) - первыми, с меткой ★.
   async populateFakeBlobs() {
     try {
       const r = await apiGet('/fake-blobs');
@@ -571,7 +571,7 @@ const MainPage = {
         const sz = sizes[key] || 0;
         o.textContent = rec.has(key)
           ? `★ ${label} (${sz} B)`
-          : (sz > 700 ? `⚠ ${label} (${sz} B) — большой` : `${label} (${sz} B)`);
+          : (sz > 700 ? `⚠ ${label} (${sz} B) - большой` : `${label} (${sz} B)`);
         sel.appendChild(o);
       }
       sel.value = this._pendingFakeBlob || '';
@@ -579,7 +579,7 @@ const MainPage = {
   },
 
   // Перебор TLS-фейк-блобов: короткая батарея на каждом, победитель
-  // подставляется в селектор (применение — через «Перезапустить»).
+  // подставляется в селектор (применение - через «Перезапустить»).
   async runBlobProbe() {
     if (this._blobProbing || App.testActive) return;
     this._blobProbing = true;
@@ -587,7 +587,7 @@ const MainPage = {
     App.setTestActive(true);
     const btn = $('btnBlobProbe');
     const hint = $('fakeBlobHint');
-    // На время подбора кнопка сама становится «Остановить» — без лишней.
+    // На время подбора кнопка сама становится «Остановить» - без лишней.
     btn.textContent = 'Остановить';
     btn.classList.add('btn-danger-text');
     btn.title = 'Остановить подбор';
@@ -618,7 +618,7 @@ const MainPage = {
       }
       if (this._blobProbeCancelled) {
         // частичный прогон: показываем, но лучший не подставляем
-        showToast('Подбор остановлен — показаны частичные результаты', 'warn');
+        showToast('Подбор остановлен - показаны частичные результаты', 'warn');
       } else {
         const best = results[0];
         const sel = $('fakeBlobSelect');
@@ -713,12 +713,12 @@ const MainPage = {
     const fb = $('z2Feedback');
     if (fb) {
       if (conflict) {
-        fb.textContent = 'Оба обхода запущены одновременно — остановите один из них.';
+        fb.textContent = 'Оба обхода запущены одновременно - остановите один из них.';
       } else if (z2.running) {
         fb.textContent = 'Обход работает' + (z2.strategy ? ' («' + z2.strategy + '»)' : '') +
-          ' — проверьте, открываются ли нужные сайты.';
+          ' - проверьте, открываются ли нужные сайты.';
       } else if (z1.running) {
-        fb.textContent = 'Работает запасной Zapret 1 — Zapret 2 остановлен.';
+        fb.textContent = 'Работает запасной Zapret 1 - Zapret 2 остановлен.';
       } else {
         fb.textContent = 'Обход выключен: заблокированные сайты не откроются, пока не нажмёте «Запустить».';
       }
@@ -759,26 +759,26 @@ const MainPage = {
     const strategyChangedNow = this._z2Running && selNow && this._z2Strategy && selNow !== this._z2Strategy;
     hint.hidden = !strategyChangedNow;
     if (strategyChangedNow) {
-      hint.textContent = 'Запущена «' + this._z2Strategy + '» — нажатие кнопки перезапустит обход с выбранной.';
+      hint.textContent = 'Запущена «' + this._z2Strategy + '» - нажатие кнопки перезапустит обход с выбранной.';
     }
 
     $('conflictBanner').hidden = !(z2.running && z1.running);
     $('togglesOverlay').hidden = !z1.running;
 
-    // Zapret 1 — единый стиль статуса с Zapret 2 (слова и цвет текста)
+    // Zapret 1 - единый стиль статуса с Zapret 2 (слова и цвет текста)
     const zs = $('z1State');
     const z1Text = zs.querySelector('.state-text');
     const z1Conflict = z1.running && z2.running;
     zs.querySelector('.dot').className = 'dot ' + (z1Conflict ? 'dot-warn' : z1.running ? 'dot-ok' : 'dot-off');
     z1Text.className = 'state-text ' + (z1Conflict ? 'st-warn' : z1.running ? 'st-ok' : 'st-mute');
     z1Text.textContent = z1.running ? 'Работает' : 'Выключен';
-    // Запасной инструмент — нейтральная кнопка: синий primary только у Zapret 2.
+    // Запасной инструмент - нейтральная кнопка: синий primary только у Zapret 2.
     const z1btn = $('btnZ1Toggle');
     z1btn.textContent = z1.running ? 'Остановить' : 'Запустить';
     z1btn.classList.remove('btn-primary');
     z1btn.disabled = App.testActive;
 
-    // перезапуск по изменённым тогглам — только когда что-то изменено и запущено
+    // перезапуск по изменённым тогглам - только когда что-то изменено и запущено
     this._updateApplyHint();
     this.populateProfiles(d.profiles || []);
   },
@@ -793,7 +793,7 @@ const MainPage = {
     $('btnSvcStop').hidden = !(installed && running);
     $('btnSvcRemove').hidden = !installed;
     $('svcStatusText').textContent = this._svcBusy ? '…'
-      : !installed ? 'не установлена — обход только при открытом приложении'
+      : !installed ? 'не установлена - обход только при открытом приложении'
       : (running ? 'установлена · работает (автозапуск при загрузке)'
                  : 'установлена · остановлена');
     const chip = $('svcState');
@@ -858,7 +858,7 @@ const MainPage = {
         if (r.status !== 'ok') return r;
         return apiPost('/service/start', {});
       },
-      'Установка…', 'Служба установлена и запущена — обход работает без программы',
+      'Установка…', 'Служба установлена и запущена - обход работает без программы',
       'Не удалось установить службу: ');
   },
 
@@ -898,7 +898,7 @@ const MainPage = {
       } else if (acts.length) {
         showToast('Починено: ' + acts.join('; '), 'ok');
       } else {
-        showToast('Драйвер в порядке — проблем не найдено', 'ok');
+        showToast('Драйвер в порядке - проблем не найдено', 'ok');
       }
       if (r.zapret1) {
         showToast('Замечание: ' + r.zapret1, 'warn');
@@ -925,9 +925,9 @@ const MainPage = {
   },
 
   _VOICE_HINTS: {
-    off: 'Голос идёт без обхода — этого хватает большинству',
+    off: 'Голос идёт без обхода - этого хватает большинству',
     fake: 'Стандарт: подмена QUIC-пакетов на голосовых портах Discord',
-    udplen: 'Сдвиг длины каждого голосового пакета — если стандарт не берёт голос',
+    udplen: 'Сдвиг длины каждого голосового пакета - если стандарт не берёт голос',
   },
 
   _updateVoiceHint() {
@@ -967,14 +967,14 @@ const MainPage = {
     const pending = this._z2Running && !this._togglesEqual(this._runningToggles, this._collectToggles());
     btn.hidden = !pending;
     hint.textContent = pending
-      ? 'Параметры изменены — применятся после перезапуска'
+      ? 'Параметры изменены - применятся после перезапуска'
       : (this._z2Running ? '' : '');
   },
 
   async toggleZ2() {
     const sel = $('strategySelect');
     if (this._z2Running) {
-      // Выбор расходится с запущенной стратегией — кнопка применяет его.
+      // Выбор расходится с запущенной стратегией - кнопка применяет его.
       if (sel.value && this._z2Strategy && sel.value !== this._z2Strategy) {
         return this.applyStrategy(sel.value);
       }
@@ -1034,7 +1034,7 @@ const MainPage = {
   },
 
   // Запуск стратегии (из вердикта тестера, из тостов списков, с Главной).
-  // gotoMain=false — остаться на текущей вкладке.
+  // gotoMain=false - остаться на текущей вкладке.
   async applyStrategy(profile, gotoMain = true) {
     if (!profile || this._busy || App.testActive) return;
     this._setBusy(true);
@@ -1087,7 +1087,7 @@ const MainPage = {
       const strs = r.strategies || [];
       sel.innerHTML = '';
       if (!strs.length) {
-        sel.innerHTML = '<option value="">— в папке нет .bat —</option>';
+        sel.innerHTML = '<option value="">- в папке нет .bat -</option>';
         return;
       }
       sel.disabled = false;
@@ -1100,7 +1100,7 @@ const MainPage = {
         sel.value = this._z1SavedStrategy;
       }
     } catch (e) {
-      sel.innerHTML = '<option value="">— ошибка сканирования —</option>';
+      sel.innerHTML = '<option value="">- ошибка сканирования -</option>';
     }
   },
 
@@ -1145,7 +1145,7 @@ const DiagnosticsPage = {
 
   async run() {
     if (App.testActive) {
-      showToast('Идёт другая проверка — дождитесь завершения', 'warn');
+      showToast('Идёт другая проверка - дождитесь завершения', 'warn');
       return;
     }
     App.setTestActive(true);
@@ -1166,7 +1166,7 @@ const DiagnosticsPage = {
       if (started.status !== 'ok') throw new Error(started.message || 'ошибка');
       let report = null;
       // Страховка от вечного цикла: диагностика на бэкенде не живёт дольше
-      // трёх минут — если статус не пришёл, считаем backend зависшим.
+      // трёх минут - если статус не пришёл, считаем backend зависшим.
       const deadline = Date.now() + 3 * 60 * 1000;
       while (report === null) {
         await new Promise(res => setTimeout(res, 300));
@@ -1204,7 +1204,7 @@ const DiagnosticsPage = {
     if (s.ok) badges.push(`<span class="badge badge-ok">✓ ${s.ok} пройдено</span>`);
     if (s.warn) badges.push(`<span class="badge badge-warn">! ${s.warn} внимание</span>`);
     if (s.fail) badges.push(`<span class="badge badge-err">✕ ${s.fail} ошибок</span>`);
-    if (s.skip) badges.push(`<span class="badge badge-mute">– ${s.skip} пропущено</span>`);
+    if (s.skip) badges.push(`<span class="badge badge-mute">- ${s.skip} пропущено</span>`);
     if (report.elapsed_sec != null) badges.push(`<span class="badge badge-mute">⏱ ${report.elapsed_sec} с</span>`);
     $('diagSummary').innerHTML = badges.join('');
 
@@ -1249,7 +1249,7 @@ const DiagnosticsPage = {
 // ══════════════════════════ СПИСКИ ══════════════════════════
 
 // ── Игровые блокировки: домены (авторизация) + UDP-фикс (коннект) ──
-// Домены применяются сразу (hot-reload hostlist), UDP-профили — при
+// Домены применяются сразу (hot-reload hostlist), UDP-профили - при
 // следующем запуске обхода/переустановке службы.
 const GamesPage = {
   _data: null,
@@ -1462,7 +1462,7 @@ const AppInfo = {
         const r = await apiGet('/update-check');
         if (r.error) throw new Error(r.error);
         if (r.available) {
-          st.innerHTML = `Доступна версия <b>${escapeHtml(r.latest || '')}</b> — смотрите баннер вверху страницы.`;
+          st.innerHTML = `Доступна версия <b>${escapeHtml(r.latest || '')}</b> - смотрите баннер вверху страницы.`;
           $('updateVersion').textContent = r.latest || '';
           $('updateLink').href = r.url || '#';
           $('updateMirrorLink').href = r.mirror_url || '#';
@@ -1583,7 +1583,7 @@ const ListsPage = {
         const running = !!r.protection_running;
         dot.className = 'dot ' + (running ? 'dot-ok' : 'dot-off');
         txt.className = 'state-text ' + (running ? 'st-ok' : 'st-mute');
-        txt.textContent = running ? 'проба идёт через работающий обход' : 'обход не запущен — проба будет «в голую»';
+        txt.textContent = running ? 'проба идёт через работающий обход' : 'обход не запущен - проба будет «в голую»';
       }
       body.innerHTML = '';
       for (const it of (r.items || [])) {
@@ -1652,7 +1652,7 @@ const ListsPage = {
       const engine = !!r.engine_running;
       const toggled = !!r.enabled;
       const protectedNow = engine && toggled;  // домен реально обрабатывается обходом
-      const badge = `${alive ? '✓' : '✕'} HTTP ${r.code || '—'} · ${r.elapsed} с`;
+      const badge = `${alive ? '✓' : '✕'} HTTP ${r.code || '-'} · ${r.elapsed} с`;
       let title, advice;
       if (alive) {
         if (protectedNow) {
@@ -1660,22 +1660,22 @@ const ListsPage = {
           advice = 'Домен включён в обход и отвечает. Тумблер можно оставить включённым.';
         } else if (toggled) {
           title = 'Работает без обхода';
-          advice = 'Обход сейчас не запущен. Тумблер включён — перепроверьте после запуска обхода: если с обходом сервис ломается, тумблер стоит выключить.';
+          advice = 'Обход сейчас не запущен. Тумблер включён - перепроверьте после запуска обхода: если с обходом сервис ломается, тумблер стоит выключить.';
         } else {
           title = 'Работает без обхода';
-          advice = 'Домен не в обходе и отвечает. Тумблер не нужен — держите выключенным.';
+          advice = 'Домен не в обходе и отвечает. Тумблер не нужен - держите выключенным.';
         }
       } else if (protectedNow) {
         title = 'С обходом не отвечает';
-        advice = 'Тумблер включён — вероятно, текущий десинк ломает сервис. Выключите тумблер и повторите пробу: правка списков применяется к новым подключениям. Если и без обхода нет — жёсткий блок, потребуется WARP.';
+        advice = 'Тумблер включён - вероятно, текущий десинк ломает сервис. Выключите тумблер и повторите пробу: правка списков применяется к новым подключениям. Если и без обхода нет - жёсткий блок, потребуется WARP.';
       } else if (!engine) {
         title = 'Обход не запущен';
         advice = toggled
-          ? 'Запустите обход и повторите пробу — тумблер уже включён.'
-          : 'Запустите обход и повторите пробу. Если сервис без обхода не живёт — включите тумблер.';
+          ? 'Запустите обход и повторите пробу - тумблер уже включён.'
+          : 'Запустите обход и повторите пробу. Если сервис без обхода не живёт - включите тумблер.';
       } else {
         title = 'Не отвечает и без обхода';
-        advice = 'Домен не в обходе. Включите тумблер и повторите пробу — правка списков применяется к новым подключениям. Если и с обходом нет — IP-блок, поможет только WARP.';
+        advice = 'Домен не в обходе. Включите тумблер и повторите пробу - правка списков применяется к новым подключениям. Если и с обходом нет - IP-блок, поможет только WARP.';
       }
       if (res) {
         res.innerHTML = `
@@ -1687,7 +1687,7 @@ const ListsPage = {
             </div>
           </div>`;
       }
-      showToast(`Проба: HTTP ${r.code || '—'}`, alive ? 'ok' : 'error');
+      showToast(`Проба: HTTP ${r.code || '-'}`, alive ? 'ok' : 'error');
     } catch (e) {
       if (res) {
         res.innerHTML = `<div class="test-result-box danger">
@@ -1724,7 +1724,7 @@ const ListsPage = {
         if (btn) btn.hidden = false;
         if (warnIfClear) showToast('Списки: ' + bits.join(' · '), 'warn');
       } else {
-        txt.textContent = 'Проблем не найдено — списки чистые.';
+        txt.textContent = 'Проблем не найдено - списки чистые.';
         if (btn) btn.hidden = true;
         if (warnIfClear) showToast('Списки в порядке', 'ok');
       }
@@ -1829,15 +1829,15 @@ const ListsPage = {
     box.removeAttribute('data-popover');
     if (bad.length) {
       box.classList.add('status-error');
-      const errText = `строки с ошибкой: ${bad.slice(0, 12).join(', ')}${bad.length > 12 ? '…' : ''} — сохранение заблокировано`;
+      const errText = `строки с ошибкой: ${bad.slice(0, 12).join(', ')}${bad.length > 12 ? '…' : ''} - сохранение заблокировано`;
       box.innerHTML = ICON_ERR + `<span>${errText}</span>`;
       box.setAttribute('data-popover', errText);
     } else if (dirty) {
       box.classList.add('status-unsaved');
-      box.innerHTML = ICON_DOT + '<span>изменения не сохранены — нажмите «Сохранить»</span>';
+      box.innerHTML = ICON_DOT + '<span>изменения не сохранены - нажмите «Сохранить»</span>';
     } else if (ok === 0) {
       box.classList.add('status-empty');
-      box.innerHTML = '<span>список пуст — ни на что не влияет</span>';
+      box.innerHTML = '<span>список пуст - ни на что не влияет</span>';
     } else {
       box.classList.add('status-synced');
       box.innerHTML = ICON_OK + '<span>сохранено</span>';
@@ -1889,7 +1889,7 @@ const ListsPage = {
 
   async save(key) {
     if (!this.validate(key)) {
-      showToast('Исправьте ошибочные строки — список не сохранён', 'error');
+      showToast('Исправьте ошибочные строки - список не сохранён', 'error');
       return;
     }
     const e = this.editors[key];
@@ -1900,18 +1900,18 @@ const ListsPage = {
       if (r.status === 'ok') {
         el.textContent = 'сохранено';
         this.saved[key] = $(key + 'Textarea').value;
-        // winws2 перечитывает списки на лету (mtime) — правка вступает в
+        // winws2 перечитывает списки на лету (mtime) - правка вступает в
         // силу для НОВЫХ подключений, перезапуск обхода не нужен.
-        let msg = 'Список сохранён — применится к новым подключениям';
+        let msg = 'Список сохранён - применится к новым подключениям';
         let type = 'ok';
         const overlap = this._bundledOverlap(key);
         if (key === 'domExc' && overlap.length) {
           // Исключение сильнее включения (hostlist.c: exclude проверяется
-          // первым) — пользователь должен знать, что обход на домен отключится.
+          // первым) - пользователь должен знать, что обход на домен отключится.
           msg = 'Приоритет у исключения: обход отключится для ' + this._fmtList(overlap) + '. ' + msg;
           type = 'warn';
         } else if (key === 'domInc' && overlap.length) {
-          msg += ' (уже в стандартных списках — дубль безвреден: ' + this._fmtList(overlap) + ')';
+          msg += ' (уже в стандартных списках - дубль безвреден: ' + this._fmtList(overlap) + ')';
         }
         showToast(msg, type);
         this.validate(key);
@@ -1934,8 +1934,8 @@ const CdnStab = {
   _applied: new Set(),
 
   VERDICTS: {
-    fix: { label: 'DPI режет — лечится', cls: 'bad', btn: { action: 'general', text: 'В обход' } },
-    covered: { label: 'уже в ipset-all — наложения нет', cls: '', btn: null },
+    fix: { label: 'DPI режет - лечится', cls: 'bad', btn: { action: 'general', text: 'В обход' } },
+    covered: { label: 'уже в ipset-all - наложения нет', cls: '', btn: null },
     ok: { label: 'чисто', cls: '', btn: null },
     break: { label: 'обход ломает', cls: 'bad', btn: { action: 'exclude', text: 'В стоп-лист' } },
     hard: { label: 'не лечится', cls: '', btn: null },
@@ -1970,7 +1970,7 @@ const CdnStab = {
     $('cdnProgressPct').textContent = '0%';
     $('cdnProgressFill').style.width = '0%';
     try {
-      // apiPost уже добавляет /api — пути без префикса
+      // apiPost уже добавляет /api - пути без префикса
       const r = await apiPost('/tester/action', { action: 'cdn_scan' });
       if (r.status !== 'ok') {
         this._fail('Не удалось запустить сканирование: ' + (r.message || ''));
@@ -2006,10 +2006,10 @@ const CdnStab = {
       return;
     }
     if (st.running) {
-      // M4: гонка старта — worker проставляет action_type асинхронно; первые
+      // M4: гонка старта - worker проставляет action_type асинхронно; первые
       // тики видят action прошлого прогона → ложное «другая задача»
       if (st.action && st.action !== 'cdn_scan' && this._pollTicks > 3) {
-        this._fail('Запущена другая задача тестера — сканирование CDN прервано.');
+        this._fail('Запущена другая задача тестера - сканирование CDN прервано.');
         return;
       }
       const p = st.progress || {};
@@ -2055,7 +2055,7 @@ const CdnStab = {
     const abBroken = v.filter(x => x.ipset === 'ломает').length;
     const abRan = abFixed + abBroken > 0;
     // Кнопки есть у строк с IP-действиями: «чинит» (точечный ipset-обход
-    // хоста), «ломает» при ipset-режиме (исключить IP), fix/break — доменные.
+    // хоста), «ломает» при ipset-режиме (исключить IP), fix/break - доменные.
     const actionable = sum('fix') + sum('break') + (fr.ipset_mode ? abBroken : 0) + (!fr.ipset_mode ? abFixed : 0);
 
     let banner = '';
@@ -2066,8 +2066,8 @@ const CdnStab = {
           : (abFixed > abBroken ? '«Общий IP-обход» можно держать включённым' : 'Эффект IP-обхода неоднозначный'))
         : 'Есть правки для применения';
       const recDesc = abRan
-        ? `IP-обход чинит <b>${abFixed}</b> хост(а), но ломает <b>${abBroken}</b> — решайте по нужным хостам.`
-        : 'Нажмите кнопки в строках — правка применится к спискам, обход перезапустится автоматически.';
+        ? `IP-обход чинит <b>${abFixed}</b> хост(а), но ломает <b>${abBroken}</b> - решайте по нужным хостам.`
+        : 'Нажмите кнопки в строках - правка применится к спискам, обход перезапустится автоматически.';
       banner = `<div class="rec-banner">
         <div>
           <span class="rec-tag">
@@ -2085,15 +2085,15 @@ const CdnStab = {
     }
 
     const metrics = `
-      <span class="m-badge success" data-popover="Эти хосты открываются и без обхода — с ними всё хорошо.">✓ Чисто: ${sum('ok')}</span>
-      ${actionable ? `<span class="m-badge warning" data-popover="Этим хостам обход мешает или их режет DPI — можно исправить кнопкой в строке.">● Требует правки: ${actionable}</span>` : ''}
-      <span class="m-badge danger" data-popover="Не отвечает даже без обхода — похоже, сервер недоступен, это не блокировка.">✕ Не лечится: ${sum('hard')}</span>
-      ${sum('covered') ? `<span class="m-badge neutral" data-popover="Уже покрыты общим IP-обходом — трогать не нужно.">Уже в ipset: ${sum('covered')}</span>` : ''}
-      <span class="m-badge neutral" data-popover="Не отвечают ни с обходом, ни без него — вероятно, хост выключен или устарел.">Мёртвые: ${sum('dead')}</span>
+      <span class="m-badge success" data-popover="Эти хосты открываются и без обхода - с ними всё хорошо.">✓ Чисто: ${sum('ok')}</span>
+      ${actionable ? `<span class="m-badge warning" data-popover="Этим хостам обход мешает или их режет DPI - можно исправить кнопкой в строке.">● Требует правки: ${actionable}</span>` : ''}
+      <span class="m-badge danger" data-popover="Не отвечает даже без обхода - похоже, сервер недоступен, это не блокировка.">✕ Не лечится: ${sum('hard')}</span>
+      ${sum('covered') ? `<span class="m-badge neutral" data-popover="Уже покрыты общим IP-обходом - трогать не нужно.">Уже в ipset: ${sum('covered')}</span>` : ''}
+      <span class="m-badge neutral" data-popover="Не отвечают ни с обходом, ни без него - вероятно, хост выключен или устарел.">Мёртвые: ${sum('dead')}</span>
       <span class="metrics-mode">${modeTxt}</span>`;
 
     const badgeCls = { fix: 'action', break: 'action', ok: 'clean', hard: 'fatal', dead: 'dead', covered: 'clean', unknown: 'neutral' };
-    const badgeLabel = { fix: 'DPI режет — лечится', break: 'обход ломает', covered: 'уже в ipset', dead: 'хост мёртв' };
+    const badgeLabel = { fix: 'DPI режет - лечится', break: 'обход ломает', covered: 'уже в ipset', dead: 'хост мёртв' };
     const rows = v.map(x => {
       const vd = this.VERDICTS[x.verdict] || this.VERDICTS.unknown;
       const applied = this._applied.has(x.domain);
@@ -2125,21 +2125,21 @@ const CdnStab = {
           ${x.provider ? `<span class="cdn-tag">${escapeHtml(x.provider)}</span>` : ''}
         </div></td>
         <td>${x.alive === 'A' ? 'да' : 'нет'}</td>
-        <td>${x.dpi === 'DET' ? '<span class="st-err">режет</span>' : (x.dpi === 'ok' ? 'не режет' : '—')}</td>
+        <td>${x.dpi === 'DET' ? '<span class="st-err">режет</span>' : (x.dpi === 'ok' ? 'не режет' : '-')}</td>
         <td><span class="verdict-badge ${badgeCls[x.verdict] || 'neutral'}">${escapeHtml(badgeLabel[x.verdict] || vd.label)}</span>${ips}</td>
         <td>${x.ipset === 'ломает' ? '<span class="ip-ab-tag breaks">ломает</span>'
-          : (x.ipset === 'чинит' ? '<span class="ip-ab-tag fixes">чинит</span>' : '—')}</td>
+          : (x.ipset === 'чинит' ? '<span class="ip-ab-tag fixes">чинит</span>' : '-')}</td>
         <td style="text-align:right">${btn}</td>
       </tr>`;
     }).join('');
 
     let guide;
     if (actionable) {
-      guide = 'Нажмите кнопку в строке — правка применится к спискам, и обход перезапустится автоматически. «чинит» = точечный IP-обход хоста; «ломает» = исключить его IP из IP-обхода. Либо примените всё сразу кнопкой вверху.';
+      guide = 'Нажмите кнопку в строке - правка применится к спискам, и обход перезапустится автоматически. «чинит» = точечный IP-обход хоста; «ломает» = исключить его IP из IP-обхода. Либо примените всё сразу кнопкой вверху.';
     } else if (abRan) {
-      guide = 'Точечных правок списков не требуется — смотрите итог по IP-обходу выше.';
+      guide = 'Точечных правок списков не требуется - смотрите итог по IP-обходу выше.';
     } else {
-      guide = 'Живые хосты отвечают, stateful DPI не обнаружен, а мёртвые не отвечают и без защиты — это не блокировка. Проверять больше нечего.';
+      guide = 'Живые хосты отвечают, stateful DPI не обнаружен, а мёртвые не отвечают и без защиты - это не блокировка. Проверять больше нечего.';
     }
 
     $('cdnResults').innerHTML = banner + `
@@ -2186,7 +2186,7 @@ const CdnStab = {
     const workingDomains = (this._lastVerdicts || [])
       .filter(x => x.alive === 'A')
       .map(x => x.domain);
-    const preview = actions.map(a => `  ${a.domain} — ${a.action}`).join('\n');
+    const preview = actions.map(a => `  ${a.domain} - ${a.action}`).join('\n');
     if (!confirm(`Применить все правки по матрице?\n\n${preview}\n\nОдин перезапуск обхода. Пропуски (наложения/нет IP) будут показаны.`)) return;
     const btn = $('cdnApplyAll');
     if (btn) { btn.disabled = true; btn.textContent = 'Применяю…'; }
@@ -2221,8 +2221,8 @@ const CdnStab = {
     btn.disabled = true;
     btn.textContent = '…';
     try {
-      // apiPost уже добавляет /api — путь без префикса
-      // working_domains: живые в основном прогоне (кроме самой цели) — сервер
+      // apiPost уже добавляет /api - путь без префикса
+      // working_domains: живые в основном прогоне (кроме самой цели) - сервер
       // резолвит их в protection-множество и расширяет правки до наибольшего
       // чистого префикса (anycast сам вырождается в /32).
       const workingDomains = (this._lastVerdicts || [])
@@ -2331,9 +2331,9 @@ const AsnPage = {
         <td class="meta">${escapeHtml(x.detail || '')}</td>
       </tr>`).join('');
 
-    let guide = 'Если большинство проб <b>OK</b> и сайты работают — <b>ничего делать не нужно</b>: 100% «OK» не требуется, с моими пресетами доступно ~99% сайтов.';
-    if (detN > 0) guide += ` «DETECTED» (${detN}) — stateful DPI режет CDN-класс: лечится кнопками на вкладке «CDN-стабилизация».`;
-    if (synN > 0) guide += ` «SYN DROP» (${synN}) — диапазоны режутся целиком или IP списка протухли; десинк против этого не поможет.`;
+    let guide = 'Если большинство проб <b>OK</b> и сайты работают - <b>ничего делать не нужно</b>: 100% «OK» не требуется, с моими пресетами доступно ~99% сайтов.';
+    if (detN > 0) guide += ` «DETECTED» (${detN}) - stateful DPI режет CDN-класс: лечится кнопками на вкладке «CDN-стабилизация».`;
+    if (synN > 0) guide += ` «SYN DROP» (${synN}) - диапазоны режутся целиком или IP списка протухли; десинк против этого не поможет.`;
     guide += ' Мобильная сеть меняет картину от часа к часу: перед выводами прогоните скан повторно с паузой.';
 
     $('asnResults').innerHTML = `
@@ -2375,7 +2375,7 @@ const TesterPage = {
     }
   },
 
-  // «выполнена» у шага 1 — только если диагностика реально была за сутки
+  // «выполнена» у шага 1 - только если диагностика реально была за сутки
   _diagDoneRecently() {
     const ts = +localStorage.getItem('z2_diag_done') || 0;
     return ts && (Date.now() - ts) < 24 * 60 * 60 * 1000;
@@ -2411,7 +2411,7 @@ const TesterPage = {
     tr.innerHTML =
       `<td class="col-strat"><span class="strat-name">${escapeHtml(this._label(key))}</span></td>` +
       '<td class="col-state"><span class="strat-state"><span class="dot dot-idle"></span><span class="st-text">в очереди</span></span></td>' +
-      '<td class="col-rate">—</td><td class="col-mini">—</td><td class="col-mini">—</td><td class="col-rate">0/0</td>';
+      '<td class="col-rate">-</td><td class="col-mini">-</td><td class="col-mini">-</td><td class="col-rate">0/0</td>';
 
     const detail = document.createElement('tr');
     detail.className = 'strat-detail';
@@ -2454,7 +2454,7 @@ const TesterPage = {
     this._rowFor(key);
     if (this.state.currentKey && this.state.currentKey !== key) {
       // Предыдущую стратегию закрываем честно: у «голого теста» отдельного
-      // сигнала о финише нет — строка висела «тестируется…»
+      // сигнала о финише нет - строка висела «тестируется…»
       const prevKey = this.state.currentKey;
       this._finishRow(prevKey);
       if (this._completedSeen) this._completedSeen.add(prevKey);
@@ -2490,7 +2490,7 @@ const TesterPage = {
         processFn(batch);
       }, delayMs);
     };
-    // Полный сброс очереди (новый тест — старые отложенные строки не нужны).
+    // Полный сброс очереди (новый тест - старые отложенные строки не нужны).
     fn.resetQueue = function () {
       if (timer) { clearTimeout(timer); timer = null; }
       queue = [];
@@ -2504,11 +2504,11 @@ const TesterPage = {
     const isOk = data.status === 'OK' || data.status === 'OK_BLOCKED';
     const isPing = data.test_type === 'ping';
     // QUIC-класс (youtube и др.): TCP-проба сторонним клиентом под десинком
-    // не показательная — нейтральный серый статус вместо красного креста.
+    // не показательная - нейтральный серый статус вместо красного креста.
     const isQuirk = !isPing && QUIRK_HOSTS.has(data.domain);
     const isQuicStatus = isQuirk && data.status === 'QUIC';
-    // rated/control — бэкендовая категория: live-счётчики «Хосты» считаются
-    // только по rated — иначе прыгают (17/17 → 8/8) на финальном network_rate
+    // rated/control - бэкендовая категория: live-счётчики «Хосты» считаются
+    // только по rated - иначе прыгают (17/17 → 8/8) на финальном network_rate
     const isRated = data.rated === undefined ? (!isPing && !isQuirk) : !!data.rated;
     let h = row.hosts.get(mapKey);
     const wasOk = h ? h.ok : false;
@@ -2526,7 +2526,7 @@ const TesterPage = {
       if (!isPing && isRated) row.netTotal++;
     }
     h.ok = isOk;
-    // считаем «доступность» и «хосты» вживую (сеть, без пингов — как финальный network_rate);
+    // считаем «доступность» и «хосты» вживую (сеть, без пингов - как финальный network_rate);
     // quirk-хосты не входят ни в rate, ни в счётчики
     if (isOk && !wasOk) { row.ok++; if (!isPing && isRated) row.netOk++; }
     if (!isOk && wasOk) { row.ok--; if (!isPing && isRated) row.netOk--; }
@@ -2672,7 +2672,7 @@ const TesterPage = {
         }
         if (!state.running) {
           // финальная синхронизация: строка последней стратегии могла не
-          // получить своё «Стратегия X: N%» (progress перезаписался) —
+          // получить своё «Стратегия X: N%» (progress перезаписался) -
           // все «тестируется…» закрываем, иначе висят вечно
           for (const [k, row] of this.state.rows) {
             if (row.stateText && row.stateText.textContent === 'тестируется…') {
@@ -2694,7 +2694,7 @@ const TesterPage = {
             pollActive = false; clearInterval(pollId);
             this.clearElapsedTimer();
             $('testCurrentPhase').textContent = 'Тест завершился без результата';
-            showToast('Тест завершился без результата — запустите подбор заново', 'warn');
+            showToast('Тест завершился без результата - запустите подбор заново', 'warn');
             setTimeout(() => this.resetToIntro('тест без результата'), 1800);
             return;
           }
@@ -2723,7 +2723,7 @@ const TesterPage = {
           pollActive = false; clearInterval(pollId);
           if (onError) onError();
         }
-        // Опрос умер — не держим блокировку «идёт тест» навсегда.
+        // Опрос умер - не держим блокировку «идёт тест» навсегда.
         if (pollActive) { pollActive = false; clearInterval(pollId); App.setTestActive(false); }
       });
     }, 350);
@@ -2882,10 +2882,10 @@ const TesterPage = {
 
   _markUntested() {
     // Скелетон-строки, до которых прогон не дошёл (например «custom» не
-    // собралась) — переводим из «в очереди» в честное «—».
+    // собралась) - переводим из «в очереди» в честное «-».
     for (const row of this.state.rows.values()) {
       if (row.stateText && row.stateText.textContent === 'в очереди') {
-        row.stateText.textContent = '—';
+        row.stateText.textContent = '-';
         row.stateDot.className = 'dot dot-idle';
       }
     }
@@ -2900,7 +2900,7 @@ const TesterPage = {
       if (r.net_ok_count != null) row.hostsCell.textContent = r.net_ok_count + '/' + r.net_total;
       const statusOf = (domains) => {
         const found = (r.results || []).filter(x => domains.includes(x.domain) && x.test_type !== 'ping');
-        if (!found.length) return '—';
+        if (!found.length) return '-';
         return found.some(x => x.status === 'OK' || x.status === 'OK_BLOCKED')
           ? '<span class="st-ok">✓</span>' : '<span class="st-err">✗</span>';
       };
@@ -2940,19 +2940,19 @@ const TesterPage = {
       const naked = p2.naked;
 
       if (rec) html += this._renderVerdict(rec);
-      else html += '<div class="detail-section"><span class="detail-head st-warn">Итог не определён</span><p class="detail-text">Нет результатов — запустите подбор заново.</p></div>';
+      else html += '<div class="detail-section"><span class="detail-head st-warn">Итог не определён</span><p class="detail-text">Нет результатов - запустите подбор заново.</p></div>';
 
       if (custom && custom.summary) {
-        const rel = custom.relation === 'better' ? '— обгоняет лучшую'
-          : custom.relation === 'worse' ? '— уступает лучшей'
-          : custom.relation === 'equal' ? '— равна лучшей' : '';
+        const rel = custom.relation === 'better' ? '- обгоняет лучшую'
+          : custom.relation === 'worse' ? '- уступает лучшей'
+          : custom.relation === 'equal' ? '- равна лучшей' : '';
         const rateTxt = custom.rate != null ? ` (${custom.rate}%)` : '';
         html += `<div class="detail-section">
           <span class="detail-head">Личная стратегия «custom»</span>
           <p class="detail-text">${escapeHtml(custom.summary)}${rel ? ' ' + rel : ''}${rateTxt}.
           ${custom.valid
-            ? 'Если «custom» помечена лучшей в таблице — запускайте её кнопкой выше.'
-            : 'Не прошла проверку движком — запускать её не стоит.'}
+            ? 'Если «custom» помечена лучшей в таблице - запускайте её кнопкой выше.'
+            : 'Не прошла проверку движком - запускать её не стоит.'}
           ${custom.error && !custom.valid ? `<span class="st-err">${escapeHtml(custom.error)}</span>` : ''}</p>
         </div>`;
       } else if (custom && custom.error) {
@@ -2965,14 +2965,14 @@ const TesterPage = {
       if (naked && naked.net_total) {
         html += `<div class="detail-section">
           <span class="detail-head">Базовый уровень (без защиты): <span class="${rateClass(naked.network_rate || 0)}">${(naked.network_rate || 0).toFixed(0)}%</span></span>
-          <p class="detail-text">Столько сервисов доступно вообще без Zapret. Столбец «Без защиты» в таблице — точка отсчёта.</p>
+          <p class="detail-text">Столько сервисов доступно вообще без Zapret. Столбец «Без защиты» в таблице - точка отсчёта.</p>
         </div>`;
       }
 
       if (rec && rec.blocked_domains && rec.blocked_domains.length && rec.verdict !== 'ok') {
         html += `<div class="detail-section" style="background: var(--err-bg); border-color: var(--err-line);">
           <span class="detail-head" style="color: #f0b7b8;">Не пробито ни одной стратегией (${rec.blocked_domains.length} хост${rec.blocked_domains.length > 1 ? 'а' : ''})</span>
-          <p class="detail-text" style="color: #f0c6c6;">Если это ваши рабочие домены — добавьте их в «Списки → Домены — обрабатывать».</p>
+          <p class="detail-text" style="color: #f0c6c6;">Если это ваши рабочие домены - добавьте их в «Списки → Домены - обрабатывать».</p>
           <div class="chip-list">${rec.blocked_domains.map(d => `<span class="fail-domain">${escapeHtml(d)}</span>`).join('')}</div>
         </div>`;
       }
@@ -2985,12 +2985,12 @@ const TesterPage = {
       html += `<div class="detail-section">
         <span class="detail-head">Сравнение</span>
         <table class="check-table"><tbody>
-          <tr><td class="check-name">Zapret 1 (текущий)</td><td class="mono">${cur ? rateOf(cur).toFixed(0) + '%' : '—'}</td></tr>
-          <tr><td class="check-name">Без защиты</td><td class="mono">${naked ? rateOf(naked).toFixed(0) + '%' : '—'}</td></tr>
+          <tr><td class="check-name">Zapret 1 (текущий)</td><td class="mono">${cur ? rateOf(cur).toFixed(0) + '%' : '-'}</td></tr>
+          <tr><td class="check-name">Без защиты</td><td class="mono">${naked ? rateOf(naked).toFixed(0) + '%' : '-'}</td></tr>
           <tr><td class="check-name">Zapret 2, лучшая${best ? ' («' + escapeHtml(best.profile || '') + (best.blob ? ' + ' + escapeHtml(best.blob) : '') + '»)' : ''}</td>
-              <td class="mono ${best ? rateClass(rateOf(best)) : ''}">${best ? rateOf(best).toFixed(0) + '%' : '—'}</td></tr>
+              <td class="mono ${best ? rateClass(rateOf(best)) : ''}">${best ? rateOf(best).toFixed(0) + '%' : '-'}</td></tr>
         </tbody></table>
-        <p class="detail-text">Подробности каждой комбинации — в таблице стратегий (клик по строке).</p>
+        <p class="detail-text">Подробности каждой комбинации - в таблице стратегий (клик по строке).</p>
       </div>`;
     }
 
@@ -3047,7 +3047,7 @@ const TesterPage = {
         (${(rec.best_network_rate || 0).toFixed(0)}%)</button>`;
     }
     if (rec.same_as_naked) {
-      actions += '<span class="meta">результат как без защиты — обход не применяется</span>';
+      actions += '<span class="meta">результат как без защиты - обход не применяется</span>';
     }
     const badgeExtra = rec.best_network_rate != null && rec.verdict !== 'no_data'
       ? ' · ' + rec.best_network_rate.toFixed(0) + '% успеха' : '';
@@ -3065,8 +3065,8 @@ const TesterPage = {
       ${rec.top3 && rec.top3.length > 1 ? `<div class="detail-section">
         <span class="detail-head">Топ стратегий</span>
         <p class="detail-text">${rec.top3.map((t, i) =>
-          `${i + 1}. <b>${escapeHtml(t.name)}</b> — ${t.rate.toFixed(0)}% (${t.net_ok}/${t.net_total})`
-        ).join('<br>')}<br><span class="st-quirk">разница в пределах ±1 домена — погрешность прогона, стратегии практически равнозначны</span></p>
+          `${i + 1}. <b>${escapeHtml(t.name)}</b> - ${t.rate.toFixed(0)}% (${t.net_ok}/${t.net_total})`
+        ).join('<br>')}<br><span class="st-quirk">разница в пределах ±1 домена - погрешность прогона, стратегии практически равнозначны</span></p>
       </div>` : ''}
       <div class="verdict-actions">${actions}</div>
     </div>`;
@@ -3103,7 +3103,7 @@ const TesterPage = {
             $('testRun').hidden = false;
             this.runFullPipelinePhase0();
           } else {
-            $('needZapret1Status').textContent = 'winws.exe всё ещё не найден — запустите батник Zapret 1.';
+            $('needZapret1Status').textContent = 'winws.exe всё ещё не найден - запустите батник Zapret 1.';
           }
         },
         onError: () => {
@@ -3165,7 +3165,7 @@ const TesterPage = {
   showCollectForm() {
     $('collectCity').value = '';
     $('collectIsp').value = '';
-    $('collectBatLabel').textContent = 'Файл стратегии Zapret 1 (.bat) — по желанию';
+    $('collectBatLabel').textContent = 'Файл стратегии Zapret 1 (.bat) - по желанию';
     $('collectBatZone').classList.remove('filed');
     $('collectConsent').checked = false;
     $('collectSubmitBtn').disabled = false;
@@ -3301,7 +3301,7 @@ const TesterPage = {
       const r = await apiPost('/process-probe/scan', {});
       if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
       const sel = $('probeProcSelect');
-      sel.innerHTML = '<option value="">— выберите процесс —</option>';
+      sel.innerHTML = '<option value="">- выберите процесс -</option>';
       const groups = {};
       for (const p of (r.processes || [])) {
         if (!groups[p.name]) groups[p.name] = { count: 0, title: p.title || '' };
@@ -3311,7 +3311,7 @@ const TesterPage = {
       for (const name of Object.keys(groups).sort()) {
         const g = groups[name];
         const suffix = g.count > 1 ? ` (${g.count} процесса)` : '';
-        const title = g.title ? ` — ${g.title}` : '';
+        const title = g.title ? ` - ${g.title}` : '';
         const o = document.createElement('option');
         o.value = name;
         o.textContent = name + suffix + title;
@@ -3361,9 +3361,9 @@ const TesterPage = {
       const pid = parseInt(v, 10);
       const hit = list.find(p => p.pid === pid);
       if (hit) {
-        add('pp-hint-ok', `✓ PID ${pid} — ${esc(hit.name)}${hit.title ? ' · ' + esc(hit.title) : ''}`);
+        add('pp-hint-ok', `✓ PID ${pid} - ${esc(hit.name)}${hit.title ? ' · ' + esc(hit.title) : ''}`);
       } else {
-        add('pp-hint-err', `PID ${pid} не найден среди процессов с сетью — если процесс ещё не запущен, анализатор дождётся его`);
+        add('pp-hint-err', `PID ${pid} не найден среди процессов с сетью - если процесс ещё не запущен, анализатор дождётся его`);
       }
       return;
     }
@@ -3372,7 +3372,7 @@ const TesterPage = {
     const exact = list.filter(p => norm(p.name) === vn);
     if (exact.length) {
       const names = [...new Set(exact.map(p => p.name))];
-      add('pp-hint-ok', `✓ найден: ${esc(names.join(', '))} — ${exact.length} процесс${exact.length > 1 ? 'а' : ''} с сетью`);
+      add('pp-hint-ok', `✓ найден: ${esc(names.join(', '))} - ${exact.length} процесс${exact.length > 1 ? 'а' : ''} с сетью`);
       return;
     }
 
@@ -3392,8 +3392,8 @@ const TesterPage = {
       return;
     }
 
-    if (!list.length) add('pp-hint-mute', 'Список процессов ещё не загружен — нажмите «Сканировать»');
-    else add('pp-hint-err', 'не найден в списке — без активных соединений или ещё не запущен (анализатор дождётся его)');
+    if (!list.length) add('pp-hint-mute', 'Список процессов ещё не загружен - нажмите «Сканировать»');
+    else add('pp-hint-err', 'не найден в списке - без активных соединений или ещё не запущен (анализатор дождётся его)');
   },
 
   async startProbe() {
@@ -3523,7 +3523,7 @@ const TesterPage = {
         if ('SynSent' in states && !('Established' in states)) { status = 'Нет ответа (SYN)'; cls = 'syn-sent'; sev = 0; }
         else if ('Established' in states) { status = 'Установлено'; cls = 'established'; sev = 2; }
         else if ('CloseWait' in states) { status = 'Сервер закрыл'; cls = 'neutral'; sev = 1; }
-        else { status = h.state || '—'; cls = 'neutral'; sev = 1; }
+        else { status = h.state || '-'; cls = 'neutral'; sev = 1; }
         metric = `снимков ${h.snapshots || 0}`;
       } else {
         const s = h.sent || 0, r = h.recv || 0;
@@ -3578,10 +3578,10 @@ const TesterPage = {
         const uniq = [...new Set(problems)];
         domBox.hidden = false;
         if (!uniq.length) {
-          domBox.innerHTML = '<div class="meta">Проблемные цели — серверы по IP '
+          domBox.innerHTML = '<div class="meta">Проблемные цели - серверы по IP '
             + '(имён в DNS-кэше нет). Попробуйте «Общий IP-обход» или добавьте IP в ipset-включения.</div>';
         } else {
-          domBox.innerHTML = '<div class="probe-domains-title">Домены проблемных целей — можно добавить в обход:</div>'
+          domBox.innerHTML = '<div class="probe-domains-title">Домены проблемных целей - можно добавить в обход:</div>'
             + uniq.map(d => `<div class="probe-domain-row">
                 <span class="endpoint-ip">${escapeHtml(d)}</span>
                 <button class="btn btn-sm" data-add-domain="${escapeHtml(d)}">В обход</button>

@@ -78,7 +78,7 @@ def get_network_info() -> dict:
 
 def get_routing_info() -> dict:
     """Короткий tracert до публичного DNS для анализа хопов провайдера.
-    2026-09-13: -h 6 / -w 800 — полный -h 8/-w 1500 растягивал сбор отчёта до
+    2026-09-13: -h 6 / -w 800 - полный -h 8/-w 1500 растягивал сбор отчёта до
     20-30с (каждый не отвечающий хоп ждал 1.5с×3)."""
     return {
         "trace_1dot": _run(["tracert", "-d", "-h", "6", "-w", "800", "1.1.1.1"], timeout=12),
@@ -95,8 +95,8 @@ def get_isp_info() -> dict:
 
 
 def collect_all() -> dict:
-    """Все внешние команды параллельно: tracert/nslookup/ipconfig — до 30с
-    последовательно; параллель — max(каждой). Каждый вызов с собственным
+    """Все внешние команды параллельно: tracert/nslookup/ipconfig - до 30с
+    последовательно; параллель - max(каждой). Каждый вызов с собственным
     timeout, ошибки изолированы."""
     from concurrent.futures import ThreadPoolExecutor
 
@@ -180,13 +180,13 @@ def export_data_package(
             if session_log.exists():
                 zf.write(session_log, "test_session.log")
 
-            # Конфиг (профиль/тогглы) — критичен для разбора отчёта
+            # Конфиг (профиль/тогглы) - критичен для разбора отчёта
             cfg_json = root_dir / "zapret2_config.json"
             if cfg_json.exists():
                 zf.write(cfg_json, "zapret2_config.json")
 
             # debug_winws2.log НЕ включается (2026-09-13): тестер не запускает
-            # winws2 с --debug, файл — остаток от прошлой DEBUG-сессии;
+            # winws2 с --debug, файл - остаток от прошлой DEBUG-сессии;
             # exp-/cand-/test- пресеты тоже не попадают в отчёт.
             presets_dir = root_dir / "presets"
             if presets_dir.is_dir():
@@ -197,7 +197,7 @@ def export_data_package(
 
             # Hostlist'ы важны для диагностики: если заблокированного домена
             # нет ни в одном списке пресета, его desync-профиль не сработает
-            # (no_action) — все стратегии выглядят одинаково и не работают.
+            # (no_action) - все стратегии выглядят одинаково и не работают.
             lists_dir = root_dir / "lists"
             if lists_dir.is_dir():
                 for lf in sorted(lists_dir.glob("*.txt")):
