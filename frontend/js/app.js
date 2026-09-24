@@ -1459,7 +1459,7 @@ const AppInfo = {
       const st = $('appInfoStatus');
       st.textContent = 'Проверяю…';
       try {
-        const r = await apiGet('/update-check');
+        const r = await apiGet('/update-check?force=1');
         if (r.error) throw new Error(r.error);
         if (r.available) {
           st.innerHTML = `Доступна версия <b>${escapeHtml(r.latest || '')}</b> - смотрите баннер вверху страницы.`;

@@ -7,7 +7,6 @@
 """
 from __future__ import annotations
 
-import json
 import re
 import urllib.request
 from typing import Optional
@@ -18,7 +17,11 @@ from core.config import VERSION
 # raw.githubusercontent может быть недоступен в некоторых сетях - это ок,
 # проверка молча падает.
 VERSION_URL = "https://raw.githubusercontent.com/TheFirstNoob/Zapret-2-GUI/main/VERSION"
-API_URL = "https://api.github.com/repos/TheFirstNoob/Zapret-2-GUI/contents/VERSION"
+# Зеркало того же файла через jsDelivr: работает в сетях, где raw режется,
+# и НЕ имеет лимитов GitHub API (api.github.com: 60 запросов/час на IP -
+# при общем/проксированном IP лимит выедается чужими запросами).
+MIRROR_VERSION_URL = ("https://cdn.jsdelivr.net/gh/TheFirstNoob/Zapret-2-GUI"
+                      "@main/VERSION")
 RELEASES_URL = "https://github.com/TheFirstNoob/Zapret-2-GUI/releases"
 # jsDelivr отдаёт файлы репо с другого CDN - работает даже в сетях,
 # где raw/objects.githubusercontent заблокированы по IP.
@@ -56,35 +59,26 @@ def _fetch_latest_raw() -> Optional[str]:
         return r.read(200).decode("utf-8", errors="replace").strip()
 
 
-def _fetch_latest_api() -> Optional[str]:
-    """Fallback через GitHub API - raw.githubusercontent.com часто
+def _fetch_latest_mirror() -> Optional[str]:
+    """Fallback через jsDelivr-зеркало: raw.githubusercontent.com часто
     блокируется/режется у российских провайдеров (185.199.108.0/22 в
-    blackhole), а api.github.com (140.82.121.x) обычно жив.  Endpoint
-    contents работает даже без опубликованного GitHub Release."""
-    req = urllib.request.Request(
-        API_URL, headers={**_UA, "Accept": "application/vnd.github+json"})
+    blackhole). Зеркало отдаёт тот же файл репозитория, но без лимитов
+    GitHub API."""
+    req = urllib.request.Request(MIRROR_VERSION_URL, headers=_UA)
     with urllib.request.urlopen(req, timeout=_CHECK_TIMEOUT) as r:
-        data = json.loads(r.read(8192).decode("utf-8", errors="replace"))
-    import base64
-    content = data.get("content") or ""
-    try:
-        text = base64.b64decode(content).decode("utf-8", errors="replace").strip()
-    except Exception:
-        return None
-    return text or None
+        return r.read(200).decode("utf-8", errors="replace").strip()
 
 
 def merge_version_sources(raw: Optional[str],
-                          api: Optional[str]) -> tuple[Optional[str], Optional[str]]:
-    """Сверить независимые источники версии (raw/API).
-
-    Оба доступны и расходятся → (None, причина): возможна подмена, апдейт
-    не предлагаем. Возвращает (версия|None, ошибка|None)."""
+                          mirror: Optional[str]) -> tuple[Optional[str], Optional[str]]:
+    """Сверить независимые источники версии (raw/зеркало). Оба доступны и
+    расходятся → (None, причина): возможна подмена, апдейт не предлагаем.
+    Возвращает (версия|None, ошибка|None)."""
     raw = (raw or "").strip() or None
-    api = (api or "").strip() or None
-    if raw and api and raw != api:
+    mirror = (mirror or "").strip() or None
+    if raw and mirror and raw != mirror:
         return None, "источники версии расходятся"
-    latest = raw or api
+    latest = raw or mirror
     if not latest:
         return None, "не удалось получить версию"
     return latest, None
@@ -103,16 +97,16 @@ def check_for_updates() -> dict:
     }
     try:
         raw = None
-        api = None
+        mirror = None
         try:
             raw = _fetch_latest_raw()
         except Exception:
             raw = None
         try:
-            api = _fetch_latest_api()
+            mirror = _fetch_latest_mirror()
         except Exception:
-            api = None
-        latest, err = merge_version_sources(raw, api)
+            mirror = None
+        latest, err = merge_version_sources(raw, mirror)
         if latest is None:
             info["error"] = err
             return info

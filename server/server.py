@@ -162,6 +162,8 @@ def _ui_debug(msg: str) -> None:
 
 # Кэш проверки обновлений: одна проверка за сессию приложения.
 _update_check_cache: Optional[dict] = None
+_update_check_at: float = 0.0
+_UPDATE_CHECK_TTL = 6 * 3600  # авто-проверка не чаще раза в 6 часов
 
 # ── Состояние апдейтера (0.8) ───────────────────────────────
 _updater_state = {
@@ -1594,7 +1596,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
             elif path == "/api/tester/status":
                 self._handle_tester_status()
             elif path == "/api/update-check":
-                self._handle_update_check()
+                self._handle_update_check(params)
             elif path == "/api/update/status":
                 self._handle_update_status()
             elif path == "/api/process-probe/status":
@@ -2361,11 +2363,15 @@ class ZapretHandler(BaseHTTPRequestHandler):
                                                 ("running", "progress", "error")},
                              "report": _diag_state["report"]})
 
-    def _handle_update_check(self) -> None:
-        global _update_check_cache
-        if _update_check_cache is None:
+    def _handle_update_check(self, params: Optional[dict] = None) -> None:
+        global _update_check_cache, _update_check_at
+        force = "1" in (params or {}).get("force", [])
+        now = time.time()
+        if (force or _update_check_cache is None
+                or (now - _update_check_at) > _UPDATE_CHECK_TTL):
             from core.updates import check_for_updates
             _update_check_cache = check_for_updates()
+            _update_check_at = now
         self._send_json({"status": "ok", **_update_check_cache})
 
     def _handle_update_status(self) -> None:
