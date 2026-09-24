@@ -37,3 +37,5 @@ justice.gov
 elecane.com
 sh00065.hostgator.com
 www.velivole.fr
+soundcloud.com
+sndcdn.com

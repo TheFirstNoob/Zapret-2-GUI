@@ -48,6 +48,42 @@ def default_games() -> dict:
             "tag": "Сетевой бой",
             "note": "fake на старте коннекта, без флуда",
         }],
+    }, {
+        "id": "valorant",
+        "name": "Valorant",
+        "enabled": True,
+        "process": "VALORANT.exe",
+        "domains": [
+            {"domain": "valorant.com", "on": True, "warn": False,
+             "tag": "Игра и лончер",
+             "note": "в реестре РКН - домену нужен обход"},
+            {"domain": "playvalorant.com", "on": True, "warn": False,
+             "tag": "Лончер", "note": "клиент и обновления"},
+            {"domain": "riotgames.com", "on": True, "warn": False,
+             "tag": "Аккаунт", "note": "вход в аккаунт Riot"},
+            {"domain": "riotcdn.net", "on": True, "warn": False,
+             "tag": "CDN", "note": "файлы игры и патчи"},
+        ],
+        # UDP-фикс пока не подобран (Riot использует UDP 5000-5500) - как с
+        # Wardogs: сначала проба через «Анализ приложения», потом правило.
+        "udp": [],
+    }, {
+        "id": "fortnite",
+        "name": "Fortnite",
+        "enabled": True,
+        "process": "FortniteClient-Win64-Shipping.exe",
+        "domains": [
+            {"domain": "fortnite.com", "on": True, "warn": False,
+             "tag": "Игра", "note": "сервисы игры"},
+            {"domain": "epicgames.com", "on": True, "warn": False,
+             "tag": "Аккаунт", "note": "Epic Games: вход и лончер"},
+            {"domain": "epicgames.dev", "on": True, "warn": True,
+             "tag": "Общий сервис",
+             "note": "Epic Online Services - нужен всем играм Epic"},
+            {"domain": "epicgamescdn.com", "on": True, "warn": False,
+             "tag": "CDN", "note": "загрузки и патчи"},
+        ],
+        "udp": [],
     }]}
 
 
