@@ -708,6 +708,9 @@ const MainPage = {
     z1p.classList.remove('is-ok', 'is-warn', 'is-err');
     if (z1.running && z2.running) z1p.classList.add('is-err');
     else if (z1.running) z1p.classList.add('is-warn');
+    // Панель Zapret 1 - только тем, у кого он реально есть (папка настроена,
+    // служба найдена или он запущен): у остальных это мёртвый блок
+    z1p.hidden = !(z1.installed || z1.running);
     if (z2.running) {
       badge.className = 'dot ' + (conflict ? 'dot-warn' : 'dot-ok');
       text.className = 'state-text ' + (conflict ? 'st-warn' : 'st-ok');

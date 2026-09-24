@@ -20,7 +20,8 @@
 ## Сборка
 - [ ] `python build.py` → exe + `Windows build/Zapret2GUI.zip` + .sha256
 - [ ] `python build_portable.py` → Zapret2GUI-portable.zip + .sha256
-- [ ] `python build_lite.py` → Zapret2GUI-lite.zip + .sha256
+- [ ] `python build_lite.py` → Zapret2GUI-lite.zip + .sha256 (внутри: VERSION и
+      дата в README; сборка сама прогоняет dry-run всех release-пресетов)
 - [ ] `python tools/security/test_updates_security.py` — все зелёные.
 
 ## Подпись (обязательно)

@@ -248,10 +248,36 @@ def main() -> None:
     ps1 = (ROOT / "test_lite.ps1").read_text(encoding="utf-8")
     (LITE / "test.ps1").write_text(ps1, encoding="utf-8-sig")  # BOM: иначе PS 5.1 ломает кириллицу
 
-    (LITE / "README.txt").write_text(README_TXT, encoding="utf-8")
+    from datetime import date
+    (LITE / "VERSION").write_text(VERSION + "\n", encoding="utf-8")
+    lite_readme = (f"Версия: {VERSION} · сборка {date.today().isoformat()}\n"
+                   + "=" * 50 + "\n\n" + README_TXT)
+    (LITE / "README.txt").write_text(lite_readme, encoding="utf-8")
     # лицензии: собственный код (MIT) + уведомления о сторонних компонентах
     shutil.copy2(ROOT / "LICENSE", LITE / "LICENSE.txt")
     shutil.copy2(ROOT / "THIRD_PARTY_NOTICES.md", LITE / "THIRD_PARTY_NOTICES.txt")
+
+    # Смоук-тест прямо в сборке: движок из архива должен принимать каждый
+    # release-пресет (dry-run, драйвер не грузится). Лучше упасть на сборке,
+    # чем отдать пользователю архив с нерабочим пресетом.
+    from core.launcher import validate_args
+    lite_exe = LITE / "bin" / "winws2.exe"
+    checked = 0
+    failed = []
+    for pf in sorted((LITE / "presets").glob("*.txt")):
+        if not RELEASE_PRESETS(pf.stem) or pf.stem == "custom":
+            continue
+        args = build_args_from_preset(LITE, LITE / "lua", LITE / "blobs", pf)
+        ok, err = validate_args(lite_exe, args, cwd=LITE)
+        checked += 1
+        if not ok:
+            failed.append(f"{pf.stem}: {err}")
+    if failed:
+        print("ОШИБКА: lite-пресеты не проходят dry-run:")
+        for f in failed:
+            print("  -", f)
+        sys.exit(1)
+    print(f"OK: dry-run {checked} пресетов")
 
     zip_name = ROOT / "Windows build" / "Zapret2GUI-lite.zip"
     with zipfile.ZipFile(zip_name, "w", zipfile.ZIP_DEFLATED) as zf:

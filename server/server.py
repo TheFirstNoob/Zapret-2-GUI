@@ -710,6 +710,35 @@ def _scan_winws_exe() -> dict:
     return {"running": bool(pid), "pid": pid}
 
 
+_zapret1_installed_cache: Optional[bool] = None
+
+
+def _zapret1_installed() -> bool:
+    """Zapret 1 есть в системе? (настроенная папка или служба zapret).
+
+    Нужно, чтобы не показывать панель «Zapret 1» тем, у кого его нет.
+    Кэшируется на сеанс: службы в рамках сеанса не появляются/исчезают.
+    """
+    global _zapret1_installed_cache
+    if _zapret1_installed_cache is not None:
+        return _zapret1_installed_cache
+    installed = False
+    try:
+        cfg = get_config_manager().load()
+        installed = bool(cfg.zapret1_dir)
+    except Exception:
+        installed = False
+    if not installed:
+        try:
+            from core.utils import run_sc
+            code, _ = run_sc(["query", "zapret"])
+            installed = code == 0
+        except Exception:
+            installed = False
+    _zapret1_installed_cache = installed
+    return installed
+
+
 # ── Запуск действий тестера (фоновый поток) ──────────────────
 
 # Самые важные для пользователя хосты - показываются в финальном вердикте.
@@ -1704,7 +1733,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
                 "running": status.running, "pid": status.pid,
                 "strategy": status.strategy,
             },
-            "zapret1": zapret1,
+            "zapret1": {**zapret1, "installed": _zapret1_installed()},
             "profiles": profiles,
         })
 
