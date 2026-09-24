@@ -273,7 +273,7 @@
 37.230.192.51 sydney.bing.com
 37.230.192.51 tria.ge
 37.230.192.51 videos.openai.com
-37.230.192.51 openrouter.ai
+87.228.47.198 openrouter.ai
 37.230.192.51 voice-proxy.www.deepl.com
 37.230.192.51 web.archive.org
 37.230.192.51 www2.deepl.com
