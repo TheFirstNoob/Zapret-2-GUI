@@ -1352,6 +1352,7 @@ const GamesPage = {
   _data: null,
   _open: {},
   _svcWired: false,
+  _checks: {},
 
   async onShow() {
     const body = $('gamesBody');
@@ -1392,6 +1393,15 @@ const GamesPage = {
       const udpCount = (g.udp || []).length;
       const udpOn = (g.udp || []).filter(u => u.on).length;
       const udpPorts = (g.udp || []).map(u => u.ports).join(', ');
+      const check = this._checks[g.id || gi] || null;
+      const mark = (domain) => {
+        if (!check) return '';
+        const r = check[domain];
+        if (!r) return '';
+        return r.ok
+          ? ' <span class="st-ok">✓</span>'
+          : ` <span class="st-err" title="код ${escapeHtml(r.code)}">✗ ${escapeHtml(r.code)}</span>`;
+      };
       return `
       <div class="game-item${open ? ' open' : ''}">
         <div class="game-row" data-g-expand="${gi}">
@@ -1416,7 +1426,7 @@ const GamesPage = {
                 <input type="checkbox" class="cbx" data-g-dom="${gi}:${di}" ${d.on ? 'checked' : ''}>
                 <div class="rule-content">
                   <div class="rule-main-line">
-                    <span class="rule-target">${escapeHtml(d.domain)}</span>
+                    <span class="rule-target">${escapeHtml(d.domain)}${mark(d.domain)}</span>
                   </div>
                   ${d.note ? `<div class="rule-comment">${d.tag ? `<span class="${d.warn ? 'comment-warning' : 'comment-tag'}">${escapeHtml(d.tag)}:</span> ` : ''}${escapeHtml(d.note)}</div>` : ''}
                 </div>
@@ -1438,6 +1448,7 @@ const GamesPage = {
               </label>`).join('') || '<div class="empty-note">UDP-правил нет</div>'}
           </div>
           <div class="game-actions" data-g-noexp="1">
+            <button class="btn btn-sm" data-g-check="${gi}" ${domOn ? '' : 'disabled'} title="Быстрая проба включённых доменов игры: открываются ли они сейчас">Проверить домены</button>
             <button class="btn btn-sm" data-g-analyze="${gi}" ${g.process ? '' : 'disabled'} title="${g.process ? 'Запустить сетевой анализ процесса игры' : 'У игры не задан процесс'}">Анализ приложения</button>
             <span class="meta">${g.process ? 'процесс: ' + escapeHtml(g.process) : 'процесс не задан'}</span>
           </div>
@@ -1474,6 +1485,44 @@ const GamesPage = {
         ev.stopPropagation();
         this.analyzeGame(+btn.dataset.gAnalyze);
       }));
+    body.querySelectorAll('[data-g-check]').forEach(btn =>
+      btn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        this.checkDomains(+btn.dataset.gCheck);
+      }));
+  },
+
+  // Быстрая проба включённых доменов игры (сквозь текущий обход, если он есть)
+  async checkDomains(gi) {
+    const g = (this._data.games || [])[gi];
+    if (!g) return;
+    const key = g.id || gi;
+    const btn = document.querySelector(`[data-g-check="${gi}"]`);
+    if (btn) { btn.disabled = true; btn.textContent = 'Проверяю…'; }
+    Activity.set('games', `Проверка доменов: ${g.name || g.id}`);
+    try {
+      const r = await apiPost('/games/check', { id: g.id || gi });
+      if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
+      const map = {};
+      (r.results || []).forEach(x => { map[x.domain] = x; });
+      this._checks[key] = map;
+      const bad = (r.results || []).filter(x => !x.ok);
+      if (!r.results || !r.results.length) {
+        Activity.done('Нечего проверять');
+        showToast('Нет включённых доменов', 'warn');
+      } else if (bad.length) {
+        Activity.fail(`Не открываются: ${bad.length}`);
+        showToast('Не открываются: ' + bad.map(x => x.domain).join(', '), 'warn');
+      } else {
+        Activity.done('Все домены открываются');
+        showToast('Все домены открываются', 'ok');
+      }
+      this.render();
+    } catch (e) {
+      Activity.fail('Проверка доменов: ошибка');
+      showToast('Проверка доменов: ' + (e.message || e), 'error');
+      if (btn) { btn.disabled = false; btn.textContent = 'Проверить домены'; }
+    }
   },
 
   async reinstallService() {
@@ -1493,6 +1542,8 @@ const GamesPage = {
       showToast('У игры не задан процесс для анализа', 'error');
       return;
     }
+    // Запомним игру: в анализе найденные домены можно будет добавить сразу в неё
+    TesterPage._gameContext = { id: g.id || gi, name: g.name || g.id };
     location.hash = '#probe';
     setTimeout(async () => {
       const inp = $('probeProcInput');
@@ -3713,15 +3764,39 @@ const TesterPage = {
           domBox.innerHTML = '<div class="meta">Проблемные цели - серверы по IP '
             + '(имён в DNS-кэше нет). Попробуйте «Общий IP-обход» или добавьте IP в ipset-включения.</div>';
         } else {
+          const gctx = this._gameContext;
           domBox.innerHTML = '<div class="probe-domains-title">Домены проблемных целей - можно добавить в обход:</div>'
             + uniq.map(d => `<div class="probe-domain-row">
                 <span class="endpoint-ip">${escapeHtml(d)}</span>
                 <button class="btn btn-sm" data-add-domain="${escapeHtml(d)}">В обход</button>
+                ${gctx ? `<button class="btn btn-sm" data-add-to-game="${escapeHtml(d)}">В игру: ${escapeHtml(gctx.name)}</button>` : ''}
               </div>`).join('');
           domBox.querySelectorAll('[data-add-domain]').forEach(b =>
             b.addEventListener('click', () => ListsPage.addDomainSuggestion(b)));
+          domBox.querySelectorAll('[data-add-to-game]').forEach(b =>
+            b.addEventListener('click', () => this.addToGame(b)));
         }
       }
+    }
+  },
+
+  // Добавить найденный в анализе домен прямо в игру (запущенную из её карточки)
+  async addToGame(btn) {
+    const ctx = this._gameContext;
+    if (!ctx) return;
+    const domain = btn.dataset.addToGame;
+    btn.disabled = true;
+    btn.textContent = 'Добавляю…';
+    try {
+      const r = await apiPost('/games/add-domain',
+                              { game_id: ctx.id, domain });
+      if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
+      showToast(r.message || 'Домен добавлен в игру', 'ok');
+      btn.textContent = 'Добавлено';
+    } catch (e) {
+      showToast('Игра: ' + (e.message || e), 'error');
+      btn.disabled = false;
+      btn.textContent = 'В игру: ' + ctx.name;
     }
   },
 };

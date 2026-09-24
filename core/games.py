@@ -160,3 +160,31 @@ def write_cidr_file(root: Path, rule: dict) -> Path:
     path = folder / f"{rule.get('id') or 'game'}.txt"
     path.write_text("\n".join(rule["cidrs"]) + "\n", encoding="ascii")
     return path
+
+
+def add_game_domain(root: Path, game_id: str, domain: str) -> tuple[bool, str, bool]:
+    """Добавить домен в игру (включённым) - например, из анализа приложения.
+
+    Дубли не добавляются. Возвращает (ok, сообщение, реально добавлено).
+    """
+    data = load_games(root)
+    game = next((g for g in (data.get("games") or [])
+                 if str(g.get("id")) == str(game_id)), None)
+    if game is None:
+        return False, "Игра не найдена", False
+    dom = (domain or "").strip().lower().rstrip(".")
+    if not dom:
+        return False, "Пустой домен", False
+    for d in (game.get("domains") or []):
+        if str(d.get("domain", "")).strip().lower() == dom:
+            return True, "Домен уже в списке игры", False
+    game.setdefault("domains", []).append({
+        "domain": dom, "on": True, "warn": False, "tag": "",
+        "note": "добавлен из анализа приложения"})
+    if not save_games(root, data):
+        return False, "Не удалось сохранить games.json", False
+    try:
+        sync_domain_list(root, data)
+    except Exception:
+        pass
+    return True, "Домен добавлен в игру - применяется к новым подключениям", True

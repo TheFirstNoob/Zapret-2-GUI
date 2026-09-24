@@ -1925,6 +1925,10 @@ class ZapretHandler(BaseHTTPRequestHandler):
                 self._handle_probe_report()
             elif path == "/api/games/save":
                 self._handle_games_save(data)
+            elif path == "/api/games/check":
+                self._handle_games_check(data)
+            elif path == "/api/games/add-domain":
+                self._handle_games_add_domain(data)
             elif path == "/api/frontend-log":
                 self._handle_probe_debug(data)
             else:
@@ -2008,6 +2012,51 @@ class ZapretHandler(BaseHTTPRequestHandler):
             "message": "Сохранено. Домены применятся к новым подключениям; "
                        "UDP-фикс - после перезапуска обхода (службу - "
                        "переустановкой)"})
+
+    def _handle_games_check(self, data: dict) -> None:
+        """Проба доменов игры: открываются ли они сейчас (сквозь работающий
+        обход, если он запущен). Возвращает код по каждому включённому домену."""
+        from core import games as games_store
+        game_id = str(data.get("id") or "")
+        game = next((g for g in (games_store.load_games(get_root_dir())
+                                 .get("games") or [])
+                     if str(g.get("id")) == game_id), None)
+        if game is None:
+            self._send_json({"status": "error", "message": "Игра не найдена"})
+            return
+        results = []
+        for d in (game.get("domains") or []):
+            if not d.get("on"):
+                continue
+            host = str(d.get("domain") or "").strip()
+            if not host:
+                continue
+            t0 = time.time()
+            try:
+                r = _run_with_timeout(
+                    ["curl.exe", "-4", "-s", "-o", "NUL", "-m", "8",
+                     "-w", "%{http_code}", f"https://{host}/"],
+                    timeout=12.0,
+                )
+                code = (r.stdout or "").strip()
+            except Exception:
+                code = "000"
+            if not code:
+                code = "000"
+            results.append({"domain": host, "code": code,
+                            "ok": code not in ("000", "000000"),
+                            "elapsed": round(time.time() - t0, 2)})
+        self._send_json({"status": "ok", "results": results})
+
+    def _handle_games_add_domain(self, data: dict) -> None:
+        """Добавить найденный в анализе домен прямо в игру."""
+        from core import games as games_store
+        game_id = str(data.get("game_id") or data.get("id") or "")
+        domain = str(data.get("domain") or "")
+        ok, message, added = games_store.add_game_domain(
+            get_root_dir(), game_id, domain)
+        self._send_json({"status": "ok" if ok else "error",
+                         "message": message, "added": added})
 
     def _handle_save_config(self, data: dict) -> None:
         cfg = get_config_manager().load()
