@@ -468,7 +468,7 @@
 172.65.90.23 opencode.ai
 # =============================================================
 
-# --- Telegram (DC) + Discord (из AntiZapret, проверено 2026-09-24) ---
+# --- Telegram (DC) + Discord (AntiZapret, 2026-09-24): Telegram в РФ прибит по IP - пин помогает только через WARP/прокси (t.me/сайт; клиент ходит своими DC); Discord-пин полезен и без WARP ---
 149.154.167.220 api.telegram.org
 149.154.167.220 cdn.telesco.pe
 149.154.167.220 cdn1.telesco.pe
