@@ -507,3 +507,7 @@
 193.233.112.68 cerebras.ai
 193.233.112.68 www.cerebras.ai
 193.233.112.68 cloud.cerebras.ai
+
+# --- LLM API через воркер (2026-09-24) ---
+193.233.112.68 api.groq.com
+193.233.112.68 api.x.ai
