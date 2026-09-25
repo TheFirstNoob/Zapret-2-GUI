@@ -503,3 +503,7 @@
 162.159.128.233 discord.com
 162.159.128.233 updates.discord.com
 
+# --- Cerebras (воркер AntiZapret, 2026-09-24) ---
+193.233.112.68 cerebras.ai
+193.233.112.68 www.cerebras.ai
+193.233.112.68 cloud.cerebras.ai
