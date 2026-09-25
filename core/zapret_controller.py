@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from core.launcher import build_args_from_preset, write_run_bat, launch_winws2_bat, validate_args
+from core.launcher import build_args_from_preset, launch_winws2, validate_args
 
 
 
@@ -84,10 +84,7 @@ class ZapretController:
         from core.tcp_timestamps import enable_for_engine
         ts_ok, ts_note = enable_for_engine()
 
-        bat = self.root_dir / "_zapret_run.bat"
-        write_run_bat(self.root_dir, bat, exe_path, args)
-
-        ok = launch_winws2_bat(bat, self.root_dir, timeout=5.0)
+        ok = launch_winws2(self.root_dir, exe_path, args, timeout=5.0)
         if not ok:
             return False, "winws2.exe не удалось запустить (проверьте права администратора)"
 

@@ -1,4 +1,4 @@
-# Zapret 2 GUI — Карта проекта (обновлено 2026-09-13, Pre-Release 0.7.1)
+# Zapret 2 GUI — Карта проекта (обновлено 2026-09-25, Pre-Release 0.8)
 
 ## Что делает программа
 
@@ -28,14 +28,19 @@ zapret2_gui/
 ├── version_info.txt        метаданные EXE
 ├── hosts.txt               ПОЛНЫЙ готовый hosts (ИИ-гео, github-fix, 0.0.0.0-заглушки)
 ├── core/                   config, launcher, tester, diagnostics, service_manager,
-│                           zapret_controller, full_analyzer, collector, updates,
-│                           test_logger, admin, utils, conflict_scan, tcp_timestamps,
-│                           process_probe, strategy_builder
+│                           applog (logs/zapret2.log), games, zapret_controller,
+│                           full_analyzer, collector, updates, test_logger, admin,
+│                           utils, conflict_scan, tcp_timestamps, process_probe,
+│                           strategy_builder
 ├── server/server.py        HTTP backend + tester-action runner (threading)
 ├── frontend/               SPA: index.html, css/app.css, js/app.js
 ├── presets/                11 release .txt стратегий + exp-/cand- стенды (скрыты)
 │                           + custom (генерируется тестером)
 ├── lua/ blobs/ lists/ bin/ windivert/
+│                           lists/ генерируемые: list-games.txt,
+│                           list-include-all.txt (user+games union),
+│                           games/_pool_d<cutoff>r<repeats>.txt (пулы игр)
+├── logs/                   генерируемые: zapret2.log (+ .old при ротации)
 ├── tools/                  dev-утилиты: pkt_*, ab_candidate, make_blob, ui_dump,
 │                           ui_dump_server, run_preset, stat_preset, diag_friend
 └── AI_DOCS/                AGENTS.md (критично!), rules, PROJECT_MAP, STRATEGY_GUIDE,
@@ -66,13 +71,21 @@ zapret2_gui/
   «чинит/ломает», «Применить все правки (N)» (планировщик _plan_cdn_action).
 - **ASN-скан** (110 IP): диагностический, защита останавливается и
   возвращается сервис-осведомлённо; SNI=example.com (см. ASN_SCAN_NOTES).
-- **Служба**: winws2.exe напрямую (см. AGENTS снапшот), reconfigure на старт.
+- **Служба**: winws2.exe напрямую, binPath через Win32 API
+  (`CreateServiceW/ChangeServiceConfigW/DeleteService`; sc+bat — фолбэк),
+  верификация — чтением ImagePath из реестра (sc qc врёт >4К, AGENTS
+  «Служба, запуск, логи»). Ручной запуск — Popen, bat — фолбэк; операционный
+  лог `logs/zapret2.log` (applog) + self-heal данных из `_MEIPASS`.
+- **Игры**: домены — через `list-include-all.txt` (union user+games, один
+  `--hostlist`); UDP — пулы `_pool_dNrM.txt` (один сегмент на группу
+  repeats/cutoff); при GameFilter=udp игровые UDP-правила пропускаются.
 - **Update-check**: raw VERSION → API contents/VERSION фолбэк → баннер
   (GitHub + jsDelivr зеркало).
 - **Конфликт Zapret 1**: отказ запуска/службы/теста при winws.exe или
   службе zapret. **Конфликт окружения**: conflict_scan (DPI-тулзы, VPN).
 - **Валидация**: validate_args (dry-run + текст ошибок) до старта/службы;
-  validate_lua (--intercept=0) компилит lua-init.
+  validate_lua (--intercept=0) компилит lua-init; префлайт запуска
+  (`_launch_preflight`) — exe/пустые аргументы/@-пути с номерами, в лог.
 
 ## Репозитории
 

@@ -39,6 +39,7 @@ backups/
 updates/
 games.json
 lists/list-games.txt
+lists/list-include-all.txt
 lists/games/
 
 # Дампы трафика (pktmon/etl и pcap)

@@ -31,8 +31,11 @@ if REL_LISTS.exists():
     shutil.rmtree(REL_LISTS)
 shutil.copytree(ROOT / "lists", REL_LISTS)
 for name in ("list-include-user", "list-exclude-user",
-             "ipset-include-user", "ipset-exclude-user"):
+             "ipset-include-user", "ipset-exclude-user",
+             "list-games", "list-include-all"):
     (REL_LISTS / f"{name}.txt").write_text("", encoding="utf-8")
+# Пул-файлы игр (lists/games/*) - рантайм конкретной машины, в релиз не идут
+shutil.rmtree(REL_LISTS / "games", ignore_errors=True)
 
 PyInstaller.__main__.run([
     "--noconfirm",

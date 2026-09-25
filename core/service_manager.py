@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Optional
 
 from core.utils import app_root, run_sc as _sc
+from core.applog import log as _applog
 
 
 SERVICE_NAME = "zapret2"
@@ -26,6 +27,11 @@ def _invalidate_service_cache() -> None:
     _status_cache_value = None
     _installed_cache_at = 0.0
     _installed_cache_value = None
+
+
+def _svc_log(msg: str) -> None:
+    """Операционный лог службы (logs/zapret2.log) - разбор без GUI."""
+    _applog("service", msg)
 
 
 def _taskkill_winws2():
@@ -81,14 +87,25 @@ def _service_cmdline(exe: Path, args: list[str]) -> str:
 
 
 def _read_stored_binpath() -> str:
-    """Сохранённый binPath службы (locale-independent через CIM)."""
-    ps = ("(Get-CimInstance Win32_Service -Filter \"Name='%s'\").PathName"
-          % SERVICE_NAME)
-    r = subprocess.run(
-        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps],
-        capture_output=True, text=True, encoding="oem", errors="replace", timeout=20,
-        creationflags=subprocess.CREATE_NO_WINDOW)
-    return (r.stdout or "").strip()
+    """Сохранённый binPath: читаем ImagePath НАПРЯМУЮ из реестра.
+
+    sc qc / CIM (QueryServiceConfig) ломается на длинных ImagePath: SCM
+    хранит путь целиком, но штатное чтение падает (1734 «array bounds
+    invalid» у sc, пустой PathName у CIM) начиная с ~4 КБ. Случай
+    2026-09-25: игровые правила удлинили binPath до ~4.1 КБ - установка
+    объявляла «binPath пуст - SCM не сохранил» и удаляла РАБОЧУЮ службу.
+    Реестр возвращает значение любой длины и не зависит от локали.
+    """
+    try:
+        import winreg
+        with winreg.OpenKey(
+                winreg.HKEY_LOCAL_MACHINE,
+                rf"SYSTEM\CurrentControlSet\Services\{SERVICE_NAME}") as key:
+            value, _type = winreg.QueryValueEx(key, "ImagePath")
+            return str(value).strip()
+    except OSError as e:
+        _svc_log(f"registry ImagePath read failed: {e}")
+        return ""
 
 
 def _path_from_token(t: str) -> Optional[str]:
@@ -142,7 +159,10 @@ def _sc_run_bat(lines: list[str]) -> tuple[int, str]:
             capture_output=True, text=True, encoding="oem", errors="replace", timeout=15,
             creationflags=subprocess.CREATE_NO_WINDOW,
         )
-        return r.returncode, (r.stdout or "") + (r.stderr or "")
+        out = (r.stdout or "") + (r.stderr or "")
+        _svc_log(f"sc-bat rc={r.returncode}: {' | '.join(lines)} "
+                 f"out={out.strip()[:400]!r}")
+        return r.returncode, out
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return -1, "cmd failed"
     finally:
@@ -152,6 +172,136 @@ def _sc_run_bat(lines: list[str]) -> tuple[int, str]:
             pass
 
 
+def _service_binpath(exe: Path, args: list[str]) -> str:
+    """binPath с ОБЫЧНЫМИ кавычками (для Win32 API): \"exe\" \"arg\" arg.
+
+    API/SCM хранят строку дословно - v1-стиль с backslash-кавычками нужен
+    только транспорту через cmd/bat (sc create), см. _service_cmdline.
+    """
+    parts = [f'"{exe}"']
+    parts += [f'"{a}"' if " " in a else a for a in args]
+    return " ".join(parts)
+
+
+def _win32_advapi():
+    """ctypes-обвязка advapi32 (SCM) - API вместо sc.exe/cmd для службы."""
+    import ctypes
+    import ctypes.wintypes as wt
+    adv = ctypes.WinDLL("advapi32", use_last_error=True)
+    adv.OpenSCManagerW.restype = wt.HANDLE
+    adv.OpenSCManagerW.argtypes = [wt.LPCWSTR, wt.LPCWSTR, wt.DWORD]
+    adv.OpenServiceW.restype = wt.HANDLE
+    adv.OpenServiceW.argtypes = [wt.HANDLE, wt.LPCWSTR, wt.DWORD]
+    adv.CloseServiceHandle.argtypes = [wt.HANDLE]
+    return ctypes, wt, adv
+
+
+def _win32_create_service(binpath: str) -> tuple[bool, str]:
+    """Создать службу напрямую через CreateServiceW (без cmd/bat/кавычек).
+
+    sc+bat - источник «у кого-то ставится, у кого-то нет» (парсер cmd,
+    кодировка, кавычки, temp-файл). API принимает строку как есть.
+    """
+    try:
+        ctypes, wt, adv = _win32_advapi()
+    except Exception as e:  # noqa: BLE001
+        return False, f"ctypes init: {e}"
+    SC_MANAGER_CREATE_SERVICE = 0x0002
+    SERVICE_ALL_ACCESS = 0xF01FF
+    SERVICE_WIN32_OWN_PROCESS = 0x10
+    SERVICE_AUTO_START = 0x2
+    SERVICE_ERROR_NORMAL = 0x1
+    adv.CreateServiceW.restype = wt.HANDLE
+    adv.CreateServiceW.argtypes = [
+        wt.HANDLE, wt.LPCWSTR, wt.LPCWSTR, wt.DWORD, wt.DWORD, wt.DWORD,
+        wt.DWORD, wt.LPCWSTR, wt.LPCWSTR, ctypes.POINTER(wt.DWORD),
+        wt.LPCWSTR, wt.LPCWSTR, wt.LPCWSTR]
+    scm = adv.OpenSCManagerW(None, None, SC_MANAGER_CREATE_SERVICE)
+    if not scm:
+        err = ctypes.get_last_error()
+        return False, f"OpenSCManager: {err} {ctypes.FormatError(err)}"
+    try:
+        h = adv.CreateServiceW(
+            scm, SERVICE_NAME, "Zapret 2 DPI Bypass", SERVICE_ALL_ACCESS,
+            SERVICE_WIN32_OWN_PROCESS, SERVICE_AUTO_START,
+            SERVICE_ERROR_NORMAL, binpath, None, None, None, None, None)
+        if not h:
+            err = ctypes.get_last_error()
+            return False, f"CreateService: {err} {ctypes.FormatError(err)}"
+        adv.CloseServiceHandle(h)
+        return True, ""
+    finally:
+        adv.CloseServiceHandle(scm)
+
+
+def _win32_change_service(binpath: str) -> tuple[bool, str]:
+    """Перезаписать binPath через ChangeServiceConfigW (аналог sc config)."""
+    try:
+        ctypes, wt, adv = _win32_advapi()
+    except Exception as e:  # noqa: BLE001
+        return False, f"ctypes init: {e}"
+    SC_MANAGER_CONNECT = 0x0001
+    SERVICE_CHANGE_CONFIG = 0x0002
+    SERVICE_NO_CHANGE = 0xFFFFFFFF
+    adv.ChangeServiceConfigW.restype = wt.BOOL
+    adv.ChangeServiceConfigW.argtypes = [
+        wt.HANDLE, wt.DWORD, wt.DWORD, wt.DWORD, wt.LPCWSTR, wt.LPCWSTR,
+        ctypes.POINTER(wt.DWORD), wt.LPCWSTR, wt.LPCWSTR, wt.LPCWSTR,
+        wt.LPCWSTR]
+    scm = adv.OpenSCManagerW(None, None, SC_MANAGER_CONNECT)
+    if not scm:
+        err = ctypes.get_last_error()
+        return False, f"OpenSCManager: {err} {ctypes.FormatError(err)}"
+    try:
+        h = adv.OpenServiceW(scm, SERVICE_NAME, SERVICE_CHANGE_CONFIG)
+        if not h:
+            err = ctypes.get_last_error()
+            return False, f"OpenService: {err} {ctypes.FormatError(err)}"
+        try:
+            ok = adv.ChangeServiceConfigW(
+                h, SERVICE_NO_CHANGE, SERVICE_NO_CHANGE, SERVICE_NO_CHANGE,
+                binpath, None, None, None, None, None, None)
+            if not ok:
+                err = ctypes.get_last_error()
+                return False, (f"ChangeServiceConfig: {err} "
+                               f"{ctypes.FormatError(err)}")
+            return True, ""
+        finally:
+            adv.CloseServiceHandle(h)
+    finally:
+        adv.CloseServiceHandle(scm)
+
+
+def _win32_delete_service() -> tuple[bool, str]:
+    """Удалить службу через DeleteService (аналог sc delete)."""
+    try:
+        ctypes, _wt, adv = _win32_advapi()
+    except Exception as e:  # noqa: BLE001
+        return False, f"ctypes init: {e}"
+    SC_MANAGER_CONNECT = 0x0001
+    DELETE = 0x10000
+    adv.DeleteService.restype = bool
+    adv.DeleteService.argtypes = [_wt.HANDLE]
+    scm = adv.OpenSCManagerW(None, None, SC_MANAGER_CONNECT)
+    if not scm:
+        err = ctypes.get_last_error()
+        return False, f"OpenSCManager: {err} {ctypes.FormatError(err)}"
+    try:
+        h = adv.OpenServiceW(scm, SERVICE_NAME, DELETE)
+        if not h:
+            err = ctypes.get_last_error()
+            return False, f"OpenService: {err} {ctypes.FormatError(err)}"
+        try:
+            if not adv.DeleteService(h):
+                err = ctypes.get_last_error()
+                return False, f"DeleteService: {err} {ctypes.FormatError(err)}"
+            return True, ""
+        finally:
+            adv.CloseServiceHandle(h)
+    finally:
+        adv.CloseServiceHandle(scm)
+
+
 def _winws_running() -> bool:
     r = subprocess.run(
         ["tasklist", "/FI", "IMAGENAME eq winws.exe"],
@@ -159,6 +309,16 @@ def _winws_running() -> bool:
         creationflags=subprocess.CREATE_NO_WINDOW,
     )
     return "winws.exe" in r.stdout and "No tasks" not in r.stdout
+
+
+def _winws2_running() -> bool:
+    """winws2.exe ещё жив? (tasklist без локале-зависимых строк: ищем имя)."""
+    r = subprocess.run(
+        ["tasklist", "/FI", "IMAGENAME eq winws2.exe"],
+        capture_output=True, text=True, encoding="oem", errors="replace", timeout=10,
+        creationflags=subprocess.CREATE_NO_WINDOW,
+    )
+    return "winws2.exe" in r.stdout
 
 
 def _zapret1_conflict() -> Optional[str]:
@@ -231,6 +391,8 @@ def install(root_dir: Optional[Path] = None, args: Optional[list[str]] = None,
         if conflict:
             return False, conflict
     _invalidate_service_cache()
+    _svc_log(f"install: args={len(args or [])} cleanup_zapret1={cleanup_zapret1} "
+             f"root={root_dir}")
     remove()
     time.sleep(0.5)
     if root_dir is None:
@@ -256,18 +418,28 @@ def install(root_dir: Optional[Path] = None, args: Optional[list[str]] = None,
     # binPath = "winws.exe <args>", start= auto). cmd-обёртка - то, что
     # поведенческие детекты Defender помечают подозрительным.
     cmdline = _service_cmdline(exe, args)
-    code, out = _sc_run_bat([
-        f'sc create {SERVICE_NAME} binPath= "{cmdline}" '
-        f'DisplayName= "Zapret 2 DPI Bypass" start= auto',
-    ])
-    if code != 0:
-        return False, f"sc create failed: {out.strip()}"
+    native = _service_binpath(exe, args)
+    _svc_log(f"install: exe={exe} args={len(args)} cmdline={len(cmdline)}")
+    ok_a, det_a = _win32_create_service(native)
+    if ok_a:
+        _svc_log(f"install: Win32 API create ok (binPath={len(native)})")
+    else:
+        _svc_log(f"install: Win32 API create failed: {det_a} - fallback sc-bat")
+        code, out = _sc_run_bat([
+            f'sc create {SERVICE_NAME} binPath= "{cmdline}" '
+            f'DisplayName= "Zapret 2 DPI Bypass" start= auto',
+        ])
+        if code != 0:
+            _svc_log(f"install FAIL: sc create rc={code} "
+                     f"out={out.strip()[:200]!r}")
+            return False, f"sc create failed: {out.strip()}"
     _sc(["description", SERVICE_NAME, "zapret DPI bypass (Zapret 2)"])
     # Verify BEFORE start: old/broken SCM может молча исказить binPath
     # (аргументы по пробелам рвутся, кириллические пути не читаются) -
     # тогда служба «стоит», но обхода нет и автозапуск валится.
     okv, msgv = _verify_binpath(exe, args)
     if not okv:
+        _svc_log(f"install FAIL: verify binPath: {msgv}")
         remove()
         return False, f"Установка отменена (кривой binPath): {msgv}"
     # SCM recovery: если winws2 умрёт (случай 2026-09-12: три падения за утро,
@@ -276,6 +448,7 @@ def install(root_dir: Optional[Path] = None, args: Optional[list[str]] = None,
          "reset=", "86400",
          "actions=", "restart/60000/restart/60000/restart/60000"])
     start(args)
+    _svc_log("install OK")
     return True, "Служба zapret2 установлена"
 
 
@@ -290,19 +463,63 @@ def reconfigure(args: list[str]) -> tuple[bool, str]:
     if not str(exe.resolve()).lower().startswith(str(app_root()).lower()):
         return False, f"winws2.exe вне каталога программы: {exe}"
     cmdline = _service_cmdline(exe, args)
-    code, out = _sc_run_bat([f'sc config {SERVICE_NAME} binPath= "{cmdline}"'])
-    if code != 0:
-        return False, f"sc config failed: {out.strip()}"
+    native = _service_binpath(exe, args)
+    _svc_log(f"reconfigure: args={len(args)} cmdline={len(cmdline)}")
+    ok_a, det_a = _win32_change_service(native)
+    if ok_a:
+        _svc_log(f"reconfigure: Win32 API change ok (binPath={len(native)})")
+    else:
+        _svc_log(f"reconfigure: Win32 API change failed: {det_a} - fallback sc-bat")
+        code, out = _sc_run_bat([f'sc config {SERVICE_NAME} binPath= "{cmdline}"'])
+        if code != 0:
+            _svc_log(f"reconfigure FAIL: sc config rc={code} "
+                     f"out={out.strip()[:200]!r}")
+            return False, f"sc config failed: {out.strip()}"
+    # API/sc config могли отрапортовать успех, ничего не записав: сверяем
+    # реестр (sc qc/CIM на длинных путях врёт - см. _read_stored_binpath).
+    stored = _read_stored_binpath()
+    if stored.replace('\\"', '"') != native:
+        _svc_log(f"reconfigure FAIL: stored={len(stored)} != native={len(native)}")
+        return False, ("sc config не сохранил аргументы дословно - служба "
+                       "осталась на старых (запустите переустановку службы)")
+    _svc_log("reconfigure OK")
     return True, "Параметры службы обновлены"
 
 
 def remove():
     _invalidate_service_cache()
+    _svc_log("remove: stop+taskkill")
     _sc(["stop", SERVICE_NAME])
     _taskkill_winws2()
-    time.sleep(0.5)
-    _sc(["delete", SERVICE_NAME])
-    return True, "Служба zapret2 удалена"
+    # Живой winws2 держит хендл: sc delete сразу после taskkill оставляет
+    # службу «отмеченной для удаления» (1072) - отсюда «удаляется со второго
+    # раза». Ждём фактического выхода процесса, затем удаляем с повторами.
+    for _ in range(20):
+        if not _winws2_running():
+            break
+        time.sleep(0.25)
+    else:
+        _svc_log("remove: winws2 ещё жив после 5с ожидания")
+    ok_d, det_d = _win32_delete_service()
+    if ok_d:
+        _svc_log("remove: Win32 API delete ok")
+    else:
+        _svc_log(f"remove: Win32 API delete failed: {det_d} - fallback sc delete")
+    for _ in range(10):
+        code, out = _sc(["delete", SERVICE_NAME])
+        if code == 0 or "1060" in out:
+            _svc_log(f"remove OK (sc delete rc={code})")
+            return True, "Служба zapret2 удалена"
+        _svc_log(f"remove: sc delete rc={code} out={out.strip()[:160]!r} - повтор")
+        time.sleep(0.5)
+    code, out = _sc(["query", SERVICE_NAME])
+    if code != 0 or "1060" in out:
+        _svc_log("remove OK (службы нет)")
+        return True, "Служба zapret2 удалена"
+    _svc_log(f"remove FAIL: служба осталась (query rc={code})")
+    return False, ("Служба zapret2 не удалилась: отмечена для удаления "
+                   "(winws2 не отпустил хендл) - повторите удаление или "
+                   "перезагрузите ПК")
 
 
 def start(args: Optional[list[str]] = None):
@@ -323,8 +540,11 @@ def start(args: Optional[list[str]] = None):
     except Exception:
         pass
     if args:
-        reconfigure(args)
+        ok_r, msg_r = reconfigure(args)
+        if not ok_r:
+            return False, msg_r
     code, out = _sc(["start", SERVICE_NAME])
+    _svc_log(f"start: sc start rc={code} out={out.strip()[:200]!r}")
     if code != 0:
         return False, f"sc start failed: {out.strip()}"
     return True, "winws2 запущен"
@@ -334,6 +554,7 @@ def stop():
     # Сначала - корректный sc stop (SCM состояние), taskkill как страховка
     # для вручную запущенного winws2.
     _invalidate_service_cache()
+    _svc_log("stop")
     _sc(["stop", SERVICE_NAME])
     _taskkill_winws2()
     return True, "winws2 остановлен"

@@ -180,6 +180,11 @@ def export_data_package(
             if session_log.exists():
                 zf.write(session_log, "test_session.log")
 
+            # Операционный лог службы/запуска: logs/zapret2.log (2026-09-25)
+            app_log = root_dir / "logs" / "zapret2.log"
+            if app_log.exists():
+                zf.write(app_log, "logs/zapret2.log")
+
             # Конфиг (профиль/тогглы) - критичен для разбора отчёта
             cfg_json = root_dir / "zapret2_config.json"
             if cfg_json.exists():

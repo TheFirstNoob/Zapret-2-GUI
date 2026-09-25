@@ -205,8 +205,11 @@ def main() -> None:
             p.unlink()
     # юзер-файлы: в дистрибутив — пустые шаблоны (реальные не утекают)
     for name in ("list-include-user", "list-exclude-user",
-                 "ipset-include-user", "ipset-exclude-user"):
+                 "ipset-include-user", "ipset-exclude-user",
+                 "list-games", "list-include-all"):
         (LITE / "lists" / f"{name}.txt").write_text("", encoding="utf-8")
+    # пул-файлы игр (lists/games/*) — рантайм конкретной машины
+    shutil.rmtree(LITE / "lists" / "games", ignore_errors=True)
 
     # манифест обновления
     sys.path.insert(0, str(ROOT))

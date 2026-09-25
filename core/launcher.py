@@ -7,6 +7,7 @@ from typing import Optional
 
 from core.admin import enable_privilege, get_enabled_privileges
 from core import games as games_store
+from core.applog import log as _applog
 from core.utils import short_path
 
 _GAME_PORT = "1024-65535"
@@ -300,14 +301,15 @@ def build_args_from_preset(
     user_excl = ""
     if exclude_file.exists():
         user_excl = f"--hostlist-exclude={short_path(exclude_file)}"
+    # User + games домены - ОДИН union-файл и один --hostlist-токен вместо
+    # двух (2026-09-25): файлы-владельцы не смешиваются (user-файл юзерский,
+    # list-games.txt генерируемый), но args не растут от числа игр.
     include_file = lists_dir / "list-include-user.txt"
+    include_path = games_store.sync_include_list(root_dir, include_file)
     user_inc = ""
-    if include_file.exists():
-        user_inc = f"--hostlist={short_path(include_file)}"
-    # Домены включённых игр - управляемый файл фичи «Игровые блокировки»
-    games_list_path = games_store.sync_domain_list(root_dir)
-    games_inc = f"--hostlist={short_path(games_list_path)}"
-    if user_excl or user_inc or games_inc:
+    if include_path is not None:
+        user_inc = f"--hostlist={short_path(include_path)}"
+    if user_excl or user_inc:
         # winws2 ANDs --ipset с --hostlist внутри профиля (§24.2): инжект
         # SNI-include в ipset-сегмент схлопнул бы catch-all до доменов юзера.
         # hostlist-exclude безопасен в обоих случаях.
@@ -330,8 +332,6 @@ def build_args_from_preset(
                         out.append(user_excl)
                     if user_inc and not has_ipset:
                         out.append(user_inc)
-                    if games_inc and not has_ipset:
-                        out.append(games_inc)
                     injected_once = True
                 out.append(t)
         tokens = out
@@ -372,21 +372,38 @@ def build_args_from_preset(
         tokens.append("--out-range=-d10")
         tokens.append("--lua-desync=fake:blob=quic_google")
     # ── Игровые блокировки: UDP-фиксы (только старт соединения) ──
+    # Пул (2026-09-25): ОДИН --new-сегмент на группу правил с одинаковыми
+    # repeats/cutoff; порты - списком, CIDR всех правил группы - в общий
+    # pool-файл. Раньше каждый сегмент весил ~150 симв. и args пухли от игр.
     # fake с payload=all обязателен: lua не трогает unknown-UDP (игровой
-    # трафик) без явного аргумента. repeats=1 и cutoff - минимально.
+    # трафик) без явного аргумента.
     game_rules = games_store.enabled_udp_rules(games_store.load_games(root_dir))
-    if game_rules:
+    if game_rules and game_filter_mode in ("udp", "both"):
+        # GameFilter уже ловит 1024-65535 с payload=all: отдельные игровые
+        # правила и дописывание портов избыточны (порты уже в диапазоне).
+        _applog("games", f"UDP-правила игр пропущены: GameFilter="
+                         f"{game_filter_mode} покрывает порты "
+                         f"({len(game_rules)} правил)")
+    elif game_rules:
         if not any(t.startswith("quic_google:") for t in tokens):
             tokens += ["--blob",
                        "quic_google:@blobs/quic_initial_www_google_com.bin"]
+        groups: dict[tuple[int, int], list[dict]] = {}
         for rule in game_rules:
-            cidr_path = games_store.write_cidr_file(root_dir, rule)
-            _append_wf_udp_ports(tokens, rule["ports"])
-            tokens += ["--new", f"--filter-udp={rule['ports']}",
-                       f"--ipset={short_path(cidr_path)}",
-                       "--out-range", f"-d{rule['cutoff']}",
+            groups.setdefault((rule["cutoff"], rule["repeats"]), []).append(rule)
+        for (cutoff, repeats), rules in groups.items():
+            ports = ",".join(dict.fromkeys(str(r["ports"]) for r in rules))
+            cidrs = [c for r in rules for c in r["cidrs"]]
+            pool = games_store.write_cidr_pool_file(
+                root_dir, f"d{cutoff}r{repeats}", cidrs)
+            _append_wf_udp_ports(tokens, ports)
+            tokens += ["--new", f"--filter-udp={ports}",
+                       f"--ipset={short_path(pool)}",
+                       "--out-range", f"-d{cutoff}",
                        "--lua-desync=fake:blob=quic_google:"
-                       f"repeats={rule['repeats']}:payload=all"]
+                       f"repeats={repeats}:payload=all"]
+        _applog("games", f"UDP-пул: rules={len(game_rules)} "
+                         f"pools={len(groups)} ports={[r['ports'] for r in game_rules]}")
     # ── Юзерские IP-include, targeted-режим ──
     # winws2 ANDs --ipset с --hostlist внутри профиля, поэтому юзер-подсети
     # не могут жить в общем блоке. Дублируем каждый блок с list-general и
@@ -466,66 +483,93 @@ def write_run_bat(
     )
 
 
-def launch_winws2_bat(
-    bat_path: Path,
-    root_dir: Path,
-    timeout: float = 5.0,
-) -> bool:
-    """Запускает .bat с winws2, включив SeLoadDriverPrivilege.
+def _arg_path_token(t: str) -> str:
+    """Путь к файлу из токена аргументов (@-файлы, blobs, hostlist/ipset)."""
+    if t.startswith("@") and "\\" in t:
+        return t[1:]
+    if ":@" in t:
+        return t.split(":@", 1)[1]
+    if "=@" in t:
+        return t.split("=@", 1)[1]
+    if t.startswith("--") and "=" in t and "\\" in t:
+        return t.split("=", 1)[1]
+    return ""
 
-    CreateProcess (subprocess.Popen) даёт дочернему процессу унаследовать
-    текущий токен. Привилегия включается заранее: у UAC-elevated Python она
-    часто выключена, из-за чего WinDivert не грузится.
+
+def _launch_preflight(root_dir: Path, exe_path: Path, args: list[str],
+                      method: str) -> tuple[bool, str]:
+    """Префлайт запуска + запись в операционный лог (logs/zapret2.log).
+
+    Разбор «у кого-то запускается, у кого-то нет» без пользователя у экрана:
+    фиксируем frozen-раскладку, наличие exe, число и суммарную длину
+    аргументов, пустые аргументы, битые @-пути (lua/blob/hostlist/ipset).
+    Фатально: нет exe или пустой аргумент (стратегия/тоггл сгенерил "").
     """
-    # Мёртвая служба драйвера «WinDivert» (ImagePath на удалённую папку -
-    # кейс друга 2026-09-13) даёт вечный ERROR_FILE_NOT_FOUND при
-    # WinDivertOpen. Лечим до запуска: repair ImagePath на наш .sys, при
-    # невозможности - удаление (и только когда winws2 не запущен).
+    import sys as _sys
+    exe_ok = exe_path.is_file()
+    empties = [i for i, a in enumerate(args) if not str(a)]
+    cmdlen = sum(len(str(a)) + 1 for a in args) + len(str(exe_path)) + 1
+    _applog("launch", f"preflight[{method}]: frozen={bool(getattr(_sys, 'frozen', False))} "
+                      f"exe={exe_path} exists={exe_ok} cwd={root_dir} "
+                      f"args={len(args)} cmdlen={cmdlen} empty={len(empties)}")
+    checked = 0
+    missing: list[str] = []
+    for i, a in enumerate(args):
+        p = _arg_path_token(str(a))
+        if not p:
+            continue
+        checked += 1
+        if not Path(p).exists():
+            missing.append(f"#{i}={a}")
+    if checked or missing:
+        tail = f" -> {'; '.join(missing[:5])}" if missing else ""
+        _applog("launch", f"preflight[{method}]: paths checked={checked} "
+                          f"missing={len(missing)}{tail}")
+    if not exe_ok:
+        return False, f"winws2.exe не найден: {exe_path}"
+    if empties:
+        i = empties[0]
+        ctx = [str(x) for x in args[max(0, i - 3):i + 2]]
+        return False, (f"пустой аргумент #{i} (рядом: {ctx}) - стратегия или "
+                       f"тоггл формирует пустую строку")
+    return True, ""
+
+
+def _prepare_winws2_launch(root_dir: Path) -> None:
+    """Драйвер + SeLoadDriverPrivilege до запуска (общее для direct и bat).
+
+    CreateProcess наследует ТЕКУЩИЙ токен: у UAC-elevated Python привилегия
+    часто выключена, без неё WinDivert не грузится.
+    """
     try:
         from core.utils import fix_stale_windivert_services
         fix_stale_windivert_services(root_dir)
     except Exception:
         pass
-
-    # Привилегия включается в текущем токене - её наследуют дочерние процессы.
-    privileges_before = get_enabled_privileges()
-    se_load_enabled_before = "SeLoadDriverPrivilege" in privileges_before
-
-    if not se_load_enabled_before:
+    if "SeLoadDriverPrivilege" not in get_enabled_privileges():
         enable_privilege("SeLoadDriverPrivilege")
         enable_privilege("SeDebugPrivilege")
-
-    privileges_after = get_enabled_privileges()
-    se_load_enabled_after = "SeLoadDriverPrivilege" in privileges_after
-
-    if not se_load_enabled_after:
-        print(
-            f"[zapret2] SeLoadDriverPrivilege still OFF - all privs: {privileges_after}"
-        )
-
+    privs = get_enabled_privileges()
+    if "SeLoadDriverPrivilege" not in privs:
+        _applog("launch", f"WARN: SeLoadDriverPrivilege OFF (privs={privs})")
+    else:
+        _applog("launch", "SeLoadDriverPrivilege ON")
     # Пауза на случай перезапуска сразу после taskkill.
     time.sleep(0.5)
 
-    try:
-        subprocess.Popen(
-            ["cmd.exe", "/c", str(bat_path)],
-            cwd=str(root_dir),
-            creationflags=subprocess.CREATE_NO_WINDOW,
-            close_fds=True,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return False
 
+def _wait_winws2_alive(timeout: float,
+                       proc: Optional[subprocess.Popen] = None) -> bool:
+    """Ждёт появления winws2.exe в tasklist (только по имени образа)."""
     deadline = time.time() + timeout
     while time.time() < deadline:
+        if proc is not None and proc.poll() is not None:
+            return False  # процесс уже упал - ждать нечего
         try:
             r = subprocess.run(
                 ["tasklist", "/FI", "IMAGENAME eq winws2.exe", "/NH"],
-                capture_output=True,
-                text=True,
-                encoding="oem",
-                errors="replace",
-                timeout=3,
+                capture_output=True, text=True, encoding="oem",
+                errors="replace", timeout=3,
                 creationflags=subprocess.CREATE_NO_WINDOW,
             )
             if "winws2.exe" in r.stdout:
@@ -534,3 +578,78 @@ def launch_winws2_bat(
             pass
         time.sleep(0.2)
     return False
+
+
+def launch_winws2_direct(root_dir: Path, exe_path: Path, args: list[str],
+                         timeout: float = 5.0,
+                         ) -> tuple[Optional[subprocess.Popen], str]:
+    """Прямой запуск winws2.exe без cmd/bat. -> (proc | None, ошибка).
+
+    Аргументы передаются списком: Windows строит command line сама, argv-
+    лимиты cmd (8191) и парсинг кавычек не участвуют.
+    """
+    ok, msg = _launch_preflight(root_dir, exe_path, args, "direct")
+    if not ok:
+        _applog("launch", f"preflight FAIL: {msg}")
+        return None, msg
+    _prepare_winws2_launch(root_dir)
+    try:
+        proc = subprocess.Popen(
+            [str(exe_path)] + [str(a) for a in args],
+            cwd=str(root_dir),
+            creationflags=subprocess.CREATE_NO_WINDOW,
+            close_fds=True,
+        )
+    except (OSError, subprocess.SubprocessError) as e:
+        _applog("launch", f"direct Popen FAIL: {e!r}")
+        return None, f"Popen: {e}"
+    _applog("launch", f"direct Popen ok pid={proc.pid}")
+    return proc, ""
+
+
+def launch_winws2(root_dir: Path, exe_path: Path, args: list[str],
+                  timeout: float = 5.0) -> bool:
+    """Умный запуск: прямой Popen (основной) -> bat (аварийный фолбэк).
+
+    bat остаётся для проблемных машин/отладки: если прямой запуск не дал
+    живого winws2, повторяем через `start /min` и пишем это в лог.
+    """
+    proc, err = launch_winws2_direct(root_dir, exe_path, args, timeout)
+    if proc is not None and _wait_winws2_alive(timeout, proc):
+        _applog("launch", "direct OK: winws2 жив")
+        return True
+    if proc is not None and proc.poll() is None:
+        # процесс жив, но tasklist его не увидел - не плодим дубль
+        _applog("launch", "direct: процесс жив, tasklist без winws2 - успех")
+        return True
+    if proc is not None:
+        _applog("launch", f"direct FAIL: winws2 упал rc={proc.returncode}")
+    elif err:
+        _applog("launch", f"direct FAIL: {err}")
+    bat = root_dir / "_zapret_run.bat"
+    write_run_bat(root_dir, bat, exe_path, args)
+    ok = launch_winws2_bat(bat, root_dir, timeout=timeout)
+    _applog("launch", f"bat fallback: {'OK' if ok else 'FAIL'}")
+    return ok
+
+
+def launch_winws2_bat(
+    bat_path: Path,
+    root_dir: Path,
+    timeout: float = 5.0,
+) -> bool:
+    """Запускает .bat с winws2, включив SeLoadDriverPrivilege (аварийный путь)."""
+    _prepare_winws2_launch(root_dir)
+    try:
+        subprocess.Popen(
+            ["cmd.exe", "/c", str(bat_path)],
+            cwd=str(root_dir),
+            creationflags=subprocess.CREATE_NO_WINDOW,
+            close_fds=True,
+        )
+    except (OSError, subprocess.SubprocessError) as e:
+        _applog("launch-bat", f"Popen cmd FAIL: {e!r}")
+        return False
+    ok = _wait_winws2_alive(timeout)
+    _applog("launch-bat", f"winws2 {'жив' if ok else 'НЕ появился'} ({timeout}s)")
+    return ok

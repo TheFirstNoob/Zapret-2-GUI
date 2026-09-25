@@ -15,6 +15,7 @@ from pathlib import Path
 GAMES_FILE = "games.json"
 DOMAIN_LIST = "list-games.txt"      # внутри lists/
 CIDR_DIR = "games"                   # внутри lists/games/<id>.txt
+INCLUDE_ALL = "list-include-all.txt"  # внутри lists/ (user+games union)
 DEFAULT_REPEATS = 1
 DEFAULT_CUTOFF = 4
 
@@ -189,6 +190,75 @@ def sync_domain_list(root: Path, data: dict | None = None) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     text = "\n".join(enabled_domains(data))
     path.write_text(text + ("\n" if text else ""), encoding="utf-8")
+    return path
+
+
+def _read_domain_lines(path: Path) -> list[str]:
+    """Домены из файла-списка: без пустых строк, комментариев и дублей."""
+    out: list[str] = []
+    seen: set[str] = set()
+    try:
+        text = Path(path).read_text(encoding="utf-8-sig")
+    except OSError:
+        return out
+    for line in text.splitlines():
+        d = line.strip().lower().rstrip(".")
+        if not d or d.startswith("#") or d.startswith("//"):
+            continue
+        if d not in seen:
+            seen.add(d)
+            out.append(d)
+    return out
+
+
+def sync_include_list(root: Path, user_file: Path | None = None,
+                      data: dict | None = None) -> Path | None:
+    """lists/list-include-all.txt = домены user-списка + включённых игр.
+
+    Один --hostlist-токен в args вместо двух (файлы-владельцы не смешиваются:
+    list-include-user.txt остаётся юзерским, list-games.txt - генерируемым).
+    None - если юзерского файла нет И игр нет: инжектить нечего.
+    """
+    root = Path(root)
+    lists = root / "lists"
+    if user_file is None:
+        user_file = lists / "list-include-user.txt"
+    user_file = Path(user_file)
+    games_path = sync_domain_list(root, data)
+    merged: list[str] = []
+    seen: set[str] = set()
+    for src in (user_file, games_path):
+        for d in _read_domain_lines(src):
+            if d not in seen:
+                seen.add(d)
+                merged.append(d)
+    if not merged and not user_file.exists():
+        return None
+    out = lists / INCLUDE_ALL
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text("\n".join(merged) + ("\n" if merged else ""), encoding="utf-8")
+    return out
+
+
+def write_cidr_pool_file(root: Path, key: str, cidrs: list[str]) -> Path:
+    """lists/games/_pool_<key>.txt - общий CIDR-файл пула UDP-правил.
+
+    Пул: один --new-сегмент на группу правил с одинаковыми repeats/cutoff,
+    CIDR всех правил группы сливаются сюда (дедуп) - args не растут от числа
+    игр (раньше ~150 симв. на каждую игру с UDP).
+    """
+    root = Path(root)
+    folder = root / "lists" / CIDR_DIR
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / f"_pool_{key}.txt"
+    seen: set[str] = set()
+    out: list[str] = []
+    for c in cidrs:
+        c = str(c).strip()
+        if c and c not in seen:
+            seen.add(c)
+            out.append(c)
+    path.write_text("\n".join(out) + "\n", encoding="ascii")
     return path
 
 

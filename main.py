@@ -19,6 +19,7 @@ if not getattr(sys, "frozen", False):
         sys.path.insert(0, _app_dir)
 
 from core.admin import is_admin, relaunch_as_admin
+from core.applog import log as _applog
 from core.config import VERSION
 from core.utils import known_desktop_dir, short_path
 
@@ -89,6 +90,8 @@ def _ensure_data_dir() -> Path:
     except OSError:
         current = ""
     if current != VERSION:
+        _applog("layout", f"data copy: marker={current!r} -> {VERSION!r} "
+                          f"exe_dir={exe_dir}")
         for d in _DATA_DIRS:
             target = exe_dir / d
             try:
@@ -96,19 +99,95 @@ def _ensure_data_dir() -> Path:
             except OSError as e:
                 # файл под локом AV/OneDrive - молчаливая смерть pythonw
                 # недопустима (M3): показываем причину и выходим чисто
+                _applog("layout", f"data copy FAIL {d}: {e!r}")
                 ctypes.windll.user32.MessageBoxW(
                     0,
                     "Не удалось подготовить данные программы:\n\n"
                     f"{e}\n\nЗакройте антивирус/OneDrive, снимите залоченные "
                     "файлы и запустите снова.",
                     "Zapret2 - ошибка", 0x30)
-                return
+                return None
         try:
             marker.write_text(VERSION, encoding="utf-8")
-        except OSError:
-            pass
+        except OSError as e:
+            _applog("layout", f"marker write FAIL: {e!r}")
 
+    _heal_missing_data(exe_dir, src)
     return exe_dir
+
+
+def _heal_missing_data(exe_dir: Path, src: Path) -> None:
+    """Докопировать из _MEIPASS критичные файлы, которых нет/битые рядом с exe.
+
+    Маркер data_version.txt пишется ПОСЛЕ копирования, но AV/OneDrive могут
+    забрать файл уже потом (или копия была частичной/обрезанной) - тогда смена
+    версии не наступит и файл пропадёт навсегда. Лечим на каждом запуске:
+    нет файла ИЛИ размер не совпал с источником -> перекопировать.
+    """
+    key_files = [
+        "bin/winws2.exe", "bin/cygwin1.dll", "bin/WinDivert.dll",
+        "bin/WinDivert64.sys",
+        "lua/zapret-lib.lua", "lua/zapret-antidpi.lua",
+        "lists/list-general.txt", "presets/default.txt",
+    ]
+    for rel in key_files:
+        target = exe_dir / rel
+        source = src / rel
+        if not source.exists():
+            continue
+        reason = ""
+        try:
+            if not target.exists():
+                reason = "нет файла"
+            elif target.stat().st_size != source.stat().st_size:
+                reason = (f"размер {target.stat().st_size} != "
+                          f"источника {source.stat().st_size}")
+        except OSError as e:
+            reason = f"stat: {e}"
+        if not reason:
+            continue
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target)
+            _applog("layout", f"self-heal: восстановлен {rel} "
+                              f"({reason}; стало {target.stat().st_size} байт)")
+        except OSError as e:
+            _applog("layout", f"self-heal FAIL {rel}: {e!r}")
+
+
+def _log_layout(root_dir: Path) -> None:
+    """Раскладка путей и ресурсов в лог: frozen/MEIPASS/exe (разбор сбоев у юзеров)."""
+    import sys as _sys
+    checks = [
+        "bin/winws2.exe", "bin/cygwin1.dll", "bin/WinDivert.dll",
+        "bin/WinDivert64.sys", "lua/zapret-lib.lua", "lua/zapret-antidpi.lua",
+        "blobs/tls_clienthello_www_google_com.bin",
+        "blobs/quic_initial_www_google_com.bin",
+        "lists/list-general.txt", "presets/default.txt", "frontend/index.html",
+    ]
+    parts: list[str] = []
+    miss: list[str] = []
+    for c in checks:
+        f = root_dir / c
+        if not f.exists():
+            miss.append(c)
+            continue
+        try:
+            parts.append(f"{c}={f.stat().st_size}B")
+        except OSError:
+            parts.append(f"{c}=?")
+    _applog("layout", f"frozen={bool(getattr(_sys, 'frozen', False))} "
+                      f"exe={_sys.executable} file={__file__} "
+                      f"meipass={getattr(_sys, '_MEIPASS', None)} "
+                      f"cwd={Path.cwd()} root={root_dir}")
+    _applog("layout", "resources: " + " ".join(parts) +
+                      (f" | MISSING: {'; '.join(miss)}" if miss else ""))
+    m = root_dir / "data_version.txt"
+    try:
+        marker = m.read_text(encoding="utf-8").strip() if m.exists() else ""
+    except OSError:
+        marker = "?"
+    _applog("layout", f"data_version: marker={marker!r} app={VERSION!r}")
 
 
 def _check_launch_location(exe_dir: Path) -> None:
@@ -189,6 +268,9 @@ def main_gui() -> None:
     print(f"[Zapret2 {VERSION}] Starting GUI...")
 
     root_dir = _ensure_data_dir()
+    if root_dir is None:
+        return
+    _log_layout(root_dir)
 
     if getattr(sys, "frozen", False):
         if not _warn_if_bad_path(root_dir):

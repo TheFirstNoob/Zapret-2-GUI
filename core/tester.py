@@ -14,7 +14,7 @@ from typing import Callable, Optional, TYPE_CHECKING
 if TYPE_CHECKING:
     from core.test_logger import TestLogger
 
-from core.launcher import build_args_from_preset, write_run_bat, launch_winws2_bat
+from core.launcher import build_args_from_preset, launch_winws2
 
 
 # ── Уровни хостов ──────────────────────────────────────────────────
@@ -475,10 +475,7 @@ class Zapret2Tester:
         args = build_args_from_preset(self.root_dir, self.lua_dir, self.blobs_dir, preset,
                                       ipset_catchall=ipset_catchall, fake_blob=fake_blob,
                                       discord_alt=discord_alt)
-        bat = self.root_dir / "_zapret_run.bat"
-        write_run_bat(self.root_dir, bat, exe_path, args)
-
-        ok = launch_winws2_bat(bat, self.root_dir, timeout=5.0)
+        ok = launch_winws2(self.root_dir, exe_path, args, timeout=5.0)
         self._process = None
         return ok
 
@@ -810,8 +807,8 @@ class Zapret2Tester:
             ]))
 
         _logged_progress(7, f"[{profile_name}] ждём готовность WinDivert (1.5s)...")
-        # launch_winws2_bat уже подтвердил жизнь процесса; WinDivert открывает
-        # хендл за сотни мс - 1.5s хватает (был фиксированный 5s на профиль).
+        # launch_winws2 уже подтвердил жизнь процесса (direct, bat - фолбэк);
+        # WinDivert открывает хендл за сотни мс - 1.5s хватает.
         time.sleep(1.5)
 
         if not self._any_winws2_running():

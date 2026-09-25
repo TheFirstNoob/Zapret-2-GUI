@@ -1301,7 +1301,7 @@ def _run_tester_action(data: dict) -> None:
                     # (Discord ← P_a, Google ← P_b, General ← P_c).
                     try:
                         from core.strategy_builder import build_custom
-                        from core.launcher import build_args_from_preset, validate_args, write_run_bat
+                        from core.launcher import build_args_from_preset, validate_args
                         results_by_profile = {
                             res.profile_name: [
                                 {"domain": r.domain, "status": r.status, "test_type": r.test_type}
@@ -1327,28 +1327,28 @@ def _run_tester_action(data: dict) -> None:
                             if ok:
                                 try:
                                     import time as _time
-                                    bat = get_root_dir() / "_zapret_custom_smoke.bat"
-                                    write_run_bat(get_root_dir(), bat,
-                                                  get_root_dir() / "bin" / "winws2.exe", args)
-                                    # Запускаем батник сами, чтобы знать PID и
-                                    # гасить только дерево smoke-процесса:
-                                    # blanket taskkill убил бы чужой/сервисный winws2.
-                                    proc = subprocess.Popen(
-                                        ["cmd", "/c", str(bat)],
-                                        cwd=str(get_root_dir()),
-                                        creationflags=subprocess.CREATE_NO_WINDOW,
-                                    )
+                                    from core.launcher import launch_winws2_direct
+                                    # Прямой запуск: PID = сам winws2, гасим
+                                    # только его дерево (blanket taskkill убил
+                                    # бы чужой/сервисный winws2).
+                                    proc, perr = launch_winws2_direct(
+                                        get_root_dir(),
+                                        get_root_dir() / "bin" / "winws2.exe",
+                                        args, timeout=1.5)
+                                    if proc is None:
+                                        _ui_debug(f"custom: smoke start err={perr!r}")
                                     _time.sleep(1.5)
                                     alive = tester.is_running()
                                     _ui_debug(f"custom: smoke alive={alive}")
-                                    try:
-                                        subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)],
-                                                       capture_output=True, timeout=5,
-                                                       creationflags=subprocess.CREATE_NO_WINDOW)
-                                    except (subprocess.TimeoutExpired, OSError):
-                                        pass
+                                    if proc is not None and proc.poll() is None:
+                                        try:
+                                            subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                                                           capture_output=True, timeout=5,
+                                                           creationflags=subprocess.CREATE_NO_WINDOW)
+                                        except (subprocess.TimeoutExpired, OSError):
+                                            pass
                                     # Страховка: winws2 мог отцепиться от
-                                    # cmd-дерева - в этот момент любой живой
+                                    # дерева - в этот момент любой живой
                                     # winws2 только наш.
                                     if tester.is_running():
                                         tester._ensure_winws2_dead()
@@ -1357,10 +1357,6 @@ def _run_tester_action(data: dict) -> None:
                                         custom["error"] = ("custom не стартует на реальном запуске "
                                                            "(проверьте --wf-tcp-in/--in-range сегментов)")
                                         _ui_debug("custom: smoke FAILED (winws2 did not stay alive)")
-                                    try:
-                                        bat.unlink()
-                                    except OSError:
-                                        pass
                                 except Exception as e:
                                     custom["valid"] = False
                                     custom["error"] = f"smoke-запуск custom не удался: {e}"
