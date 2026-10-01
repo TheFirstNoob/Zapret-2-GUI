@@ -6,7 +6,7 @@
 
 GUI-обёртка для **Zapret 2** (winws2 / lua-desync) - обход фильтрации трафика у провайдера (DPI/ТСПУ) на Windows, без VPN.
 
-**Текущая версия: Pre-Release 0.8** - сборки публикуются в разделе [Releases](https://github.com/TheFirstNoob/Zapret-2-GUI/releases).
+**Текущая версия: Pre-Release 0.9** - сборки публикуются в разделе [Releases](https://github.com/TheFirstNoob/Zapret-2-GUI/releases).
 
 > [!IMPORTANT]
 > Программа сделана совместно с ИИ - я этого не скрываю. Делюсь рабочим результатом: он проверен на моей сети и у пользователей моего дискорда.

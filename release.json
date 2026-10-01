@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "version": "0.9",
+  "tag": "Pre-Release-0.9",
+  "generated": "2026-10-01T14:57:43Z",
+  "artifacts": {
+    "exe": {
+      "file": "Zapret2GUI.zip",
+      "size": 14218996,
+      "sha256": "e1873941a3d3709a3ecc4ef20a8436702557354c7566c7cbc8174a2bac89a59b",
+      "exe_sha256": "637f5a172f6e56ac07a1f32b9a675f2d9e32b1ca7382e6202c8d671635ae0b53"
+    },
+    "portable": {
+      "file": "Zapret2GUI-portable.zip",
+      "size": 16035023,
+      "sha256": "2b1bcb13cfeb5039a94a1f8752deb4a3b684d2097167e36c37857252496007dc"
+    },
+    "lite": {
+      "file": "Zapret2GUI-lite.zip",
+      "size": 1790118,
+      "sha256": "34741eb9cafc374c8e5d3603350233c4aaa406e482e6123c2e52e1d19e7cdd3e"
+    }
+  }
+}

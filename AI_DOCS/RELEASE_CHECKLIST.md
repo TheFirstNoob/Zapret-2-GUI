@@ -11,23 +11,23 @@
 - [x] Приватный ключ не в репо (.gitignore + запрет пути в gen-скрипте).
 
 ## Перед сборкой
-- [ ] VERSION в core/config.py → X.Y (в манифесты portable/lite уходит сам).
-- [ ] Корневой файл `VERSION` в репо → тот же X.Y: его читает проверка обновлений
+- [x] VERSION в core/config.py → X.Y (в манифесты portable/lite уходит сам).
+- [x] Корневой файл `VERSION` в репо → тот же X.Y: его читает проверка обновлений
       (raw + jsDelivr). Протухший файл = пользователи не увидят обновление.
-- [ ] Ченджлог на рабочем столе дополнен и выверен.
-- [ ] Пресеты/списки release-набора актуальны.
+- [x] Ченджлог на рабочем столе дополнен и выверен.
+- [x] Пресеты/списки release-набора актуальны.
 
 ## Сборка
-- [ ] `python build.py` → exe + `Windows build/Zapret2GUI.zip` + .sha256
-- [ ] `python build_portable.py` → Zapret2GUI-portable.zip + .sha256
-- [ ] `python build_lite.py` → Zapret2GUI-lite.zip + .sha256 (внутри: VERSION и
+- [x] `python build.py` → exe + `Windows build/Zapret2GUI.zip` + .sha256
+- [x] `python build_portable.py` → Zapret2GUI-portable.zip + .sha256
+- [x] `python build_lite.py` → Zapret2GUI-lite.zip + .sha256 (внутри: VERSION и
       дата в README; сборка сама прогоняет dry-run всех release-пресетов)
-- [ ] `python tools/security/test_updates_security.py` — все зелёные.
+- [x] `python tools/security/test_updates_security.py` — все зелёные.
 
 ## Подпись (обязательно)
-- [ ] `python tools/security/sign_release.py --version X.Y --tag Pre-Release-X.Y --key <офлайн-ключ>`
+- [x] `python tools/security/sign_release.py --version X.Y --tag Pre-Release-X.Y --key <офлайн-ключ>`
       → release.json + release.json.sig в корне репо (внутри — самопроверка).
-- [ ] Отпечаток в выводе = 50DCECF29451 (тот самый ключ).
+- [x] Отпечаток в выводе = 50DCECF29451 (тот самый ключ).
 
 ## Публикация
 - [ ] Закоммитить дистрибутивы + `.sha256` + release.json + release.json.sig в main.
