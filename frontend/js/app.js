@@ -793,6 +793,7 @@ const MainPage = {
     // Запасной инструмент - нейтральная кнопка: синий primary только у Zapret 2.
     const z1btn = $('btnZ1Toggle');
     z1btn.textContent = z1.running ? 'Остановить' : 'Запустить';
+    z1btn.classList.toggle('btn-stop', z1.running);
     z1btn.classList.remove('btn-primary');
     z1btn.disabled = App.testActive;
 
