@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: README и частые вопросы
+    url: https://github.com/TheFirstNoob/Zapret-2-GUI/blob/main/README.md
+    about: Установка, настройка, словарь терминов и частые вопросы - возможно, ответ уже есть.
+  - name: Скачать свежую версию
+    url: https://github.com/TheFirstNoob/Zapret-2-GUI/releases
+    about: Проверьте, что у вас последняя версия - в ней могло быть уже исправлено.

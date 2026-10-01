@@ -1,0 +1,96 @@
+name: Сообщение о проблеме
+description: Что-то не работает или работает не так
+title: "[Проблема] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Спасибо, что сообщаете о проблеме! Чем точнее данные, тем быстрее разберёмся.
+        Если вопрос не про поломку, а "как настроить" - сначала загляните в README и частые вопросы.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: Что не работает
+      description: Кратко - что делали и что пошло не так.
+      placeholder: "Например: включил обход, YouTube открывается, а видео не грузится"
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Версия программы
+      description: Видна в окне "О программе" (иконка информации в подвале меню).
+      placeholder: "Например: Pre-Release 0.9"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: build
+    attributes:
+      label: Какая сборка
+      options:
+        - EXE (Zapret2GUI.exe)
+        - portable
+        - lite
+        - запускаю из исходников (Python)
+    validations:
+      required: true
+
+  - type: input
+    id: windows
+    attributes:
+      label: Windows
+      placeholder: "Например: Windows 10 22H2 x64"
+    validations:
+      required: true
+
+  - type: input
+    id: isp
+    attributes:
+      label: Провайдер и город
+      description: Часть блокировок зависит от сети - это помогает понять причину. Можно не заполнять.
+      placeholder: "Например: Ростелеком, Санкт-Петербург"
+    validations:
+      required: false
+
+  - type: textarea
+    id: tried
+    attributes:
+      label: Что уже пробовали
+      description: Тумблеры (Игровые порты, Discord Voice...), тестер, другая стратегия, WARP.
+    validations:
+      required: false
+
+  - type: textarea
+    id: report
+    attributes:
+      label: Отчёт диагностики и логи
+      description: |
+        Лучший вариант - приложить сюда ZIP-отчёт из окна "Диагностика" (кнопка отчёта).
+        В отчёт входит конфиг, состояние системы и журнал работы программы (logs/zapret2.log).
+        Перед отправкой загляните в отчёт: если в ваших списках есть личные домены и вы не хотите ими делиться - удалите их из списков до создания отчёта или напишите об этом.
+    validations:
+      required: false
+
+  - type: textarea
+    id: error
+    attributes:
+      label: Текст ошибки или скриншот
+      description: Если есть сообщение об ошибке - вставьте текстом. Скриншоты можно перетащить прямо сюда.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Проверьте перед отправкой
+      options:
+        - label: Обход запущен, и я смотрел(а) состояние в программе (не "выключен")
+          required: true
+        - label: Я заглянул(а) в README и частые вопросы
+          required: true
+        - label: Я понимаю, что в отчёте могут быть мои списки доменов - и проверил(а) их
+          required: false
