@@ -42,6 +42,41 @@ def get_temp_dir() -> Path:
     return d
 
 
+def cleanup_stale_temp_profiles(prefixes: tuple[str, ...],
+                                max_age_h: float = 24.0) -> list[str]:
+    """Удалить старые браузерные профили/дампы из %TEMP% по префиксам имён.
+
+    Dev-инструменты (UI-скриншоты _ui_shots, старые chk_*.mjs/ui_dump)
+    создают профили Edge/Playwright в %TEMP% и за собой не убирают - кейс
+    2026-10-01: ~40 ГБ от edge-ui-dump-*, spcb-browser-smoke-*, edge-chk-*.
+    Свежие каталоги не трогаем: может работать параллельный запуск.
+    Возвращает имена удалённых каталогов.
+    """
+    import shutil
+    import time as _time
+    tmp = Path(tempfile.gettempdir())
+    now = _time.time()
+    removed: list[str] = []
+    try:
+        entries = list(tmp.iterdir())
+    except OSError:
+        return removed
+    for p in entries:
+        try:
+            if not p.is_dir() or p.is_symlink():
+                continue
+            if not any(p.name.startswith(pref) for pref in prefixes):
+                continue
+            if now - p.stat().st_mtime < max_age_h * 3600:
+                continue
+            shutil.rmtree(p, ignore_errors=True)
+            if not p.exists():
+                removed.append(p.name)
+        except OSError:
+            continue
+    return removed
+
+
 def windivert_image_path(image: str) -> str:
     """Чистый путь .sys из ImagePath.
 

@@ -3,6 +3,7 @@
 Запуск: python tools/_ui_shots.py [страницы...]
 Пишет PNG в %TEMP%\\z2shots\\. Сервер поднимается на корне зеркала.
 """
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -16,7 +17,13 @@ EDGE = Path(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe")
 OUT = Path(tempfile.gettempdir()) / "z2shots"
 sys.path.insert(0, str(REPO))
 
+from core.utils import cleanup_stale_temp_profiles  # noqa: E402
 from server import server as srv  # noqa: E402
+
+# Подчистить хвосты прошлых прогонов (кейс 2026-10-01: такие профили дали ~40 ГБ)
+cleanup_stale_temp_profiles(
+    ("z2edge_", "edge-ui-dump-", "edge-chk-", "spcb-browser-smoke-"),
+    max_age_h=1.0)
 
 PAGES = sys.argv[1:] or ["main", "diagnostics", "tester", "lists",
                          "contested", "games", "cdn", "asn", "probe"]
@@ -53,5 +60,7 @@ for page in PAGES:
     ok = png.exists() and png.stat().st_size > 5000
     print(f"{page:12s} {'OK' if ok else 'FAIL'} "
           f"{png.stat().st_size if png.exists() else 0} bytes")
+    shutil.rmtree(prof, ignore_errors=True)
+shutil.rmtree(profile, ignore_errors=True)
 s.shutdown()
 print("shots:", OUT)
