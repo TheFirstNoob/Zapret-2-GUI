@@ -815,6 +815,42 @@
               </div>
             </div>
 
+            <div class="games-custom-bar">
+              <button class="btn btn-sm btn-go" id="gamesAddBtn">Добавить свою игру</button>
+              <span class="meta">свои игры: домены и UDP-порт; наши игры не редактируются</span>
+            </div>
+
+            <div id="gamesCustomForm" class="games-custom-form" hidden>
+              <div class="probe-domains-title" id="gamesCustomTitle">Своя игра</div>
+              <div class="custom-grid">
+                <label class="custom-field">
+                  <span>Имя игры *</span>
+                  <input class="input" id="gcName" maxlength="60" placeholder="Например: My MMO">
+                </label>
+                <label class="custom-field">
+                  <span>Процесс (необязательно)</span>
+                  <input class="input" id="gcProcess" maxlength="80" placeholder="game.exe">
+                </label>
+                <label class="custom-field custom-wide">
+                  <span>Домены (по одному в строке, необязательно)</span>
+                  <textarea class="input" id="gcDomains" rows="3" placeholder="auth.example.com&#10;lobby.example.com"></textarea>
+                </label>
+                <label class="custom-field">
+                  <span>UDP-порты (через запятую)</span>
+                  <textarea class="input" id="gcPorts" rows="2" placeholder="7777 или 5000-5010"></textarea>
+                </label>
+                <label class="custom-field">
+                  <span>Подсети (CIDR, необязательно)</span>
+                  <textarea class="input" id="gcCidrs" rows="2" placeholder="1.2.0.0/16"></textarea>
+                </label>
+              </div>
+              <div class="meta">Без подсетей UDP-правило «широкое» - трогает весь трафик на этом порту. UDP-фикс вступит после перезапуска обхода.</div>
+              <div class="game-actions">
+                <button class="btn btn-sm btn-go" id="gcSave">Сохранить</button>
+                <button class="btn btn-sm" id="gcCancel">Отмена</button>
+              </div>
+            </div>
+
             <div id="gamesBody" class="games-list"></div>
           </div>
         </section>

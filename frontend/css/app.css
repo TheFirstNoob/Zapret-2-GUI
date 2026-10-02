@@ -1826,3 +1826,12 @@ label.opt-line:has(input:disabled):hover { background: var(--field); }
   background: rgba(255, 255, 255, .03); padding: 2px 6px;
   border-radius: 4px; margin-top: 2px; word-break: break-all;
 }
+
+/* Своя игра: форма добавления/редактирования (custom) */
+.games-custom-bar { display: flex; align-items: center; gap: 10px; margin: 10px 0; }
+.games-custom-form { border: 1px solid var(--btn-line); border-radius: 8px; padding: 12px; margin-bottom: 10px; background: var(--btn); }
+.custom-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 8px 0; }
+.custom-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--faint); }
+.custom-field.custom-wide { grid-column: 1 / -1; }
+.custom-field .input, .custom-field textarea { width: 100%; box-sizing: border-box; }
+.custom-field textarea { resize: vertical; }

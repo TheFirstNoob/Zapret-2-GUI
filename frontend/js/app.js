@@ -1353,6 +1353,8 @@ const GamesPage = {
   _data: null,
   _open: {},
   _svcWired: false,
+  _customWired: false,
+  _editId: null,
   _checks: {},
 
   async onShow() {
@@ -1361,6 +1363,15 @@ const GamesPage = {
       const svcBtn = $('gamesSvcBtn');
       if (svcBtn) svcBtn.addEventListener('click', () => this.reinstallService());
       this._svcWired = true;
+    }
+    if (!this._customWired) {
+      const add = $('gamesAddBtn');
+      if (add) add.addEventListener('click', () => this.openCustomForm(null));
+      const save = $('gcSave');
+      if (save) save.addEventListener('click', () => this.saveCustom());
+      const cancel = $('gcCancel');
+      if (cancel) cancel.addEventListener('click', () => this.closeCustomForm());
+      this._customWired = true;
     }
     try {
       const r = await apiGet('/games');
@@ -1442,9 +1453,10 @@ const GamesPage = {
                   <div class="rule-main-line">
                     <span class="rule-target">Порт UDP ${escapeHtml(u.ports)}</span>
                     <span class="pill-badge" style="color: var(--ok)">fake на старте</span>
+                    ${(u.cidrs || []).length ? '' : '<span class="pill-badge" style="color: var(--warn-text)">широкий</span>'}
                   </div>
                   ${u.note ? `<div class="rule-comment">${u.tag ? `<span class="comment-tag">${escapeHtml(u.tag)}:</span> ` : ''}${escapeHtml(u.note)}</div>` : ''}
-                  <div class="ip-subnets">Подсети: ${escapeHtml((u.cidrs || []).join(', '))}</div>
+                  <div class="ip-subnets">Подсети: ${(u.cidrs || []).length ? escapeHtml((u.cidrs || []).join(', ')) : 'не заданы - правило широкое (весь порт)'}</div>
                 </div>
               </label>`).join('') || '<div class="empty-note">UDP-правил нет</div>'}
           </div>
@@ -1452,6 +1464,8 @@ const GamesPage = {
             <button class="btn btn-sm" data-g-check="${gi}" ${domOn ? '' : 'disabled'} title="Быстрая проба включённых доменов игры: открываются ли они сейчас">Проверить домены</button>
             <button class="btn btn-sm" data-g-analyze="${gi}" ${g.process ? '' : 'disabled'} title="${g.process ? 'Запустить сетевой анализ процесса игры' : 'У игры не задан процесс'}">Анализ приложения</button>
             <span class="meta">${g.process ? 'процесс: ' + escapeHtml(g.process) : 'процесс не задан'}</span>
+            ${g.custom ? `<button class="btn btn-sm" data-g-edit="${gi}">Изменить</button>
+            <button class="btn btn-sm btn-danger-text" data-g-del="${gi}">Удалить</button>` : ''}
           </div>
         </div>
       </div>`;
@@ -1491,6 +1505,16 @@ const GamesPage = {
         ev.stopPropagation();
         this.checkDomains(+btn.dataset.gCheck);
       }));
+    body.querySelectorAll('[data-g-edit]').forEach(btn =>
+      btn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        this.openCustomForm(+btn.dataset.gEdit);
+      }));
+    body.querySelectorAll('[data-g-del]').forEach(btn =>
+      btn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        this.deleteCustom(+btn.dataset.gDel);
+      }));
   },
 
   // Быстрая проба включённых доменов игры (сквозь текущий обход, если он есть)
@@ -1523,6 +1547,87 @@ const GamesPage = {
       Activity.fail('Проверка доменов: ошибка');
       showToast('Проверка доменов: ' + (e.message || e), 'error');
       if (btn) { btn.disabled = false; btn.textContent = 'Проверить домены'; }
+    }
+  },
+
+  openCustomForm(gi) {
+    const form = $('gamesCustomForm');
+    if (!form) return;
+    const title = $('gamesCustomTitle');
+    if (gi === null || gi === undefined) {
+      this._editId = null;
+      if (title) title.textContent = 'Своя игра';
+      $('gcName').value = '';
+      $('gcProcess').value = '';
+      $('gcDomains').value = '';
+      $('gcPorts').value = '';
+      $('gcCidrs').value = '';
+    } else {
+      const g = (this._data.games || [])[gi];
+      if (!g || !g.custom) return;
+      this._editId = g.id;
+      if (title) title.textContent = 'Своя игра: ' + (g.name || g.id);
+      $('gcName').value = g.name || '';
+      $('gcProcess').value = g.process || '';
+      $('gcDomains').value = (g.domains || []).map(d => d.domain).join('\n');
+      const u = (g.udp || [])[0] || {};
+      $('gcPorts').value = u.ports || '';
+      $('gcCidrs').value = (u.cidrs || []).join('\n');
+    }
+    form.hidden = false;
+    $('gcName').focus();
+  },
+
+  closeCustomForm() {
+    const form = $('gamesCustomForm');
+    if (form) form.hidden = true;
+    this._editId = null;
+  },
+
+  async saveCustom() {
+    const btn = $('gcSave');
+    if (btn) btn.disabled = true;
+    try {
+      const r = await apiPost('/games/custom', {
+        action: 'save',
+        game: {
+          id: this._editId || '',
+          name: ($('gcName').value || '').trim(),
+          process: ($('gcProcess').value || '').trim(),
+          domains_text: $('gcDomains').value || '',
+          ports: ($('gcPorts').value || '').trim(),
+          cidrs_text: $('gcCidrs').value || '',
+        },
+      });
+      if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
+      this._data = (r.games && Array.isArray(r.games.games)) ? r.games : this._data;
+      this.closeCustomForm();
+      this.render();
+      showToast(r.message || 'Сохранено', 'ok');
+    } catch (e) {
+      showToast('Своя игра: ' + (e.message || e), 'error');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  },
+
+  async deleteCustom(gi) {
+    const g = (this._data.games || [])[gi];
+    if (!g || !g.custom) return;
+    const ok = await Confirm.ask({
+      title: 'Удалить свою игру?',
+      text: `«${g.name || g.id}» будет удалена вместе с доменами и UDP-правилом.`,
+      ok: 'Удалить',
+    });
+    if (!ok) return;
+    try {
+      const r = await apiPost('/games/custom', { action: 'delete', id: g.id });
+      if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
+      this._data = (r.games && Array.isArray(r.games.games)) ? r.games : this._data;
+      this.render();
+      showToast('Игра удалена', 'ok');
+    } catch (e) {
+      showToast('Удаление: ' + (e.message || e), 'error');
     }
   },
 

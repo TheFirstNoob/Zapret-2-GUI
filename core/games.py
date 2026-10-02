@@ -8,8 +8,10 @@ UDP-правила превращаются в профили winws2 (fake + pay
 """
 from __future__ import annotations
 
+import ipaddress
 import json
 import os
+import re
 from pathlib import Path
 
 GAMES_FILE = "games.json"
@@ -18,6 +20,14 @@ CIDR_DIR = "games"                   # внутри lists/games/<id>.txt
 INCLUDE_ALL = "list-include-all.txt"  # внутри lists/ (user+games union)
 DEFAULT_REPEATS = 1
 DEFAULT_CUTOFF = 4
+
+# Свои игры (custom): лимиты ручного ввода - строки уходят в аргументы
+# winws2, поэтому валидируем строго, а не доверяем фронтенду.
+CUSTOM_LIMITS = {"games": 20, "domains": 50, "ports": 10, "cidrs": 64}
+_DOMAIN_RE = re.compile(
+    r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?"
+    r"(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$")
+_PORT_RE = re.compile(r"^(\d{1,5})(?:-(\d{1,5}))?$")
 
 
 def default_games() -> dict:
@@ -168,7 +178,8 @@ def enabled_udp_rules(data: dict) -> list[dict]:
             ports = str(rule.get("ports") or "").strip()
             cidrs = [str(c).strip() for c in rule.get("cidrs", [])
                      if str(c).strip()]
-            if not ports or not cidrs:
+            # подсети могут быть пустыми: правило «широкое» (весь порт)
+            if not ports:
                 continue
             out.append({
                 "id": str(game.get("id") or "game"),
@@ -179,6 +190,134 @@ def enabled_udp_rules(data: dict) -> list[dict]:
                 "cutoff": int(rule.get("cutoff") or DEFAULT_CUTOFF),
             })
     return out
+
+
+def clean_custom_domains(text: str) -> tuple[list[str], str]:
+    """Домены из ручного ввода: нормализация (схема/путь/регистр) + проверка."""
+    out: list[str] = []
+    for raw in re.split(r"[\s,;]+", str(text or "")):
+        d = raw.strip().lower()
+        d = re.sub(r"^[a-z][a-z0-9+.-]*://", "", d)
+        d = d.split("/", 1)[0].split(":", 1)[0].rstrip(".")
+        if not d:
+            continue
+        if not _DOMAIN_RE.match(d):
+            return [], f"Некорректный домен: {raw.strip()}"
+        if d not in out:
+            out.append(d)
+    if len(out) > CUSTOM_LIMITS["domains"]:
+        return [], f"Слишком много доменов (макс. {CUSTOM_LIMITS['domains']})"
+    return out, ""
+
+
+def clean_custom_ports(text: str) -> tuple[str, str]:
+    """UDP-порты: '7777', '5000-5010', через запятую; нормализация и лимит."""
+    parts: list[str] = []
+    for raw in str(text or "").split(","):
+        p = raw.strip()
+        if not p:
+            continue
+        m = _PORT_RE.match(p)
+        if not m:
+            return "", f"Некорректный порт: {p}"
+        a = int(m.group(1))
+        b = int(m.group(2)) if m.group(2) else a
+        if not (1 <= a <= b <= 65535):
+            return "", f"Порт вне диапазона: {p}"
+        tok = str(a) if a == b else f"{a}-{b}"
+        if tok not in parts:
+            parts.append(tok)
+    if len(parts) > CUSTOM_LIMITS["ports"]:
+        return "", f"Слишком много портов (макс. {CUSTOM_LIMITS['ports']})"
+    return ",".join(parts), ""
+
+
+def clean_custom_cidrs(text: str) -> tuple[list[str], str]:
+    """Подсети из ручного ввода: ipaddress(strict=False) + дедуп и лимит."""
+    out: list[str] = []
+    for raw in re.split(r"[\s,;]+", str(text or "")):
+        c = raw.strip()
+        if not c:
+            continue
+        try:
+            net = str(ipaddress.ip_network(c, strict=False))
+        except ValueError:
+            return [], f"Некорректная сеть: {c}"
+        if net not in out:
+            out.append(net)
+    if len(out) > CUSTOM_LIMITS["cidrs"]:
+        return [], f"Слишком много подсетей (макс. {CUSTOM_LIMITS['cidrs']})"
+    return out, ""
+
+
+def upsert_custom_game(data: dict, game: dict) -> tuple[bool, str, dict]:
+    """Добавить/изменить СВОЮ игру. Встроенные игры не редактируются.
+
+    Возвращает (ok, сообщение, данные) - данные уже с изменением.
+    """
+    gid = str(game.get("id") or "").strip()
+    name = str(game.get("name") or "").strip()[:60]
+    if not name:
+        return False, "Укажите имя игры", data
+    domains, err = clean_custom_domains(game.get("domains_text", ""))
+    if err:
+        return False, err, data
+    ports, err = clean_custom_ports(game.get("ports", ""))
+    if err:
+        return False, err, data
+    cidrs, err = clean_custom_cidrs(game.get("cidrs_text", ""))
+    if err:
+        return False, err, data
+    process = str(game.get("process") or "").strip()[:80]
+    games = data.setdefault("games", [])
+    found = None
+    if gid:
+        found = next((g for g in games if str(g.get("id")) == gid), None)
+        if found is not None and not found.get("custom"):
+            return False, "Встроенную игру редактировать нельзя", data
+    if found is None:
+        if sum(1 for g in games if g.get("custom")) >= CUSTOM_LIMITS["games"]:
+            return False, (f"Своих игр уже максимум "
+                           f"({CUSTOM_LIMITS['games']})"), data
+        used = {str(g.get("id")) for g in games}
+        n = 1
+        while f"custom-{n}" in used:
+            n += 1
+        gid = f"custom-{n}"
+        found = {"id": gid, "custom": True, "enabled": True,
+                 "domains": [], "udp": []}
+        games.append(found)
+    found["name"] = name
+    found["process"] = process
+    old_dom = {str(d.get("domain")): bool(d.get("on"))
+               for d in (found.get("domains") or [])}
+    found["domains"] = [{"domain": d, "on": old_dom.get(d, True)}
+                        for d in domains]
+    if ports:
+        old_udp = (found.get("udp") or [{}])[0]
+        found["udp"] = [{
+            "ports": ports,
+            "on": bool(old_udp.get("on", True)),
+            "cidrs": cidrs,
+            "repeats": DEFAULT_REPEATS,
+            "cutoff": DEFAULT_CUTOFF,
+            "note": "добавлено вручную",
+        }]
+    else:
+        found["udp"] = []
+    return True, "", data
+
+
+def delete_custom_game(data: dict, gid: str) -> tuple[bool, str, dict]:
+    """Удалить СВОЮ игру (встроенные защищены)."""
+    games = data.get("games", [])
+    g = next((x for x in games if str(x.get("id")) == str(gid)), None)
+    if g is None:
+        return False, "Игра не найдена", data
+    if not g.get("custom"):
+        return False, "Встроенную игру удалить нельзя", data
+    games.remove(g)
+    return True, "", data
 
 
 def sync_domain_list(root: Path, data: dict | None = None) -> Path:

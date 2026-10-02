@@ -388,22 +388,29 @@ def build_args_from_preset(
         if not any(t.startswith("quic_google:") for t in tokens):
             tokens += ["--blob",
                        "quic_google:@blobs/quic_initial_www_google_com.bin"]
-        groups: dict[tuple[int, int], list[dict]] = {}
+        # Группируем и по наличию подсетей: правила без CIDR идут «широким»
+        # пулом без --ipset (весь трафик на порту - для ручных правил игр).
+        groups: dict[tuple[int, int, bool], list[dict]] = {}
         for rule in game_rules:
-            groups.setdefault((rule["cutoff"], rule["repeats"]), []).append(rule)
-        for (cutoff, repeats), rules in groups.items():
+            wide = not rule["cidrs"]
+            groups.setdefault((rule["cutoff"], rule["repeats"], wide),
+                              []).append(rule)
+        for (cutoff, repeats, wide), rules in groups.items():
             ports = ",".join(dict.fromkeys(str(r["ports"]) for r in rules))
-            cidrs = [c for r in rules for c in r["cidrs"]]
-            pool = games_store.write_cidr_pool_file(
-                root_dir, f"d{cutoff}r{repeats}", cidrs)
+            seg = ["--new", f"--filter-udp={ports}"]
+            if not wide:
+                cidrs = [c for r in rules for c in r["cidrs"]]
+                pool = games_store.write_cidr_pool_file(
+                    root_dir, f"d{cutoff}r{repeats}", cidrs)
+                seg.append(f"--ipset={short_path(pool)}")
+            seg += ["--out-range", f"-d{cutoff}",
+                    "--lua-desync=fake:blob=quic_google:"
+                    f"repeats={repeats}:payload=all"]
             _append_wf_udp_ports(tokens, ports)
-            tokens += ["--new", f"--filter-udp={ports}",
-                       f"--ipset={short_path(pool)}",
-                       "--out-range", f"-d{cutoff}",
-                       "--lua-desync=fake:blob=quic_google:"
-                       f"repeats={repeats}:payload=all"]
+            tokens += seg
         _applog("games", f"UDP-пул: rules={len(game_rules)} "
-                         f"pools={len(groups)} ports={[r['ports'] for r in game_rules]}")
+                         f"pools={len(groups)} "
+                         f"wide={sum(1 for k in groups if k[2])}")
     # ── Юзерские IP-include, targeted-режим ──
     # winws2 ANDs --ipset с --hostlist внутри профиля, поэтому юзер-подсети
     # не могут жить в общем блоке. Дублируем каждый блок с list-general и

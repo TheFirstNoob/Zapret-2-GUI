@@ -1925,6 +1925,8 @@ class ZapretHandler(BaseHTTPRequestHandler):
                 self._handle_games_check(data)
             elif path == "/api/games/add-domain":
                 self._handle_games_add_domain(data)
+            elif path == "/api/games/custom":
+                self._handle_games_custom(data)
             elif path == "/api/frontend-log":
                 self._handle_probe_debug(data)
             else:
@@ -2010,6 +2012,30 @@ class ZapretHandler(BaseHTTPRequestHandler):
             "message": "Сохранено. Домены применятся к новым подключениям; "
                        "UDP-фикс - после перезапуска обхода (службу - "
                        "переустановкой)"})
+
+    def _handle_games_custom(self, data: dict) -> None:
+        """Своя игра: add/update/delete. Встроенные игры не редактируются."""
+        from core import games as games_store
+        action = str(data.get("action") or "save")
+        cur = games_store.load_games(get_root_dir())
+        if action == "delete":
+            ok, msg, cur = games_store.delete_custom_game(
+                cur, str(data.get("id") or ""))
+        else:
+            game = data.get("game") if isinstance(data.get("game"), dict) else {}
+            ok, msg, cur = games_store.upsert_custom_game(cur, game)
+        if not ok:
+            self._send_json({"status": "error", "message": msg})
+            return
+        if not games_store.save_games(get_root_dir(), cur):
+            self._send_json({"status": "error",
+                             "message": "не удалось сохранить"})
+            return
+        games_store.sync_domain_list(get_root_dir(), cur)
+        self._send_json({"status": "ok", "games": cur,
+                         "message": "Сохранено. Домены применятся к новым "
+                                    "подключениям; UDP-фикс - после "
+                                    "перезапуска обхода"})
 
     def _handle_games_check(self, data: dict) -> None:
         """Проба доменов игры: открываются ли они сейчас (сквозь работающий
