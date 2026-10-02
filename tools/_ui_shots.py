@@ -17,7 +17,7 @@ EDGE = Path(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe")
 OUT = Path(tempfile.gettempdir()) / "z2shots"
 sys.path.insert(0, str(REPO))
 
-from core.utils import cleanup_stale_temp_profiles  # noqa: E402
+from tools.dev_temp import cleanup_stale_temp_profiles  # noqa: E402
 from server import server as srv  # noqa: E402
 
 # Подчистить хвосты прошлых прогонов (кейс 2026-10-01: такие профили дали ~40 ГБ)

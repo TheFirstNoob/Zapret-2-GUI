@@ -48,24 +48,6 @@ def _cleanup_stale_mei() -> None:
         pass
 
 
-def _cleanup_dev_temp_profiles() -> None:
-    """Осиротевшие профили браузера от dev-инструментов в %TEMP%.
-
-    UI-скриншоты и старые дамп-скрипты (chk_*.mjs/ui_dump) оставляют профили
-    Edge/Playwright по ~400 МБ - кейс 2026-10-01: накопилось ~40 ГБ.
-    """
-    try:
-        from core.utils import cleanup_stale_temp_profiles
-        removed = cleanup_stale_temp_profiles(
-            ("edge-ui-dump-", "edge-chk-", "spcb-browser-smoke-", "z2edge_"),
-            max_age_h=24.0)
-        if removed:
-            _applog("layout", f"temp cleanup: удалено {len(removed)} "
-                              f"профилей ({', '.join(removed[:4])})")
-    except Exception:
-        pass
-
-
 def _warn_if_bad_path(exe_dir: Path) -> bool:
     """True, если путь установки безопасен для winws2.
 
@@ -269,7 +251,6 @@ def main_gui() -> None:
         return
 
     _cleanup_stale_mei()
-    _cleanup_dev_temp_profiles()
 
     try:
         import webview
