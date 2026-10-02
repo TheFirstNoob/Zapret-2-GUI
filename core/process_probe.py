@@ -483,11 +483,19 @@ class ProcessProbe:
         return "\n".join(lines)
 
     def save_report(self) -> Path:
-        """Отчёт - в logs/ программы (его читают и пересылают, не %TEMP%)."""
+        """Отчёт - в logs/ программы, имя '<процесс> - ГГГГ-ММ-ДД ЧЧ-ММ-СС.txt'
+
+        (имя процесса читаемо для человека; спецсимволы заменяются на _).
+        """
         import datetime as _dt
+        import re as _re
+        spec = str(self.get_status().get("process") or "").strip() or "процесс"
+        safe = _re.sub(r"[^\w.\- ]+", "_", spec, flags=_re.UNICODE).strip(" ._")
+        safe = safe or "процесс"
         logs = utils.app_root() / "logs"
         logs.mkdir(parents=True, exist_ok=True)
-        path = logs / f"probe_{_dt.datetime.now():%Y%m%d_%H%M%S}.txt"
+        ts = _dt.datetime.now().strftime("%Y-%m-%d %H-%M-%S")
+        path = logs / f"{safe} - {ts}.txt"
         path.write_text(self.report_text(), encoding="utf-8")
         try:
             from core.applog import log as _applog
