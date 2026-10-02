@@ -3754,39 +3754,67 @@ const TesterPage = {
         vd.hidden = true;
       }
     }
-    // Подсказки «в обход»: домены проблемных целей (SYN/UDP без ответа)
+    // Домены: проблемные цели (кнопки «в обход») + все найденные за сессию
     const domBox = $('probeDomains');
     if (domBox) {
       if (!st.verdict || st.phase !== 'завершено') {
         domBox.hidden = true;
       } else {
         const problems = [];
+        const seen = [];
         for (const [k, h] of Object.entries(hist)) {
           const states = h.states || {};
           const bad = (h.proto === 'tcp' && 'SynSent' in states && !('Established' in states))
             || (h.proto === 'udp' && (h.sent || 0) > 0 && (h.recv || 0) === 0);
-          if (!bad) continue;
           const ip = k.slice(0, k.lastIndexOf(':'));
-          for (const d of (dns[ip] || [])) problems.push(d);
+          for (const d of (dns[ip] || [])) {
+            if (!seen.includes(d)) seen.push(d);
+            if (bad && !problems.includes(d)) problems.push(d);
+          }
         }
-        const uniq = [...new Set(problems)];
         domBox.hidden = false;
-        if (!uniq.length) {
-          domBox.innerHTML = '<div class="meta">Проблемные цели - серверы по IP '
-            + '(имён в DNS-кэше нет). Попробуйте «Общий IP-обход» или добавьте IP в ipset-включения.</div>';
-        } else {
+        let html = '';
+        if (problems.length) {
           const gctx = this._gameContext;
-          domBox.innerHTML = '<div class="probe-domains-title">Домены проблемных целей - можно добавить в обход:</div>'
-            + uniq.map(d => `<div class="probe-domain-row">
+          html += '<div class="probe-domains-title">Домены проблемных целей - можно добавить в обход:</div>'
+            + problems.map(d => `<div class="probe-domain-row">
                 <span class="endpoint-ip">${escapeHtml(d)}</span>
                 <button class="btn btn-sm" data-add-domain="${escapeHtml(d)}">В обход</button>
                 ${gctx ? `<button class="btn btn-sm" data-add-to-game="${escapeHtml(d)}">В игру: ${escapeHtml(gctx.name)}</button>` : ''}
               </div>`).join('');
-          domBox.querySelectorAll('[data-add-domain]').forEach(b =>
-            b.addEventListener('click', () => ListsPage.addDomainSuggestion(b)));
-          domBox.querySelectorAll('[data-add-to-game]').forEach(b =>
-            b.addEventListener('click', () => this.addToGame(b)));
+        } else if (seen.length) {
+          html += '<div class="probe-domains-title">Проблемных доменов нет - все цели отвечали</div>';
+        } else {
+          html += '<div class="meta">Домены не найдены: приложение могло ходить по IP напрямую '
+            + 'или через свой DNS (DoH). Ориентируйтесь на IP:порт - подойдут «Общий IP-обход» '
+            + 'или добавление IP-сети.</div>';
         }
+        if (seen.length) {
+          html += `<div class="probe-domains-title">Домены за сеанс (${seen.length}): `
+            + '<button class="btn btn-sm" id="probeDomsCopy">Скопировать</button></div>'
+            + `<div class="probe-domain-row"><span class="meta">${seen.map(escapeHtml).join(' · ')}</span></div>`;
+        }
+        domBox.innerHTML = html;
+        domBox.querySelectorAll('[data-add-domain]').forEach(b =>
+          b.addEventListener('click', () => ListsPage.addDomainSuggestion(b)));
+        domBox.querySelectorAll('[data-add-to-game]').forEach(b =>
+          b.addEventListener('click', () => this.addToGame(b)));
+        const cp = $('probeDomsCopy');
+        if (cp) cp.addEventListener('click', async () => {
+          const text = seen.join('\n');
+          try {
+            await navigator.clipboard.writeText(text);
+            showToast('Домены скопированы', 'ok');
+          } catch (e) {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            document.body.appendChild(ta);
+            ta.select();
+            try { document.execCommand('copy'); showToast('Домены скопированы', 'ok'); }
+            catch (e2) { showToast('Не удалось скопировать', 'warn'); }
+            document.body.removeChild(ta);
+          }
+        });
       }
     }
   },

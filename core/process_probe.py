@@ -139,19 +139,28 @@ def _udp_ports(pids: list[int]) -> list[int]:
     return ports
 
 
-def _dns_map(remote_ips: set[str]) -> dict[str, list[str]]:
+def _dns_cache_entries() -> dict[str, list[str]]:
+    """Сырой DNS-кэш Windows: {ip: [имена]} (A и AAAA, без фильтрации).
+
+    Вызывается периодически во время захвата: записи с коротким TTL иначе
+    протухают к концу сессии, и домены проблемных целей остаются не найдены.
+    """
     script = (
         "Get-DnsClientCache -ErrorAction SilentlyContinue | "
         "Select-Object Entry,Data | ConvertTo-Json -Compress"
     )
     cache: dict[str, list[str]] = {}
+    ip4 = re.compile(r"^\d{1,3}(\.\d{1,3}){3}$")
     for item in _ps_json(script):
-        data = str(item.get("Data") or "")
-        entry = str(item.get("Entry") or "")
-        if re.match(r"^\d{1,3}(\.\d{1,3}){3}$", data) and data in remote_ips:
-            cache.setdefault(data, [])
-            if entry not in cache[data]:
-                cache[data].append(entry)
+        data = str(item.get("Data") or "").strip()
+        entry = str(item.get("Entry") or "").strip()
+        if not entry or not data:
+            continue
+        if not (ip4.match(data) or ":" in data):
+            continue
+        cache.setdefault(data, [])
+        if entry not in cache[data]:
+            cache[data].append(entry)
     return cache
 
 
@@ -383,6 +392,8 @@ class ProcessProbe:
         handle: Optional[dict] = None
         ipv6 = False
         start = time.time()
+        dns_seen: dict[str, list[str]] = {}
+        last_dns = 0.0
         try:
             handle = _run_pktmon(pids, etl, txt)
             while (duration <= 0 or time.time() - start < duration) \
@@ -392,6 +403,13 @@ class ProcessProbe:
                 if any(":" in k.split(":", 1)[0] for k in list(tcp) + list(udp)):
                     ipv6 = True
                 elapsed = int(time.time() - start)
+                if time.time() - last_dns >= 5:
+                    last_dns = time.time()
+                    for ip, names in _dns_cache_entries().items():
+                        acc = dns_seen.setdefault(ip, [])
+                        for n in names:
+                            if n not in acc:
+                                acc.append(n)
                 with self._lock:
                     _merge_history(self._state["history"], tcp, udp, time.time())
                     self._state.update({"tcp": tcp, "udp": udp, "elapsed": elapsed,
@@ -403,7 +421,14 @@ class ProcessProbe:
                                       (udp_capture or {}).get("ips", {}), time.time())
                 remote_ips = {k.rsplit(":", 1)[0] for k in self._state["history"]}
                 no_conn = not self._state["history"]
-            dns = _dns_map(remote_ips) if remote_ips else {}
+            # финальный кэш + накопленное за сессию (короткие TTL успевают уйти)
+            for ip, names in _dns_cache_entries().items():
+                acc = dns_seen.setdefault(ip, [])
+                for n in names:
+                    if n not in acc:
+                        acc.append(n)
+            dns = {ip: dns_seen[ip] for ip in remote_ips if ip in dns_seen} \
+                if remote_ips else {}
             verdict = _verdict(self._state["history"],
                                self._state.get("ipv6", False), no_conn, dns)
             with self._lock:
