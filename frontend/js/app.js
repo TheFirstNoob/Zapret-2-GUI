@@ -3610,6 +3610,7 @@ const TesterPage = {
       $('probeResults').innerHTML = '';
       $('probeIdle').hidden = true;
       $('probeLive').hidden = false;
+      $('probeLiveBar').hidden = false;
       $('probeVerdict').hidden = true;
       $('probeStatus').hidden = true;
       $('probeTbody').innerHTML = '<tr><td colspan="4"><div class="empty-note">Наблюдение…</div></td></tr>';
@@ -3660,6 +3661,8 @@ const TesterPage = {
       $('probeReportBtn').hidden = false;
       this._setProbeState(st.error ? 'Анализ прерван' : '✓ Анализ завершён', st.error ? 'err' : 'done');
       if (stEl && !st.error) stEl.hidden = true;
+      const liveBar = $('probeLiveBar');
+      if (liveBar) liveBar.hidden = true;
       if (st.error) showToast('Анализ: ' + st.error, 'error');
     }
   },
@@ -3675,6 +3678,9 @@ const TesterPage = {
     const stop = $('probeStopBtn');
     if (stop) stop.disabled = true;
     this._setProbeState('Останавливается…', 'live');
+    const bar = $('probeLiveBar');
+    if (bar) bar.hidden = true;  // живая плашка исчезает сразу
+    if (this._probeTimer) { clearInterval(this._probeTimer); this._probeTimer = null; }
     await apiPost('/process-probe/stop', {});
     // Поллинг не гасим: pollProbe дождётся финальной фазы («завершено»),
     // скроет строку фазы и отрисует итог (баг: статус зависал после «Стоп»).
