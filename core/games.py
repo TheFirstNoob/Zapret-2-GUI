@@ -433,7 +433,7 @@ def add_game_domain(root: Path, game_id: str, domain: str) -> tuple[bool, str, b
     if not save_games(root, data):
         return False, "Не удалось сохранить games.json", False
     try:
-        sync_domain_list(root, data)
+        sync_include_list(root, data=data)
     except Exception:
         pass
     return True, "Домен добавлен в игру - применяется к новым подключениям", True

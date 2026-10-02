@@ -2006,7 +2006,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
             self._send_json({"status": "error",
                              "message": "не удалось сохранить"})
             return
-        games_store.sync_domain_list(get_root_dir(), payload)
+        games_store.sync_include_list(get_root_dir(), data=payload)
         self._send_json({
             "status": "ok",
             "message": "Сохранено. Домены применятся к новым подключениям; "
@@ -2031,7 +2031,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
             self._send_json({"status": "error",
                              "message": "не удалось сохранить"})
             return
-        games_store.sync_domain_list(get_root_dir(), cur)
+        games_store.sync_include_list(get_root_dir(), data=cur)
         self._send_json({"status": "ok", "games": cur,
                          "message": "Сохранено. Домены применятся к новым "
                                     "подключениям; UDP-фикс - после "
@@ -2209,6 +2209,14 @@ class ZapretHandler(BaseHTTPRequestHandler):
         path = get_root_dir() / "lists" / filename
         try:
             path.write_text(content, encoding="utf-8")
+            # args ссылаются на combined-файл (user+games) - обновляем его,
+            # чтобы правка списка применялась к новым подключениям на лету
+            if filename == "list-include-user.txt":
+                try:
+                    from core import games as games_store
+                    games_store.sync_include_list(get_root_dir())
+                except Exception:
+                    pass
             self._send_json({"status": "ok", "message": "Список сохранён"})
         except OSError as e:
             self._send_json({"status": "error", "message": str(e)})
@@ -2331,6 +2339,13 @@ class ZapretHandler(BaseHTTPRequestHandler):
             self._send_json({"status": "error", "message": str(e)})
             return
         ok = result.get("result") in ("added", "moved", "already")
+        if ok and mode == "include":
+            # combined-файл (user+games) - то, на что ссылаются args
+            try:
+                from core import games as games_store
+                games_store.sync_include_list(get_root_dir())
+            except Exception:
+                pass
         self._send_json({"status": "ok" if ok else "error", **result})
 
     def _prepare_service_args(self, data: dict) -> tuple[Optional[list[str]], str]:
