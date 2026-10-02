@@ -21,6 +21,7 @@ _tspu-docs/
 
 # Runtime-generated files
 *.log
+logs/
 _zapret_run.bat
 _zapret_service.bat
 _exp_run.bat

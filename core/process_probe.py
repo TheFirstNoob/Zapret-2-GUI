@@ -335,7 +335,7 @@ class ProcessProbe:
             # перетирал _thread/_state (L8) - вся процедура под локом
             if self._thread is not None and self._thread.is_alive():
                 return False, "Анализ уже запущен"
-            if duration < 5:
+            if duration != 0 and duration < 5:
                 duration = 30
             self._thread = threading.Thread(
                 target=self._run, args=(process, duration, wait_sec), daemon=True)
@@ -385,7 +385,8 @@ class ProcessProbe:
         start = time.time()
         try:
             handle = _run_pktmon(pids, etl, txt)
-            while time.time() - start < duration and not self._stop_flag.is_set():
+            while (duration <= 0 or time.time() - start < duration) \
+                    and not self._stop_flag.is_set():
                 tcp = _tcp_snapshot(pids)
                 udp = _udp_snapshot(pids)
                 if any(":" in k.split(":", 1)[0] for k in list(tcp) + list(udp)):
@@ -418,6 +419,9 @@ class ProcessProbe:
 
     def stop(self) -> dict:
         self._stop_flag.set()
+        with self._lock:
+            if self._state and not self._state.get("error"):
+                self._state["phase"] = "остановка..."
         thread = self._thread
         if thread and thread.is_alive():
             thread.join(timeout=20)
@@ -479,6 +483,15 @@ class ProcessProbe:
         return "\n".join(lines)
 
     def save_report(self) -> Path:
-        path = utils.get_temp_dir() / "zapret2_process_probe.txt"
+        """Отчёт - в logs/ программы (его читают и пересылают, не %TEMP%)."""
+        import datetime as _dt
+        logs = utils.app_root() / "logs"
+        logs.mkdir(parents=True, exist_ok=True)
+        path = logs / f"probe_{_dt.datetime.now():%Y%m%d_%H%M%S}.txt"
         path.write_text(self.report_text(), encoding="utf-8")
+        try:
+            from core.applog import log as _applog
+            _applog("probe", f"отчёт сохранён: {path}")
+        except Exception:
+            pass
         return path

@@ -3523,7 +3523,9 @@ const TesterPage = {
     // total в mm:ss (L6: 120 сек писалось как «00:120»)
     const totalMm = String(Math.floor(this._probeDuration / 60)).padStart(2, '0');
     const totalSs = String(this._probeDuration % 60).padStart(2, '0');
-    el.textContent = `${mm}:${ss} / ${totalMm}:${totalSs}`;
+    el.textContent = this._probeDuration > 0
+      ? `${mm}:${ss} / ${totalMm}:${totalSs}`
+      : `${mm}:${ss} / ∞`;
   },
 
   // Живая подсказка по ручному вводу процесса: имя/PID из отсканированного
@@ -3609,6 +3611,7 @@ const TesterPage = {
       $('probeIdle').hidden = true;
       $('probeLive').hidden = false;
       $('probeVerdict').hidden = true;
+      $('probeStatus').hidden = true;
       $('probeTbody').innerHTML = '<tr><td colspan="4"><div class="empty-note">Наблюдение…</div></td></tr>';
       $('probeLiveTitle').textContent = `Прослушивание сетевого трафика процесса «${process}»`;
       $('probeLiveSub').textContent = 'Пакетов: 0 · Соединений: 0';
@@ -3617,7 +3620,7 @@ const TesterPage = {
       this._probeTick();
       if (this._probeTimer) clearInterval(this._probeTimer);
       this._probeTimer = setInterval(() => this._probeTick(), 1000);
-      this._setProbeState('● Перехват пакетов', 'live');
+      this._setProbeState('Перехват пакетов', 'live');
       this._probePollTimer = setInterval(() => this.pollProbe(), 2000);
       this.pollProbe();
     } finally {
@@ -3656,6 +3659,7 @@ const TesterPage = {
       $('probeStopBtn').hidden = true;
       $('probeReportBtn').hidden = false;
       this._setProbeState(st.error ? 'Анализ прерван' : '✓ Анализ завершён', st.error ? 'err' : 'done');
+      if (stEl && !st.error) stEl.hidden = true;
       if (st.error) showToast('Анализ: ' + st.error, 'error');
     }
   },
@@ -3668,14 +3672,14 @@ const TesterPage = {
   },
 
   async stopProbe() {
+    const stop = $('probeStopBtn');
+    if (stop) stop.disabled = true;
+    this._setProbeState('Останавливается…', 'live');
     await apiPost('/process-probe/stop', {});
-    this._stopProbePolling();
-    if (this._probeTimer) { clearInterval(this._probeTimer); this._probeTimer = null; }
-    $('probeStartBtn').disabled = false;
-    $('probeStartBtn').hidden = false;
-    $('probeStopBtn').hidden = true;
-    $('probeReportBtn').hidden = false;
-    this._setProbeState('Анализ остановлен', 'done');
+    // Поллинг не гасим: pollProbe дождётся финальной фазы («завершено»),
+    // скроет строку фазы и отрисует итог (баг: статус зависал после «Стоп»).
+    this.pollProbe();
+    if (stop) stop.disabled = false;
   },
 
   async saveProbeReport() {

@@ -1955,7 +1955,9 @@ class ZapretHandler(BaseHTTPRequestHandler):
                              "message": "Укажите имя процесса или PID"})
             return
         try:
-            duration = max(10, min(int(data.get("duration") or 60), 300))
+            d = int(data.get("duration") or 60)
+            # 0 = постоянная запись до кнопки «Стоп» (фронт даёт option value=0)
+            duration = 0 if d == 0 else max(10, min(d, 300))
         except (TypeError, ValueError):
             duration = 60
         ok, msg = get_process_probe().start(proc, duration)
