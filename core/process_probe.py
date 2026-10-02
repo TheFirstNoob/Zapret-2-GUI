@@ -483,19 +483,19 @@ class ProcessProbe:
         return "\n".join(lines)
 
     def save_report(self) -> Path:
-        """Отчёт - в logs/ программы, имя '<процесс> - ГГГГ-ММ-ДД ЧЧ-ММ-СС.txt'
+        """Отчёт - в logs/ программы: '<имя_процесса>_<дата_время>.txt'.
 
-        (имя процесса читаемо для человека; спецсимволы заменяются на _).
+        Всё, кроме латиницы и цифр, заменяется на '_' - в т.ч. пробелы и
+        точки: '.exe' в имени файла сбивал тип файла и небезопасен при обмене.
         """
         import datetime as _dt
         import re as _re
-        spec = str(self.get_status().get("process") or "").strip() or "процесс"
-        safe = _re.sub(r"[^\w.\- ]+", "_", spec, flags=_re.UNICODE).strip(" ._")
-        safe = safe or "процесс"
+        spec = str(self.get_status().get("process") or "").strip()
+        safe = _re.sub(r"[^A-Za-z0-9]+", "_", spec).strip("_") or "process"
         logs = utils.app_root() / "logs"
         logs.mkdir(parents=True, exist_ok=True)
-        ts = _dt.datetime.now().strftime("%Y-%m-%d %H-%M-%S")
-        path = logs / f"{safe} - {ts}.txt"
+        ts = _dt.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        path = logs / f"{safe}_{ts}.txt"
         path.write_text(self.report_text(), encoding="utf-8")
         try:
             from core.applog import log as _applog
