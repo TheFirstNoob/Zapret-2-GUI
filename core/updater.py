@@ -56,6 +56,15 @@ def _sha256(path: Path) -> str:
     return h.hexdigest()
 
 
+def _upd_log(msg: str) -> None:
+    """Операционный лог апдейтера (тот же, что у службы и запуска)."""
+    try:
+        from core.applog import log as _applog
+        _applog("update", msg)
+    except Exception:
+        pass
+
+
 def is_user_file(rel: str) -> bool:
     """Файл, который обновление никогда не трогает."""
     rel = rel.replace("/", "\\").lstrip("\\")
@@ -344,17 +353,28 @@ def apply_portable(zip_path: Path, root_dir: Path,
 
 def prepare_exe_update(zip_path: Path, root_dir: Path,
                        exe_name: str = "Zapret2GUI.exe",
-                       exe_sha256: Optional[str] = None) -> Path:
+                       exe_sha256: Optional[str] = None,
+                       mei_dir: Optional[str] = None) -> Path:
     """exe-версия обновляет СЕБЯ через батник: zip уже скачан - извлечь exe
-    рядом, сверить его sha256 (из подписанного манифеста), создать
+    рядом, сверять его sha256 (из подписанного манифеста), создать
     updater-bat, который после закрытия текущего процесса заменит exe и
-    запустит новый. Возвращает путь к батнику (его запускает вызывающий
-    через Popen detached - иначе батник умрёт вместе с нами).
-    Fail-closed: без совпадения хеша .new и батник не создаются."""
+    запустит новый. Возвращает путь к батнику; запускает его вызывающий
+    (launch_update_bat) - иначе батник умрёт вместе с нами.
+    Fail-closed: без совпадения хеша .new и батник не создаются.
+
+    Батник ПЕРЕЗАПИСЫВАЕТ САМ СЕБЯ, поэтому пишется без абсолютных путей
+    (только %~dp0 - каталог самого батника) и в ASCII: иначе установка в
+    папку с кириллицей или знаками препинания ломает и кодировку, и парсинг
+    командной строки cmd. Каталог onefile-распаковки (%TEMP%\\_MEI...) не
+    удаляется, если процесс убит taskkill'ом - передаём его и чистим.
+    """
     import sys as _sys
 
     if not exe_sha256:
         raise RuntimeError("контрольная сумма exe не подтверждена")
+    # Имя exe попадает в taskkill / move - оставляем только безопасные символы.
+    if not exe_name or any(c in exe_name for c in '/\\:*?"<>|'):
+        raise RuntimeError("недопустимое имя исполняемого файла")
     with zipfile.ZipFile(zip_path) as zf:
         exe_member = next(n for n in zf.namelist() if n.endswith(exe_name))
         data = zf.read(exe_member)
@@ -366,17 +386,75 @@ def prepare_exe_update(zip_path: Path, root_dir: Path,
         raise RuntimeError("исполняемый файл обновления повреждён")
 
     cur_exe = Path(_sys.executable)
-    script = (
-        "@echo off\r\n"
-        f"taskkill /F /IM {exe_name} >nul 2>&1\r\n"
-        "ping -n 2 127.0.0.1 >nul\r\n"
-        f"move /y \"{new_exe}\" \"{cur_exe}\" >nul\r\n"
-        f"start \"\" \"{cur_exe}\"\r\n"
-        "del \"%~f0\"\r\n"
-    )
+    # Батник заменяет <каталог>/<exe_name> и убивает процесс по имени образа.
+    # Если запущенное имя не совпадает (другой каталог/имя) - замена не
+    # сработает: taskkill не убьёт нас, .new останется лежать. Проверяем
+    # только в реальном onefile (frozen): сервер идёт по ветке exe только
+    # тогда, а из исходников/тестов батник не используется.
+    if getattr(_sys, "frozen", False) and cur_exe.name.lower() != exe_name.lower():
+        new_exe.unlink(missing_ok=True)
+        raise RuntimeError(
+            f"имя запущенного файла ({cur_exe.name}) не совпадает с "
+            f"обновляемым ({exe_name}) - самообновление отменено, "
+            f"скачайте новую версию вручную")
+
+    log = root_dir / "logs" / "update_self.log"
+    lines = [
+        "@echo off",
+        "rem Self-update: replace the exe and restart. Paths are relative to"
+        " this script (%%~dp0) so a non-ASCII install path cannot break cmd.",
+        "timeout /t 4 /nobreak >nul",
+        f'taskkill /F /IM {exe_name} >nul 2>&1',
+        "ping -n 3 127.0.0.1 >nul",
+        f'move /y "%~dp0{exe_name}.new" "%~dp0{exe_name}" >nul',
+        "if errorlevel 1 (",
+        f'  >>"%~dp0logs\\update_self.log" echo %DATE% %TIME% move FAILED',
+        f'  >>"%~dp0logs\\update_self.log" echo %DATE% %TIME% kept: "%~dp0{exe_name}.new"',
+        "  exit /b 1",
+        ")",
+    ]
+    if mei_dir:
+        # Только каталог, который сам PyInstaller создал для этого процесса.
+        safe_mei = (mei_dir.replace("%", "%%").replace('"', "")
+                   .replace("&", "^&").replace("|", "^|"))
+        lines += [f'rmdir /s /q "{safe_mei}" >nul 2>&1']
+    lines += [
+        f'>>"%~dp0logs\\update_self.log" echo %DATE% %TIME% replaced, starting',
+        f'start "" "%~dp0{exe_name}"',
+        'del "%~f0"',
+    ]
+    try:
+        log.parent.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
     bat_path = root_dir / "_update_self.bat"
-    bat_path.write_text(script, encoding="ascii")
+    # newline="": иначе текстовый режим допишет \r к нашим \r\n и батник
+    # получится с \r\r\n (нарушение правила .bat в AGENTS.md).
+    with open(bat_path, "w", encoding="ascii", newline="") as f:
+        f.write("\r\n".join(lines) + "\r\n")
     return bat_path
+
+
+def launch_update_bat(bat_path: Path) -> None:
+    """Запустить батник самообновления ОТДЕЛЬНЫМ процессом.
+
+    Он переживает наш процесс: taskkill внутри батника убивает нас, а сам он
+    уже отвязан (DETACHED_PROCESS + своя группа). Ошибка здесь означает, что
+    обновление скачано и проверено, но замена exe не произойдёт - пишем в
+    лог, чтобы это не осталось незамеченным.
+    """
+    import subprocess as _sp
+    flags = 0
+    for name in ("DETACHED_PROCESS", "CREATE_NEW_PROCESS_GROUP", "CREATE_NO_WINDOW"):
+        flags |= getattr(_sp, name, 0)
+    try:
+        _sp.Popen(["cmd.exe", "/c", str(bat_path)], cwd=str(bat_path.parent),
+                  close_fds=True, creationflags=flags)
+    except (OSError, _sp.SubprocessError) as e:
+        _upd_log(f"update: не удалось запустить батник самообновления: {e!r}")
+        raise RuntimeError(
+            "обновление скачано, но запустить замену программы не получилось - "
+            "перезапустите программу вручную") from e
 
 
 def write_manifest(base_dir: Path, version: str) -> Path:

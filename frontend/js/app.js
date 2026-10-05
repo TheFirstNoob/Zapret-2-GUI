@@ -414,6 +414,24 @@ if (start) start.addEventListener('click', () => TesterPage.startProbe());
           }
           const res = st.result || {};
           $('updateBanner').hidden = true;
+          // EXE-сборка: замена подготовлена, но сам exe заменит батник -
+          // запускаем его отдельным запросом (он переживёт наш процесс).
+          if (res.update_bat) {
+            btn.disabled = true;
+            btn.textContent = 'Перезапуск…';
+            try {
+              const ap = await apiPost('/update/apply', {});
+              if (ap.status !== 'ok') throw new Error(ap.message || 'ошибка');
+              showToast(ap.message || 'Программа перезапускается', 'ok');
+              Activity.set('main', 'Обновление: программа перезапускается');
+            } catch (e) {
+              showToast('Обновление скачано, но перезапуск не выполнен: '
+                        + (e.message || e), 'error');
+              btn.disabled = false;
+              btn.textContent = 'Повторить обновление';
+            }
+            return;
+          }
           if (res.service_mismatch) {
             showToast('Обновление проверено по подписи и применено. Служба стоит на старой конфигурации - переустановите её кнопкой', 'warn');
             btn.disabled = false;

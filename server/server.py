@@ -228,9 +228,16 @@ def _run_update_worker(kind: str, tag: str, info: dict) -> None:
 
         if kind == "exe":
             prog(70, "Подготовка замены EXE…")
+            # %TEMP%\_MEI* (onefile) удаляет сам батник: нас убивает taskkill,
+            # а закрыться мы не успеваем - папка осталась бы висеть в TEMP.
+            mei = getattr(sys, "_MEIPASS", "") if getattr(sys, "frozen", False) else ""
             bat = prepare_exe_update(
                 zip_path, root_dir,
-                exe_sha256=manifest["artifacts"]["exe"].get("exe_sha256"))
+                exe_sha256=manifest["artifacts"]["exe"].get("exe_sha256"),
+                mei_dir=mei or None)
+            # Батник НЕ запускаем здесь: пользователь должен увидеть
+            # «обновление применено» до того, как программа закроется.
+            # Запуск - отдельным запросом /api/update/apply (REVIEW_VERDICT.md §2.7).
             result["update_bat"] = str(bat)
             result["restart_required"] = True
         else:
@@ -1923,6 +1930,8 @@ class ZapretHandler(BaseHTTPRequestHandler):
                 self._handle_tester_action(data)
             elif path == "/api/update/start":
                 self._handle_update_start()
+            elif path == "/api/update/apply":
+                self._handle_update_apply()
             elif path == "/api/settings/export":
                 self._handle_settings_export()
             elif path == "/api/settings/import":
@@ -2554,6 +2563,38 @@ class ZapretHandler(BaseHTTPRequestHandler):
                              args=(kind, tag, info), daemon=True)
         t.start()
         self._send_json({"status": "ok", "action": "started"})
+
+    def _handle_update_apply(self) -> None:
+        """Запуск замены EXE (шаг 2 самообновления).
+
+        Батник лежит рядом с exe (_update_self.bat), путь клиент не задаёт:
+        он переживает наш процесс и закрывает его сам. Вызывается один раз
+        после того, как пользователь увидел результат проверки подписи.
+        """
+        from core.updater import launch_update_bat
+        if _updater_state["running"]:
+            self._send_json({"status": "error",
+                             "message": "Обновление ещё выполняется"})
+            return
+        res = _updater_state.get("result") or {}
+        bat_name = Path(str(res.get("update_bat") or "")).name
+        if not bat_name or bat_name != "_update_self.bat":
+            self._send_json({"status": "error", "message":
+                             "Замена программы не подготовлена - запустите обновление заново"})
+            return
+        bat = get_root_dir() / bat_name
+        if not bat.exists():
+            self._send_json({"status": "error", "message":
+                             "Файл обновления не найден, запустите обновление заново"})
+            return
+        try:
+            launch_update_bat(bat)
+        except RuntimeError as e:
+            self._send_json({"status": "error", "message": str(e)})
+            return
+        _ui_debug("update: self-update bat launched")
+        self._send_json({"status": "ok", "message":
+                         "Программа сейчас закроется и запустится заново"})
 
     def _handle_settings_export(self) -> None:
         """Экспорт настроек: config + *-user.txt + юзерские пресеты → один zip."""
