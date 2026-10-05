@@ -337,8 +337,11 @@ def _checkers_busy() -> Optional[str]:
 
 # Списки, редактируемые через GUI: нормализуются при старте - BOM/zero-width
 # в первой строке не даёт движку сматчить домен/подсеть (кейс 2026-09-14).
+# ТОЛЬКО user-файлы: lists/ipset-exclude.txt - системный список приватных
+# диапазонов, GUI его не правит (решение автора, REVIEW_VERDICT.md §2.9),
+# поэтому чистить его здесь было неверно - правится ipset-exclude-user.txt.
 _USER_LIST_FILES = ("list-include-user.txt", "list-exclude-user.txt",
-                    "ipset-include-user.txt", "ipset-exclude.txt")
+                    "ipset-include-user.txt", "ipset-exclude-user.txt")
 
 
 def _normalize_user_lists() -> None:
@@ -1629,7 +1632,12 @@ class ZapretHandler(BaseHTTPRequestHandler):
             elif path == "/api/fake-blobs":
                 self._handle_fake_blobs()
             elif path == "/api/ipset-exclude-list":
-                self._handle_get_list("ipset-exclude.txt")
+                # USER-файл: lists/ipset-exclude.txt — СИСТЕМНЫЙ список
+                # (приватные диапазоны), его не редактируем из GUI
+                # (решение автора, REVIEW_VERDICT.md §2.9). Движок уже
+                # учитывает ipset-exclude-user.txt вторым --ipset-exclude
+                # (core/launcher.py:180-189).
+                self._handle_get_list("ipset-exclude-user.txt")
             elif path == "/api/ipset-include-list":
                 self._handle_get_list("ipset-include-user.txt")
             elif path == "/api/lists/health":
@@ -1878,7 +1886,9 @@ class ZapretHandler(BaseHTTPRequestHandler):
             elif path == "/api/include-list":
                 self._handle_save_list(data, "list-include-user.txt")
             elif path == "/api/ipset-exclude-list":
-                self._handle_save_list(data, "ipset-exclude.txt")
+                # USER-файл (см. GET выше): системный ipset-exclude.txt
+                # из GUI не правим.
+                self._handle_save_list(data, "ipset-exclude-user.txt")
             elif path == "/api/ipset-include-list":
                 self._handle_save_list(data, "ipset-include-user.txt")
             elif path == "/api/contested/toggle":

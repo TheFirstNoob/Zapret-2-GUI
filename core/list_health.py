@@ -17,9 +17,14 @@ DOMAIN_INCLUDE_USER = "list-include-user.txt"
 # exclude-домены: исключение приоритетнее включения (проверяется первым)
 DOMAIN_EXCLUDE_BUNDLED = ("list-exclude.txt",)
 DOMAIN_EXCLUDE_USER = "list-exclude-user.txt"
-# файлы, которые чистит dedupe (редактируются через GUI)
+# файлы, которые чистит dedupe (редактируются через GUI).
+# Только user-файлы: lists/ipset-exclude.txt - СИСТЕМНЫЙ (приватные
+# диапазоны), GUI/dedupe его не трогают (решение автора,
+# REVIEW_VERDICT.md §2.9); пользовательский - ipset-exclude-user.txt.
+IPSET_INCLUDE_USER = "ipset-include-user.txt"
+IPSET_EXCLUDE_USER = "ipset-exclude-user.txt"
 USER_EDITABLE = (DOMAIN_INCLUDE_USER, DOMAIN_EXCLUDE_USER,
-                 "ipset-include-user.txt", "ipset-exclude.txt")
+                 IPSET_INCLUDE_USER, IPSET_EXCLUDE_USER)
 
 _DOMAIN_RE = re.compile(r"^[a-z0-9]([a-z0-9._-]*[a-z0-9])?$")
 
@@ -140,8 +145,8 @@ def dedupe(root: Path) -> dict:
     drop_map = {
         DOMAIN_INCLUDE_USER: bundled_inc,
         DOMAIN_EXCLUDE_USER: bundled_exc,
-        "ipset-include-user.txt": set(),
-        "ipset-exclude.txt": set(),
+        IPSET_INCLUDE_USER: set(),
+        IPSET_EXCLUDE_USER: set(),
     }
     removed: dict[str, int] = {}
     for name, drop in drop_map.items():
