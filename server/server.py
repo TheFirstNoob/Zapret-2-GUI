@@ -1690,6 +1690,11 @@ class ZapretHandler(BaseHTTPRequestHandler):
             "autohostlist": cfg.autohostlist,
             "ipset_catchall": cfg.ipset_catchall,
             "discord_alt": cfg.discord_alt,
+            # fake_blob обязателен в ответе: фронт читает его при старте
+            # (app.js loadConfig) и без него селект блока сбрасывается на
+            # «Пресет (Google)», а следующий save/restart затирал бы настройку
+            # (REVIEW_VERDICT.md §2.3).
+            "fake_blob": cfg.fake_blob,
             "tour_done": cfg.tour_done,
             "notice_done": cfg.notice_done,
         }})
