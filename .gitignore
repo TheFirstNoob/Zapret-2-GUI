@@ -39,6 +39,7 @@ debug_winws2.log
 backups/
 updates/
 games.json
+games.json.bad
 lists/list-games.txt
 lists/list-include-all.txt
 lists/games/

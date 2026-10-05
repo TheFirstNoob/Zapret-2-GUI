@@ -14,6 +14,8 @@ import os
 import re
 from pathlib import Path
 
+from core.applog import log as _applog
+
 GAMES_FILE = "games.json"
 DOMAIN_LIST = "list-games.txt"      # внутри lists/
 CIDR_DIR = "games"                   # внутри lists/games/<id>.txt
@@ -107,19 +109,58 @@ def _games_path(root: Path) -> Path:
 
 
 def load_games(root: Path) -> dict:
-    """Читает games.json; при отсутствии/поломке - дефолт (и создаёт файл)."""
+    """Читает games.json; при отсутствии/нечитаемости - дефолты.
+
+    Нечитаемый/битый файл (BOM от «Блокнота», частичная запись OneDrive/AV,
+    обрыв при выключении) НЕ перезаписывается на месте: он откладывается в
+    games.json.bad, а games.json создаётся заново чистым. Раньше дефолты
+    писались поверх, и все пользовательские игры с галочками исчезали молча и
+    безвозвратно (REVIEW_VERDICT.md §2.6). Теперь оригинал лежит рядом —
+    вернуть его можно вручную, ничего не теряется.
+    """
     path = _games_path(root)
     if path.exists():
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
+            # utf-8-sig: BOM не должен ронять разбор (кейс 2026-09-14).
+            data = json.loads(path.read_text(encoding="utf-8-sig"))
             if isinstance(data, dict) and isinstance(data.get("games"), list):
                 _backfill_process(data)
                 return data
-        except (OSError, json.JSONDecodeError):
-            pass
+            saved = _quarantine_games(path, "не dict или нет списка games")
+        except (OSError, ValueError) as e:
+            # json.JSONDecodeError и UnicodeDecodeError — оба ValueError
+            saved = _quarantine_games(path, type(e).__name__)
+        if not saved:
+            # Отложить не вышло (файл держит AV/OneDrive). Перезаписывать его
+            # дефолтами нельзя — это единственная копия пользовательских игр,
+            # пусть битая. Работаем на дефолтах в памяти и попробуем снова на
+            # следующем запуске.
+            return default_games()
     data = default_games()
+    # Файла нет (первый запуск) либо он отложен в .bad: создаём чистый валидный
+    # games.json - лаунчер и тестер читают его напрямую с диска.
     save_games(root, data)
     return data
+
+
+def _quarantine_games(path: Path, reason: str) -> bool:
+    """Отложить нечитаемый games.json в .bad, чтобы каталог остался рабочим.
+
+    True - исходник сохранён в .bad (можно писать чистый games.json).
+    False - отложить не вышло, оригинал на месте и его нельзя трогать.
+    """
+    bak = path.with_suffix(path.suffix + ".bad")
+    try:
+        if bak.exists():
+            bak.unlink()
+        path.replace(bak)
+        _applog("games", f"games.json не прочитан ({reason}) - исходник сохранён "
+                         f"как {bak.name}, работаем на встроенных играх. "
+                         f"Верните файл на место, если он важен")
+        return True
+    except OSError as e:
+        _applog("games", f"games.json не прочитан ({reason}) и не отложен: {e!r}")
+        return False
 
 
 def _backfill_process(data: dict) -> None:
