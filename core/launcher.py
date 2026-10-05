@@ -386,8 +386,20 @@ def build_args_from_preset(
                          f"({len(game_rules)} правил)")
     elif game_rules:
         if not any(t.startswith("quic_google:") for t in tokens):
-            tokens += ["--blob",
-                       "quic_google:@blobs/quic_initial_www_google_com.bin"]
+            # Тот же блоб, что объявляют пресеты, но ПУТЬ АБСОЛЮТНЫЙ (как
+            # @blobs/ в строках пресета, :210-212). Относительный путь
+            # резолвится движком относительно cwd: validate_args всегда
+            # гоняет с cwd=root (зелёный), а служба стартует winws2 с
+            # cwd=%SystemRoot%\System32 → «cannot access file
+            # 'blobs/quic_initial_www_google_com.bin'» и обход не поднимается
+            # вообще (REVIEW_VERDICT.md §2.5).
+            quic_blob = blobs_dir / "quic_initial_www_google_com.bin"
+            if quic_blob.exists():
+                tokens += ["--blob",
+                           f"quic_google:@{short_path(quic_blob)}"]
+            else:
+                _applog("games", "UDP-пул: quic_google блоб не найден "
+                                 f"({quic_blob}) - сегменты игр без фейка")
         # Группируем и по наличию подсетей: правила без CIDR идут «широким»
         # пулом без --ipset (весь трафик на порту - для ручных правил игр).
         groups: dict[tuple[int, int, bool], list[dict]] = {}
