@@ -880,8 +880,13 @@ def _build_recommendation(all_results, naked, sanity: dict) -> dict:
         "blocked_domains": blocked,
         # Домены, чей 000 - свойство QUIC-пробы, а не блок: речек спорных
         # доменов (§29) их не перепроверяет и не помечает «заблокирован».
-        "quirk_skip": ["www.youtube.com", "redirector.googlevideo.com",
-                       "i.ytimg.com", "youtu.be"],
+        # Список берём из tester, а не дублируем строкой: прошлый хардкод
+        # разошёлся с ним на storage.googleapis.com (RATED-хост), из-за
+        # чего он попадал в «спорные», речекался голым и получал ложное
+        # «заблокирован» + до трёх лишних переборов блобов
+        # (REVIEW_VERDICT.md §2.2). Единственный источник истины -
+        # QUIC_QUIRK_DOMAINS; фронт держит свой QUIRK_HOSTS для таблицы.
+        "quirk_skip": sorted(QUIC_QUIRK_DOMAINS),
         "key_hosts": key_hosts,
         "top3": top3,
         "near_best": ties,
