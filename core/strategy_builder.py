@@ -193,7 +193,20 @@ def build_custom(
                 break
         header[insert_at:insert_at] = extra_header
 
+    # ── Сборка тела ────────────────────────────────────────────────
+    # ВНИМАНИЕ (2026-10-05): parse_preset отдаёт header = всё ДО первого
+    # --new, а в пресетах первый профиль идёт без разделителя (Discord
+    # Voice лежит в header). Поэтому header - это «глобальные опции +
+    # возможно уже готовый профиль». Если в нём есть --filter*, он сам
+    # является профилем и первый family-сегмент надо от него отделять
+    # --new, иначе voice-UDP и discord-TCP склеиваются в один профиль
+    # (--filter-udp + --filter-tcp вместе не матчится никогда) и профилей
+    # выходит 7 вместо 8 (репро в AI_DOCS/REVIEW_VERDICT.md §2.1).
+    # Если header - только глобальные опции (нет фильтров), разделитель
+    # не нужен: первый сегмент сам станет первым профилем.
     lines: list[str] = list(header)
+    if any(l.strip().startswith("--filter") for l in header):
+        lines.append("--new")
     for seg_name, fam in SEGMENT_FAMILY.items():
         src = sources[fam]
         src_segs = parse_preset(root / "presets" / f"{src}.txt")[1]
