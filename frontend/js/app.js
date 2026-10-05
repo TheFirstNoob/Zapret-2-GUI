@@ -878,7 +878,15 @@ const MainPage = {
           r = await apiPost('/service/install', { ...payload, cleanup_zapret1: true });
         }
         if (r.status !== 'ok') return r;
-        return apiPost('/service/start', {});
+        // Текст установки приходит с бэкенда: он честно говорит, если
+        // служба создалась, но не запустилась (обхода нет) или не настроен
+        // автозапуск при падении (service_manager.install).
+        const note = (r.message || '').trim();
+        const bad = /не запустилась|не настроен/i.test(note);
+        if (note) showToast(note, bad ? 'warn' : 'ok');
+        const started = await apiPost('/service/start', {});
+        if (started.status !== 'ok') return started;
+        return r;
       },
       'Установка…', 'Служба установлена и запущена - обход работает без программы',
       'Не удалось установить службу: ');

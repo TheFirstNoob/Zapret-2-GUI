@@ -444,12 +444,31 @@ def install(root_dir: Optional[Path] = None, args: Optional[list[str]] = None,
         return False, f"Установка отменена (кривой binPath): {msgv}"
     # SCM recovery: если winws2 умрёт (случай 2026-09-12: три падения за утро,
     # обход пропадал до ручного перезапуска) - перезапустить службу через 60 с.
-    _sc(["failure", SERVICE_NAME,
-         "reset=", "86400",
-         "actions=", "restart/60000/restart/60000/restart/60000"])
-    start(args)
+    # Результат проверяем: молчаливая потеря автоперезапуска - это ровно тот
+    # случай, когда пользователь думает, что защищён, а обход лёг (audit §2.4).
+    rc_f, out_f = _sc(["failure", SERVICE_NAME,
+                       "reset=", "86400",
+                       "actions=", "restart/60000/restart/60000/restart/60000"])
+    recovery_ok = rc_f == 0
+    if not recovery_ok:
+        _svc_log(f"install WARN: sc failure не настроен rc={rc_f} "
+                 f"out={out_f.strip()[:200]!r}")
+    # Старт проверяем обязательно: служба может создаться, но не запуститься
+    # (1053, битый движок, мёртвый ImagePath WinDivert). Раньше результат
+    # игнорировался, и пользователь получал «Служба установлена» без обхода.
+    ok_s, msg_s = start(args)
+    if not ok_s:
+        reason = str(msg_s or "").strip() or "причина неизвестна, смотрите лог службы"
+        _svc_log(f"install WARN: установлена, но не запустилась: {reason}")
+        return True, ("Служба установлена, но не запустилась (" + reason
+                      + "). Обхода сейчас нет - нажмите «Запустить службу» "
+                        "или откройте «Проверку системы».")
     _svc_log("install OK")
-    return True, "Служба zapret2 установлена"
+    if not recovery_ok:
+        return True, ("Служба установлена и запущена, но автозапуск при падении "
+                      "не настроен - если обход отвалится, он не поднимется сам. "
+                      "Проверьте «Проверку системы».")
+    return True, "Служба zapret2 установлена и запущена"
 
 
 def reconfigure(args: list[str]) -> tuple[bool, str]:
