@@ -1907,6 +1907,16 @@ const ListsPage = {
   async importSettings(input) {
     const file = input.files && input.files[0];
     if (!file) return;
+    // Импорт без спроса перетирает текущие списки, пресеты и конфиг, причём
+    // восстановить их после можно только экспортом, которого у новичка может
+    // не быть. Остальные разрушительные действия спрашивают через Confirm.
+    const ok = await Confirm.ask({
+      title: 'Импорт настроек из архива',
+      text: `Файл «${file.name}» заменит текущие настройки Zapret 2: списки доменов и ipset, пресеты и файл конфигурации. Ваши текущие значения будут потеряны без возможности отмены.`,
+      ok: 'Импортировать и заменить',
+      danger: true,
+    });
+    if (!ok) { input.value = ''; return; }
     const btn = $('btnSettingsExport');
     if (btn) btn.disabled = true;
     const res = $('settingsResult');
@@ -4161,7 +4171,8 @@ const Modal = {
       if (!ov || e.key !== 'Tab') return;
       const items = Array.from(ov.querySelectorAll(
         'button:not([disabled]):not([hidden]), [href], input:not([disabled]):not([hidden]), select:not([hidden]), textarea:not([hidden]), [tabindex]:not([tabindex="-1"])'
-      )).filter(el => el.offsetParent !== null);
+      )).filter(el => el.offsetParent !== null
+                     && window.getComputedStyle(el).visibility !== 'hidden');
       if (!items.length) return;
       const first = items[0];
       const last = items[items.length - 1];

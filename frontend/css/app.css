@@ -1242,9 +1242,17 @@ label.opt-line:has(input:disabled):hover { background: var(--field); }
   background: rgba(0,0,0,0.65);
   display: flex; align-items: center; justify-content: center;
   padding: 16px; opacity: 0; pointer-events: none;
-  transition: opacity .15s ease;
+  /* visibility, а не только opacity: закрытая модалка оставалась в
+     раскладке и в порядке обхода Tab - фокус уезжал на кнопки невидимого
+     окна, а скринридер читал его содержимое. Задержка переключения
+     visibility на .15s сохраняет затухание при закрытии. */
+  visibility: hidden;
+  transition: opacity .15s ease, visibility 0s linear .15s;
 }
-.modal-overlay.open { opacity: 1; pointer-events: auto; }
+.modal-overlay.open {
+  opacity: 1; pointer-events: auto; visibility: visible;
+  transition: opacity .15s ease, visibility 0s;
+}
 
 .modal {
   position: relative; width: 100%; max-width: 440px;
