@@ -7,7 +7,9 @@
 """
 from __future__ import annotations
 
+import os
 import re
+import threading
 from pathlib import Path
 
 # include-домены: bundled (наши) + пользовательский
@@ -27,6 +29,12 @@ USER_EDITABLE = (DOMAIN_INCLUDE_USER, DOMAIN_EXCLUDE_USER,
                  IPSET_INCLUDE_USER, IPSET_EXCLUDE_USER)
 
 _DOMAIN_RE = re.compile(r"^[a-z0-9]([a-z0-9._-]*[a-z0-9])?$")
+
+# HTTP-сервер потоковый: две одновременные правки одного user-списка
+# (например cdn/apply-all и клик по домену) делали read-modify-write
+# одного и того же файла и теряли правку. Лок только на уровне модуля:
+# движок (winws2) перечитывает файлы сам, гонок с ним тут нет.
+_LIST_LOCK = threading.Lock()
 
 
 def _entry(line: str) -> str:
@@ -170,21 +178,26 @@ def dedupe(root: Path) -> dict:
             seen.add(e)
             out.append(ln)
         if n_removed:
-            path.write_text("\n".join(out) + ("\n" if out else ""),
-                            encoding="utf-8")
+            _atomic_write(path, "\n".join(out) + ("\n" if out else ""))
             removed[name] = n_removed
     return {"removed": removed, "total": sum(removed.values())}
 
 
 def _append_entry(path: Path, entry: str) -> None:
-    """Добавляет запись в конец файла (создаёт файл и переводит строку)."""
+    """Добавляет запись в конец файла (создаёт файл и переводит строку).
+
+    Запись атомарная: temp + os.replace в том же каталоге. Прежний
+    write_text на месте обрезал user-список до нуля, если процесс умирал
+    между чтением и записью (аварийное закрытие GUI) - а восстановить
+    содержимое было нечем.
+    """
     try:
         text = path.read_text(encoding="utf-8-sig") if path.exists() else ""
     except OSError:
         text = ""
     if text and not text.endswith("\n"):
         text += "\n"
-    path.write_text(text + entry + "\n", encoding="utf-8")
+    _atomic_write(path, text + entry + "\n")
 
 
 def _remove_entry(path: Path, entry: str) -> bool:
@@ -204,8 +217,30 @@ def _remove_entry(path: Path, entry: str) -> bool:
             continue
         out.append(ln)
     if removed:
-        path.write_text("\n".join(out) + ("\n" if out else ""), encoding="utf-8")
+        _atomic_write(path, "\n".join(out) + ("\n" if out else ""))
     return removed
+
+
+def _atomic_write(path: Path, text: str) -> None:
+    """Записать файл целиком через temp + replace (как config/games).
+
+    Не прерывает работу живого winws2 на середине: он перечитывает hostlist
+    по mtime и увидит либо старый, либо новый файл, но не пустой. Имя
+    временного файла уникально на поток и процесс - при параллельной
+    записи (и при двух запущенных экземплярах) общий .tmp давал бы
+    PermissionError на os.replace.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+    try:
+        tmp.write_text(text, encoding="utf-8")
+        os.replace(tmp, path)
+    except OSError:
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
 
 
 def add_domain(root: Path, domain: str, mode: str = "include") -> dict:
@@ -226,8 +261,9 @@ def add_domain(root: Path, domain: str, mode: str = "include") -> dict:
         if exc_files:
             return {"result": "already", "files": exc_files,
                     "message": "Домен уже в исключениях"}
-        moved = _remove_entry(root / "lists" / DOMAIN_INCLUDE_USER, d)
-        _append_entry(root / "lists" / DOMAIN_EXCLUDE_USER, d)
+        with _LIST_LOCK:
+            moved = _remove_entry(root / "lists" / DOMAIN_INCLUDE_USER, d)
+            _append_entry(root / "lists" / DOMAIN_EXCLUDE_USER, d)
         return {"result": "moved" if moved else "added",
                 "message": "Перенесён из обхода в исключения" if moved
                            else "Добавлен в исключения"}
@@ -240,8 +276,9 @@ def add_domain(root: Path, domain: str, mode: str = "include") -> dict:
         return {"result": "blocked", "files": blocked,
                 "message": f"Домен в стандартных исключениях ({blocked[0]}) - "
                            "исключение сильнее, обход не сработает"}
-    moved = _remove_entry(root / "lists" / DOMAIN_EXCLUDE_USER, d)
-    _append_entry(root / "lists" / DOMAIN_INCLUDE_USER, d)
+    with _LIST_LOCK:
+        moved = _remove_entry(root / "lists" / DOMAIN_EXCLUDE_USER, d)
+        _append_entry(root / "lists" / DOMAIN_INCLUDE_USER, d)
     return {"result": "moved" if moved else "added",
             "message": "Перенесён из исключений в обход" if moved
                        else "Добавлен в обход"}
