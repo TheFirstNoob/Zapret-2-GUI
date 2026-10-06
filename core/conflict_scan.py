@@ -82,12 +82,16 @@ def _running_images() -> List[str]:
 
 
 def _adapter_descriptions() -> List[str]:
+    # encoding обязателен: вывод PowerShell OEM (cp866), text=True без него
+    # даёт UnicodeDecodeError при разборе - чек молча пропадал бы целиком
+    # (остальные пробы здесь с encoding, см. _running_images/_running_services).
     try:
         r = subprocess.run(
             ["powershell", "-NoProfile", "-Command",
              "Get-NetAdapter -ErrorAction SilentlyContinue | "
              "Select-Object -ExpandProperty InterfaceDescription"],
             capture_output=True, text=True, timeout=10,
+            encoding="oem", errors="replace",
             creationflags=subprocess.CREATE_NO_WINDOW,
         )
         return [l.strip() for l in r.stdout.splitlines() if l.strip()]

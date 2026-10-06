@@ -77,11 +77,18 @@ def _set_modern(enabled: bool) -> bool:
 
 
 def _set_legacy_netsh(enabled: bool) -> bool:
+    # encoding обязателен: вывод netsh локализован, а text=True без явной
+    # кодировки на OEM-консоли (cp866) даёт UnicodeDecodeError - и он НЕ
+    # ловится ниже, потому что прилетает на этапе разбора вывода. Раньше это
+    # означало стектрейс вместо внятного сообщения уже ПОСЛЕ остановки
+    # движка (enable_for_engine зовут из zapret_controller/service_manager
+    # после stop()). Код возврата от локали не зависит - судим только по нему.
     try:
         r = subprocess.run(
             ["netsh", "int", "tcp", "set", "global",
              "timestamps=enabled" if enabled else "timestamps=disabled"],
             capture_output=True, text=True, timeout=10,
+            encoding="oem", errors="replace",
             creationflags=subprocess.CREATE_NO_WINDOW,
         )
         return r.returncode == 0

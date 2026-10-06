@@ -36,7 +36,8 @@ def curl_code(host):
         r = subprocess.run(
             ["curl.exe", "-4", "-s", "-o", "NUL", "-w", "%{http_code}", "-m", "6",
              "-H", "User-Agent: Mozilla/5.0", host],
-            capture_output=True, text=True, timeout=15)
+            capture_output=True, text=True, timeout=15,
+            encoding="oem", errors="replace")
         return r.stdout.strip() or "ERR"
     except subprocess.TimeoutExpired:
         return "TMO"
