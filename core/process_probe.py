@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Optional
 
 import core.utils as utils
+from core.applog import log as _applog
 
 # RemoteSigned (а не Bypass): скрипты - read-only Get-* cmdlets, политика их
 # не трогает, а Bypass - классический эвристический паттерн для AV/EDR.
@@ -372,12 +373,30 @@ class ProcessProbe:
         return [int(p) for p in data]
 
     def _run(self, spec: str, duration: int, wait_sec: int) -> None:
+        # Всё тело - внутри try: _find_pids ходит в PowerShell и может
+        # упасть (нечисловой элемент в JSON, ps недоступен). Раньше он стоял
+        # ДО try, и такой сбой убивал поток молча: UI навсегда показывал
+        # «ожидание процесса», finally (сброс pktmon) не выполнялся
+        # (REVIEW_VERDICT.md 2.8).
+        try:
+            self._run_inner(spec, duration, wait_sec)
+        except Exception as e:  # noqa: BLE001
+            with self._lock:
+                self._state.update(
+                    {'error': f'Не удалось разобрать процесс: {e}',
+                     'phase': 'завершено'})
+            _applog('probe', f'_run({spec!r}) упал вне основного try: {e!r}')
+        finally:
+            utils.run_quiet(['pktmon', 'stop'])
+            utils.run_quiet(['pktmon', 'filter', 'remove'])
+
+    def _run_inner(self, spec: str, duration: int, wait_sec: int) -> None:
         pids = self._find_pids(spec)
         waited = 0
         if not pids and wait_sec > 0:
             with self._lock:
                 self._state.update({"phase": f"ожидание процесса '{spec}'... "
-                                            f"(запустите игру)"})
+                                            "(запустите игру)"})
             while not pids and waited < wait_sec and not self._stop_flag.is_set():
                 time.sleep(3)
                 waited += 3
@@ -436,11 +455,9 @@ class ProcessProbe:
                                     "verdict": verdict, "phase": "завершено",
                                     "elapsed": int(time.time() - start)})
         except Exception as e:  # noqa: BLE001
+            # pktmon снимаем в finally внешнего _run - здесь только причина
             with self._lock:
                 self._state.update({"error": str(e), "phase": "завершено"})
-        finally:
-            utils.run_quiet(["pktmon", "stop"])
-            utils.run_quiet(["pktmon", "filter", "remove"])
 
     def stop(self) -> dict:
         self._stop_flag.set()
@@ -522,9 +539,5 @@ class ProcessProbe:
         ts = _dt.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         path = logs / f"{safe}_{ts}.txt"
         path.write_text(self.report_text(), encoding="utf-8")
-        try:
-            from core.applog import log as _applog
-            _applog("probe", f"отчёт сохранён: {path}")
-        except Exception:
-            pass
+        _applog("probe", f"отчёт сохранён: {path}")
         return path
