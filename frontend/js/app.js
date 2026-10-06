@@ -503,15 +503,21 @@ const MainPage = {
   _loaded: false,
   _runningToggles: null,  // тогглы, с которыми реально запущен обход
   _configLoaded: false,
+  _configBusy: false,
+  _configLoadWarned: false,
 
   onShow() {
     if (!this._loaded) {
       this._loaded = true;
       this.populateFakeBlobs();
-      this.loadConfig();
       this.bind();
       MainPage.renderServiceLine();
     }
+    // Конфиг мог не загрузиться при первом показе вкладки (обрыв связи,
+    // таймаут, бэкенд перезапускался) - тогда повторяем попытку при
+    // следующем открытии, а не один раз на сессию. Пока _configLoaded
+    // не взведён, запись настроек заблокирована (_configReady).
+    if (!this._configLoaded && !this._configBusy) this.loadConfig();
     if (Status.last) this.renderStatus(Status.last);
   },
 
@@ -567,6 +573,8 @@ const MainPage = {
   },
 
   async loadConfig() {
+    if (this._configBusy) return;
+    this._configBusy = true;
     try {
       const r = await apiGet('/config');
       const c = r.config || {};
@@ -597,7 +605,37 @@ const MainPage = {
         this._runningToggles = this._collectToggles();
         this._updateApplyHint();
       }
-    } catch (e) { /* ignore */ }
+    } catch (e) {
+      // Раньше ошибка молча проглатывалась: DOM оставался в значениях по
+      // умолчанию, и следующий же saveToggles / applyStrategy отправлял
+      // бэкенду именно их - молча затирая сохранённые настройки
+      // (REVIEW_VERDICT.md §4, кандидат 3). Теперь сообщаем пользователю
+      // и держим запись закрытой до успешной загрузки (_configReady).
+      frontendLog('GET /config failed: ' + (e && e.message));
+      if (!this._configLoadWarned) {
+        this._configLoadWarned = true;
+        showToast('Не удалось загрузить настройки: ' + (e && e.message) +
+          ' - запись настроек заблокирована', 'error');
+      }
+    } finally {
+      this._configBusy = false;
+    }
+  },
+
+  // Запись настроек снимается с DOM, а пока конфиг не загружен, значения
+  // на форме - значения по умолчанию из разметки. Сбой GET /config раньше
+  // проглатывался, и следующий saveToggles/applyStrategy отправлял бэкенду
+  // именно дефолты, молча затирая настройки пользователя
+  // (REVIEW_VERDICT.md §4, кандидат 3). Поэтому перед любой записью
+  // убеждаемся, что конфиг загружен: если нет - пробуем догрузить сейчас
+  // (например, страницу сначала открыли не с «Главной»), и только потом
+  // отказываем.
+  async _configReady(what) {
+    if (!this._configLoaded) await this.loadConfig();
+    if (this._configLoaded) return true;
+    showToast('Настройки не загружены - ' + what + ' невозможно', 'error');
+    frontendLog('config not loaded, blocked: ' + what);
+    return false;
   },
 
   // Список доступных TLS-фейк-блобов (blobs/tls_clienthello_*.bin).
@@ -894,7 +932,8 @@ const MainPage = {
     Status.refresh();
   },
 
-  svcInstall() {
+  async svcInstall() {
+    if (!await this._configReady('установка службы')) return;
     const t = this._collectToggles();
     const payload = {
       profile: $('strategySelect').value,
@@ -1005,6 +1044,7 @@ const MainPage = {
 
   async saveToggles() {
     this._updateVoiceHint();
+    if (!await this._configReady('сохранение настроек')) return;
     const t = this._collectToggles();
     try {
       await apiPost('/config', t);
@@ -1123,6 +1163,7 @@ const MainPage = {
       return this.stop();
     }
     if (!sel.value) { showToast('Выберите стратегию', 'warn'); return; }
+    if (!await this._configReady('запуск')) return;
     this._setBusy(true);
     try {
       await apiPost('/config', Object.assign({ last_profile: sel.value }, this._collectToggles()));
@@ -1154,6 +1195,7 @@ const MainPage = {
   async restartZapret() {
     const strategy = this._z2Strategy || $('strategySelect').value;
     if (!strategy) return;
+    if (!await this._configReady('перезапуск с новыми параметрами')) return;
     const btn = $('btnApplyToggles');
     btn.disabled = true;
     try {
@@ -1179,6 +1221,7 @@ const MainPage = {
   // gotoMain=false - остаться на текущей вкладке.
   async applyStrategy(profile, gotoMain = true) {
     if (!profile || this._busy || App.testActive) return;
+    if (!await this._configReady('запуск стратегии')) return;
     this._setBusy(true);
     try {
       const sel = $('strategySelect');
