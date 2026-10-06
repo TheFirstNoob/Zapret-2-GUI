@@ -3923,8 +3923,11 @@ const TesterPage = {
     const dns = st.dns || {};
     const dnsName = (ip) => (dns[ip] ? ` <span class="endpoint-dns">→ ${escapeHtml(dns[ip][0])}</span>` : '');
     const rowsData = Object.entries(hist).map(([k, h]) => {
-      const idx = k.lastIndexOf(':');
-      const ip = k.slice(0, idx), port = k.slice(idx + 1);
+      // Ключ истории - '<протокол> <ip:port>' (иначе один и тот же endpoint
+      // по TCP и UDP схлопывался бы в одну строку, см. process_probe._hist_key).
+      const endpoint = k.includes(' ') ? k.slice(k.indexOf(' ') + 1) : k;
+      const idx = endpoint.lastIndexOf(':');
+      const ip = endpoint.slice(0, idx), port = endpoint.slice(idx + 1);
       const states = h.states || {};
       let status, cls, metric, sev;
       if (h.proto === 'tcp') {
@@ -3980,7 +3983,8 @@ const TesterPage = {
           const states = h.states || {};
           const bad = (h.proto === 'tcp' && 'SynSent' in states && !('Established' in states))
             || (h.proto === 'udp' && (h.sent || 0) > 0 && (h.recv || 0) === 0);
-          const ip = k.slice(0, k.lastIndexOf(':'));
+          const endpoint = k.includes(' ') ? k.slice(k.indexOf(' ') + 1) : k;
+          const ip = endpoint.slice(0, endpoint.lastIndexOf(':'));
           for (const d of (dns[ip] || [])) {
             if (!seen.includes(d)) seen.push(d);
             if (bad && !problems.includes(d)) problems.push(d);

@@ -190,10 +190,28 @@ def _run_pktmon(pids: list[int], etl: Path, txt: Path) -> Optional[dict]:
         utils.run_quiet(["pktmon", "filter", "add", "gp", "-t", "UDP"])
     utils.run_quiet(["pktmon", "start", "--capture", "--pkt-size", "64",
                      "--file-name", str(etl)])
-    if not etl.exists():
+    # ETL создаёт служба pktmon, и на загруженной машине файл появляется не
+    # мгновенно после возврата start. Проверка «exists сразу» отдавала None,
+    # и UDP-захват отключался на всю сессию молча. Ждём короткий срок.
+    if not _wait_for_file(etl, timeout=3.0):
         utils.run_quiet(["pktmon", "filter", "remove"])
         return None
     return {"ports": ports, "etl": etl, "txt": txt}
+
+
+def _wait_for_file(path: Path, timeout: float = 3.0,
+                   step: float = 0.15) -> bool:
+    """True, если файл появился за отведённое время. Не грузит CPU."""
+    deadline = time.time() + timeout
+    while True:
+        try:
+            if path.exists():
+                return True
+        except OSError:
+            return False
+        if time.time() >= deadline:
+            return False
+        time.sleep(step)
 
 
 def _read_pktmon_txt(txt: Path) -> str:
@@ -207,33 +225,102 @@ def _read_pktmon_txt(txt: Path) -> str:
         return raw.decode("utf-16", errors="replace")
 
 
+_PRIVATE_V6 = ("::", "::1", "fe80:", "fc", "fd", "ff")
+
+
+def _is_private(addr: str) -> bool:
+    """Свой/служебный адрес - в «удалённые цели» он не попадает.
+
+    IPv4 - по прежнему префиксному регулярному выражению (100.64/10 и прочие
+    «особые» блоки там намеренно не отсекаются). IPv6 добавлен отдельно:
+    unspecified, loopback, link-local fe80::/10, ULA fc00::/7, ff00::/8.
+    """
+    a = addr.strip().strip("[]").lower()
+    if ":" in a:
+        return any(a == p or a.startswith(p) for p in _PRIVATE_V6)
+    return bool(_PRIVATE_RE.match(a))
+
+
+# Конец строки etl2txt: адрес и порт. pktmon печатает IPv4 как "a.b.c.d.port",
+# IPv6 - как "[2001:db8::1]:port" либо "2001:db8::1.port"; адрес отделён от
+# порта точкой или двоеточием с ПОСЛЕДНИМ числовым сегментом.
+_EP_RE = re.compile(r"([\[\]0-9a-fA-F:.]+?)[.:](\d{1,5})\s*$")
+
+
+def _split_endpoint(chunk: str) -> tuple[Optional[str], int]:
+    """'a.b.c.d.443' / '[2001:db8::1]:443' -> (ip, port). (None, 0), если не
+    разобрали - важно, чтобы в счётчики не попал мусор из заголовков etl2txt."""
+    import ipaddress
+    m = _EP_RE.search(chunk.strip())
+    if not m:
+        return None, 0
+    addr = m.group(1).strip("[]")
+    port = int(m.group(2))
+    if not 0 < port <= 65535:
+        return None, 0
+    try:
+        ipaddress.ip_address(addr)
+    except ValueError:
+        return None, 0
+    return addr, port
+
+
 def _parse_pktmon_txt(txt: Path, ports: list[int]) -> dict:
     """Разбор etl2txt: {ips: {remote: {sent, recv}}, sent, recv}.
 
     Направление - по НАШЕМУ порту сокета (source.port in ports = исходящий к
     серверу, destination.port in ports = входящий ответ) - это позволяет
-    вердикту отличить «шлём, но не получаем» (UDP глушится) от диалога."""
+    вердикту отличить «шлём, но не получаем» (UDP глушится) от диалога.
+
+    Адреса берутся в обеих версиях: прежняя регулярка понимала только IPv4,
+    хотя флаг ipv6 ставится по снимкам сокетов - для процесса, который говорит
+    только по IPv6, «UDP-захват» выходил пустым и вердикт молчал."""
     ips: dict[str, dict[str, int]] = {}
     sent = 0
     recv = 0
     if not txt.exists():
         return {"ips": ips, "sent": sent, "recv": recv}
     for line in _read_pktmon_txt(txt).splitlines():
-        m = re.search(
-            r"(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\.(\d+) > "
-            r"(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\.(\d+)", line)
-        if not m:
+        if ">" not in line:
             continue
-        a, ap, b, bp = m.group(1), int(m.group(2)), m.group(3), int(m.group(4))
+        left, _, right = line.partition(">")
+        a, ap = _split_endpoint(left)
+        b, bp = _split_endpoint(right)
+        if a is None or b is None:
+            continue
         if ports and ap not in ports and bp not in ports:
             continue
-        if ap in ports and not _PRIVATE_RE.match(b):
+        if ap in ports and not _is_private(b):
             ips.setdefault(f"{b}:{bp}", {"sent": 0, "recv": 0})["sent"] += 1
             sent += 1
-        elif bp in ports and not _PRIVATE_RE.match(a):
+        elif bp in ports and not _is_private(a):
             ips.setdefault(f"{a}:{ap}", {"sent": 0, "recv": 0})["recv"] += 1
             recv += 1
     return {"ips": ips, "sent": sent, "recv": recv}
+
+
+def _etl2txt(etl: Path, txt: Path, timeout: int = 120) -> tuple[bool, str]:
+    """pktmon etl2txt с явным таймаутом и проверкой результата.
+
+    run_quiet глотает всё, включая таймаут, поэтому обрыв не был виден: если
+    etl2txt убивали на дефолтных 30 с, txt оставался частичным, recv считался
+    заниженным, и вердикт объявлял «UDP глушится, нужен WARP» там, где данные
+    просто не успели разобрать. Возвращаем (полнота разбора, причина).
+    """
+    try:
+        r = subprocess.run(["pktmon", "etl2txt", str(etl), "-o", str(txt)],
+                           capture_output=True, text=True, encoding="oem",
+                           errors="replace", timeout=timeout,
+                           creationflags=subprocess.CREATE_NO_WINDOW)
+    except subprocess.TimeoutExpired:
+        return False, f"etl2txt не уложился в {timeout} с"
+    except OSError as e:
+        return False, f"etl2txt не запустился: {e!r}"
+    if r.returncode != 0:
+        return False, f"etl2txt rc={r.returncode}: {(r.stdout or r.stderr or '').strip()[:160]}"
+    if not txt.exists():
+        return False, "etl2txt не создал txt"
+    return True, ""
 
 
 def _finish_pktmon(handle: dict) -> dict:
@@ -242,9 +329,15 @@ def _finish_pktmon(handle: dict) -> dict:
     txt = Path(handle["txt"])
     ports = handle["ports"]
     utils.run_quiet(["pktmon", "stop"])
-    utils.run_quiet(["pktmon", "etl2txt", str(etl), "-o", str(txt)])
+    complete, why = _etl2txt(etl, txt)
     utils.run_quiet(["pktmon", "filter", "remove"])
     try:
+        if not complete:
+            # Неполный разбор хуже отсутствия разбора: по обрезанному файлу
+            # «входящих нет» выглядит как блокировка. Лучше честно «данных нет».
+            _applog("probe", f"UDP-захват не разобран: {why}")
+            return {"ips": {}, "sent": 0, "recv": 0,
+                    "incomplete": True, "reason": why}
         return _parse_pktmon_txt(txt, ports)
     finally:
         for f in (etl, txt):
@@ -254,14 +347,33 @@ def _finish_pktmon(handle: dict) -> dict:
                 pass
 
 
+def _hist_key(proto: str, endpoint: str) -> str:
+    """Ключ истории наблюдения. Протокол входит в ключ.
+
+    Один и тот же endpoint (ip:port) вполне может наблюдаться и по TCP, и по
+    UDP - например QUIC 443 и TCP 443 на один CDN-IP. Раньше запись
+    заводилась по одному ключу, и вторая ветка подмешивалась в первую:
+    states получали одновременно SynSent и "UDP", а поле proto оставалось от
+    первого увиденного. Из-за этого «UDP без ответа» не попадал в вердикт
+    (ветка tcp), а состояния TCP терялись, если первым увидели UDP.
+    """
+    return f"{proto} {endpoint}"
+
+
+def _hist_endpoint(key: str) -> str:
+    """'tcp 1.2.3.4:443' -> '1.2.3.4:443' - для показа и извлечения IP."""
+    return key.split(" ", 1)[1] if " " in key else key
+
+
 def _merge_history(hist: dict, tcp: dict, udp: dict, now: float) -> None:
     """Копит наблюдения по целям за всё окно. Снимок каждые 2с перезаписывался,
     и краткие таймауты/ретраи терялись; история даёт «где именно не бьётся»:
     состояния и их частоту, первое/последнее появление цели."""
     for proto, snap in (("tcp", tcp), ("udp", udp)):
         for key, v in snap.items():
-            h = hist.setdefault(key, {"proto": proto, "states": {},
-                                      "first": now, "last": now, "snapshots": 0})
+            h = hist.setdefault(_hist_key(proto, key),
+                                {"proto": proto, "states": {},
+                                 "first": now, "last": now, "snapshots": 0})
             state = v["state"] if proto == "tcp" else "UDP"
             h["states"][state] = h["states"].get(state, 0) + 1
             h["state"] = state
@@ -272,8 +384,9 @@ def _merge_history(hist: dict, tcp: dict, udp: dict, now: float) -> None:
 def _capture_into_history(hist: dict, cap: dict, now: float) -> None:
     """Добавляет в историю счётчики pktmon по целям (исходящие→входящие)."""
     for key, v in (cap or {}).items():
-        h = hist.setdefault(key, {"proto": "udp", "states": {}, "first": now,
-                                  "last": now, "snapshots": 0, "state": "UDP"})
+        h = hist.setdefault(_hist_key("udp", key),
+                            {"proto": "udp", "states": {}, "first": now,
+                             "last": now, "snapshots": 0, "state": "UDP"})
         h["sent"] = h.get("sent", 0) + int(v.get("sent", 0))
         h["recv"] = h.get("recv", 0) + int(v.get("recv", 0))
         h["last"] = now
@@ -299,13 +412,14 @@ def _verdict(hist: dict, ipv6: bool, no_conn: bool,
     syn_fail, established, udp_dead = [], [], []
     for key, h in hist.items():
         states = h.get("states", {})
+        endpoint = _hist_endpoint(key)
         if h.get("proto") == "tcp":
             if "SynSent" in states and "Established" not in states:
-                syn_fail.append(key)
+                syn_fail.append(endpoint)
             elif "Established" in states:
-                established.append(key)
+                established.append(endpoint)
         elif h.get("sent", 0) > 0 and h.get("recv", 0) == 0:
-            udp_dead.append(key)
+            udp_dead.append(endpoint)
     if syn_fail:
         hint = ("SynSent без ответа: "
                 + ", ".join(_name(k.rsplit(":", 1)[0]) for k in syn_fail[:4])
@@ -438,7 +552,8 @@ class ProcessProbe:
             with self._lock:
                 _capture_into_history(self._state["history"],
                                       (udp_capture or {}).get("ips", {}), time.time())
-                remote_ips = {k.rsplit(":", 1)[0] for k in self._state["history"]}
+                remote_ips = {_hist_endpoint(k).rsplit(":", 1)[0]
+                              for k in self._state["history"]}
                 no_conn = not self._state["history"]
             # финальный кэш + накопленное за сессию (короткие TTL успевают уйти)
             for ip, names in _dns_cache_entries().items():
@@ -507,12 +622,17 @@ class ProcessProbe:
                 flag = "  <-- работало"
             else:
                 flag = ""
-            lines.append(f"{k:<24} {h.get('state', '?'):<12} {metric}{flag}")
+            lines.append(f"{_hist_endpoint(k):<24} {h.get('state', '?'):<12} {metric}{flag}")
         cap = s.get("udp_capture") or {}
         if cap:
             lines.append("")
-            lines.append(f"UDP-захват: отправлено {cap.get('sent', 0)}, "
-                         f"получено {cap.get('recv', 0)}")
+            if cap.get("incomplete"):
+                lines.append(f"UDP-захват: разбор неполный ({cap.get('reason', 'причина неизвестна')})"
+                             " - счётчики пакетов не показаны, чтобы не выдать "
+                             "обрыв за блокировку")
+            else:
+                lines.append("UDP-захват: отправлено "
+                             f"{cap.get('sent', 0)}, получено {cap.get('recv', 0)}")
         dns = s.get("dns", {})
         if dns:
             lines.append("")
