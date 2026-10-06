@@ -117,13 +117,23 @@ def _ensure_data_dir() -> Path:
 
 
 def _heal_missing_data(exe_dir: Path, src: Path) -> None:
-    """Докопировать из _MEIPASS критичные файлы, которых нет/битые рядом с exe.
+    """Привести SYSTEM-файлы к эталону из _MEIPASS (нет/обрезан/изменён).
 
     Маркер data_version.txt пишется ПОСЛЕ копирования, но AV/OneDrive могут
     забрать файл уже потом (или копия была частичной/обрезанной) - тогда смена
-    версии не наступит и файл пропадёт навсегда. Лечим на каждом запуске:
-    нет файла ИЛИ размер не совпал с источником -> перекопировать.
+    версии не наступит и файл пропадёт навсегда. Поэтому сверяем на каждом
+    запуске: нет файла / размер не совпал / при совпавшем размере не совпал
+    sha256 -> перекопировать из _MEIPASS.
+
+    Эталон - именно копия в _MEIPASS (тот же источник, из которого ставилась
+    программа): update_manifest.json живёт в контуре апдейта и при обычном
+    запуске рядом может не лежать, а mtime ломают AV/OneDrive/распаковка.
+    user-файлы не участвуют (см. комментарий к key_files).
     """
+    # ТОЛЬКО SYSTEM-файлы: user-контракт (lists/*-user.txt, lists/games/,
+    # presets/custom.txt, не-релизные пресеты, games.json, конфиг, логи) heal
+    # не трогает никогда. Если он попадёт сюда - пользовательские правки будут
+    # откатываться на каждом запуске (решение автора, REVIEW_VERDICT.md §2.8).
     key_files = [
         "bin/winws2.exe", "bin/cygwin1.dll", "bin/WinDivert.dll",
         "bin/WinDivert64.sys",
@@ -142,6 +152,11 @@ def _heal_missing_data(exe_dir: Path, src: Path) -> None:
             elif target.stat().st_size != source.stat().st_size:
                 reason = (f"размер {target.stat().st_size} != "
                           f"источника {source.stat().st_size}")
+            elif _file_hash(target) != _file_hash(source):
+                # Тот же размер, другие байты: подмена или правка SYSTEM-файла.
+                # Правки тут не в контракте (своё держится в user-файлах), а
+                # молчаливый подменённый winws2.exe опаснее всего.
+                reason = "хеш не совпал с эталоном"
         except OSError as e:
             reason = f"stat: {e}"
         if not reason:
@@ -153,6 +168,16 @@ def _heal_missing_data(exe_dir: Path, src: Path) -> None:
                               f"({reason}; стало {target.stat().st_size} байт)")
         except OSError as e:
             _applog("layout", f"self-heal FAIL {rel}: {e!r}")
+
+
+def _file_hash(path: Path) -> str:
+    """sha256 файла (чанками). Только когда размер уже совпал."""
+    import hashlib
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 def _log_layout(root_dir: Path) -> None:

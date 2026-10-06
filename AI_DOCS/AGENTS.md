@@ -637,9 +637,17 @@ raw/objects/release-assets/private-user-images/gist/avatars* — стабиль�
   __file__/_MEIPASS/cwd/root` + размеры 11 критичных ресурсов + маркер
   `data_version.txt`. onefile-модель: `_MEIPASS` → копия рядом с exe по
   маркеру версии.
-- **self-heal** (`main._heal_missing_data`): если критичный файл пропал или
-  обрезан (AV/OneDrive после копии) — докопируется из `_MEIPASS` на каждом
-  запуске (раньше маркер версии навсегда блокировал повторную копию).
+- **self-heal** (`main._heal_missing_data`): для SYSTEM-файлов из `key_files`
+  (bin/*, lua/*, lists/list-general.txt, presets/default.txt) эталон — копия
+  в `_MEIPASS`. Файл пропал / обрезан (AV/OneDrive) / отличается от эталона —
+  восстанавливается на каждом запуске (размер — быстрый шорткат, при совпавшем
+  размере сверяется sha256; раньше только размер, из-за чего правка того же
+  размера выживала). **user-файлы** (`lists/*-user.txt`, `lists/games/`,
+  `presets/custom.txt`, не-релизные `presets/*.txt`, `games.json`,
+  `zapret2_config.json`, `logs/`) heal не трогает НИКОГДА — и не должен
+  попадать в `key_files` при расширении списка. Работает только в onefile
+  (`_ensure_data_dir` для не-frozen до heal не доходит): portable/lite и
+  dev-копия не затрагиваются.
 - Префлайт-парсер `@`-путей понимает `@file`, `--opt=@file`, `name:@file`,
   `--opt=file` (ложный missing на `=@` был багом таблицы — починен).
 
