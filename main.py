@@ -270,9 +270,77 @@ def _find_free_port() -> int:
         return s.getsockname()[1]
 
 
+def _acquire_single_instance() -> bool:
+    """Один экземпляр GUI на машину. False - уже запущен, выходим.
+
+    Мьютекс нужен по существу, а не для вежливости: два окна получают
+    два разных порта и два независимых состояния, оба считают себя
+    владельцами обхода и службы. Отсюда взаимные убийства процессов
+    winws2 (у каждого свой _find_pids по всем winws2), гонки установки
+    и удаления службы и два конфликтующих редактора одних и тех же
+    user-списков.
+
+    Имя включает канонический путь: portable-копия в другой папке и
+    обычный запуск из Program Files не должны считаться одним и тем же
+    экземпляром - у них разные data-каталоги.
+    """
+    import ctypes
+    from ctypes import wintypes
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateMutexW.argtypes = (ctypes.c_void_p, wintypes.BOOL,
+                                      wintypes.LPCWSTR)
+    kernel32.CreateMutexW.restype = wintypes.HANDLE
+    try:
+        root = Path(sys.executable if getattr(sys, "frozen", False)
+                    else __file__).resolve().parent
+    except OSError:
+        root = Path.cwd()
+    # Имя мьютекса: путь без символов, которые WinAPI считает разделителями
+    # (\\ и /), иначе «Local\X-C:\...» превратится в имя в другом
+    # пространстве имён. PID сюда НЕ входит - иначе имя у каждого процесса
+    # своё и второй экземпляр никогда не увидит занятый мьютекс.
+    key = "".join(c if c.isalnum() else "_" for c in str(root).lower())
+    handle = kernel32.CreateMutexW(None, True, f"Local\\Zapret2GUI_{key}")
+    # CreateMutexW при уже существующем мьютексе возвращает НЕ NULL, а
+    # ERROR_ALREADY_EXISTS в GetLastError - судить только по handle нельзя,
+    # второй экземпляр так считал бы себя первым.
+    err = ctypes.get_last_error()
+    if err == 183:  # ERROR_ALREADY_EXISTS
+        if handle:
+            kernel32.CloseHandle(handle)
+        return False
+    if handle:
+        # Дескриптор держим в глобальной перемене: иначе CPython закроет
+        # его сборщиком мусора и мьютекс отпустится преждевременно.
+        global _SINGLE_INSTANCE_MUTEX
+        _SINGLE_INSTANCE_MUTEX = handle
+        return True
+    # Не смогли создать/открыть мьютекс (нет прав на Local\ и т.п.) -
+    # не блокируем запуск из-за диагностической мелочи.
+    _applog("single-instance", f"CreateMutexW не сработал (err={err}), "
+                              "продолжаем без защиты от второго окна")
+    return True
+
+
+_SINGLE_INSTANCE_MUTEX = None
+
+
 def main_gui() -> None:
     if not is_admin():
         relaunch_as_admin()
+        return
+
+    # Проверка после повышения прав: перезапуск идёт отдельным процессом,
+    # и если бы мьютекс брался до него, новый экземпляр увидел бы
+    # «занято» от того, кто только что перезапустился.
+    if not _acquire_single_instance():
+        ctypes.windll.user32.MessageBoxW(
+            0,
+            "Zapret 2 уже запущена.\n\n"
+            "Второе окно не нужно: оба экземпляра управляли бы одним "
+            "обходом и службой и мешали друг другу.\n"
+            "Закройте уже открытое окно и запустите программу ещё раз.",
+            "Zapret2 — уже запущена", 0x40)
         return
 
     _cleanup_stale_mei()

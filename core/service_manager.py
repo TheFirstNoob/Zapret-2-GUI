@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+import functools
 import re
 import subprocess
 import threading
@@ -10,6 +13,26 @@ from core.applog import log as _applog
 
 
 SERVICE_NAME = "zapret2"
+
+# HTTP-сервер многопоточный, а операции со службой меняют одно и то же
+# состояние SCM и перезапускают один и тот же winws2. Две одновременные
+# заявки (например «удалить службу» из подвала и «установить» из блока
+# обхода, либо окно тестера плюс фоновая починка) накладывались:
+# install вызывает remove и start, remove ждёт выхода winws2 до 5 с, и
+# второй поток успевал за это время пересоздать службу - итог «служба
+# удалена, а потом снова установлена» с непредсказуемыми аргументами.
+# RLock, а не Lock: install/start/reconfigure внутри сами вызывают
+# stop/remove/reconfigure, и обычный лок тут встал бы насмерть.
+_op_lock = threading.RLock()
+
+
+def _serialized(fn):
+    """Проводит мутирующую операцию со службой под _op_lock."""
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        with _op_lock:
+            return fn(*args, **kwargs)
+    return wrapper
 
 # Короткий TTL-кэш состояния службы: фронтенд поллит /api/service/status
 # каждые ~9с, а sc query - подпроцесс. Сбрасывается на любой мутирующей
@@ -362,6 +385,7 @@ def zapret1_cleanup() -> tuple[bool, str]:
     return True, ", ".join(actions)
 
 
+@_serialized
 def repair(root_dir: Optional[Path] = None) -> dict:
     """Починить службу драйвера WinDivert (repair ImagePath / включить
     disabled) и сообщить о конфликте с Zapret 1. Без удаления чужих служб."""
@@ -378,6 +402,7 @@ def repair(root_dir: Optional[Path] = None) -> dict:
     }
 
 
+@_serialized
 def install(root_dir: Optional[Path] = None, args: Optional[list[str]] = None,
             cleanup_zapret1: bool = False) -> tuple[bool, str]:
     conflict = _zapret1_conflict()
@@ -471,6 +496,7 @@ def install(root_dir: Optional[Path] = None, args: Optional[list[str]] = None,
     return True, "Служба zapret2 установлена и запущена"
 
 
+@_serialized
 def reconfigure(args: list[str]) -> tuple[bool, str]:
     """Обновляет binPath службы текущими args (служба запускает exe напрямую,
     поэтому смена стратегии требует перезаписи командной строки)."""
@@ -505,6 +531,7 @@ def reconfigure(args: list[str]) -> tuple[bool, str]:
     return True, "Параметры службы обновлены"
 
 
+@_serialized
 def remove():
     _invalidate_service_cache()
     _svc_log("remove: stop+taskkill")
@@ -541,6 +568,7 @@ def remove():
                    "перезагрузите ПК")
 
 
+@_serialized
 def start(args: Optional[list[str]] = None):
     conflict = _zapret1_conflict()
     if conflict:
@@ -569,6 +597,7 @@ def start(args: Optional[list[str]] = None):
     return True, "winws2 запущен"
 
 
+@_serialized
 def stop():
     # Сначала - корректный sc stop (SCM состояние), taskkill как страховка
     # для вручную запущенного winws2.
