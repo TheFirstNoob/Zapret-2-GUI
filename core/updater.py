@@ -470,6 +470,12 @@ def write_manifest(base_dir: Path, version: str) -> Path:
             continue
         if rel.endswith(".log") or rel in ("data_version.txt",):
             continue
+        # __pycache__/*.pyc - артефакты сборки, в архив их не кладут
+        # (build_portable чистит их ПОСЛЕ сбора). Попадая в манифест, они
+        # давали записи о файлах, которых в обновлении нет: манифест
+        # переставал описывать ровно то, что приедет к пользователю.
+        if "__pycache__" in rel.split("/") or rel.endswith((".pyc", ".pyo")):
+            continue
         files[rel] = _sha256(p)
     manifest = base_dir / "update_manifest.json"
     manifest.write_text(json.dumps(

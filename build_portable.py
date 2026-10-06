@@ -120,17 +120,23 @@ def main() -> None:
     # пул-файлы игр (lists/games/*) — рантайм конкретной машины
     shutil.rmtree(APP / "lists" / "games", ignore_errors=True)
 
-    # 3b. манифест обновления (system-файлы + sha256)
+# 3b. манифест обновления (system-файлы + sha256).
+    # ПОСЛЕ чистки __pycache__ (шаг 4): иначе манифест перечислял .pyc,
+    # которых в zip нет. write_manifest их теперь отсекает сам, но и
+    # порядок должен быть верным - манифест описывает ровно то, что уедет.
     sys.path.insert(0, str(ROOT))
     from core.config import VERSION
     from core.updater import write_manifest
-    write_manifest(APP, VERSION)
 
     # 4. чистим рантайм (кэши, тесты, pip-скрипты)
     for junk in (PY / "Scripts", PY / "Lib" / "site-packages" / "pip" / "_vendor" / "cache"):
         shutil.rmtree(junk, ignore_errors=True)
     for p in PY.rglob("__pycache__"):
         shutil.rmtree(p, ignore_errors=True)
+    for p in APP.rglob("__pycache__"):
+        shutil.rmtree(p, ignore_errors=True)
+
+    write_manifest(APP, VERSION)
     for p in APP.rglob("__pycache__"):
         shutil.rmtree(p, ignore_errors=True)
 
