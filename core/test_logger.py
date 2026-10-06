@@ -9,7 +9,14 @@ from core.config import VERSION
 
 
 class TestLogger:
-    """Потокобезопасный логгер тестовой сессии. Пишет человекочитаемый лог в root_dir."""
+    """Потокобезопасный логгер тестовой сессии. Пишет человекочитаемый лог в root_dir.
+
+    Лог относится к ОДНОЙ сессии: каждая новая сессия сдвигает прошлый файл
+    в test_session.old.log и начинает test_session.log заново. Без этого файл
+    рос бесконечно (он открыт на append), а в отчёт попадал весь хвост за все
+    прошлые прогоны - тот отчёт, что сдают на разбор, содержал строки
+    вчерашних тестов вперемешку с сегодняшними.
+    """
 
     def __init__(self, root_dir: Path, mode: str = "lite"):
         self.root_dir = Path(root_dir)
@@ -17,6 +24,7 @@ class TestLogger:
         self.log_path = self.root_dir / "test_session.log"
         self._lock = threading.Lock()
         self._fh = None
+        self._rotate()
         try:
             self._fh = open(self.log_path, "a", encoding="utf-8", errors="replace")
         except OSError:
@@ -25,6 +33,20 @@ class TestLogger:
         self._write(f"Zapret2 {VERSION} test session started at {datetime.now().isoformat()}")
         self._write(f"Mode: {mode}")
         self._write("=" * 60)
+
+    def _rotate(self) -> None:
+        """Сдвинуть прошлую сессию в .old.log. Молча, логирование не блокируем."""
+        try:
+            if not self.log_path.exists() or self.log_path.stat().st_size == 0:
+                return
+            old = self.log_path.with_name("test_session.old.log")
+            # Файл может быть занят (зависший прошлый процесс) - тогда
+            # дописываем в текущий, лучше лишние строки, чем потеря лог.
+            if old.exists():
+                old.unlink()
+            self.log_path.replace(old)
+        except OSError:
+            pass
 
     def _write(self, line: str) -> None:
         if self._fh is None:

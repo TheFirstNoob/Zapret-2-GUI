@@ -42,6 +42,7 @@ USER_FILES: tuple[str, ...] = (
     "lists/ipset-include-user.txt",
     "lists/ipset-exclude-user.txt",
     "test_session.log",
+    "test_session.old.log",
     "debug_winws2.log",
 )
 
