@@ -121,6 +121,8 @@ const Status = {
   svcTimer: null,
   last: null,          // /api/status ответ
   svc: null,           // /api/service/status ответ
+  _statusBusy: false,  // запрос /status ещё в полёте
+  _svcBusy: false,
 
   start() {
     this.refresh();
@@ -130,21 +132,39 @@ const Status = {
   },
 
   async refresh() {
+    // /api/status дёргает tasklist с таймаутом 6с, а поллинг идёт каждые 4с:
+    // без защиты запросы накладывались, а ответы приходили не по порядку -
+    // и панель «Обход работает» скакала. Пропускаем тик, если прошлый ещё
+    // не вернулся.
+    if (this._statusBusy) return;
+    this._statusBusy = true;
     try {
       const data = await apiGet('/status');
       this.last = data;
       this.render();
     } catch (e) {
-      $('protDot').className = 'dot dot-unknown';
-      $('protText').textContent = 'нет связи…';
+      // Статус неизвестен - НЕ затираем прошлый ответ: иначе одна ошибка
+      // мигает «нет связи» поверх рабочего состояния.
+      if (!this.last) {
+        $('protDot').className = 'dot dot-unknown';
+        $('protText').textContent = 'нет связи…';
+      }
+    } finally {
+      this._statusBusy = false;
     }
   },
 
   async refreshService() {
-    try { this.svc = await apiGet('/service/status'); }
-    catch (e) { this.svc = null; }
-    this.render();
-    if (App.currentPage === 'main') MainPage.renderServiceLine();
+    if (this._svcBusy) return;
+    this._svcBusy = true;
+    try {
+      try { this.svc = await apiGet('/service/status'); }
+      catch (e) { this.svc = null; }
+      this.render();
+      if (App.currentPage === 'main') MainPage.renderServiceLine();
+    } finally {
+      this._svcBusy = false;
+    }
   },
 
   render() {
@@ -2922,18 +2942,19 @@ const TesterPage = {
     this._completedSeen = new Set();
     let started = false;
     let pollActive = true;
+    let pollFails = 0;   // подряд идущих сбоев опроса (не роняем прогон сразу)
     const actPage = { cdn_scan: 'cdn', asn_scan: 'asn' }[actionData.action] || 'tester';
 
-    fetch('/api/tester/action', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(actionData),
-    }).then(r => {
-      if (!r.ok) throw Error('HTTP ' + r.status);
+    // apiPost, а не сырой fetch: тот несёт AbortSignal.timeout(30с) и ту же
+    // обработку ошибки. Раньше без таймаута зависший POST навсегда оставлял
+    // started=false, а setInterval ниже крутился вечно, удерживая блокировку
+    // всех кнопок проверки (App.setTestActive).
+    apiPost('/tester/action', actionData).then(() => {
       started = true;
-    }).catch(() => {
+    }).catch((e) => {
       pollActive = false;
       App.setTestActive(false);
+      showToast('Проверку не удалось запустить: ' + (e.message || e), 'error');
       if (onError) onError();
     });
 
@@ -2942,6 +2963,7 @@ const TesterPage = {
       if (!started) return;
       apiGet('/tester/status').then(state => {
         if (!pollActive) return;
+        pollFails = 0;            // успешный ответ - счётчик сбоев сброшен
         if (state.cancelled) {
           frontendLog('poll: cancelled');
           pollActive = false; clearInterval(pollId);
@@ -3033,13 +3055,21 @@ const TesterPage = {
           }
           else if (onResult) onResult(fr);
         }
-      }).catch(() => {
-        if (pollActive && known === 0) {
-          pollActive = false; clearInterval(pollId);
-          if (onError) onError();
-        }
-        // Опрос умер - не держим блокировку «идёт тест» навсегда.
-        if (pollActive) { pollActive = false; clearInterval(pollId); App.setTestActive(false); }
+      }).catch((e) => {
+        if (!pollActive) return;
+        // Разовый сбой опроса - не повод убивать прогон: серверный тест
+        // продолжается сам, и результат мы всё ещё можем увидеть. Терпим
+        // несколько подряд (5 = ~2с) и только потом сдаёмся.
+        pollFails += 1;
+        if (pollFails < 5) return;
+        pollActive = false; clearInterval(pollId);
+        App.setTestActive(false);
+        frontendLog('poll: отказоустойчивость исчерпана, ошибок подряд=' + pollFails
+                     + ' err=' + (e && e.message ? e.message : e));
+        Activity.fail('Связь с программой потеряна - проверка могла не завершиться');
+        showToast('Потеряна связь с программой. Проверка на сервере могла остаться '
+                  + 'незавершённой - откройте «Подбор стратегии» заново', 'warn');
+        if (onError) onError();
       });
     }, 350);
     return pollId;
