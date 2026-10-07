@@ -110,9 +110,12 @@ def parse(raw: bytes) -> dict:
         return b""
 
     sni = None
-    b = one(0x0000)
-    if len(b) > 5:
-        sni = b[5:5 + struct.unpack(">H", b[3:5])[0]].decode("ascii", "replace")
+    sni_pos = None
+    for idx, (t, b) in enumerate(exts):
+        if t == 0x0000 and len(b) > 5:
+            sni_pos = idx
+            sni = b[5:5 + struct.unpack(">H", b[3:5])[0]].decode("ascii", "replace")
+            break
     alpn = []
     b = one(0x0010)
     if len(b) >= 2:
@@ -172,6 +175,7 @@ def parse(raw: bytes) -> dict:
                       for t, _ in exts],
         "ext_grease": len(grease),
         "sni": sni,
+        "sni_pos": sni_pos,
         "alpn": alpn,
         "groups": [GROUPS.get(g, f"0x{g:04x}") for g in groups],
         "point_formats": pf,
@@ -246,7 +250,11 @@ def print_detail(r: dict) -> None:
           f"GREASE: {r['cipher_grease']}): {', '.join(r['ciphers'])}")
     print(f"   расширения ({r['ext_count']}, GREASE: {r['ext_grease']}): "
           f"{', '.join(r['ext_names'])}")
-    print(f"   SNI: {r['sni'] or '—'}")
+    print(f"   SNI: {r['sni'] or '—'}"
+          + (f"  (расширение #{r['sni_pos']}"
+             + ("  ⚠ не первое - fast-path SNI-first у ТСПУ, см. "
+                "EXTERNAL_NOTES §2 b4" if r["sni_pos"] else "  ✅ первое")
+             + ")"))
     print(f"   ALPN: {', '.join(r['alpn']) or '—'}")
     print(f"   supported_groups: {', '.join(r['groups']) or '—'}; "
           f"point_formats: {r['point_formats']}")
