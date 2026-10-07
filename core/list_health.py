@@ -243,6 +243,30 @@ def _atomic_write(path: Path, text: str) -> None:
         raise
 
 
+def atomic_write_text(path: Path, text: str) -> None:
+    """Записать файл целиком через temp + replace (публичная обёртка).
+
+    Нужна всем, кто пишет файлы, которые движок читает на живую: winws2
+    перечитывает hostlist/ipset по mtime, а write_text на месте при обрыве
+    процесса оставляет файл обрезанным до нуля - и обход молча теряет эту
+    часть стратегии.
+    """
+    _atomic_write(Path(path), text)
+
+
+def save_user_list(root: Path, filename: str, text: str) -> None:
+    """Атомарная запись user-списка под _LIST_LOCK (редактор в GUI).
+
+    Тот же лок, что у add_domain: иначе «Сохранить список» из вкладки Списки
+    и добавление домена из «Спорных» перетирают друг друга - один пишет файл
+    целиком, второй делает read-modify-write.
+    """
+    if filename not in USER_EDITABLE:
+        raise ValueError(f"не user-список: {filename}")
+    with _LIST_LOCK:
+        _atomic_write(Path(root) / "lists" / filename, text)
+
+
 def add_domain(root: Path, domain: str, mode: str = "include") -> dict:
     """Добавляет домен в user-список с дедупом и разбором конфликтов.
 

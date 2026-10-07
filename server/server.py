@@ -366,7 +366,11 @@ def _normalize_user_lists() -> None:
             decoded = path.read_bytes().decode("utf-8", errors="replace")
             cleaned = _clean_list_text(decoded)
             if cleaned != decoded:
-                path.write_text(cleaned, encoding="utf-8")
+                # Тот же атомарный путь, что у редактора: нормализация идёт
+                # на каждом старте, и обрыв посреди записи оставил бы
+                # пользователя без списка.
+                from core.list_health import atomic_write_text
+                atomic_write_text(path, cleaned)
         except OSError:
             continue
 
@@ -2235,9 +2239,14 @@ class ZapretHandler(BaseHTTPRequestHandler):
 
     def _handle_save_list(self, data: dict, filename: str) -> None:
         content = _clean_list_text(data.get("content", "")).strip()
-        path = get_root_dir() / "lists" / filename
         try:
-            path.write_text(content, encoding="utf-8")
+            # Атомарно и под локом (core.list_health.save_user_list): запись
+            # на месте при обрыве процесса обрезала бы список до нуля, а живой
+            # winws2 продолжил бы читать пустой hostlist. Имя приходит только
+            # из маршрутов выше и всегда из _USER_LIST_FILES; проверка внутри
+            # save_user_list закрыта от записи системных списков.
+            from core import list_health
+            list_health.save_user_list(get_root_dir(), filename, content)
             # args ссылаются на combined-файл (user+games) - обновляем его,
             # чтобы правка списка применялась к новым подключениям на лету
             if filename == "list-include-user.txt":

@@ -15,6 +15,7 @@ import re
 from pathlib import Path
 
 from core.applog import log as _applog
+from core.list_health import atomic_write_text
 
 GAMES_FILE = "games.json"
 DOMAIN_LIST = "list-games.txt"      # внутри lists/
@@ -369,7 +370,7 @@ def sync_domain_list(root: Path, data: dict | None = None) -> Path:
     path = root / "lists" / DOMAIN_LIST
     path.parent.mkdir(parents=True, exist_ok=True)
     text = "\n".join(enabled_domains(data))
-    path.write_text(text + ("\n" if text else ""), encoding="utf-8")
+    atomic_write_text(path, text + ("\n" if text else ""))
     return path
 
 
@@ -416,7 +417,9 @@ def sync_include_list(root: Path, user_file: Path | None = None,
         return None
     out = lists / INCLUDE_ALL
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text("\n".join(merged) + ("\n" if merged else ""), encoding="utf-8")
+    # Этот файл указан прямо в аргументах ЖИВОГО winws2 (--hostlist), поэтому
+    # обрыв посреди записи обнулил бы весь обход на этом hostlist. Атомарно.
+    atomic_write_text(out, "\n".join(merged) + ("\n" if merged else ""))
     return out
 
 
@@ -438,7 +441,7 @@ def write_cidr_pool_file(root: Path, key: str, cidrs: list[str]) -> Path:
         if c and c not in seen:
             seen.add(c)
             out.append(c)
-    path.write_text("\n".join(out) + "\n", encoding="ascii")
+    atomic_write_text(path, "\n".join(out) + "\n")
     return path
 
 
@@ -448,7 +451,7 @@ def write_cidr_file(root: Path, rule: dict) -> Path:
     folder = root / "lists" / CIDR_DIR
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / f"{rule.get('id') or 'game'}.txt"
-    path.write_text("\n".join(rule["cidrs"]) + "\n", encoding="ascii")
+    atomic_write_text(path, "\n".join(rule["cidrs"]) + "\n")
     return path
 
 
