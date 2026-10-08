@@ -41,3 +41,4 @@ soundcloud.com
 sndcdn.com
 paimon.moe
 api.paimon.moe
+hf.space
