@@ -42,3 +42,5 @@ sndcdn.com
 paimon.moe
 api.paimon.moe
 hf.space
+free-cdn.mitraai.xyz
+subnp.com
