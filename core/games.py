@@ -102,6 +102,26 @@ def default_games() -> dict:
         # цели (IP/порты) -> правило fake:payload=all на этих портах
         # (Epic обычно UDP 5222, 5795-5847) -> проверка, что сессия стартует.
         "udp": [],
+    }, {
+        "id": "warp",
+        "name": "WARP (стабилизация)",
+        "enabled": False,  # эксперимент: включать, только если WARP рвёт
+        "process": "",
+        "domains": [],
+        "udp": [{
+            "ports": "443,500,1701,2408,4443,4500,8443,8095",
+            "cidrs": ["162.159.192.0/24", "162.159.193.0/24",
+                      "162.159.195.0/24", "162.159.196.0/24",
+                      "162.159.197.0/24", "162.159.198.0/24",
+                      "162.159.199.0/24"],
+            "on": True,
+            "repeats": 1,
+            "cutoff": 6,
+            "tag": "Эксперимент",
+            "note": "fake на старте UDP-коннектов WARP (MASQUE/WireGuard); "
+                    "проверено 2026-10-10: существующий WARP не ломает; "
+                    "включать при обрывах CF_HAPPYFAIL",
+        }],
     }]}
 
 
@@ -126,6 +146,7 @@ def load_games(root: Path) -> dict:
             data = json.loads(path.read_text(encoding="utf-8-sig"))
             if isinstance(data, dict) and isinstance(data.get("games"), list):
                 _backfill_process(data)
+                _ensure_builtin_games(data)
                 return data
             saved = _quarantine_games(path, "не dict или нет списка games")
         except (OSError, ValueError) as e:
@@ -174,6 +195,24 @@ def _backfill_process(data: dict) -> None:
             src = defaults.get(g.get("id")) or {}
             if src.get("process"):
                 g["process"] = src["process"]
+    except Exception:
+        pass
+
+
+def _ensure_builtin_games(data: dict) -> None:
+    """Добавляет недостающие ВСТРОЕННЫЕ игры (новые фичи) в старый games.json.
+
+    Запись создаётся ВЫКЛЮЧЕННОЙ и только в памяти (сохранится при следующей
+    обычной записи) - существующие игры не трогаем (аудит-фича 2026-10:
+    так раздаётся «WARP (стабилизация)» без переустановки)."""
+    import copy
+    try:
+        known = {str(g.get("id")) for g in data.get("games", [])
+                 if isinstance(g, dict)}
+        for g in default_games().get("games", []):
+            if str(g.get("id")) not in known:
+                data.setdefault("games", []).append(
+                    copy.deepcopy({**g, "enabled": False}))
     except Exception:
         pass
 
