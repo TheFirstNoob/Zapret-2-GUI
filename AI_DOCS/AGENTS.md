@@ -620,6 +620,16 @@ raw/objects/release-assets/private-user-images/gist/avatars* — стабиль�
   `https://dns.comss.one/dns-query` (RFC8484; `curl --doh-url` работает).
   Кандидат в резерв/основу для системного DoH и как источник IP; DOOM-пин
   у V3nilla (`95.81.98.135 ghostrc.game.idtech.services`) - оттуда же.
+- **Аудит пинов hosts (2026-10-10, пробы «пин vs голый» при живом обходе)**:
+  удалены мёртвые/мешающие - вся группа `103.27.157.38` (Tidal/Supercell/
+  TikTok: TLS-сертификаты не совпадают, rc60; голое 200), `172.64.33.155`
+  d.rutor.info (403 vs 301), `45.155.204.190` corp.google.com/withgoogle.com
+  (воркер мёртв), `193.233.112.68 claude.ai` (воркер 403, голое 302).
+  Оставлены осознанно: Fastly-пины GitHub (оба 301 - резерв на плавающий
+  IP-блок), discord.com (оба 200, безвредно), Telegram `149.154.167.220`
+  (нужен под WARP), `platform.claude.com` (голое 403 - пин обязателен),
+  grok (голое 403). Воркер 193.233.112.68 в целом жив (gemini/openrouter
+  200, copilot 200).
 - Telegram в РФ прибит по IP: пин работает только через WARP/прокси; клиент
   ходит своими DC (hosts на него не влияет).
 - chatgpt.com не отвечает ни через один воркер; claude.ai - то 302, то 000.

@@ -5,25 +5,7 @@
 # localhost name resolution is handled within DNS itself.
 
 # --- 103.27.157.38 : Tidal / Supercell / misc (alt) ---
-103.27.157.38 accounts.supercell.com
-103.27.157.38 api.tidal.com
-103.27.157.38 auth.tidal.com
-103.27.157.38 cdn.id.supercell.com
-103.27.157.38 clashofclans.inbox.supercell.com
-103.27.157.38 dd.tidal.com
-103.27.157.38 developers.openai.com
-103.27.157.38 game-assets.brawlstarsgame.com
-103.27.157.38 game-assets.clashofclans.com
-103.27.157.38 game-assets.clashroyaleapp.com
-103.27.157.38 images.tidal.com
-103.27.157.38 link.tidal.com
-103.27.157.38 listen.tidal.com
-103.27.157.38 login.tidal.com
-103.27.157.38 resources.tidal.com
-103.27.157.38 security.id.supercell.com
-103.27.157.38 store.supercell.com
-103.27.157.38 www.dyson.fr
-103.27.157.38 www.tiktok.com
+# [2026-10-10] пины 103.27.157.38 удалены (TLS-сертификаты не совпадают, rc60; без пина сервисы живы)
 
 
 # --- 108.61.167.26 : Squad Busters ---
@@ -40,7 +22,7 @@
 # --- 157.240.245.174 : Instagram / Meta ---
 
 # --- 172.64.33.155 : rutor.info ---
-172.64.33.155 d.rutor.info
+# [2026-10-10] пин удалён (403; без пина 301)
 
 # --- 185.246.223.127 : Brawl Stars ---
 
@@ -62,7 +44,6 @@
 193.233.112.68 auth0.openai.com
 193.233.112.68 cdn.platform.openai.com
 193.233.112.68 checkout.www.deepl.com
-193.233.112.68 claude.ai
 193.233.112.68 clearance.deepl.com
 193.233.112.67 edgeservices.bing.com
 193.233.112.68 manus.im
@@ -217,6 +198,7 @@
 # =============================================================
 
 # --- 45.155.204.190 : Google AI geo (Gemini/AI Studio/NotebookLM) ---
+# [2026-10-10] corp.google.com/withgoogle.com с 45.155.204.190 удалены (воркер мёртв)
 # ! 2026-10-10: 87.228.47.x убит ТСПУ; пин перевешен на воркер 193.233.112.68 (gemini -> 200)
 193.233.112.68 gemini.google.com
 193.233.112.68 aistudio.google.com
@@ -236,9 +218,7 @@
 193.233.112.68 aitestkitchen.withgoogle.com
 193.233.112.68 robinfrontend-pa.googleapis.com
 193.233.112.68 proactivebackend-pa.googleapis.com
-45.155.204.190 corp.google.com
 193.233.112.68 assistant-s3-pa.googleapis.com
-45.155.204.190 withgoogle.com
 # --- Zapret2 GitHub fix (githubusercontent заменён на Fastly-эдж IP, RU-обход) ---
 # Fastly edge, общий конфиг GitHub: 151.101.66.132 (лучший 2026-08-30)
 151.101.66.132 raw.githubusercontent.com
