@@ -527,10 +527,25 @@ class ProcessProbe:
         start = time.time()
         dns_seen: dict[str, list[str]] = {}
         last_dns = 0.0
+        last_udp_rescan = 0.0
         try:
             handle = _run_pktmon(pids, etl, txt)
             while (duration <= 0 or time.time() - start < duration) \
                     and not self._stop_flag.is_set():
+                # UDP-сокеты игровых клиентов открываются ПОСЛЕ старта: раньше
+                # снапшот портов брался один раз, и при пустом списке захват не
+                # стартовал вовсе, а новые порты не попадали в фильтры (аудит
+                # 2026-10: Ace Combat - «UDP-захват: 0/0»). Пере-сканируем.
+                if time.time() - last_udp_rescan >= 10:
+                    last_udp_rescan = time.time()
+                    if handle is None:
+                        handle = _run_pktmon(pids, etl, txt)
+                    else:
+                        for p in _udp_ports(pids):
+                            if p not in handle["ports"]:
+                                utils.run_quiet(["pktmon", "filter", "add",
+                                                 f"gp{p}", "-t", "UDP", "-p", str(p)])
+                                handle["ports"].append(p)
                 tcp = _tcp_snapshot(pids)
                 udp = _udp_snapshot(pids)
                 if any(":" in k.rsplit(":", 1)[0] for k in list(tcp) + list(udp)):
