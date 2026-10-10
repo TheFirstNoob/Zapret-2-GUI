@@ -776,6 +776,9 @@ class Zapret2Tester:
         return self._ttl_cache
 
     def _get_tier_hosts(self, tier: str) -> list[str]:
+        """Хосты прогона. tier («smoke»/«critical»/«full») сейчас НЕ влияет:
+        все режимы гоняют полный TEST_HOSTS - так сравнение профилей честнее
+        (одинаковая батарея). Имя параметра - историческое (аудит 2026-10)."""
         return list(TEST_HOSTS)
 
     def _setup_profile(self, profile: str, progress_cb, _logged_progress, ipset_catchall: bool = False, discord_alt: bool = False) -> tuple[str, str, str, float]:

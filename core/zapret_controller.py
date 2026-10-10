@@ -109,28 +109,6 @@ class ZapretController:
 
         return False
 
-    def restart(self, profile: Optional[str] = None, **toggles) -> bool:
-        self.stop()
-        time.sleep(0.5)
-        profile = profile or self.current_strategy
-        if profile is None:
-            return False
-        # Без явных тогглов берём сохранённые, чтобы restart не сбрасывал
-        # настройки пользователя в off.
-        if not toggles and self._config_manager is not None:
-            cfg = self._config_manager.load()
-            toggles = dict(
-                game_filter_mode=cfg.game_filter_mode,
-                discord_voice=cfg.discord_voice,
-                discord_voice_mode=cfg.discord_voice_mode,
-                fake_blob=cfg.fake_blob,
-                winws2_debug=cfg.winws2_debug,
-                autohostlist=cfg.autohostlist,
-                ipset_catchall=cfg.ipset_catchall,
-            )
-        ok, _ = self.start(profile, **toggles)
-        return ok
-
     def status(self) -> ZapretStatus:
         result = ZapretStatus()
         pid = self.get_running_pid()

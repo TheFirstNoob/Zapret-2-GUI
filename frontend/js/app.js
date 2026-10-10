@@ -34,13 +34,36 @@ window.onerror = function (msg, url, line) {
   frontendLog('JS ERROR line ' + line + ': ' + msg);
 };
 
-// fire-and-forget лог ошибок на сервер (виден в probe_debug.log)
+// Необработанные отклонённые промисы (аудит 2026-10): раньше молчали -
+// хвосты вида «ответ после отмены» тонули в консоли без следа на сервере.
+window.addEventListener('unhandledrejection', function (ev) {
+  const r = ev && ev.reason;
+  const msg = (r && (r.message || r)) || 'unknown';
+  console.error('JS REJECTION: ' + msg);
+  frontendLog('JS REJECTION: ' + msg);
+});
+
+// fire-and-forget лог ошибок на сервер (виден в probe_debug.log).
+// Флаги (аудит 2026-10): дубль в 5с отбрасывается, кап 30 сообщений/мин -
+// иначе битый поллинг заливал сервер сотнями одинаковых строк.
+const _feLogSeen = new Map();
+let _feLogSent = 0;
+let _feLogWindow = 0;
 function frontendLog(msg) {
   try {
+    const now = Date.now();
+    if (now - _feLogWindow > 60000) {
+      _feLogWindow = now; _feLogSent = 0; _feLogSeen.clear();
+    }
+    const key = String(msg).slice(0, 200);
+    if (_feLogSent >= 30) return;
+    if (now - (_feLogSeen.get(key) || 0) < 5000) return;
+    _feLogSeen.set(key, now);
+    _feLogSent++;
     fetch('/api/frontend-log', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ msg: msg })
+      body: JSON.stringify({ msg: key })
     }).catch(() => {});
   } catch (e) { /* noop */ }
 }
@@ -123,10 +146,33 @@ const Status = {
   svc: null,           // /api/service/status ответ
   _statusBusy: false,  // запрос /status ещё в полёте
   _svcBusy: false,
+  _visHooked: false,
 
   start() {
     this.refresh();
     this.refreshService();
+    this._startTimers();
+    // Скрытая вкладка/свёрнутое окно (аудит 2026-10): поллинг сервера
+    // каждые 4с не нужен, останавливаем; при возврате - мгновенный refresh.
+    if (!this._visHooked) {
+      this._visHooked = true;
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+          clearInterval(this.timer);
+          clearInterval(this.svcTimer);
+          this.timer = this.svcTimer = null;
+        } else {
+          this.refresh();
+          this.refreshService();
+          this._startTimers();
+        }
+      });
+    }
+  },
+
+  _startTimers() {
+    clearInterval(this.timer);
+    clearInterval(this.svcTimer);
     this.timer = setInterval(() => this.refresh(), 4000);
     this.svcTimer = setInterval(() => this.refreshService(), 9000);
   },
@@ -573,8 +619,6 @@ const MainPage = {
       if (this._blobProbing) this._cancelBlobProbe();
       else this.runBlobProbe();
     });
-    const gamesSave = $('gamesSaveBtn');
-    if (gamesSave) gamesSave.addEventListener('click', () => GamesPage.save());
     const gs = $('gamesSearch');
     if (gs) gs.addEventListener('input', () => GamesPage.render());
     // Подвал меню: экспорт/импорт настроек и техинфо (обновления)
@@ -1088,17 +1132,6 @@ const MainPage = {
       showToast('Не удалось сохранить: ' + e.message, 'error');
     }
     this._updateApplyHint();
-  },
-
-  _togglesEqual(a, b) {
-    return !!a && !!b &&
-      a.game_filter_mode === b.game_filter_mode &&
-      (a.discord_voice_mode || (a.discord_voice ? 'fake' : 'off')) === (b.discord_voice_mode || (b.discord_voice ? 'fake' : 'off')) &&
-      !!a.winws2_debug === !!b.winws2_debug &&
-      !!a.autohostlist === !!b.autohostlist &&
-      !!a.ipset_catchall === !!b.ipset_catchall &&
-      !!a.discord_alt === !!b.discord_alt &&
-      (a.fake_blob || '') === (b.fake_blob || '');
   },
 
   _TOGGLE_NAMES: {
@@ -1923,15 +1956,13 @@ const ListsPage = {
   },
 
   async exportSettings() {
-    const btn = $('btnSettingsExport');
+    const btn = $('sideExport');
     if (btn) btn.disabled = true;
     try {
       const r = await apiPost('/settings/export', {});
       if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
       const fileName = (r.name || '').split('\\').pop();
       showToast(`Настройки сохранены: ${fileName} в папке программы`, 'ok');
-      const res = $('settingsResult');
-      if (res) res.textContent = 'Сохранено: ' + fileName;
     } catch (e) {
       showToast('Экспорт не удался: ' + (e.message || e), 'error');
     }
@@ -1951,10 +1982,8 @@ const ListsPage = {
       danger: true,
     });
     if (!ok) { input.value = ''; return; }
-    const btn = $('btnSettingsExport');
+    const btn = $('sideExport');
     if (btn) btn.disabled = true;
-    const res = $('settingsResult');
-    if (res) res.textContent = 'Импортирую…';
     try {
       const b64 = await new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -1965,14 +1994,12 @@ const ListsPage = {
       const r = await apiPost('/settings/import', { data: b64 });
       if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
       showToast(r.message || 'Настройки восстановлены', 'ok');
-      if (res) res.textContent = `Восстановлено: ${r.imported}, пропущено: ${r.skipped}`;
       await this.load('domInc');
       await this.load('domExc');
       await this.load('ipInc');
       await this.load('ipExc');
     } catch (e) {
       showToast('Импорт не удался: ' + (e.message || e), 'error');
-      if (res) res.textContent = '';
     }
     input.value = '';
     if (btn) btn.disabled = false;

@@ -19,6 +19,7 @@ from urllib import request as _urlreq
 from core.admin import is_admin
 from core.config import AppConfig, DEFAULT_PROFILE, VERSION
 from core.launcher import build_args_from_preset, validate_args
+from core.tester import QUIC_QUIRK_DOMAINS
 from core.utils import (known_desktop_dir, short_path, windivert_image_dead,
                         windivert_image_path, windivert_service_state)
 
@@ -46,11 +47,10 @@ _NET_CHECKS = [
 # сквозь движок обхода. google-блок (fake+multisplit, drop+repeats) ломает
 # сторонний ClientHello - пробы дают 000 при работающем интернете. Для таких
 # хостов красный крест = ложный: измеряется чужой клиент, не реальный опыт.
-_QUIC_QUIRK_HOSTS = {
-    "www.google.com",
-    "i.ytimg.com",
-    "www.youtube.com",
-}
+# Единый источник (аудит 2026-10): список - из тестера (QUIC_QUIRK_DOMAINS),
+# чтобы диагностика/тестер/фронт не разъезжались. Канарейка google добавлена
+# отдельно: «чужой клиент» к ней рвётся тем же google-блоком.
+_QUIC_QUIRK_HOSTS = set(QUIC_QUIRK_DOMAINS) | {"www.google.com"}
 
 _DEBUG_LOG_WARN_BYTES = 50 * 1024 * 1024
 
