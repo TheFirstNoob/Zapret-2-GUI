@@ -15,6 +15,7 @@ presets/test-*.txt
 tools/game_probe.log
 tools/game_probe.etl
 tools/game_probe_pkt.txt
+tools/voice_flap_watch.log
 
 # Local reference clones (tspu-docs etc.) — kept out of repo, link in README
 _tspu-docs/
