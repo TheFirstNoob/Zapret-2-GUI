@@ -1,6 +1,6 @@
 # AGENTS.md — Критические находки (чтение обязательно перед любыми изменениями)
 
-> **Последнее обновление: 2026-09-13 (Pre-Release 0.8 — релиз-подготовка; UI-ветка влита)**
+> **Последнее обновление: 2026-10-10 (Pre-Release 0.9 выпущен; октябрьские кейсы — REVIEW_VERDICT, VOICE_FLAP_FINLAND_2026-10, WARP_NOTES_2026-10, аудит hosts-пинов)**
 > **Размер EXE:** 19.4 MB. Сборки актуальны (build.py / build_portable.py / build_lite.py).
 > **Статус:** `default.txt` — универсальная стратегия; Discord-блоки на repeats=8.
 >
@@ -11,8 +11,8 @@
 
 ## ⚡ СЕССИЯ-СНАПШОТ (читать первым)
 
-### Текущее состояние (2026-09-13)
-- **VERSION = "Pre-Release 0.8"** (config.py; релизы 0.7/0.7.1 на GitHub; сборки 0.8 пересобраны 2026-09-13 — updater/settings/heal/UI/frozen-fix вошли).
+### Текущее состояние (2026-10-10)
+- **VERSION = "Pre-Release 0.9"** (config.py; 0.9 выпущен, тег `Pre-Release-0.9` (commit 681a4f1), процедура релиза — RELEASE_CHECKLIST.md; после релиза: фикс-батч аудита (REVIEW_VERDICT), probe-фиксы, WARP-игра, новые блобы, репин хостов). Черновик чейнджлога 0.10 — на рабочем столе; номер следующего релиза не решён.
 - **Пресеты: 11 release** (default, default-alt, auto, fake-only, fakedsplit,
   fake-disorder, fake-multidisorder, hostfakesplit, multisplit-pure,
   multisplit-seqovl, tcpmd5-fake) + exp-/cand- стенды (скрыты из GUI и дистрибутивов).
@@ -44,10 +44,10 @@
   list-include-user.txt) + живая curl-проба (жив в голую → держи выключенным;
   глушится → включи; мёртв с десинком → WARP). amazonaws.com: только тумблером,
   НЕ правкой list-general.
-- **0.8 WIP (не закоммичен агентом, сохранён в `79bcce4`)**: предупреждения
-  «место запуска» — из архива (%TEMP%), Загрузки (MOTW), Документы (OneDrive),
-  рабочий стол (замусоривание): `main.py::_check_launch_location` (MessageBox)
-  + `core/diagnostics.py::_check_launch_spot` (чек «launch_spot») + `known_desktop_dir` в utils.
+- **Предупреждения «место запуска» (вошло в 0.9)**: из архива (%TEMP%),
+  Загрузки (MOTW), Документы (OneDrive), рабочий стол (замусоривание):
+  `main.py::_check_launch_location` (MessageBox) + `core/diagnostics.py::_check_launch_spot`
+  (чек «launch_spot») + `known_desktop_dir` в utils.
 - **Сборщики:** build.py (exe), build_portable.py (portable), build_lite.py (lite).
 
 ### Правило честности измерений 🚨 (критично для тестера/диагностики)
@@ -632,8 +632,13 @@ raw/objects/release-assets/private-user-images/gist/avatars* — стабиль�
   200, copilot 200).
 - Telegram в РФ прибит по IP: пин работает только через WARP/прокси; клиент
   ходит своими DC (hosts на него не влияет).
-- chatgpt.com не отвечает ни через один воркер; claude.ai - то 302, то 000.
-  Это НЕ наш косяк - флак на стороне сервисов/воркеров.
+- claude.ai: воркер начал отдавать 403 (голое 302) - пин снят 2026-10-10;
+  platform.claude.com/console.anthropic.com на воркере живы. У сервисов
+  бывает флак - перепроверять одиночными пробами.
+- **`hosts.txt` в репо - CRLF** (единственный такой файл; исторически и в
+  блобе). При правках сохранять CRLF, иначе git показывает полный построчный
+  дифф. Системный hosts держать байт-в-байт копией репо-файла (бэкапы:
+  `hosts.bak_*` в `drivers\etc`).
 - Правило: проверять одиночными запросами с паузами; массовые прогоны
   (10+ запросов подряд) уводят воркеры в лимит на десятки минут.
 - **Голосовые сервера Discord НЕ пинить через hosts — правило (2026-09-28)**:
@@ -734,8 +739,8 @@ raw/objects/release-assets/private-user-images/gist/avatars* — стабиль�
   частый дрейф «тумблеры ↔ пресет».
 
 ### Осталось
-- Пересборка exe (onefile) и portable после рефактора (`COPY_DIRS` уже
-  включает core/server — `applog.py` подхватится; нужен прогон сборки).
+- [закрыто в 0.9] Пересборка exe (onefile) и portable после рефактора
+  (`COPY_DIRS` включает core/server; сборки выпущены).
 - Lite: `service-install.bat` по-прежнему sc+`\"`-бат (в lite нет Python);
   при необходимости — PowerShell `New-Service`.
 - `write_cidr_file()` (per-game ipset) оставлен для совместимости; лаунчер

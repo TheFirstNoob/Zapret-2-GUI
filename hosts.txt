@@ -1,40 +1,21 @@
 # =============================================================
-# hosts: обновлён 2026-08-30
+# hosts: обновлён 2026-10-10
 # Источник: Latest hosts.txt (обновлённый) + GitHub fix (zapret2)
 # =============================================================
 # localhost name resolution is handled within DNS itself.
-
-# --- 103.27.157.38 : Tidal / Supercell / misc (alt) ---
-# [2026-10-10] пины 103.27.157.38 удалены (TLS-сертификаты не совпадают, rc60; без пина сервисы живы)
-
-
-# --- 108.61.167.26 : Squad Busters ---
 
 # --- 127.0.0.1 : misc ---
 127.0.0.1 local
 127.0.0.1 localhost
 127.0.0.1 localhost.localdomain
 
-# --- 130.255.77.28 : ntc.party ---
-
-# --- 149.154.167.220 : Telegram web ---
-
-# --- 157.240.245.174 : Instagram / Meta ---
-
-# --- 172.64.33.155 : rutor.info ---
-# [2026-10-10] пин удалён (403; без пина 301)
-
-# --- 185.246.223.127 : Brawl Stars ---
-
 # --- 185.31.40.18 : malw.link test ---
 185.31.40.18 test.dns.malw.link
-
-# --- 193.23.209.189 : Clash of Clans ---
 
 # --- 255.255.255.255 : misc ---
 255.255.255.255 broadcasthost
 
-# --- 37.230.192.51 : misc ---
+# --- 193.233.112.68/.67 : misc worker (перевешено с 87.228.47.x/37.230.192.51, 2026-10-10) ---
 193.233.112.68 account.jetbrains.com
 193.233.112.68 accounts.autodesk.com
 193.233.112.67 api.jetbrains.ai
@@ -60,7 +41,7 @@
 193.233.112.68 www2.deepl.com
 193.233.112.68 www.qwant.com
 
-# --- 45.155.204.190 : Anti-block worker: AI/geo (ChatGPT, Gemini, Claude, ...) ---
+# --- 193.233.112.68/.67 : Anti-block worker AI/geo (ChatGPT, Gemini, Claude, ...) - перевешено с 45.155.204.190 ---
 193.233.112.68 a.claude.ai
 193.233.112.68 ab.chatgpt.com
 193.233.112.68 accounts.scdn.co
@@ -170,10 +151,6 @@
 193.233.112.68 xgpuwebf2p.gssv-play-prod.xboxlive.com
 193.233.112.68 xsts.auth.xboxlive.com
 
-# --- 52.223.13.41 : Trackers ---
-
-# --- 62.133.62.97 : misc ---
-
 # --- 0.0.0.0 sinkhole (anti-tracking) ---
 0.0.0.0 2no.co
 0.0.0.0 ad.mail.ru
@@ -197,9 +174,7 @@
 
 # =============================================================
 
-# --- 45.155.204.190 : Google AI geo (Gemini/AI Studio/NotebookLM) ---
-# [2026-10-10] corp.google.com/withgoogle.com с 45.155.204.190 удалены (воркер мёртв)
-# ! 2026-10-10: 87.228.47.x убит ТСПУ; пин перевешен на воркер 193.233.112.68 (gemini -> 200)
+# --- 193.233.112.68 : Google AI geo (Gemini/AI Studio/NotebookLM) - перевешено с 45.155.204.190; corp.google.com/withgoogle.com сняты (воркер мёртв) ---
 193.233.112.68 gemini.google.com
 193.233.112.68 aistudio.google.com
 193.233.112.68 aisandbox-pa.googleapis.com
