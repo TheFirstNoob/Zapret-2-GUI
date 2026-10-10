@@ -538,6 +538,12 @@ class ProcessProbe:
                 # 2026-10: Ace Combat - «UDP-захват: 0/0»). Пере-сканируем.
                 if time.time() - last_udp_rescan >= 10:
                     last_udp_rescan = time.time()
+                    # PID тоже обновляем: игры/анти-чит поднимают дочерние
+                    # процессы уже после старта - у них свои сокеты, без этого
+                    # их соединения не попадали ни в снимки, ни в захват (аудит)
+                    for pid in self._find_pids(spec):
+                        if pid not in pids:
+                            pids.append(pid)
                     if handle is None:
                         handle = _run_pktmon(pids, etl, txt)
                     else:
@@ -561,7 +567,8 @@ class ProcessProbe:
                 with self._lock:
                     _merge_history(self._state["history"], tcp, udp, time.time())
                     self._state.update({"tcp": tcp, "udp": udp, "elapsed": elapsed,
-                                        "ipv6": ipv6, "phase": "наблюдение"})
+                                        "ipv6": ipv6, "pids_count": len(pids),
+                                        "phase": "наблюдение"})
                 time.sleep(2)
             udp_capture = _finish_pktmon(handle) if handle else {}
             with self._lock:
@@ -581,7 +588,9 @@ class ProcessProbe:
             verdict = _verdict(self._state["history"],
                                self._state.get("ipv6", False), no_conn, dns)
             with self._lock:
-                self._state.update({"udp_capture": udp_capture, "dns": dns,
+                self._state.update({"udp_capture": udp_capture,
+                                    "udp_ports": (handle or {}).get("ports", []),
+                                    "dns": dns,
                                     "verdict": verdict, "phase": "завершено",
                                     "elapsed": int(time.time() - start)})
         except Exception as e:  # noqa: BLE001
@@ -610,6 +619,9 @@ class ProcessProbe:
             f"Фаза: {s.get('phase', '?')}  (прошло {s.get('elapsed', 0)} сек)",
             f"IPv6: {'ДА' if s.get('ipv6') else 'нет'}",
         ]
+        if s.get("pids_count"):
+            lines.append(f"Процессов под наблюдением: {s['pids_count']} "
+                         "(PID и UDP-порты обновляются каждые 10 с)")
         if s.get("error"):
             lines.append(f"Ошибка: {s['error']}")
         lines.append("")
@@ -648,6 +660,16 @@ class ProcessProbe:
             else:
                 lines.append("UDP-захват: отправлено "
                              f"{cap.get('sent', 0)}, получено {cap.get('recv', 0)}")
+                ports = s.get("udp_ports") or []
+                if ports:
+                    shown = ", ".join(str(p) for p in ports[:12])
+                    if len(ports) > 12:
+                        shown += "…"
+                    lines.append(f"UDP-порты в захвате ({len(ports)}): {shown}")
+        else:
+            lines.append("")
+            lines.append("UDP-захват: не вёлся (UDP-сокеты процесса не "
+                         "обнаружены за всё время наблюдения)")
         dns = s.get("dns", {})
         if dns:
             lines.append("")
@@ -657,6 +679,11 @@ class ProcessProbe:
         lines.append("")
         lines.append("--- Вердикт ---")
         lines.append(s.get("verdict", ""))
+        lines.append("")
+        lines.append("Совет для точного диагноза: запускать анализ ДО проблемного "
+                     "действия")
+        lines.append("(вход в онлайн, старт матча) и держать до повторения проблемы -")
+        lines.append("тогда зависший endpoint (SYN без ответа) попадёт в отчёт.")
         return "\n".join(lines)
 
     def save_report(self) -> Path:
