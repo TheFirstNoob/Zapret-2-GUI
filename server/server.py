@@ -1758,10 +1758,20 @@ class ZapretHandler(BaseHTTPRequestHandler):
     def _handle_app_info(self) -> None:
         """Техническая информация: версия, тип сборки, SHA256 exe, ключ OTA."""
         import hashlib
+        from pathlib import Path as _Path
         from core import update_verify
         from core.utils import app_root
+        frozen = bool(getattr(sys, "frozen", False))
+        # portable = embeddable-рантайм рядом с приложением
+        # (<...>/python/python(.w).exe); иначе - запуск из исходников
+        # системным Python (аудит 2026-10: раньше он тоже звался portable).
+        portable = bool(
+            not frozen
+            and _Path(sys.executable).parent.name.lower() == "python")
         info = {"version": VERSION,
-                "frozen": bool(getattr(sys, "frozen", False)),
+                "frozen": frozen,
+                "build": ("exe" if frozen else
+                          "portable" if portable else "source"),
                 "path": str(app_root()),
                 "update_key": update_verify.pubkey_fingerprint(),
                 "exe_sha256": ""}

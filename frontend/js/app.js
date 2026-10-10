@@ -1835,9 +1835,13 @@ const AppInfo = {
     try {
       const r = await apiGet('/app-info');
       const i = r.info || {};
+      const buildLabel = i.build === 'exe' ? 'EXE (onefile)'
+        : i.build === 'portable' ? 'portable (Python)'
+        : i.build === 'source' ? 'из исходников (Python)'
+        : (i.frozen ? 'EXE (onefile)' : 'portable (Python)');
       const rows = [
         `Версия: <b>${escapeHtml(i.version || '?')}</b>`,
-        `Сборка: ${i.frozen ? 'EXE (onefile)' : 'portable (Python)'}`,
+        `Сборка: ${buildLabel}`,
         `Папка: <span class="meta">${escapeHtml(i.path || '')}</span>`,
       ];
       if (i.exe_sha256) {
