@@ -611,6 +611,15 @@ raw/objects/release-assets/private-user-images/gist/avatars* — стабиль�
   воркер 193.233.112.68 (2026-10-10): gemini 200, openrouter 200,
   copilot 200, grok 200; кандидат pumPCin (AntiZapret) 62.133.62.97 у нас не
   отвечает (таймаут) - при раздаче перепроверять.
+- **Comss.one DNS - живой источник «золотых» IP (проверено 2026-10-10)**:
+  серверы `83.220.169.155`, `195.133.25.16`, `212.109.195.93` (старые
+  `185.71.66.225`/`.221` устарели - не отвечают; их же V3nilla держит в
+  exclude.txt). Отдаёт пул `gemini-pool.comss.one` ->
+  `95.81.102.20`, `132.243.112.221`, `157.22.177.90` (для gemini, openrouter
+  и др.); пул проверен вживую (curl --resolve -> rc=0 оба). DoH:
+  `https://dns.comss.one/dns-query` (RFC8484; `curl --doh-url` работает).
+  Кандидат в резерв/основу для системного DoH и как источник IP; DOOM-пин
+  у V3nilla (`95.81.98.135 ghostrc.game.idtech.services`) - оттуда же.
 - Telegram в РФ прибит по IP: пин работает только через WARP/прокси; клиент
   ходит своими DC (hosts на него не влияет).
 - chatgpt.com не отвечает ни через один воркер; claude.ai - то 302, то 000.
