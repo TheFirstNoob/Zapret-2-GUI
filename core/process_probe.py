@@ -280,12 +280,19 @@ def _parse_pktmon_txt(txt: Path, ports: list[int]) -> dict:
     recv = 0
     if not txt.exists():
         return {"ips": ips, "sent": sent, "recv": recv}
+    # Пара endpoint'ов ищем регуляркой с якорем ": UDP": на Wi-Fi каждая
+    # строка etl2txt начинается с MAC-пары "B4-... > 26-..." - старый
+    # partition(">") рвал строку по MAC-разделителю, и ВСЕ UDP-пакеты
+    # отбрасывались (sent/recv всегда 0 при живом захвате; аудит 2026-10-10).
+    pair_re = re.compile(r"(\S+)\s*>\s*(\S+):\s*UDP")
     for line in _read_pktmon_txt(txt).splitlines():
-        if ">" not in line:
+        if ": UDP" not in line:
             continue
-        left, _, right = line.partition(">")
-        a, ap = _split_endpoint(left)
-        b, bp = _split_endpoint(right)
+        m = pair_re.search(line)
+        if not m:
+            continue
+        a, ap = _split_endpoint(m.group(1))
+        b, bp = _split_endpoint(m.group(2))
         if a is None or b is None:
             continue
         if ports and ap not in ports and bp not in ports:
