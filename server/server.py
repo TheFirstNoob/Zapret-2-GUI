@@ -179,7 +179,8 @@ def _run_update_worker(kind: str, tag: str, info: dict) -> None:
     """Worker обновления: скачать → бэкап → применить (portable) или
     подготовить self-update (exe) → проверить службу (аргументы устарели?)."""
     from core.updater import (apply_portable, fetch_release_manifest,
-                              fetch_update, prepare_exe_update,
+                              fetch_update, prepare_app_restart_bat,
+                              prepare_exe_update,
                               service_args_stale, validate_release)
     from core.update_verify import verify as verify_signature
     from core.config import ConfigManager
@@ -241,12 +242,47 @@ def _run_update_worker(kind: str, tag: str, info: dict) -> None:
             result["update_bat"] = str(bat)
             result["restart_required"] = True
         else:
+            # «Как в стиме»: обход стопаем ДО замены файлов (winws2 держит
+            # bin/winws2.exe на диске - копирование в занятый файл падало бы),
+            # после применения поднимаем обратно тем же binPath.
+            svc_was = False
+            try:
+                from core.service_manager import start as _svc_start
+                from core.service_manager import status as _svc_status
+                from core.service_manager import stop as _svc_stop
+                svc_was = _svc_status() == "running"
+            except Exception:
+                _svc_stop = _svc_start = None
+            if svc_was and _svc_stop:
+                prog(58, "Остановка обхода…")
+                try:
+                    _svc_stop()
+                except Exception as e:  # noqa: BLE001
+                    _ui_debug(f"update: stop service failed: {e}")
+                time.sleep(1.0)
             prog(70, "Применение обновления…")
             applied = apply_portable(zip_path, root_dir,
                                      progress_cb=lambda m: prog(80, str(m)))
             result.update(applied=applied["updated"],
                           skipped_user=applied["skipped_user"],
                           backup=applied["backup"])
+            if svc_was and _svc_start:
+                prog(92, "Запуск обхода…")
+                try:
+                    _svc_start()
+                except Exception as e:  # noqa: BLE001
+                    _ui_debug(f"update: start service failed: {e}")
+            # Автоперезапуск приложения (portable/dev): сервер уже на новых
+            # файлах, но процесс - старый; батник убьёт наш PID и запустит
+            # заново тем же интерпретатором. Ошибки не фатальны - останется
+            # ручной перезапуск.
+            try:
+                import os as _os
+                bat = prepare_app_restart_bat(root_dir, _os.getpid())
+                result["restart_bat"] = str(bat) if bat else ""
+            except Exception as e:  # noqa: BLE001
+                _ui_debug(f"update: restart bat failed: {e}")
+                result["restart_bat"] = ""
             result["restart_required"] = True
 
         # Служба установлена? Сравнить её аргументы с собранными из НОВЫХ
@@ -2618,8 +2654,9 @@ class ZapretHandler(BaseHTTPRequestHandler):
                              "message": "Обновление ещё выполняется"})
             return
         res = _updater_state.get("result") or {}
-        bat_name = Path(str(res.get("update_bat") or "")).name
-        if not bat_name or bat_name != "_update_self.bat":
+        cand = str(res.get("update_bat") or res.get("restart_bat") or "")
+        bat_name = Path(cand).name
+        if bat_name not in ("_update_self.bat", "_restart_app.bat"):
             self._send_json({"status": "error", "message":
                              "Замена программы не подготовлена - запустите обновление заново"})
             return
@@ -2658,12 +2695,18 @@ class ZapretHandler(BaseHTTPRequestHandler):
         if not zip_data:
             self._send_json({"status": "error", "message": "Пустой файл"})
             return
-        from core.updater import import_settings_zip
+        from core.updater import import_settings_zip, read_settings_meta
+        meta = read_settings_meta(zip_data)
         imported, skipped = import_settings_zip(zip_data, get_root_dir())
+        note = ""
+        ver = str(meta.get("version") or "")
+        if ver and ver != VERSION:
+            note = (f" Архив из версии {ver}: настройки перенесены, "
+                    "недостающие параметры взяты из текущей версии.")
         self._send_json({"status": "ok", "imported": imported,
-                         "skipped": skipped,
-                         "message": f"Восстановлено записей: {imported}. "
-                                    "Перезапустите программу, чтобы применилось."})
+                         "skipped": skipped, "source_version": ver,
+                         "message": f"Восстановлено записей: {imported}." + note
+                                    + " Перезапустите программу, чтобы применилось."})
 
     def _handle_export_report(self, data: dict) -> None:
         consent = data.get("consent", False)

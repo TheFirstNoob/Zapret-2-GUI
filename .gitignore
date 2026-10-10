@@ -26,6 +26,8 @@ _zapret_run.bat
 _zapret_service.bat
 _exp_run.bat
 _zapret_custom_smoke.bat
+_update_self.bat
+_restart_app.bat
 data_version.txt
 tcp1620_test_body.bin
 zapret-auto.txt

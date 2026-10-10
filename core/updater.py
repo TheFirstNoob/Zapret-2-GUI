@@ -236,6 +236,16 @@ def export_settings_zip(root_dir: Path) -> Optional[Path]:
     export_path = root_dir / name
     try:
         with zipfile.ZipFile(export_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            # Метка экспорта (совместимость между версиями): импорт её
+            # игнорирует (не USER-файл), но GUI показывает, из какой версии
+            # архив. Конфиг мигрирует сам - ConfigManager.load() терпит
+            # неизвестные/недостающие поля.
+            from core.config import VERSION as _ver
+            zf.writestr("settings_meta.json", json.dumps({
+                "app": "Zapret2GUI",
+                "version": _ver,
+                "exported": datetime.now().isoformat(timespec="seconds"),
+            }, ensure_ascii=False, indent=2))
             for rel in USER_FILES:
                 p = root_dir / rel
                 if p.exists():
@@ -251,9 +261,23 @@ def export_settings_zip(root_dir: Path) -> Optional[Path]:
         return None
 
 
+def read_settings_meta(zip_data: bytes) -> dict:
+    """Метка архива экспорта (версия/дата) - {} если нет/битая."""
+    import io
+    try:
+        with zipfile.ZipFile(io.BytesIO(zip_data)) as zf:
+            if "settings_meta.json" in zf.namelist():
+                meta = json.loads(zf.read("settings_meta.json").decode("utf-8"))
+                return meta if isinstance(meta, dict) else {}
+    except Exception:
+        pass
+    return {}
+
+
 def import_settings_zip(zip_data: bytes, root_dir: Path) -> tuple[int, int]:
     """Импорт настроек из zip: восстанавливаются ТОЛЬКО юзер-файлы
-    (config, *-user.txt, юзерские пресеты). Возвращает (imported, skipped)."""
+    (config, *-user.txt, юзерские пресеты). settings_meta.json и всё
+    остальное пропускается. Возвращает (imported, skipped)."""
     import io
     imported = 0
     skipped = 0
@@ -483,6 +507,40 @@ def launch_update_bat(bat_path: Path) -> None:
         raise RuntimeError(
             "обновление скачано, но запустить замену программы не получилось - "
             "перезапустите программу вручную") from e
+
+
+def prepare_app_restart_bat(root_dir: Path,
+                            pid: int) -> Optional[Path]:
+    """Перезапуск приложения для portable/dev (не frozen): тот же
+    интерпретатор + тот же скрипт после паузы. Frozen обновляется через
+    `_update_self.bat` (prepare_exe_update) - этот батник не для него.
+
+    Пути, лежащие внутри root_dir, пишутся через %~dp0 - установка в
+    папку с кириллицей не ломает cmd (ASCII-файл). Возвращает путь."""
+    import sys as _sys
+
+    def _cmd(path: Path) -> str:
+        path = Path(path)
+        try:
+            return f"%~dp0{path.resolve().relative_to(root_dir.resolve())}"
+        except ValueError:
+            return str(path)
+
+    exe_cmd = _cmd(Path(_sys.executable))
+    script_cmd = _cmd(Path(_sys.argv[0]).resolve())
+    lines = [
+        "@echo off",
+        "rem Self-restart: kill this app instance, start it again.",
+        "timeout /t 2 /nobreak >nul",
+        f"taskkill /F /PID {int(pid)} >nul 2>&1",
+        "ping -n 3 127.0.0.1 >nul",
+        f'start "" "{exe_cmd}" "{script_cmd}"',
+        'del "%~f0"',
+    ]
+    bat_path = root_dir / "_restart_app.bat"
+    with open(bat_path, "w", encoding="ascii", newline="") as f:
+        f.write("\r\n".join(lines) + "\r\n")
+    return bat_path
 
 
 def write_manifest(base_dir: Path, version: str) -> Path:

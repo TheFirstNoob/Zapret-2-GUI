@@ -378,6 +378,44 @@ def _make_dist_zip(path: Path) -> None:
         zf.writestr("update_manifest.json", manifest)
 
 
+class TestSettingsPackage(unittest.TestCase):
+    """Экспорт/импорт настроек: метка версии (совместимость между версиями);
+    импорт метку игнорирует, но отдаёт её GUI."""
+
+    def test_export_meta_and_import(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "lists").mkdir()
+            (root / "zapret2_config.json").write_text("{}", encoding="utf-8")
+            (root / "lists" / "list-include-user.txt").write_text(
+                "example.com\n", encoding="utf-8")
+            p = up.export_settings_zip(root)
+            self.assertIsNotNone(p)
+            with zipfile.ZipFile(p) as zf:
+                self.assertIn("settings_meta.json", zf.namelist())
+                meta = json.loads(zf.read("settings_meta.json"))
+                self.assertEqual(meta.get("version"), VERSION)
+                self.assertEqual(meta.get("app"), "Zapret2GUI")
+            self.assertEqual(up.read_settings_meta(p.read_bytes()).get(
+                "version"), VERSION)
+            imported, _ = up.import_settings_zip(p.read_bytes(), root)
+            self.assertGreaterEqual(imported, 2)  # конфиг + user-список
+            self.assertEqual(up.read_settings_meta(b"not-a-zip"), {})
+
+
+class TestAppRestartBat(unittest.TestCase):
+    """Portable-перезапуск: батник убивает процесс по PID и стартует заново."""
+
+    def test_restart_bat_content(self):
+        with tempfile.TemporaryDirectory() as td:
+            bat = up.prepare_app_restart_bat(Path(td), 4242)
+            self.assertTrue(bat.is_file())
+            text = bat.read_text(encoding="ascii")
+            self.assertIn("taskkill /F /PID 4242", text)
+            self.assertIn('start ""', text)
+            self.assertNotIn("\r\r\n", text)  # правило .bat в AGENTS
+
+
 class TestUpdateWorkerSignature(unittest.TestCase):
     """Worker обязан ставить только обновления с валидной подписью."""
 
@@ -406,6 +444,8 @@ class TestUpdateWorkerSignature(unittest.TestCase):
                                   return_value=(manifest_bytes, sig)), \
                 mock.patch.object(up, "fetch_update",
                                   return_value=zip_path), \
+                mock.patch("core.service_manager.status",
+                           return_value="not_installed"), \
                 mock.patch("core.service_manager.is_installed",
                            return_value=False):
             srv._run_update_worker("portable", self.tag,

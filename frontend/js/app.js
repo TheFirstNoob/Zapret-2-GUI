@@ -416,17 +416,29 @@ if (start) start.addEventListener('click', () => TesterPage.startProbe());
   // или подготовить замену EXE → предложит перезапуск; после - проверка службы
   async runUpdate() {
     const btn = $('updateNowBtn');
+    const bar = $('updateProgress');
+    const fill = $('updateProgressFill');
+    const phase = $('updatePhase');
+    const hideProgress = () => {
+      if (bar) bar.hidden = true;
+      if (phase) phase.hidden = true;
+    };
     btn.disabled = true;
     btn.textContent = 'Обновление…';
+    if (bar) { bar.hidden = false; if (fill) fill.style.width = '0%'; }
+    if (phase) phase.hidden = false;
     try {
       await apiPost('/update/start', {});
       const pollId = setInterval(async () => {
         try {
           const st = await apiGet('/update/status');
+          if (fill) fill.style.width = (st.percent || 0) + '%';
+          if (phase) phase.textContent = st.phase || '';
           btn.textContent = `${st.phase || '…'} ${st.percent ? st.percent + '%' : ''}`.trim();
           if (st.running) return;
           clearInterval(pollId);
           if (st.error) {
+            hideProgress();
             showToast('Обновление не удалось: ' + st.error, 'error');
             btn.disabled = false;
             btn.textContent = 'Повторить обновление';
@@ -436,7 +448,11 @@ if (start) start.addEventListener('click', () => TesterPage.startProbe());
           // Баннер НЕ скрываем заранее: при ошибке на нём живёт кнопка
           // «Повторить обновление», а при service_mismatch - «Переустановить
           // службу» (аудит 2026-10: кнопка пряталась вместе с баннером).
-          if (res.update_bat) {
+          // update_bat (exe) и restart_bat (portable) - оба автозапуском:
+          // «как в стиме»: файлы применены, прога закрывается и стартует сама.
+          if (res.update_bat || res.restart_bat) {
+            if (fill) fill.style.width = '100%';
+            if (phase) phase.textContent = 'Применено - перезапуск…';
             btn.disabled = true;
             btn.textContent = 'Перезапуск…';
             try {
@@ -446,6 +462,7 @@ if (start) start.addEventListener('click', () => TesterPage.startProbe());
               showToast(ap.message || 'Программа перезапускается', 'ok');
               Activity.set('main', 'Обновление: программа перезапускается');
             } catch (e) {
+              hideProgress();
               showToast('Обновление скачано, но перезапуск не выполнен: '
                         + (e.message || e), 'error');
               btn.disabled = false;
@@ -454,22 +471,26 @@ if (start) start.addEventListener('click', () => TesterPage.startProbe());
             return;
           }
           if (res.service_mismatch) {
+            hideProgress();
             showToast('Обновление проверено по подписи и применено. Служба стоит на старой конфигурации - переустановите её кнопкой ниже', 'warn');
             btn.disabled = false;
             btn.textContent = 'Переустановить службу';
             this._updateStage = 'service';
           } else {
+            hideProgress();
             $('updateBanner').hidden = true;
             showToast('Обновление проверено по подписи и применено - перезапустите программу', 'ok');
             setTimeout(() => { location.reload(); }, 1500);
           }
         } catch (e) {
           clearInterval(pollId);
+          hideProgress();
           btn.disabled = false;
           btn.textContent = 'Повторить';
         }
       }, 1000);
     } catch (e) {
+      hideProgress();
       showToast('Обновление не запустилось: ' + (e.message || e), 'error');
       btn.disabled = false;
       btn.textContent = 'Обновить сейчас';

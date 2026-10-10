@@ -229,12 +229,23 @@ details.panel[open] > .param-rows { border-top: 1px solid var(--divider); }
   padding: 6px 16px;
   background: var(--upd-bg); color: var(--upd-text);
   font-size: 12.5px;
+  position: relative;
 }
 .banner[hidden] { display: none; }
 .banner a { color: var(--upd-link); font-weight: 600; }
 .banner-x {
   margin-left: auto; background: none; border: none;
   color: inherit; font-size: 16px; cursor: pointer;
+}
+.banner-phase { opacity: .75; font-size: 12px; }
+.banner-progress {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 3px;
+  background: rgba(255, 255, 255, .12);
+}
+.banner-progress[hidden] { display: none; }
+.banner-progress-fill {
+  height: 100%; width: 0; background: var(--upd-link);
+  transition: width .3s ease;
 }
 
 .topbar {
