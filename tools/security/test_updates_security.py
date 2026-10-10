@@ -175,6 +175,54 @@ class TestReleaseManifest(unittest.TestCase):
         self.assertIn("exe", (err or "").lower())
 
 
+class TestAssetNames(unittest.TestCase):
+    """0.10+: pretty-имена ассетов; каноническое - запасной путь. Зеркало
+    jsDelivr всегда каноническое (в git файлы не переименовываются)."""
+
+    def test_download_url_pretty_first(self):
+        primary, mirror = up.download_url("exe", "Pre-Release-0.10")
+        self.assertTrue(primary[0].endswith("Zapret2GUI-Full-PyInstaller.zip"))
+        self.assertTrue(primary[1].endswith("Zapret2GUI.zip"))
+        self.assertIn("Windows%20build/Zapret2GUI.zip", mirror)
+        self.assertNotIn("Full-PyInstaller", mirror)
+
+    def test_fetch_update_tries_pretty_then_canonical(self):
+        calls = []
+        payload = b"zip-bytes"
+
+        def fake_download(url, dest, timeout=300):
+            calls.append(url)
+            if "Full-PyInstaller" in url:
+                raise RuntimeError("HTTP 404")
+            dest.write_bytes(payload)
+
+        with tempfile.TemporaryDirectory() as td, \
+                mock.patch.object(up, "_download", side_effect=fake_download):
+            p = up.fetch_update("exe", "Pre-Release-0.10", Path(td),
+                                sha256_expected=_sha256(payload))
+            self.assertTrue(p.is_file())
+        self.assertEqual(len(calls), 2)
+        self.assertIn("Full-PyInstaller", calls[0])
+        self.assertIn("releases/download", calls[1])
+        self.assertTrue(calls[1].endswith("Zapret2GUI.zip"))
+
+    def test_fetch_update_falls_back_to_mirror_on_bad_hash(self):
+        calls = []
+        good = b"good-zip"
+
+        def fake_download(url, dest, timeout=300):
+            calls.append(url)
+            dest.write_bytes(b"corrupt" if "github.com" in url else good)
+
+        with tempfile.TemporaryDirectory() as td, \
+                mock.patch.object(up, "_download", side_effect=fake_download):
+            p = up.fetch_update("portable", "Pre-Release-0.10", Path(td),
+                                sha256_expected=_sha256(good))
+            self.assertTrue(p.is_file())
+        self.assertEqual(len(calls), 3)  # pretty, canonical, зеркало
+        self.assertIn("jsdelivr", calls[-1])
+
+
 def _sha256(data: bytes) -> str:
     import hashlib
     return hashlib.sha256(data).hexdigest()

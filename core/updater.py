@@ -83,17 +83,34 @@ def is_user_file(rel: str) -> bool:
     return False
 
 
-def download_url(kind: str, tag: str) -> tuple[str, str]:
-    """(primary, mirror) URL архива для kind: 'exe'|'portable'|'lite'."""
+# Человекочитаемые имена релизных ассетов (0.10+, решение 2026-10-01):
+# на GitHub Release прикрепляются ОБА имени - pretty (для людей) и
+# каноническое (совместимость: клиенты 0.9.x знают только его). В git
+# (`Windows build/`) имена ВСЕГДА канонические: переименование ломает
+# jsDelivr-зеркало у старых версий.
+_PRETTY_NAMES = {
+    "exe": "Zapret2GUI-Full-PyInstaller.zip",
+    "portable": "Zapret2GUI-portable-Recommended.zip",
+    "lite": "Zapret2GUI-lite-CMD.zip",
+}
+
+
+def download_url(kind: str, tag: str) -> tuple[list[str], str]:
+    """(primary-кандидаты по порядку, mirror) URL архива для kind.
+
+    Primary: pretty-имя, затем каноническое (404 на отсутствующем имени не
+    ломает обновление). Зеркало jsDelivr - только каноническое имя."""
     fname = {
         "exe": "Zapret2GUI.zip",
         "portable": "Zapret2GUI-portable.zip",
         "lite": "Zapret2GUI-lite.zip",
     }[kind]
-    gh = f"https://github.com/{_REPO}/releases/download/{tag}/{fname}"
+    gh_base = f"https://github.com/{_REPO}/releases/download/{tag}/"
+    primary = [gh_base + n for n in dict.fromkeys(
+        (_PRETTY_NAMES[kind], fname))]
     mirror = (f"https://cdn.jsdelivr.net/gh/{_REPO}@{tag}/"
               f"Windows%20build/{fname}")
-    return gh, mirror
+    return primary, mirror
 
 
 MANIFEST_NAME = "release.json"
@@ -173,7 +190,7 @@ def fetch_update(kind: str, tag: str, dest_dir: Path,
     dest = dest_dir / f"update_{kind}.zip"
     primary, mirror = download_url(kind, tag)
     last_err = ""
-    for url in (primary, mirror):
+    for url in [*primary, mirror]:
         try:
             _download(url, dest)
             got = _sha256(dest)
