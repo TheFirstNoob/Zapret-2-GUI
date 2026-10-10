@@ -609,7 +609,7 @@ const MainPage = {
     $('btnZ1SaveDir').addEventListener('click', () => this.saveZ1Dir());
     $('btnZ1Toggle').addEventListener('click', () => this.toggleZ1());
     $('updateBannerClose').addEventListener('click', () => { $('updateBanner').hidden = true; });
-    $('updateNowBtn').addEventListener('click', () => this._onUpdateBtn());
+    $('updateNowBtn').addEventListener('click', () => App._onUpdateBtn());
 
     ['toggleGameFilter', 'toggleAutoHostlist', 'toggleIpFilter',
       'toggleDiscordVoice', 'toggleDiscordAlt', 'toggleWinws2Debug', 'fakeBlobSelect'].forEach(id => {

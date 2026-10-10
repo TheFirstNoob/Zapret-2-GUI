@@ -48,6 +48,44 @@ def _cleanup_stale_mei() -> None:
         pass
 
 
+def _strip_portable_motw() -> None:
+    """Portable из скачанного браузером zip: Explorer помечает файлы
+    Mark-of-the-Web, и .NET Framework отказывается грузить такие сборки -
+    pythonnet падает, интерфейс сообщает про «нет WebView2» (репро:
+    Downloads + распакованный zip, 2026-10). Снимаем метку со всего дерева
+    portable при первом запуске. Обычная проверка - два сентинела
+    (pythonnet/webview); если метки нет, дальше двух `exists` дело не идёт.
+    Системный Python и exe-сборка не затрагиваются."""
+    try:
+        exe_dir = Path(sys.executable).resolve().parent
+        if exe_dir.name.lower() != "python":
+            return  # интерпретатор не наш embeddable-рантайм
+        root = exe_dir.parent
+        site = exe_dir / "Lib" / "site-packages"
+        sentinels = (
+            site / "pythonnet" / "runtime" / "Python.Runtime.dll",
+            site / "webview" / "lib" / "Microsoft.Web.WebView2.Core.dll",
+        )
+        if not any(os.path.exists(str(s) + ":Zone.Identifier")
+                   for s in sentinels):
+            return
+        removed = 0
+        for p in root.rglob("*"):
+            try:
+                if p.is_file():
+                    os.remove(str(p) + ":Zone.Identifier")
+                    removed += 1
+            except OSError:
+                pass
+        _applog("motw", f"portable: снят Mark-of-the-Web "
+                        f"(файлов: {removed}, root={root})")
+    except Exception as e:  # noqa: BLE001 - диагностика не роняет старт
+        try:
+            _applog("motw", f"strip не удался: {e!r}")
+        except Exception:
+            pass
+
+
 def _warn_if_bad_path(exe_dir: Path) -> bool:
     """True, если путь установки безопасен для winws2.
 
@@ -365,6 +403,7 @@ def main_gui() -> None:
         return
 
     _cleanup_stale_mei()
+    _strip_portable_motw()
 
     try:
         import webview
