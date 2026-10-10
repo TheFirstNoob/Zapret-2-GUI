@@ -128,8 +128,7 @@ def _check_windivert_files(root_dir: Path) -> Check:
     открывается: «windivert: error opening filter: file not found»
     (кейс друга 2026-09-13)."""
     bin_dir = root_dir / "bin"
-    missing = [f for f in ("winws2.exe", "WinDivert64.sys", "WinDivert.dll",
-                           "WinDivert64.sys")
+    missing = [f for f in ("winws2.exe", "WinDivert64.sys", "WinDivert.dll")
                if not (bin_dir / f).exists()]
     if missing:
         return Check("windivert_files", "Файлы WinDivert", "fail",

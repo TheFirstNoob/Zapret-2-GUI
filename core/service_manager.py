@@ -326,21 +326,27 @@ def _win32_delete_service() -> tuple[bool, str]:
 
 
 def _winws_running() -> bool:
-    r = subprocess.run(
-        ["tasklist", "/FI", "IMAGENAME eq winws.exe"],
-        capture_output=True, text=True, encoding="oem", errors="replace", timeout=10,
-        creationflags=subprocess.CREATE_NO_WINDOW,
-    )
+    try:
+        r = subprocess.run(
+            ["tasklist", "/FI", "IMAGENAME eq winws.exe"],
+            capture_output=True, text=True, encoding="oem", errors="replace", timeout=10,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return False  # подвисший tasklist не должен ронять install/remove (аудит 2026-10)
     return "winws.exe" in r.stdout and "No tasks" not in r.stdout
 
 
 def _winws2_running() -> bool:
     """winws2.exe ещё жив? (tasklist без локале-зависимых строк: ищем имя)."""
-    r = subprocess.run(
-        ["tasklist", "/FI", "IMAGENAME eq winws2.exe"],
-        capture_output=True, text=True, encoding="oem", errors="replace", timeout=10,
-        creationflags=subprocess.CREATE_NO_WINDOW,
-    )
+    try:
+        r = subprocess.run(
+            ["tasklist", "/FI", "IMAGENAME eq winws2.exe"],
+            capture_output=True, text=True, encoding="oem", errors="replace", timeout=10,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return False  # см. _winws_running
     return "winws2.exe" in r.stdout
 
 
@@ -387,17 +393,50 @@ def zapret1_cleanup() -> tuple[bool, str]:
 
 @_serialized
 def repair(root_dir: Optional[Path] = None) -> dict:
-    """Починить службу драйвера WinDivert (repair ImagePath / включить
-    disabled) и сообщить о конфликте с Zapret 1. Без удаления чужих служб."""
+    """Починить/выгрузить зависший WinDivert и сообщить о конфликте с Zapret 1.
+
+    Немедленный путь (кейс автора): служба zapret2 и winws2 держат драйвер -
+    останавливаем их, затем sc stop WinDivert выгружает драйвер, и отложенное
+    удаление/занятые файлы bin/ освобождаются БЕЗ перезагрузки. Служба, если
+    была запущена, поднимается обратно. В ответе - перепроверка (resolved)."""
+    from core.utils import (fix_stale_windivert_services,
+                            windivert_emergency_unload, windivert_delete_flag,
+                            windivert_service_state)
     actions: list[str] = []
+    was_installed = is_installed()
+    was_running = False
+    if was_installed:
+        try:
+            was_running = status() == "running"
+        except Exception:  # noqa: BLE001
+            was_running = False
+    pause_recovery()  # не даём SCM поднять winws2 посреди починки
     try:
-        from core.utils import fix_stale_windivert_services
+        if was_running:
+            _sc(["stop", SERVICE_NAME])
+            actions.append("служба zapret2 остановлена")
+        if _winws2_running() and _taskkill_winws2():
+            actions.append("winws2.exe остановлен (драйвер освобождён)")
         actions += fix_stale_windivert_services(root_dir)
-    except Exception as e:
+        if _winws_running():
+            actions.append("Zapret 1 (winws.exe) запущен - драйвер не трогаю")
+        else:
+            actions += windivert_emergency_unload()
+    except Exception as e:  # noqa: BLE001
         actions.append(f"ошибка починки драйвера: {e}")
+    finally:
+        resume_recovery()
+    if was_installed and was_running:
+        ok_s, msg_s = start(None)
+        actions.append("служба zapret2 запущена заново" if ok_s
+                       else f"служба zapret2 не запустилась: {msg_s}")
+    state = windivert_service_state()
+    stuck = windivert_delete_flag("WinDivert") == 1 or (
+        state is not None and state[1] == 4)
     return {
         "actions": actions,
-        "reboot_required": any("перезагруз" in a for a in actions),
+        "reboot_required": stuck,
+        "resolved": not stuck,
         "zapret1": _zapret1_conflict(),
     }
 

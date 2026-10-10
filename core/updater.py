@@ -78,8 +78,8 @@ def is_user_file(rel: str) -> bool:
         return True  # сгенерированные CIDR-файлы игровых блокировок
     if p.parts[:1] == ("presets",) and p.name.endswith(".txt"):
         stem = p.stem
-        if stem not in RELEASE_PRESETS and stem not in USER_PRESET_IGNORE:
-            return True  # юзерский пресет (не из release-набора)
+        if stem not in RELEASE_PRESETS:
+            return True  # юзерский/генерируемый (custom) пресет - не трогаем
     return False
 
 
@@ -172,19 +172,20 @@ def fetch_update(kind: str, tag: str, dest_dir: Path,
         raise RuntimeError("контрольная сумма обновления не подтверждена")
     dest = dest_dir / f"update_{kind}.zip"
     primary, mirror = download_url(kind, tag)
+    last_err = ""
     for url in (primary, mirror):
         try:
             _download(url, dest)
-            break
-        except Exception:
-            continue
-    else:
-        raise RuntimeError("не удалось скачать обновление (GitHub и зеркало)")
-    got = _sha256(dest)
-    if got != sha256_expected:
+            got = _sha256(dest)
+            if got == sha256_expected:
+                return dest
+            # Хеш не совпал (обрыв/битый кэш CDN) - пробуем зеркало, а не
+            # падаем сразу: зеркало ровно для таких сетей и делалось (аудит)
+            last_err = f"SHA256 не совпал ({got[:16]}…)"
+        except Exception as e:  # noqa: BLE001
+            last_err = str(e)
         dest.unlink(missing_ok=True)
-        raise RuntimeError(f"SHA256 скачанного файла не совпал ({got[:16]}…)")
-    return dest
+    raise RuntimeError(f"не удалось скачать обновление (GitHub и зеркало): {last_err}")
 
 
 def _backup_user_files(root_dir: Path, old_version: str) -> Optional[Path]:
@@ -292,6 +293,7 @@ def apply_portable(zip_path: Path, root_dir: Path,
 
     updated = 0
     skipped_user = 0
+    skipped_nonapp = 0
     with zipfile.ZipFile(zip_path) as zf:
         names = zf.namelist()
         # portable-архив кладёт код в app/, lite - в корне архива
@@ -319,6 +321,13 @@ def apply_portable(zip_path: Path, root_dir: Path,
                 rel = info.filename
                 if prefix and rel.startswith(prefix):
                     rel = rel[len(prefix):]
+                elif prefix:
+                    # portable-архив: всё вне app/ (python/, install.cmd,
+                    # bat-обёртки) - каркас portable, обновляется только
+                    # полной распаковкой; в app/ это копировать нельзя
+                    # (раньше рантайм дублировался в app/python - аудит 2026-10)
+                    skipped_nonapp += 1
+                    continue
                 if not rel or rel == "update_manifest.json":
                     continue
                 parts = Path(rel).parts
@@ -349,6 +358,7 @@ def apply_portable(zip_path: Path, root_dir: Path,
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
     return {"updated": updated, "skipped_user": skipped_user,
+            "skipped_nonapp": skipped_nonapp,
             "backup": str(backup) if backup else None}
 
 

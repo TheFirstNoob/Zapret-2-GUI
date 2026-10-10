@@ -177,6 +177,58 @@ def windivert_service_state() -> Optional[tuple[str, int]]:
         return None
 
 
+def windivert_delete_flag(name: str = "WinDivert") -> int:
+    """DeleteFlag службы драйвера: 1 - помечена на удаление, 0 - нет,
+    -1 - службы нет. «Помечена» = отложенное удаление ждёт выгрузки драйвера
+    (кейс «bin не заменяется, просит перезагрузку»)."""
+    import winreg
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
+                            rf"SYSTEM\CurrentControlSet\Services\{name}") as sk:
+            try:
+                return int(winreg.QueryValueEx(sk, "DeleteFlag")[0])
+            except OSError:
+                return 0
+    except OSError:
+        return -1
+
+
+def _windivert_unload_now(name: str) -> bool:
+    """sc stop + ожидание выгрузки драйвера. True - очищено без перезагрузки.
+
+    Пока драйвер загружен (его держит winws2/winws), «marked for deletion»
+    не завершается и bin-файлы заняты; stop выгружает драйвер - отложенное
+    удаление после этого завершается само (проверено автором руками)."""
+    import time as _time
+    run_sc(["stop", name])
+    for _ in range(10):
+        _time.sleep(0.4)
+        flag = windivert_delete_flag(name)
+        if flag == -1:
+            return True
+        if flag == 0 and not any(n.lower() == name.lower()
+                                 for n, _i in stale_windivert_services()):
+            return True
+    return False
+
+
+def windivert_emergency_unload(names: Optional[list[str]] = None) -> list[str]:
+    """Немедленная выгрузка зависшего WinDivert (действие кнопки «Починить»).
+
+    Вызывать ПОСЛЕ остановки winws2/winws - иначе драйвер занят и stop не
+    поможет. Возвращает список действий для лога/диагностики."""
+    actions: list[str] = []
+    for name in (names or ["WinDivert"]):
+        flag = windivert_delete_flag(name)
+        if flag == -1:
+            continue
+        if _windivert_unload_now(name):
+            actions.append(f"{name}: выгружен (stop, без перезагрузки)")
+        else:
+            actions.append(f"{name}: драйвер занят - stop не помог")
+    return actions
+
+
 def fix_stale_windivert_services(root_dir: Optional[Path] = None) -> list[str]:
     """Починить службу драйвера WinDivert (кейс друга 2026-09-13).
 
@@ -200,7 +252,13 @@ def fix_stale_windivert_services(root_dir: Optional[Path] = None) -> list[str]:
                 actions.append(f"{name}: ImagePath перезаписан на {local_sys}")
                 continue
             if _is_marked_for_delete(out):
-                actions.append(f"{name}: помечена на удаление - нужна перезагрузка")
+                if winws2_busy:
+                    actions.append(f"{name}: помечена на удаление (winws2 запущен) - "
+                                   "остановите обход и нажмите «Починить»")
+                elif _windivert_unload_now(name):
+                    actions.append(f"{name}: очищена stop'ом без перезагрузки")
+                else:
+                    actions.append(f"{name}: помечена на удаление - нужна перезагрузка")
                 continue
             actions.append(f"{name}: repair не удался - {out.strip()[:100]}")
         if is_main and winws2_busy:
@@ -211,7 +269,10 @@ def fix_stale_windivert_services(root_dir: Optional[Path] = None) -> list[str]:
         if code == 0:
             actions.append(f"{name}: удалена (драйвер пересоздастся сам)")
         elif _is_marked_for_delete(out):
-            actions.append(f"{name}: помечена на удаление - нужна перезагрузка")
+            if _windivert_unload_now(name):
+                actions.append(f"{name}: очищена stop'ом без перезагрузки")
+            else:
+                actions.append(f"{name}: помечена на удаление - нужна перезагрузка")
         else:
             actions.append(f"{name}: удаление не удалось - {out.strip()[:100]}")
 
@@ -222,7 +283,10 @@ def fix_stale_windivert_services(root_dir: Optional[Path] = None) -> list[str]:
         if code == 0:
             actions.append("WinDivert: включена (start= demand)")
         elif _is_marked_for_delete(out):
-            actions.append("WinDivert: отключена и помечена на удаление - нужна перезагрузка")
+            if _windivert_unload_now("WinDivert"):
+                actions.append("WinDivert: очищена stop'ом без перезагрузки")
+            else:
+                actions.append("WinDivert: отключена и помечена на удаление - нужна перезагрузка")
         else:
             actions.append(f"WinDivert: включить не удалось - {out.strip()[:100]}")
     return actions

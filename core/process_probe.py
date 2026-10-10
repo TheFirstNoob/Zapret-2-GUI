@@ -533,7 +533,7 @@ class ProcessProbe:
                     and not self._stop_flag.is_set():
                 tcp = _tcp_snapshot(pids)
                 udp = _udp_snapshot(pids)
-                if any(":" in k.split(":", 1)[0] for k in list(tcp) + list(udp)):
+                if any(":" in k.rsplit(":", 1)[0] for k in list(tcp) + list(udp)):
                     ipv6 = True
                 elapsed = int(time.time() - start)
                 if time.time() - last_dns >= 5:

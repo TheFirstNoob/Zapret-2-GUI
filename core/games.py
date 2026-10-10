@@ -179,19 +179,12 @@ def _backfill_process(data: dict) -> None:
 
 
 def save_games(root: Path, data: dict) -> bool:
-    """Атомарная запись games.json."""
+    """Атомарная запись games.json (уникальное temp-имя - аудит 2026-10)."""
     path = _games_path(root)
     try:
-        tmp = path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False),
-                       encoding="utf-8")
-        os.replace(tmp, path)
+        atomic_write_text(path, json.dumps(data, indent=2, ensure_ascii=False))
         return True
     except OSError:
-        try:
-            tmp.unlink(missing_ok=True)
-        except OSError:
-            pass
         return False
 
 
@@ -209,7 +202,12 @@ def enabled_domains(data: dict) -> list[str]:
 
 
 def enabled_udp_rules(data: dict) -> list[dict]:
-    """Активные UDP-правила включённых игр (с валидацией портов/CIDR)."""
+    """Активные UDP-правила включённых игр (с валидацией портов/CIDR).
+
+    games.json - пользовательский файл: мусор от ручной правки (repeats
+    строкой, cidrs строкой) не должен ронять старт обхода ValueError'ом
+    (аудит 2026-10: /api/start падал с 500 на int('abc'))."""
+    import ipaddress
     out: list[dict] = []
     for game in data.get("games", []):
         if not game.get("enabled"):
@@ -218,18 +216,38 @@ def enabled_udp_rules(data: dict) -> list[dict]:
             if not rule.get("on"):
                 continue
             ports = str(rule.get("ports") or "").strip()
-            cidrs = [str(c).strip() for c in rule.get("cidrs", [])
-                     if str(c).strip()]
+            raw_cidrs = rule.get("cidrs") or []
+            if isinstance(raw_cidrs, str):
+                # ручная правка строкой: "10.0.0.0/24, 10.0.1.0/24"
+                raw_cidrs = [c for c in re.split(r"[\s,;]+", raw_cidrs) if c]
+            cidrs: list[str] = []
+            for c in raw_cidrs:
+                c = str(c).strip()
+                if not c:
+                    continue
+                try:
+                    ipaddress.ip_network(c, strict=False)
+                except ValueError:
+                    continue  # не-CIDR из правленого руками файла - пропуск
+                cidrs.append(c)
             # подсети могут быть пустыми: правило «широкое» (весь порт)
             if not ports:
                 continue
+            try:
+                repeats = int(rule.get("repeats") or DEFAULT_REPEATS)
+            except (TypeError, ValueError):
+                repeats = DEFAULT_REPEATS
+            try:
+                cutoff = int(rule.get("cutoff") or DEFAULT_CUTOFF)
+            except (TypeError, ValueError):
+                cutoff = DEFAULT_CUTOFF
             out.append({
                 "id": str(game.get("id") or "game"),
                 "game": str(game.get("name") or game.get("id") or ""),
                 "ports": ports,
                 "cidrs": cidrs,
-                "repeats": int(rule.get("repeats") or DEFAULT_REPEATS),
-                "cutoff": int(rule.get("cutoff") or DEFAULT_CUTOFF),
+                "repeats": repeats,
+                "cutoff": cutoff,
             })
     return out
 

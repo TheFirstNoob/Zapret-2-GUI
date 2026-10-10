@@ -44,7 +44,7 @@ def main() -> None:
             elif "Disconnected from RTC" in line or "VOICE_DISCONNECT" in line:
                 tsm = TS.search(line)
                 if tsm:
-                    disconnects.append(tsm.group(1) + "  " + line[m.end():].strip()[:110])
+                    disconnects.append(tsm.group(1) + "  " + line[tsm.end():].strip()[:110])
             continue
         tsm = TS.search(line)
         if not tsm:

@@ -433,15 +433,16 @@ if (start) start.addEventListener('click', () => TesterPage.startProbe());
             return;
           }
           const res = st.result || {};
-          $('updateBanner').hidden = true;
-          // EXE-сборка: замена подготовлена, но сам exe заменит батник -
-          // запускаем его отдельным запросом (он переживёт наш процесс).
+          // Баннер НЕ скрываем заранее: при ошибке на нём живёт кнопка
+          // «Повторить обновление», а при service_mismatch - «Переустановить
+          // службу» (аудит 2026-10: кнопка пряталась вместе с баннером).
           if (res.update_bat) {
             btn.disabled = true;
             btn.textContent = 'Перезапуск…';
             try {
               const ap = await apiPost('/update/apply', {});
               if (ap.status !== 'ok') throw new Error(ap.message || 'ошибка');
+              $('updateBanner').hidden = true;
               showToast(ap.message || 'Программа перезапускается', 'ok');
               Activity.set('main', 'Обновление: программа перезапускается');
             } catch (e) {
@@ -453,11 +454,12 @@ if (start) start.addEventListener('click', () => TesterPage.startProbe());
             return;
           }
           if (res.service_mismatch) {
-            showToast('Обновление проверено по подписи и применено. Служба стоит на старой конфигурации - переустановите её кнопкой', 'warn');
+            showToast('Обновление проверено по подписи и применено. Служба стоит на старой конфигурации - переустановите её кнопкой ниже', 'warn');
             btn.disabled = false;
             btn.textContent = 'Переустановить службу';
             this._updateStage = 'service';
           } else {
+            $('updateBanner').hidden = true;
             showToast('Обновление проверено по подписи и применено - перезапустите программу', 'ok');
             setTimeout(() => { location.reload(); }, 1500);
           }
@@ -712,8 +714,11 @@ const MainPage = {
         const sel = $('fakeBlobSelect');
         Activity.done('Подбор блоба завершён');
         showToast(`Лучший блоб: ${best.blob.replace(/_/g, '.')} (${best.rate}%)`, 'ok');
-        if (Array.from(sel.options).some(o => o.value === best.blob) && sel.value !== best.blob) {
-          sel.value = best.blob;
+        const opts = Array.from(sel.options);
+        const target = opts.some(o => o.value === best.blob) ? best.blob
+                     : ('blob_' + best.blob);
+        if (opts.some(o => o.value === target) && sel.value !== target) {
+          sel.value = target;
           this.saveToggles();
         }
       }
@@ -1001,9 +1006,12 @@ const MainPage = {
       if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
       const acts = r.actions || [];
       if (r.reboot_required) {
-        showToast('Нужна перезагрузка: ' + acts.join('; '), 'error');
+        showToast('Драйвер всё ещё занят: ' + acts.join('; ')
+                  + '. Если не отпустит - понадобится перезагрузка.', 'error');
+      } else if (r.resolved === false) {
+        showToast('Починено частично: ' + acts.join('; '), 'warn');
       } else if (acts.length) {
-        showToast('Починено: ' + acts.join('; '), 'ok');
+        showToast('Исправлено без перезагрузки: ' + acts.join('; '), 'ok');
       } else {
         showToast('Драйвер в порядке - проблем не найдено', 'ok');
       }
@@ -1047,7 +1055,12 @@ const MainPage = {
     if (!await this._configReady('сохранение настроек')) return;
     const t = this._collectToggles();
     try {
-      await apiPost('/config', t);
+      const r = await apiPost('/config', t);
+      if (r.status !== 'ok') {
+        // бэкенд отвечает {"status":"error"} с HTTP 200 (например, неизвестный
+        // блоб) - без проверки настройка молча не сохранялась (аудит 2026-10)
+        throw new Error(r.message || 'сервер отклонил настройки');
+      }
       // Без тоста на каждый чекбокс: факт «есть неприменённые изменения»
       // показывает кнопка «Перезапустить с новыми параметрами».
     } catch (e) {

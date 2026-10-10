@@ -74,6 +74,27 @@ def _warn_if_bad_path(exe_dir: Path) -> bool:
     return False
 
 
+def _copy_data_dir(src_dir: Path, dst_dir: Path, top: str) -> None:
+    """Копирует каталог данных сборки, НЕ затирая существующие user-файлы.
+
+    Юзер-файл (core.updater.is_user_file) копируется только если его ещё
+    нет: чистая установка получает шаблон, обновление версии сохраняет
+    пользовательские списки/пресеты/игры. Раньше copytree(dirs_exist_ok)
+    перезаписывал list-*-user/ipset-*-user пустышками из стейджинга сборки -
+    списки пользователя молча исчезали при каждом обновлении (аудит 2026-10).
+    """
+    from core.updater import is_user_file
+    for root_, _dirs, files in os.walk(src_dir):
+        rel_dir = Path(root_).relative_to(src_dir)
+        for fn in files:
+            rel = rel_dir / fn
+            target = dst_dir / rel
+            if target.exists() and is_user_file(f"{top}/{rel.as_posix()}"):
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(Path(root_) / fn, target)
+
+
 def _ensure_data_dir() -> Path:
     if not getattr(sys, "frozen", False):
         return Path(__file__).resolve().parent
@@ -81,9 +102,9 @@ def _ensure_data_dir() -> Path:
     exe_dir = Path(sys.executable).resolve().parent
     src = Path(sys._MEIPASS)
 
-    # Обновляем данные только при смене версии: правки пользователя в
-    # presets/lists переживают обычные запуски. copytree не удаляет лишние
-    # файлы - user-пресеты и *-user.txt в безопасности.
+    # Обновляем данные только при смене версии. user-файлы (списки/пресеты/
+    # игры) НЕ затираются: из бандла копируются только отсутствующие (см.
+    # _copy_data_dir; аудит 2026-10).
     marker = exe_dir / "data_version.txt"
     try:
         current = marker.read_text(encoding="utf-8").strip() if marker.exists() else ""
@@ -95,7 +116,7 @@ def _ensure_data_dir() -> Path:
         for d in _DATA_DIRS:
             target = exe_dir / d
             try:
-                shutil.copytree(src / d, target, dirs_exist_ok=True)
+                _copy_data_dir(src / d, target, d)
             except OSError as e:
                 # файл под локом AV/OneDrive - молчаливая смерть pythonw
                 # недопустима (M3): показываем причину и выходим чисто

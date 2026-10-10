@@ -204,6 +204,10 @@ def build_args_from_preset(
                 # Несколько exclude коллекций поддерживаются (ipset.c
                 # итерирует список); юзер-сети сильнее ipset-all.
                 tokens.append(f"--ipset-exclude={ipset_excl_path}")
+            if autohostlist:
+                # catch-all заменяет hostlist на ipset, но --hostlist-auto
+                # должен остаться: иначе тумблер молча холостой (аудит 2026-10)
+                tokens.append(f"--hostlist-auto={auto_path}")
             continue
         if "@lists/" in line:
             line = line.replace("@lists/", str(short_lists) + "\\")
@@ -226,6 +230,10 @@ def build_args_from_preset(
     # и QUIC/HTTP блобы остаются родными.
     if fake_blob:
         alt_file = blobs_dir / f"tls_clienthello_{fake_blob}.bin"
+        if not alt_file.exists() and fake_blob.startswith("blob_"):
+            # цифро-ключи сервер отдаёт в селект как "blob_<key>" (имена с
+            # цифры winws2 не принимает) - резолвим алиас к реальному файлу
+            alt_file = blobs_dir / f"tls_clienthello_{fake_blob[5:]}.bin"
         if alt_file.exists():
             # имена --blob, чьи файлы - TLS clienthello (не quic/http)
             tls_blob_names = set()
@@ -347,7 +355,17 @@ def build_args_from_preset(
         tokens.append("-d10")
         tokens.append("--payload")
         tokens.append("tls_client_hello")
-        tokens.append("--lua-desync=fake:blob=google_tls:repeats=6")
+        # Выбранный fake_blob (секция «Fake blob selector» выше) должен
+        # применяться и здесь: сегмент добавляется ПОСЛЕ подмены, поэтому
+        # имя выбираем сами (аудит 2026-10: alt_tls не доходил до игрового TLS).
+        game_tls_blob = "google_tls"
+        if fake_blob:
+            _alt = blobs_dir / f"tls_clienthello_{fake_blob}.bin"
+            if not _alt.exists() and fake_blob.startswith("blob_"):
+                _alt = blobs_dir / f"tls_clienthello_{fake_blob[5:]}.bin"
+            if _alt.exists():
+                game_tls_blob = "alt_tls"
+        tokens.append(f"--lua-desync=fake:blob={game_tls_blob}:repeats=6")
     if game_filter_mode in ("udp", "both"):
         tokens.append("--new")
         tokens.append("--filter-udp=1024-65535")
@@ -357,14 +375,17 @@ def build_args_from_preset(
         # (игровой трафик) - без него тоггл «Игровые порты» был холостым
         tokens.append("--lua-desync=fake:blob=quic_google:repeats=10:payload=all")
     # ── Discord Voice: фикс UDP ──
-    # fake - стандартный блок; udplen - для пресетов без инлайн голосового
-    # блока (у default блок уже переписан трансформацией выше).
-    if voice_mode == "udplen":
+    # Отдельный сегмент добавляем ТОЛЬКО пресетам без инлайн-голосового
+    # блока: у релизных он уже есть (fake - как есть, udplen - переписан
+    # трансформацией выше), добавление давало дубль профиля (аудит 2026-10:
+    # 9 сегментов вместо 8).
+    has_inline_voice = any("19294-19344,50000-50100" in t for t in tokens)
+    if voice_mode == "udplen" and not has_inline_voice:
         tokens.append("--new")
         tokens.append("--filter-udp=19294-19344,50000-50100")
         tokens.append("--filter-l7=discord,stun")
         tokens.append("--lua-desync=udplen:increment=5:pattern=0xDEADBEEF")
-    elif voice_mode == "fake":
+    elif voice_mode == "fake" and not has_inline_voice:
         tokens.append("--new")
         tokens.append("--filter-udp=19294-19344,50000-50100")
         tokens.append("--filter-l7=discord,stun")
@@ -399,7 +420,8 @@ def build_args_from_preset(
                            f"quic_google:@{short_path(quic_blob)}"]
             else:
                 _applog("games", "UDP-пул: quic_google блоб не найден "
-                                 f"({quic_blob}) - сегменты игр без фейка")
+                                 f"({quic_blob}) - игровые сегменты пропущены")
+                game_rules = []
         # Группируем и по наличию подсетей: правила без CIDR идут «широким»
         # пулом без --ipset (весь трафик на порту - для ручных правил игр).
         groups: dict[tuple[int, int, bool], list[dict]] = {}

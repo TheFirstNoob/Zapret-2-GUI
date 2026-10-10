@@ -1317,19 +1317,18 @@ class Zapret2Tester:
         КАЖДОГО домена (fix/hard), пусто = проверка не состоялась."""
         result: dict[str, str] = {}
         inc_path = self.root_dir / "lists" / "ipset-include-user.txt"
-        saved = inc_path.read_text(encoding="utf-8") if inc_path.exists() else None
+        saved = (inc_path.read_text(encoding="utf-8", errors="replace")
+                 if inc_path.exists() else None)
         all_ips: set[str] = set()
         for d in domains:
             all_ips.update(self._resolve_ips(d))
         if not all_ips:
             return result
         try:
-            # атомарная запись (M5): смерть процесса посреди write_text
-            # затирала ipset-include-user.txt пробными IP навсегда
-            tmp = inc_path.with_suffix(".tmp")
-            tmp.write_text("\n".join(sorted(all_ips)) + "\n", encoding="utf-8")
-            import os as _os
-            _os.replace(tmp, inc_path)
+            # атомарная запись (M5) + публичный лок: смерть/гонка с GUI
+            # затирала ipset-include-user.txt пробными IP (аудит 2026-10)
+            from core import list_health as _lh
+            _lh.atomic_write_locked(inc_path, "\n".join(sorted(all_ips)) + "\n")
             if not self._run_profile("default", ipset_catchall=True):
                 return result
             if not self._any_winws2_running():
@@ -1353,7 +1352,8 @@ class Zapret2Tester:
                 except OSError:
                     pass
             else:
-                inc_path.write_text(saved, encoding="utf-8")
+                from core import list_health as _lh
+                _lh.atomic_write_locked(inc_path, saved)
 
     def _test_baseline(
         self,

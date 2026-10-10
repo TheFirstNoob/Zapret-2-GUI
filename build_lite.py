@@ -211,11 +211,12 @@ def main() -> None:
     # пул-файлы игр (lists/games/*) — рантайм конкретной машины
     shutil.rmtree(LITE / "lists" / "games", ignore_errors=True)
 
-    # манифест обновления
+    # манифест обновления пишется НИЖЕ, после генерации всех файлов
+    # (bat/тестер/VERSION/README): иначе манифест не совпадал с содержимым
+    # архива (аудит 2026-10)
     sys.path.insert(0, str(ROOT))
     from core.config import VERSION
     from core.updater import write_manifest
-    write_manifest(LITE, VERSION)
 
     # по одному start-<preset>.bat на стратегию (портативные %~dp0-пути)
     for pf in sorted((LITE / "presets").glob("*.txt")):
@@ -282,6 +283,7 @@ def main() -> None:
         sys.exit(1)
     print(f"OK: dry-run {checked} пресетов")
 
+    write_manifest(LITE, VERSION)
     zip_name = ROOT / "Windows build" / "Zapret2GUI-lite.zip"
     with zipfile.ZipFile(zip_name, "w", zipfile.ZIP_DEFLATED) as zf:
         for f in sorted(LITE.rglob("*")):

@@ -264,6 +264,7 @@ def _run_update_worker(kind: str, tag: str, info: dict) -> None:
                 discord_voice_mode=cfg.discord_voice_mode,
                 autohostlist=cfg.autohostlist,
                 ipset_catchall=cfg.ipset_catchall,
+                fake_blob=cfg.fake_blob,
                 discord_alt=cfg.discord_alt)
             stored = _read_stored_binpath()
             result["service_mismatch"] = service_args_stale(stored, new_args)
@@ -284,14 +285,6 @@ def _mk(dir_path: Path) -> Path:
     dir_path.mkdir(exist_ok=True)
     return dir_path
 
-# ── Состояние апдейтера (0.8) ───────────────────────────────
-_updater_state = {
-    "running": False,
-    "phase": "",
-    "percent": 0,
-    "error": None,
-    "result": None,   # {applied, backup, service_mismatch, restart_required}
-}
 
 
 # ── Хелперы ──────────────────────────────────────────────────
@@ -1070,7 +1063,7 @@ def _run_asn_scan() -> None:
             _kill_never_hang(["winws.exe", "winws2.exe"])
         results = _run_tester(lambda: tester.asn_scan(_make_progress_cb(state)))
         note = ""
-        if z2_was or svc_was:
+        if z2_was or z1_was or svc_was:
             note = _restore_protection_after_naked(z2_was, z1_was, state, svc_was)
         with state.lock:
             state.final_result = {"type": "asn_scan", "probes": results, "restored": note}
@@ -2081,13 +2074,11 @@ class ZapretHandler(BaseHTTPRequestHandler):
         if game is None:
             self._send_json({"status": "error", "message": "Игра не найдена"})
             return
-        results = []
-        for d in (game.get("domains") or []):
-            if not d.get("on"):
-                continue
-            host = str(d.get("domain") or "").strip()
-            if not host:
-                continue
+        hosts = [str(d.get("domain") or "").strip()
+                 for d in (game.get("domains") or []) if d.get("on")]
+        hosts = [h for h in hosts if h]
+
+        def _probe(host: str) -> dict:
             t0 = time.time()
             try:
                 r = _run_with_timeout(
@@ -2096,13 +2087,19 @@ class ZapretHandler(BaseHTTPRequestHandler):
                     timeout=12.0,
                 )
                 code = (r.stdout or "").strip()
-            except Exception:
+            except Exception:  # noqa: BLE001
                 code = "000"
             if not code:
                 code = "000"
-            results.append({"domain": host, "code": code,
-                            "ok": code not in ("000", "000000"),
-                            "elapsed": round(time.time() - t0, 2)})
+            return {"domain": host, "code": code,
+                    "ok": code not in ("000", "000000"),
+                    "elapsed": round(time.time() - t0, 2)}
+
+        # Параллельно: последовательные curl'ы (до 12 с на домен) не
+        # укладывались в клиентский таймаут 30 с уже на 4-5 доменах (аудит 2026-10)
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=5) as ex:
+            results = list(ex.map(_probe, hosts))
         self._send_json({"status": "ok", "results": results})
 
     def _handle_games_add_domain(self, data: dict) -> None:
@@ -2129,9 +2126,16 @@ class ZapretHandler(BaseHTTPRequestHandler):
         if "winws2_debug" in data: cfg.winws2_debug = bool(data["winws2_debug"])
         if "fake_blob" in data:
             fb = str(data["fake_blob"]).strip()
-            if fb and not (get_root_dir() / "blobs" / f"tls_clienthello_{fb}.bin").exists():
-                self._send_json({"status": "error", "message": f"неизвестный блоб: {fb}"})
-                return
+            if fb:
+                blobs_dir = get_root_dir() / "blobs"
+                alt = blobs_dir / f"tls_clienthello_{fb}.bin"
+                if not alt.exists() and fb.startswith("blob_"):
+                    # цифро-ключи селект отдаёт как "blob_<key>" - проверяем
+                    # и алиас, иначе выбор молча не сохранялся (аудит 2026-10)
+                    alt = blobs_dir / f"tls_clienthello_{fb[5:]}.bin"
+                if not alt.exists():
+                    self._send_json({"status": "error", "message": f"неизвестный блоб: {fb}"})
+                    return
             cfg.fake_blob = fb
         if "autohostlist" in data: cfg.autohostlist = bool(data["autohostlist"])
         if "ipset_catchall" in data: cfg.ipset_catchall = bool(data["ipset_catchall"])
@@ -2212,6 +2216,19 @@ class ZapretHandler(BaseHTTPRequestHandler):
         if z1["running"]:
             self._send_json({"status": "error", "message": "Zapret 1 (winws.exe) запущен. Остановите его перед запуском Zapret 2."})
             return
+        if svc_installed():
+            # Служба установлена - «Запустить» поднимает службу (её же
+            # binPath с актуальными аргументами), а не голый winws2: иначе
+            # после сервис-осведомлённого «Стоп» обход оставался ручным.
+            args, err = self._prepare_service_args(
+                data if isinstance(data, dict) else {})
+            if err:
+                self._send_json({"status": "error",
+                                 "message": f"Не удалось собрать аргументы службы: {err}"})
+                return
+            ok, msg = svc_start(args)
+            self._send_json({"status": "ok" if ok else "error", "message": msg})
+            return
         controller = get_controller()
         profile_name = data.get("profile", "")
         cfg = get_config_manager().load()
@@ -2232,6 +2249,21 @@ class ZapretHandler(BaseHTTPRequestHandler):
         busy = _checkers_busy()
         if busy:
             self._send_json({"status": "error", "message": busy})
+            return
+        if svc_installed():
+            # Служба установлена - «Стоп» обязан гасить именно её (sc stop),
+            # иначе SCM-recovery поднимет winws2 обратно через ~60 с, а
+            # рестарт с /start даст двойной захват (аудит 2026-10).
+            ok_s, msg_s = svc_stop()
+            if not ok_s:
+                self._send_json({"status": "error",
+                                 "message": f"Не удалось остановить службу: {msg_s}"})
+                return
+            get_controller().stop()
+            _kill_never_hang(["winws2.exe", "winws.exe"])
+            self._send_json({"status": "ok",
+                             "message": "Обход остановлен (служба zapret2 "
+                                        "остановлена до следующего запуска)"})
             return
         get_controller().stop()
         _kill_never_hang(["winws2.exe", "winws.exe"])
@@ -2773,12 +2805,21 @@ class ZapretHandler(BaseHTTPRequestHandler):
             return
         fname = entries[0][0] if entries else ""
         values = entries[0][1] if entries else []
-        if values:
-            path = get_root_dir() / "lists" / fname
-            with path.open("a", encoding="utf-8") as f:
-                f.write("\n".join(values) + "\n")
+        if not values:
+            self._send_json({"status": "ok",
+                             "message": msg or "Нечего применять - правки уже в списках"})
+            return
+        from core import list_health
+        list_health.append_lines(get_root_dir() / "lists" / fname, values)
+        ctrl = get_controller()
+        if not ctrl.status().running:
+            self._send_json({"status": "ok",
+                             "message": f"{domain}: правки записаны в {fname}. "
+                                        "Обход не был запущен - применится при "
+                                        "следующем запуске"})
+            return
         profile = cfg.last_profile or DEFAULT_PROFILE
-        ok, restart_msg = get_controller().start(
+        ok, restart_msg = ctrl.start(
             profile,
             game_filter_mode=cfg.game_filter_mode,
             discord_voice=cfg.discord_voice,
@@ -2854,9 +2895,8 @@ class ZapretHandler(BaseHTTPRequestHandler):
                 values = [v for v in values if v not in existing]
                 if not values:
                     continue
-                path = get_root_dir() / "lists" / fname
-                with path.open("a", encoding="utf-8") as f:
-                    f.write("\n".join(values) + "\n")
+                from core import list_health
+                list_health.append_lines(get_root_dir() / "lists" / fname, values)
                 written[fname] = values
         # После дедупа могло не остаться реальных записей - перезапуск не нужен.
         if not written:
@@ -2864,8 +2904,17 @@ class ZapretHandler(BaseHTTPRequestHandler):
                              "message": "Нечего применять - правки уже в списках",
                              "applied": [], "skipped": skipped})
             return
+        ctrl = get_controller()
+        if not ctrl.status().running:
+            files_touched = ", ".join(sorted(written))
+            self._send_json({"status": "ok",
+                             "message": f"Применено {len(applied)} правок "
+                                        f"({files_touched}). Обход не был запущен - "
+                                        "применится при следующем запуске",
+                             "applied": applied, "skipped": skipped})
+            return
         profile = cfg.last_profile or DEFAULT_PROFILE
-        restart_ok, restart_msg = get_controller().start(
+        restart_ok, restart_msg = ctrl.start(
             profile,
             game_filter_mode=cfg.game_filter_mode,
             discord_voice=cfg.discord_voice,

@@ -192,7 +192,8 @@ def _append_entry(path: Path, entry: str) -> None:
     содержимое было нечем.
     """
     try:
-        text = path.read_text(encoding="utf-8-sig") if path.exists() else ""
+        text = (path.read_text(encoding="utf-8-sig", errors="replace")
+                if path.exists() else "")
     except OSError:
         text = ""
     if text and not text.endswith("\n"):
@@ -252,6 +253,29 @@ def atomic_write_text(path: Path, text: str) -> None:
     часть стратегии.
     """
     _atomic_write(Path(path), text)
+
+
+def atomic_write_locked(path: Path, text: str) -> None:
+    """atomic_write_text под _LIST_LOCK: для «чужих» авторов того же файла
+    (например, тестер временно пишет ipset-include-user - аудит 2026-10)."""
+    with _LIST_LOCK:
+        _atomic_write(Path(path), text)
+
+
+def append_lines(path: Path, lines: list[str]) -> None:
+    """Атомарно дописать строки в конец файла (CDN-правки, «В обход» батчем).
+
+    Раньше server писал сырым open("a") вне лока: гонка с сохранением
+    списка из GUI теряла правку (аудит 2026-10)."""
+    with _LIST_LOCK:
+        try:
+            text = (path.read_text(encoding="utf-8-sig", errors="replace")
+                    if path.exists() else "")
+        except OSError:
+            text = ""
+        if text and not text.endswith("\n"):
+            text += "\n"
+        _atomic_write(path, text + "\n".join(lines) + "\n")
 
 
 def save_user_list(root: Path, filename: str, text: str) -> None:
