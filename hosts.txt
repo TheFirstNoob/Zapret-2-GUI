@@ -58,9 +58,9 @@
 193.233.112.67 api.jetbrains.ai
 193.233.112.68 api.spotify.com
 193.233.112.68 api.squareup.com
-# ! 2026-10-10: пул 87.228.47.x убит ТСПУ (RST/таймаут; DNS 111.88.96.54/55 отдаёт 0.0.0.0) - не полагаться, см. AI_DOCS/AGENTS.md
-87.228.47.204 auth0.openai.com
-87.228.47.204 cdn.platform.openai.com
+# ! 2026-10-10: пул 87.228.47.x убит ТСПУ (DNS 111.88.96.54/55 отдаёт 0.0.0.0); пины перевешены на воркер 193.233.112.68 (жив: gemini/openrouter/copilot/grok -> 200)
+193.233.112.68 auth0.openai.com
+193.233.112.68 cdn.platform.openai.com
 193.233.112.68 checkout.www.deepl.com
 193.233.112.68 claude.ai
 193.233.112.68 clearance.deepl.com
@@ -72,8 +72,8 @@
 193.233.112.68 pump.fun
 193.233.112.67 sydney.bing.com
 193.233.112.68 tria.ge
-87.228.47.204 videos.openai.com
-87.228.47.198 openrouter.ai
+193.233.112.68 videos.openai.com
+193.233.112.68 openrouter.ai
 193.233.112.68 voice-proxy.www.deepl.com
 193.233.112.68 web.archive.org
 193.233.112.68 www2.deepl.com
@@ -96,7 +96,7 @@
 193.233.112.68 api.imgur.com
 193.233.112.68 api.individual.githubcopilot.com
 193.233.112.68 api.manus.im
-87.228.47.204 api.openai.com
+193.233.112.68 api.openai.com
 193.233.112.68 api.trae.ai
 193.233.112.68 api.us.elevenlabs.io
 193.233.112.68 app.notion.com
@@ -111,7 +111,7 @@
 193.233.112.68 console.anthropic.com
 193.233.112.68 constellation.linear.app
 193.233.112.68 content-management-files.canva.com
-87.228.47.198 copilot.microsoft.com
+193.233.112.68 copilot.microsoft.com
 193.233.112.68 datalore.jetbrains.com
 193.233.112.68 deepl.com
 193.233.112.68 deezer.com
@@ -131,7 +131,7 @@
 193.233.112.68 gew1-dealer.spotify.com
 193.233.112.68 gew1-spclient.spotify.com
 193.233.112.68 gql.twitch.tv
-87.228.47.204 grok.com
+193.233.112.68 grok.com
 193.233.112.68 gtm.deepl.com
 193.233.112.68 guidedhacking.com
 193.233.112.67 images.pump.fun
@@ -217,8 +217,8 @@
 # =============================================================
 
 # --- 45.155.204.190 : Google AI geo (Gemini/AI Studio/NotebookLM) ---
-# ! 2026-10-10: 87.228.47.202 не отвечает (RST, пин мёртв) - см. AI_DOCS/AGENTS.md
-87.228.47.202 gemini.google.com
+# ! 2026-10-10: 87.228.47.x убит ТСПУ; пин перевешен на воркер 193.233.112.68 (gemini -> 200)
+193.233.112.68 gemini.google.com
 193.233.112.68 aistudio.google.com
 193.233.112.68 aisandbox-pa.googleapis.com
 193.233.112.68 generativelanguage.googleapis.com
