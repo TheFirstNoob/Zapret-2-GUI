@@ -1,5 +1,23 @@
 # Внешние материалы: tspu-docs + b4 (2026-09-10)
 
+## 0. Рабочие инструменты на Desktop (вне git, НЕ удалять — обкатанный пайплайн)
+
+`Desktop\Zapret 2 GUI\` (корень, не зеркало):
+- `Latest hosts.txt` — ИСХОДНИК hosts (загруженный набор) для build_hosts.
+- `build_hosts.py` — сборка финального hosts из исходника + GitHub-fix →
+  пишет системный hosts (атомарно, ctypes).
+- `probe_hosts.py` — живая проба всех записей hosts (curl-параллельно) →
+  список мёртвых.
+- `clean_hosts.py` — по списку мёртвых чистит repo `hosts.txt` (и систему).
+  Пайплайн: Latest hosts.txt → build_hosts → probe_hosts → clean_hosts →
+  синк repo hosts.txt. Аудит пинов 2026-10-10 делался родственным скриптом.
+- `zapret_test_final.py` — standalone-тестер (legacy, вне GUI).
+- `quic_initial_icloud_com.bin` — блоб-кандидат, в релизы НЕ входит.
+- `Analyze step1..3.md`, `Analyze AI sum.md` — исходники внешнего аудита
+  (разбор — REVIEW_VERDICT.md).
+- Клоны-референсы: `_dpi-detector-424/`, `dpi-checkers-dpich-v0.10.1/`,
+  `zapret-win-bundle-master/`, `zapret2-v1.0.2/` (база winws2/lua).
+
 Локальные клоны (НЕ в git репо, ссылки в README):
 - `_tspu-docs/` — github.com/DanielLavrushin/tspu-docs (архитектура ТСПУ)
 - `_b4/` — github.com/DanielLavrushin/b4 (Linux-обход DPI, Go)
