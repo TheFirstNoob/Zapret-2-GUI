@@ -57,6 +57,8 @@ leagueoflegends.com
 playvalorant.com
 faceit.com
 valve.net
+rf4game.com
+rf4game.ru
 marketplace.visualstudio.com
 gallery.vsassets.io
 gallerycdn.vsassets.io
