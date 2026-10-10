@@ -71,6 +71,10 @@ README_TXT = """Zapret 2 GUI - portable version (no packer, official Python runt
 архив) - делать ничего не нужно: программа снимает метку сама при первом
 запуске (иначе система блокирует часть компонентов интерфейса).
 
+Готовый файл hosts (пины GitHub/AI/Discord и т.п.) лежит в app\\hosts.txt:
+применяйте вручную, только если он вам нужен (ваши правки в lists\\presets
+он не затрагивает).
+
 Обновление версии: замените папку app\\ новыми файлами (сохраняются
 ваши правки в lists\\presets - просто не удаляйте их).
 """
@@ -112,6 +116,9 @@ def main() -> None:
     for d in COPY_DIRS:
         shutil.copytree(ROOT / d, APP / d)
     shutil.copy2(ROOT / "main.py", APP / "main.pyw")
+    # готовый hosts (пины GitHub/AI/Discord и т.п.) - в app/, чтобы апдейтер
+    # обновлял его вместе с кодом; применяется вручную
+    shutil.copy2(ROOT / "hosts.txt", APP / "hosts.txt")
     # экспериментальные пресеты и генерируемый custom не попадают в дистрибутив
     for p in list((APP / "presets").glob("*.txt")):
         if p.stem.startswith(("exp-", "cand-", "test-", "custom")):

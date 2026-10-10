@@ -16,6 +16,9 @@
       (raw + jsDelivr). Протухший файл = пользователи не увидят обновление.
 - [x] Ченджлог на рабочем столе дополнен и выверен.
 - [x] Пресеты/списки release-набора актуальны.
+- [x] `hosts.txt` актуален - он уезжает во все три сборки (exe-zip рядом
+      с exe, portable `app\hosts.txt` - обновляется апдейтером, lite
+      `hosts.txt` в корне).
 
 ## Сборка
 - [x] `python build.py` → exe + `Windows build/Zapret2GUI.zip` + .sha256

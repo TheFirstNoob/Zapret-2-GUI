@@ -260,6 +260,8 @@ def main() -> None:
     # лицензии: собственный код (MIT) + уведомления о сторонних компонентах
     shutil.copy2(ROOT / "LICENSE", LITE / "LICENSE.txt")
     shutil.copy2(ROOT / "THIRD_PARTY_NOTICES.md", LITE / "THIRD_PARTY_NOTICES.txt")
+    # готовый hosts (пины GitHub/AI/Discord и т.п.) - применяется вручную
+    shutil.copy2(ROOT / "hosts.txt", LITE / "hosts.txt")
 
     # Смоук-тест прямо в сборке: движок из архива должен принимать каждый
     # release-пресет (dry-run, драйвер не грузится). Лучше упасть на сборке,
