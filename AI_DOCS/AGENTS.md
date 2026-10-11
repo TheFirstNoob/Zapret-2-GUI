@@ -768,6 +768,13 @@ raw/objects/release-assets/private-user-images/gist/avatars* — стабиль�
   вместо 16 185 Б/стоп (прошлый вывод «только WARP» неверен; достаточно
   добавить в список). В релизный список не добавлен — это API, не сайт;
   при нужде юзер добавляет через GUI.
+- QUIC-пробы (2026-10-12, niquests+qh3, `tools/quic_probe.py`): впервые
+  измерен QUIC-путь под живым обходом — google/cloudflare/googlevideo
+  делают H2->H3-апгрейд и отвечают по HTTP/3 (204/200, быстрее H2); наш
+  QUIC-фейк H3 НЕ ломает. `www.youtube.com` в тестах падает не из-за QUIC,
+  а из-за спуфленного системного DNS (NameResolutionError); с DoH-резолвом
+  youtube/i.ytimg отвечают 200/204. Шиппинг QUIC-пробы в тестер — отдельное
+  решение (нативный qh3 => вес сборки/Defender).
 - `speech.platform.bing.com` (edge-tts, 2026-10-12): симптом на чужой сети —
   TCP:443 открыт, WSS-апгрейд флапает 403/ок. **В списки НЕЛЬЗЯ**: проба
   добавления в list-general ПРОВАЛЕНА — наш desync ЛОМАЕТ домен (curl 3/3
