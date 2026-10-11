@@ -792,6 +792,9 @@ raw/objects/release-assets/private-user-images/gist/avatars* — стабиль�
   LGPL-3.0/GPL-2.0. Альтернатива qh3 для QUIC-пробы — **aioquic** (BSD-3,
   ~2k★, чистый Python, но зависит от cryptography — вес примерно тот же).
   BlockCheck (ValdikSS) — АРХИВИРОВАН 28.07.2024 («not working»), не тащим.
+  Gakido — существует, но 0.2.0/sdist-only, h3=aioquic-обёртка, mkdocs в
+  рантайм-зависимостях — не наш вариант (разве что подсмотреть их
+  impersonation/ja3/profiles).
 - `speech.platform.bing.com` (edge-tts, 2026-10-12): симптом на чужой сети —
   TCP:443 открыт, WSS-апгрейд флапает 403/ок. **В списки НЕЛЬЗЯ**: проба
   добавления в list-general ПРОВАЛЕНА — наш desync ЛОМАЕТ домен (curl 3/3
