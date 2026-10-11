@@ -44,4 +44,3 @@ api.paimon.moe
 hf.space
 free-cdn.mitraai.xyz
 subnp.com
-speech.platform.bing.com
