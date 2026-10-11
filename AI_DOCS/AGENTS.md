@@ -793,8 +793,10 @@ raw/objects/release-assets/private-user-images/gist/avatars* — стабиль�
   ~2k★, чистый Python, но зависит от cryptography — вес примерно тот же).
   BlockCheck (ValdikSS) — АРХИВИРОВАН 28.07.2024 («not working»), не тащим.
   Gakido — существует, но 0.2.0/sdist-only, h3=aioquic-обёртка, mkdocs в
-  рантайм-зависимостях — не наш вариант (разве что подсмотреть их
-  impersonation/ja3/profiles).
+  рантайм-зависимостях — не наш вариант. Его native TLS (Go+uTLS,
+  byte-accurate JA4) — колёса только Linux/macOS; на Windows сборка с Go.
+  Тот же класс на Windows уже покрыт curl_cffi (проверен); эталон проверки
+  отпечатков — tls.peet.ws / tls.browserleaks.com.
 - `speech.platform.bing.com` (edge-tts, 2026-10-12): симптом на чужой сети —
   TCP:443 открыт, WSS-апгрейд флапает 403/ок. **В списки НЕЛЬЗЯ**: проба
   добавления в list-general ПРОВАЛЕНА — наш desync ЛОМАЕТ домен (curl 3/3
