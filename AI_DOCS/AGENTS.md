@@ -816,3 +816,12 @@ raw/objects/release-assets/private-user-images/gist/avatars* — стабиль�
   (только WARP), сайт openweathermap.org — тоже. **В списки НЕЛЬЗЯ**: desync
   их ломает (wttr/OWM/weatherapi падали таймаутами) — break-class; рабочий
   инструмент — hosts-пин. Пины лежат в `hosts.txt` с комментарием.
+- CurseForge/Minecraft (2026-10-12): у человека со старым «Запрет 1» не
+  качались сборки. Наш замер: **у нас всё живо** — DNS чист (sys=DoH),
+  `maven.minecraftforge.net` 200, `edge.forgecdn.net` 200, fabric meta/maven
+  200, Forge-инсталлер 5.97 МБ качается 1.7 МБ/с (mediafilez/media 403/404
+  = CloudFront без корня, не блок). В наши списки НЕ добавлять (не
+  блокируется). Вывод: ломает ИХ старый обход/списки — лечится обновлением
+  до 0.10 (или исключением `curseforge.com`/`forgecdn.net`/
+  `minecraftforge.net`/`fabricmc.net`/`overwolf.com` из их обхода;
+  IP-catch-all выключить — он десинкает CDN и рвёт большие загрузки).
