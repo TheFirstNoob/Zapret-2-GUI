@@ -837,6 +837,12 @@ raw/objects/release-assets/private-user-images/gist/avatars* — стабиль�
   на UDP (QUIC/игры) против наших 1; (4) `max_ru`/`stun2` блобы для
   general/fake-http/unknown; (5) `--ip-id=zero`; (6) any-protocol +
   cutoff=n4 для игр. Кандидаты на наши A/B (`tools/ab_candidate.py`): (2)/(3)/(4).
+  (4) Голос/стрим Discord на 50000+ (GCP): отдельный сегмент-эксперимент —
+  fake ВСЕХ `l7=discord,stun` пакетов (не только discovery) реальным
+  записанным UDP-блобом (аналог `ACTIVE_DISCORD_UDP.bin` — записать свой
+  через pktmon) + repeats 6-11; у Flowseal иного лекарства для 5000х нет.
+  Ожидание низкое (A/B показал блок IP-уровня), но их точную схему не
+  проверяли. План на 2026-10-12+ (см. VOICE_FLAP док).
 - Flowseal актуалии (сверка 2026-10-12, репо 34.6k★, последний push 01.10):
   ALT11-серия практически не изменилась (всё та же жёсткая fake+multisplit +
   always-ipset) — их ALT-пресеты способны рвать CDN (кейс CurseForge-друга).
