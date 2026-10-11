@@ -837,3 +837,12 @@ raw/objects/release-assets/private-user-images/gist/avatars* — стабиль�
   на UDP (QUIC/игры) против наших 1; (4) `max_ru`/`stun2` блобы для
   general/fake-http/unknown; (5) `--ip-id=zero`; (6) any-protocol +
   cutoff=n4 для игр. Кандидаты на наши A/B (`tools/ab_candidate.py`): (2)/(3)/(4).
+- Flowseal актуалии (сверка 2026-10-12, репо 34.6k★, последний push 01.10):
+  ALT11-серия практически не изменилась (всё та же жёсткая fake+multisplit +
+  always-ipset) — их ALT-пресеты способны рвать CDN (кейс CurseForge-друга).
+  **Их новый дефолт `general.bat` — мягкий: TCP ВЕЗДЕ multisplit БЕЗ fake**
+  (включая ipset-сегменты), fake только на UDP; блобы `4pda_to`; games UDP
+  repeats=12. В `list-exclude.txt` есть `minecraft.net`/`multimc.org`/`steam*`,
+  но НЕТ `curseforge/forgecdn/fabricmc/overwolf`; user-исключения они
+  уважают (list-exclude-user.txt). «Смена источника» (01.10) = переезд
+  источника их lists/hosts/ipset (`.service/`: hosts, ipset-service.txt 539КБ).
