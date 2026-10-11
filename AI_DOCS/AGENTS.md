@@ -825,3 +825,15 @@ raw/objects/release-assets/private-user-images/gist/avatars* — стабиль�
   до 0.10 (или исключением `curseforge.com`/`forgecdn.net`/
   `minecraftforge.net`/`fabricmc.net`/`overwolf.com` из их обхода;
   IP-catch-all выключить — он десинкает CDN и рвёт большие загрузки).
+- Референс «Запрет 1» (разбор пресета 2026-10-12, winws.exe-бандл):
+  магии под 50000+ НЕТ — порты только в `--wf-udp` (как у нас) + сегмент
+  `--filter-udp 19294-19344,50000-50100 --filter-l7=discord,stun` с fake
+  РЕАЛЬНЫМ записанным Discord-UDP (`ACTIVE_DISCORD_UDP.bin`), repeats=6.
+  Отличия их архитектуры от нашей: (1) **ipset-all сегменты ВСЕГДА**
+  (TCP 80/443/8443 + UDP 443, fake+multisplit) — потому их десинк может
+  рвать живые CDN (Cloudflare API + CloudFront-загрузки — вероятная причина
+  кейса CurseForge-манифеста); у нас ipset — только opt-in catchall;
+  (2) фейки реальными записанными payload'ами (`ACTIVE_*`); (3) repeats=10-11
+  на UDP (QUIC/игры) против наших 1; (4) `max_ru`/`stun2` блобы для
+  general/fake-http/unknown; (5) `--ip-id=zero`; (6) any-protocol +
+  cutoff=n4 для игр. Кандидаты на наши A/B (`tools/ab_candidate.py`): (2)/(3)/(4).
