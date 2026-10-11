@@ -808,3 +808,10 @@ raw/objects/release-assets/private-user-images/gist/avatars* — стабиль�
   это анти-бот/WAF самой Майкрософт, НЕ подмена/MITM и не тракт. Фикс:
   смена выхода (WARP на время озвучки) или ретраи с backoff (в их шлюзе уже
   4 попытки — гасят блипы).
+- Погодные API (2026-10-11): рабочие пути — `weatherapi.com` (пин
+  `138.199.37.231` для www+api), `api.openweathermap.org` (пин
+  `176.9.63.49`), wttr.in ТОЛЬКО API (`/Moscow?format=3`; сайт троттлится),
+  PirateWeather как есть. `api.open-meteo.com` — блок по IP без альтернатив
+  (только WARP), сайт openweathermap.org — тоже. **В списки НЕЛЬЗЯ**: desync
+  их ломает (wttr/OWM/weatherapi падали таймаутами) — break-class; рабочий
+  инструмент — hosts-пин. Пины лежат в `hosts.txt` с комментарием.
