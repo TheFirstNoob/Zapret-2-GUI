@@ -786,7 +786,12 @@ raw/objects/release-assets/private-user-images/gist/avatars* — стабиль�
   реальные проблемы. Далее: (2) QUIC-проба (niquests+qh3) — вторичная
   точность (QUIC-фейк H3 не ломает, H2->H3 апгрейд живой); решить по
   метрике. (3) опционально — UDP-сниффер вместо pktmon (у pktmon есть
-  эффект добавления дропов, см. VOICE_FLAP док).
+  эффект добавления дропов, см. VOICE_FLAP док): кандидат **pydivert** —
+  жив (4.0), «seamless multi-handle» с winws2 официально поддержан
+  (kernel priority chaining), wheels с WinDivert внутри; учесть лицензию
+  LGPL-3.0/GPL-2.0. Альтернатива qh3 для QUIC-пробы — **aioquic** (BSD-3,
+  ~2k★, чистый Python, но зависит от cryptography — вес примерно тот же).
+  BlockCheck (ValdikSS) — АРХИВИРОВАН 28.07.2024 («not working»), не тащим.
 - `speech.platform.bing.com` (edge-tts, 2026-10-12): симптом на чужой сети —
   TCP:443 открыт, WSS-апгрейд флапает 403/ок. **В списки НЕЛЬЗЯ**: проба
   добавления в list-general ПРОВАЛЕНА — наш desync ЛОМАЕТ домен (curl 3/3
