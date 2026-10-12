@@ -105,6 +105,7 @@ def probe(url: str) -> str:
         s = None
         try:
             s = niquests.Session(disable_http1=True, disable_http2=True)
+            s.trust_env = False  # env/системные прокси не подхватываем (P2-1)
             s.quic_cache_layer.add_domain(host)
             t0 = time.perf_counter()
             r = s.get(url, timeout=(4, 10), allow_redirects=False)
@@ -140,7 +141,7 @@ def probe(url: str) -> str:
         if "NameResolution" in e:
             print(f"  ERR DNS: {e}")
             if install_doh_patch(host):
-                print("  (DoH-патч поставлен — повтори запуск)")
+                print("  (DoH-патч активен в этом процессе — добавьте --repeat 2)")
             return "DNS"
         print(f"  FAIL: {e}")
         return "FAIL"

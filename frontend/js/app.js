@@ -3009,6 +3009,7 @@ const TesterPage = {
       row._yt = true;
       row.ytCell.innerHTML = isOk ? '<span class="st-ok">✓</span>'
         : data.status === 'QUIC' ? '<span class="st-quirk">QUIC</span>'
+        : data.status === 'H3_NONE' ? '<span class="st-warn">•</span>'
         : '<span class="st-err">✗</span>';
     }
   },
@@ -3364,8 +3365,13 @@ const TesterPage = {
       const statusOf = (domains) => {
         const found = (r.results || []).filter(x => domains.includes(x.domain) && x.test_type !== 'ping');
         if (!found.length) return '-';
-        return found.some(x => x.status === 'OK' || x.status === 'OK_BLOCKED')
-          ? '<span class="st-ok">✓</span>' : '<span class="st-err">✗</span>';
+        if (found.some(x => x.status === 'OK' || x.status === 'OK_BLOCKED'))
+          return '<span class="st-ok">✓</span>';
+        // QUIC-класс: подтверждённый QUIC - нейтральный бейдж; H3_NONE - серый
+        // маркер вместо красного креста (внешнее ревью 13.10, P2-2).
+        if (found.some(x => x.status === 'QUIC')) return '<span class="st-quirk">QUIC</span>';
+        if (found.some(x => x.status === 'H3_NONE')) return '<span class="st-warn">•</span>';
+        return '<span class="st-err">✗</span>';
       };
       row.discordCell.innerHTML = statusOf(['discord.com', 'gateway.discord.gg']);
       row.ytCell.innerHTML = statusOf(['www.youtube.com', 'youtu.be', 'i.ytimg.com']);
@@ -3494,9 +3500,15 @@ const TesterPage = {
       chips = '<div class="services-grid">' + rec.key_hosts.map(k => {
         const ok = k.status === 'OK' || k.status === 'QUIC_OK';
         const quic = k.status === 'QUIC_OK';
+        const unknown = k.status === 'QUIC_UNKNOWN';
+        const mark = ok ? '<span class="mark-ok">✓</span>'
+          : unknown ? '<span class="st-warn">•</span>'
+          : '<span class="mark-bad">✗</span>';
+        const pingTxt = k.time_ms ? formatTime(k.time_ms)
+          : (ok ? 'доступен' : unknown ? 'не подтверждён' : 'не пробит');
         return `<div class="service-chip">
-          <div class="chip-head"><span class="${ok ? 'mark-ok' : 'mark-bad'}">${ok ? '✓' : '✗'}</span> ${escapeHtml(k.label)}${quic ? ' <span class="st-quirk">QUIC</span>' : ''}</div>
-          <div class="chip-ping ${ok ? '' : 'chip-ping-bad'}">${k.time_ms ? formatTime(k.time_ms) : (ok ? 'доступен' : 'не пробит')}</div>
+          <div class="chip-head">${mark} ${escapeHtml(k.label)}${quic ? ' <span class="st-quirk">QUIC</span>' : ''}</div>
+          <div class="chip-ping ${ok || unknown ? '' : 'chip-ping-bad'}">${pingTxt}</div>
           ${k.note ? `<div class="chip-note">${escapeHtml(k.note)}</div>` : ''}
         </div>`;
       }).join('') + '</div>';

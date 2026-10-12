@@ -17,7 +17,8 @@ from urllib.parse import urlparse, parse_qs
 from core.config import ConfigManager, DEFAULT_PROFILE, VERSION
 from core.zapret_controller import ZapretController
 from core.tester import (Zapret2Tester, CDN_PROVIDERS, NAKED_BASELINE_HOSTS,
-                          RATED_HOSTS, QUIC_QUIRK_DOMAINS, CONTROL_DOMAINS)
+                          RATED_HOSTS, QUIC_QUIRK_DOMAINS, CONTROL_DOMAINS,
+                          _is_control_alias)
 from core.service_manager import (SERVICE_NAME, is_installed as svc_installed,
                                   status as svc_status, install as svc_install,
                                   remove as svc_remove, start as svc_start,
@@ -467,7 +468,8 @@ def _make_result_cb(state: TesterState, profile: Optional[str] = None) -> Callab
             # фронт считает live-счётчики «Хосты» только по этим категориям -
             # чтобы не прыгали (17/17 → 8/8) на финальном network_rate
             "rated": (r.domain not in CONTROL_DOMAINS
-                      and r.domain not in QUIC_QUIRK_DOMAINS),
+                      and r.domain not in QUIC_QUIRK_DOMAINS
+                      and not _is_control_alias(r.domain)),
             "control": (r.domain in CONTROL_DOMAINS
                         or (r.domain.startswith("www.") and
                             r.domain[4:] in CONTROL_DOMAINS)),
@@ -904,8 +906,15 @@ def _build_recommendation(all_results, naked, sanity: dict) -> dict:
             # QUIC-класс: TCP-проба сторонним клиентом под десинком не
             # показательная - браузер идёт через QUIC; не красный крест.
             if domain in QUIC_QUIRK_DOMAINS and status not in ("OK",):
-                status = "QUIC_OK"
-                note = "TCP-проверка неприменима - в браузере работает через QUIC"
+                if status == "QUIC" and "подтвержд" in (tr.error or ""):
+                    status = "QUIC_OK"
+                    note = "H3 подтверждён - в браузере работает через QUIC"
+                else:
+                    # H3_NONE / нет niquests / TIMEOUT: не клеймим «работает» (внешнее ревью 13.10, P3-1).
+                    status = "QUIC_UNKNOWN"
+                    note = ("QUIC-проверка недоступна (эвристика)"
+                            if "нет niquests" in (tr.error or "")
+                            else "H3 не подтверждён - проверьте в браузере")
             key_hosts.append({"domain": domain, "label": label,
                               "status": status, "time_ms": tr.time_ms, "note": note})
         else:

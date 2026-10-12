@@ -91,15 +91,27 @@ EXCLUDES = [
 ]
 
 # niquests[http3] для QUIC-пробы тестера: бандлим стек целиком (динамические
-# импорты/lazy). h11 из EXCLUDES УБРАН (нужен niquests). Проверять сборку на
-# чистой машине (без предустановленных пакетов).
+# импорты/lazy). h11 из EXCLUDES УБРАН (нужен niquests).
+# collect_all для ОТСУТСТВУЮЩЕГО пакета НЕ бросает исключение (WARNING + пустые
+# списки) - без явной проверки сборка молча выпускала бы exe без QUIC-пробы
+# (внешнее ревью 13.10, P1-1). Осознанная сборка без H3 - через env-флаг.
+import importlib.util as _ilu  # noqa: E402
+import os as _os  # noqa: E402
 from PyInstaller.utils.hooks import collect_all  # noqa: E402
+
+_REQUIRED_NIQ = ("niquests", "urllib3_future", "qh3")
+_missing = [p for p in _REQUIRED_NIQ if _ilu.find_spec(p) is None]
+if _missing and not _os.environ.get("ZAPRET2_ALLOW_NO_NIQUESTS"):
+    raise SystemExit(
+        "[spec] niquests-стек отсутствует в build-env: " + ", ".join(_missing)
+        + "\n       выполните: pip install -r requirements.txt"
+        + "\n       (или ZAPRET2_ALLOW_NO_NIQUESTS=1 для сборки без QUIC-пробы)")
 
 NIQ_DATAS, NIQ_BINARIES, NIQ_HIDDEN = [], [], []
 for _pkg in ("niquests", "urllib3_future", "urllib3", "qh3", "wassima", "jh2"):
     try:
         _d, _b, _h = collect_all(_pkg)
-    except Exception:  # noqa: BLE001 — пакет отсутствует в build-env
+    except Exception:  # noqa: BLE001
         continue
     NIQ_DATAS += _d
     NIQ_BINARIES += _b

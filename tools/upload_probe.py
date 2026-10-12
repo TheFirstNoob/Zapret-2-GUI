@@ -129,8 +129,11 @@ def main() -> int:
             elif not ok:
                 print(f"  => ломается уже с {bad[0][0]}Б ({bad[0][1]})")
             else:
-                print(f"  => OK до {max(ok)}Б, ломается на {bad[0][0]}Б "
-                      f"({bad[0][1]})")
+                # Немонотонные прогоны (флап): не обещаем «OK до X»
+                # (внешнее ревью 13.10, P3-3).
+                print("  => пороги неоднородны: OK на "
+                      + ", ".join(f"{s}Б" for s in ok) + "; НЕ OK на "
+                      + ", ".join(f"{s}Б ({t})" for s, t in bad))
     return 0
 
 

@@ -552,6 +552,9 @@ class Zapret2Tester:
                     # (браузер ходит через QUIC). 12.10: реальная H3-проба
                     # вместо эвристики; без niquests - прежний нейтральный QUIC.
                     h3_ok, detail = self._quic_h3_probe(domain)
+                    # Полное время с пробой (ревью 13.10, P3-1): раньше в чипе
+                    # висело время провального TCP-этапа.
+                    elapsed = (time.time() - start) * 1000
                     if h3_ok:
                         return TestResult(domain, test_type, "QUIC", code,
                                           elapsed, f"H3 подтверждён ({detail})")
@@ -597,6 +600,9 @@ class Zapret2Tester:
             s = None
             try:
                 s = niquests.Session(disable_http1=True, disable_http2=True)
+                # Контракт: env/системные прокси не подхватываем (ревью 13.10,
+                # P2-1) - иначе проба уходит через прокси и умирает (H3_NONE).
+                s.trust_env = False
                 s.quic_cache_layer.add_domain(domain)
                 r = s.get(f"https://{domain}/", timeout=(4, 8),
                           allow_redirects=False)

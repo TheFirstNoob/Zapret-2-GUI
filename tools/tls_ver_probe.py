@@ -49,8 +49,17 @@ def run(url: str, args: list[str], timeout: float = 8.0):
     parts = out.split()
     code = parts[0] if parts and parts[0].isdigit() else "NA"
     low = err.lower()
-    if r.returncode == 35 or "not supported" in low or \
-            "unsupported" in low or ("schannel" in low and not parts):
+    # UNSUP - только явная «неподдерживаемость» (SEC_E_UNSUPPORTED_*,
+    # «not supported»); обычный RST/обрыв рукопожатия тоже даёт rc=35 и НЕ
+    # должен маскироваться под UNSUP (внешнее ревью 13.10, P2-4).
+    unsup = ("sec_e_unsupported_function" in low
+             or "sec_e_algorithm_mismatch" in low
+             or "not supported" in low
+             or "unsupported" in low
+             or "unrecognized option" in low)
+    if r.returncode == 35 and not unsup:
+        return "FAIL", wall, err[:70]
+    if unsup:
         return "UNSUP", wall, err[:70]
     if code == "000" or not parts:
         return ("TIMEOUT" if r.returncode == 28 else "FAIL"), wall, err[:70]

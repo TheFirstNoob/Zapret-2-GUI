@@ -339,6 +339,7 @@ WinDivert - инструмент перехвата трафика, на кот�
 ```bat
 git clone https://github.com/TheFirstNoob/Zapret-2-GUI.git
 cd Zapret-2-GUI
+pip install -r requirements.txt :: зависимости (pywebview, niquests[http3])
 python main.py                  :: запуск из исходников
 python build.py                 :: классический EXE  -> dist\Zapret2GUI.exe
 python build_portable.py        :: portable (без сборщика) -> Windows build\Zapret2GUI-portable.zip

@@ -873,6 +873,14 @@ etsh dns delete encryption server=.... В README пока не выносим.
   (daemon-хвост) — ограничен внутренними таймаутами (4,8); жёсткая отмена =
   отдельный процесс, избыточно. (4) README обновлён (3 состояния QUIC).
   (5) Extra-имя — `http3` (не `h3`), исправлено в tools/сборках.
+  Внешний ревью-отчёт 13.10 (`AI_DOCS/REVIEW_REPORT_2026-10-13.md`, база
+  `179d00c`) обработан: все P1/P2/P3 верифицированы и подтверждены. Фиксы:
+  spec падает без niquests-стека (был тихий пропуск -> exe без QUIC), docs:
+  `pip install -r requirements.txt`; `trust_env=False` в H3-пробе (env-прокси
+  ломали); UI: `H3_NONE` -> нейтральный маркер (был красный ✗ в финале), чип
+  `QUIC_UNKNOWN` вместо ложного `QUIC_OK` (+ время с пробой); server: `rated`
+  учитывает www-алиасы control; `tls_ver_probe`: rc=35 без unsupported-маркеров
+  = FAIL; мелочи wording. «Не-находки» ревьюера приняты.
 - `speech.platform.bing.com` (edge-tts, 2026-10-12): симптом на чужой сети —
   TCP:443 открыт, WSS-апгрейд флапает 403/ок. **В списки НЕЛЬЗЯ**: проба
   добавления в list-general ПРОВАЛЕНА — наш desync ЛОМАЕТ домен (curl 3/3

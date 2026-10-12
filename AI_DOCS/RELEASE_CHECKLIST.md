@@ -21,6 +21,8 @@
       `hosts.txt` в корне).
 
 ## Сборка
+- [ ] build-env: `pip install -r requirements.txt` (нужен `niquests[http3]`;
+      spec падает с подсказкой, если стека нет - с 13.10).
 - [x] `python build.py` → exe + `Windows build/Zapret2GUI.zip` + .sha256
 - [x] `python build_portable.py` → Zapret2GUI-portable.zip + .sha256
 - [x] `python build_lite.py` → Zapret2GUI-lite.zip + .sha256 (внутри: VERSION и
