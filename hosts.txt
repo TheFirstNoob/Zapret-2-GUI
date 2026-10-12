@@ -92,7 +92,6 @@
 193.233.112.68 geolocation.onetrust.com
 193.233.112.68 gew1-dealer.spotify.com
 193.233.112.68 gew1-spclient.spotify.com
-193.233.112.68 gql.twitch.tv
 193.233.112.68 grok.com
 193.233.112.68 gtm.deepl.com
 193.233.112.68 guidedhacking.com
@@ -131,7 +130,6 @@
 193.233.112.68 truthsocial.com
 193.233.112.68 uploads.linear.app
 193.233.112.68 upsx.weather.com
-193.233.112.68 usher.ttvnw.net
 193.233.112.68 w.deepl.com
 193.233.112.68 weather.com
 193.233.112.68 web-backend.codeium.com
