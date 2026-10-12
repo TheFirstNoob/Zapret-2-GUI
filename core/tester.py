@@ -49,6 +49,11 @@ QUIC_QUIRK_DOMAINS = frozenset({
     "redirector.googlevideo.com", "storage.googleapis.com",
 })
 
+# QUIC-проба (12.10): реальный H3 вместо эвристики. niquests+qh3 - опциональная
+# зависимость сборки; без неё - прежний нейтральный статус QUIC. Контракт:
+# forced-H3, ассерт http_version==30, свежая сессия, внешний wall-clock дедлайн.
+H3_WALL_DEADLINE = 12.0
+
 # Пробуются, но НЕ в network_rate: excluded/непокрытые хосты показывают сырую
 # сеть без искажения сравнения стратегий. Чистка 2026-09-11: убраны мёртвые
 # (telegram/x/fb/inst/linkedin/whatsapp/fcm/apple - глубокий IP-блок, не лечится
@@ -234,6 +239,10 @@ class CdnScanResult:
 
 
 class Zapret2Tester:
+    # Кэш наличия niquests+qh3 (опциональный бандл сборки): False - фолбэк на
+    # прежнюю эвристику QUIC (см. _quic_h3_probe).
+    _has_niquests: Optional[bool] = None
+
     def __init__(self, root_dir: Path, timeout: int = 8) -> None:
         self.root_dir = Path(root_dir)
         self.bin_dir = self.root_dir / "bin"
@@ -540,8 +549,17 @@ class Zapret2Tester:
                 # GET вернул «000» - нет HTTP-ответа.
                 if domain in QUIC_QUIRK_DOMAINS:
                     # QUIC-класс: TCP-проба под десинком не показательная
-                    # (браузер ходит через QUIC) - нейтральный статус, не BLOCKED.
-                    return TestResult(domain, test_type, "QUIC", code, elapsed)
+                    # (браузер ходит через QUIC). 12.10: реальная H3-проба
+                    # вместо эвристики; без niquests - прежний нейтральный QUIC.
+                    h3_ok, detail = self._quic_h3_probe(domain)
+                    if h3_ok:
+                        return TestResult(domain, test_type, "QUIC", code,
+                                          elapsed, f"H3 подтверждён ({detail})")
+                    if detail.startswith("нет niquests"):
+                        return TestResult(domain, test_type, "QUIC", code,
+                                          elapsed, detail)
+                    return TestResult(domain, test_type, "BLOCKED", code,
+                                      elapsed, f"QUIC нет: {detail}")
                 return TestResult(domain, test_type, "BLOCKED", code, elapsed)
             if test_type == "tls:443" and rc == 0:
                 return TestResult(domain, test_type, "OK", time_ms=elapsed)
@@ -553,6 +571,52 @@ class Zapret2Tester:
         except OSError as e:
             elapsed = (time.time() - start) * 1000
             return TestResult(domain, test_type, "ERROR", 0, elapsed, f"curl not found: {e}")
+
+    def _quic_h3_probe(self, domain: str) -> tuple[bool, str]:
+        """Настоящая QUIC/HTTP3-проба (niquests+qh3) - контракт точности:
+        forced-H3 (disable_http1/2 + preemptive quic_cache_layer, без TCP),
+        свежая сессия (strategy-test), внешний wall-clock дедлайн (поток-сторож).
+        Возвращает (ok, detail). Без niquests - (False, "нет niquests")."""
+        if Zapret2Tester._has_niquests is None:
+            try:
+                import niquests  # noqa: F401
+                Zapret2Tester._has_niquests = True
+            except ImportError:
+                Zapret2Tester._has_niquests = False
+        if not Zapret2Tester._has_niquests:
+            return False, "нет niquests"
+        import niquests
+
+        box: dict = {}
+
+        def worker() -> None:
+            s = None
+            try:
+                s = niquests.Session(disable_http1=True, disable_http2=True)
+                s.quic_cache_layer.add_domain(domain)
+                r = s.get(f"https://{domain}/", timeout=(4, 8),
+                          allow_redirects=False)
+                box["ver"] = getattr(r, "http_version", None)
+                box["code"] = r.status_code
+            except Exception as e:  # noqa: BLE001
+                box["err"] = type(e).__name__
+            finally:
+                if s is not None:
+                    try:
+                        s.close()
+                    except Exception:  # noqa: BLE001
+                        pass
+
+        th = threading.Thread(target=worker, daemon=True)
+        th.start()
+        th.join(H3_WALL_DEADLINE)
+        if th.is_alive():
+            return False, "H3 висит (дедлайн)"
+        if box.get("ver") == 30:
+            return True, f"H3 {box.get('code')}"
+        if "err" in box:
+            return False, f"QUIC {box['err']}"
+        return False, "H3 не подтверждён"
 
     def _expand_with_www(self, domains: list[str]) -> list[str]:
         """Расширяет список www-вариантами (плоский, без дублей). Поддомены
