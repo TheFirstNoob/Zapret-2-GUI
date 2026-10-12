@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Dev tool: headless-Edge DOM geometry dump for the Zapret2 GUI.
  *
  * Requires the dump backend:  python tools/ui_dump_server.py

@@ -1,0 +1,38 @@
+# Политика окончаний строк (13.10.2026).
+# Причина: инструменты/ИИ пишут LF; смешанные окончания ломают точные замены
+# (кейс server.py CRLF при правках LF-строками).
+#
+# Правило: LF — везде (репо и рабочие деревья), кроме явных исключений ниже.
+
+* text=auto eol=lf
+
+# cmd.exe требует CRLF (метки/goto/многострочные блоки ломаются на LF)
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# PowerShell 5.1: кириллица читается только с BOM, сам BOM git сохраняет;
+# CRLF — привычный для .ps1
+*.ps1 text eol=crlf
+
+# Байт-стабильные артефакты (git НЕ конвертирует ни в blob, ни в checkout):
+# - hosts.txt: доки/README просят копировать его в drivers\etc\hosts; смешивание
+#   окончаний недопустимо;
+# - *.sig: подписные артефакты релизов.
+hosts.txt -text
+*.sig -text
+
+# Бинарные файлы — без конвертаций
+*.bin binary
+*.exe binary
+*.dll binary
+*.sys binary
+*.pyd binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.zip binary
+*.gz binary
+*.etl binary
+*.pcap binary
+*.pcapng binary
