@@ -12,6 +12,8 @@ dist/
 _test_*.py
 /_*.py
 presets/test-*.txt
+presets/cand-*.txt
+presets/exp-*.txt
 tools/game_probe.log
 tools/game_probe.etl
 tools/game_probe_pkt.txt

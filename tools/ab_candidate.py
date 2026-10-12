@@ -2,10 +2,10 @@
 
 Последовательность (весь риск — внутри ОДНОГО запуска этого скрипта):
   warp disconnect -> sc stop zapret2 -> тест default (контроль)
-  -> тест cand-autottl -> sc start zapret2 -> warp connect.
+  -> тест кандидата -> sc start zapret2 -> warp connect.
 try/finally гарантирует восстановление службы и WARP даже при падении.
 
-Запуск: python tools/ab_candidate.py cand-autottl [cand-...]
+Запуск: python tools/ab_candidate.py <preset> [preset ...]  (пресеты — untracked)
 Результаты: tools/ab_result.json + stdout.
 """
 from __future__ import annotations
@@ -63,7 +63,10 @@ def serialize(res) -> dict:
 
 
 def main() -> None:
-    profiles = sys.argv[1:] or ["cand-autottl"]
+    profiles = sys.argv[1:]
+    if not profiles:
+        print("укажи пресеты: python tools/ab_candidate.py <preset> [preset ...]")
+        sys.exit(1)
     out = {"started": time.strftime("%Y-%m-%d %H:%M:%S"), "warp_reconnected": False, "profiles": {}}
 
     def restore() -> None:

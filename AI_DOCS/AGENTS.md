@@ -15,7 +15,9 @@
 - **VERSION = "Pre-Release 0.9"** (config.py; 0.9 выпущен, тег `Pre-Release-0.9` (commit 681a4f1), процедура релиза — RELEASE_CHECKLIST.md; после релиза: фикс-батч аудита (REVIEW_VERDICT), probe-фиксы, WARP-игра, новые блобы, репин хостов). Черновик чейнджлога 0.10 — на рабочем столе; номер следующего релиза не решён.
 - **Пресеты: 11 release** (default, default-alt, auto, fake-only, fakedsplit,
   fake-disorder, fake-multidisorder, hostfakesplit, multisplit-pure,
-  multisplit-seqovl, tcpmd5-fake) + exp-/cand- стенды (скрыты из GUI и дистрибутивов).
+  multisplit-seqovl, tcpmd5-fake). Тестовые exp-/cand- пресеты УДАЛЕНЫ из репо
+  (12.10, добавлены в .gitignore; сборки их и так исключали; новые тесты —
+  только из untracked/временных файлов).
   Discord-блоки (Media TCP + TCP tls) на **repeats=8** в default и default-alt
   (утром 7 → 000, 8 пробивает; порог плавает — 8 = запас).
 - **Тестер:** 18 хостов (RATED 11 + CONTROL 7). QUIC-класс (www.youtube.com,
@@ -839,9 +841,9 @@ raw/objects/release-assets/private-user-images/gist/avatars* — стабиль�
   cutoff=n4 для игр. Кандидаты на наши A/B (`tools/ab_candidate.py`): (2)/(3)/(4).
   (4) Голос/стрим Discord на 50000+ (GCP): **эксперимент 12.10 проведён —
   отрицательно** (метрика: keepalive-пинги `voice_flap_watch`; провод: pktmon;
-  подробно — VOICE_FLAP док, §«5000+ эксперимент»). Кандидаты в репо:
-  `presets/cand-voice-active.txt` (схема Flowseal 1:1, их ACTIVE-блоб, l7),
-  `cand-voice-any.txt` (gamefilter-стиль), `cand-voice-all.txt` (`:payload=all`).
+  подробно — VOICE_FLAP док, §«5000+ эксперимент»). Кандидаты (в истории git;
+  тест-пресеты удалены при чистке 12.10): cand-voice-active/any/all/pass/
+  udplen/badsum.
   НИ ОДИН не меняет клиентский лосс (фейки на проводе = есть, результат 0) —
   блок на обратном пути IP-уровня. Ключ механики: Lua `fake` по умолчанию
   трогает только known-пейлоады; «fake всего» = `:payload=all` (исходники:
@@ -852,7 +854,8 @@ raw/objects/release-assets/private-user-images/gist/avatars* — стабиль�
   (`104.29.153.151:19305`) работает. Вопрос закрыт: клиентских средств нет;
   практика — CF-регион/WARP/переезд сервера. Догон арсенала (13:43-14:02):
   `udplen`/`badsum`-фейки — гасят поток сами (0/12, восстановление при
-  снятии); `pktmod` — только порча своих пакетов (пропущен осознанно).
+  снятии); `pktmod` — только порча своих пакетов (пропущен осознанно). Финал:
+  свежий старт под passthrough — RTC мёртв сразу; поведение блока штатное.
   Для UDP арсенал исчерпан (подробно — VOICE док).
 
 - Flowseal актуалии (сверка 2026-10-12, репо 34.6k★, последний push 01.10):

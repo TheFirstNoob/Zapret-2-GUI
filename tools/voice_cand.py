@@ -17,8 +17,6 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
-DEFAULT_PRESET = "cand-voice-fake"
-
 
 def _run(args, timeout=20):
     r = subprocess.run(args, capture_output=True, text=True, encoding="oem",
@@ -83,7 +81,10 @@ def cmd_status() -> int:
 if __name__ == "__main__":
     mode = sys.argv[1] if len(sys.argv) > 1 else "status"
     if mode == "start":
-        sys.exit(cmd_start(sys.argv[2] if len(sys.argv) > 2 else DEFAULT_PRESET))
+        if len(sys.argv) < 3:
+            print("укажи пресет: python tools/voice_cand.py start <preset>")
+            sys.exit(1)
+        sys.exit(cmd_start(sys.argv[2]))
     if mode == "stop":
         sys.exit(cmd_stop())
     sys.exit(cmd_status())
