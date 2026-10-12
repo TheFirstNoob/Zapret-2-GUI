@@ -640,6 +640,17 @@ raw/objects/release-assets/private-user-images/gist/avatars* — стабиль�
   DNS (разлочка AI без обхода + адблок; решится отдельно); (b) fallback-пины
   для AI-доменов, если наш воркер умрёт; (c) `dns.comss.one` — «чистый»
   резолвер-кандидат в DoH-чек (бэклог №1).
+
+  **Решение 12.10 (машина автора)**: системный DNS WiFi переведён на Comss
+  (83.220.169.155, 212.109.195.93; DoH-шаблоны https://dns.comss.one/dns-query
+  через 
+etsh dns add encryption ... autoupgrade=yes udpfallback=yes — PS
+  Set-DnsClientDohServerAddress не сработал для кастомных). Проверено системным
+  резолвом: doubleclick.net -> 0.0.0.0 (адблок), www.youtube.com резолвится,
+  chatgpt.com -> воркер-пин (hosts приоритетнее — не тронут). Откат:
+  Set-DnsClientServerAddress -InterfaceIndex 15 -ResetServerAddresses +
+  
+etsh dns delete encryption server=.... В README пока не выносим.
 - **Аудит пинов hosts (2026-10-10, пробы «пин vs голый» при живом обходе)**:
   удалены мёртвые/мешающие - вся группа `103.27.157.38` (Tidal/Supercell/
   TikTok: TLS-сертификаты не совпадают, rc60; голое 200), `172.64.33.155`
