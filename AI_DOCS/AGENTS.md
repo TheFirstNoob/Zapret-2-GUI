@@ -857,12 +857,12 @@ etsh dns delete encryption server=.... В README пока не выносим.
   диагностика; DNS-таксономия OK/mismatch/suspicious/failed; niquests
   env-proxy off; внешний дедлайн обязателен.
   **Интеграция выполнена (12.10)**: реальная H3-проба внедрена в
-  \core/tester.py::_quic_h3_probe\ — квирк-хосты при 000 получают настоящий
-  вердикт (\QUIC\ с «H3 подтверждён» или \BLOCKED\); без niquests — прежняя
-  эвристика (graceful, кэш-флаг \_has_niquests\). Проверено обоими путями
+  `core/tester.py::_quic_h3_probe` — квирк-хосты при 000 получают настоящий
+  вердикт (`QUIC` с «H3 подтверждён» или `BLOCKED`); без niquests — прежняя
+  эвристика (graceful, кэш-флаг `_has_niquests`). Проверено обоими путями
   (i.ytimg: «H3 подтверждён (H3 404)» с либой; «нет niquests» без). Upload уже
   покрыт tcp1620 (64КБ); tls_ver — диагностика, UI позже. UI: словарь статусов
-  не менялся (таблица работает как раньше), деталь — в \TestResult.error\.
+  не менялся (таблица работает как раньше), деталь — в `TestResult.error`.
 - `speech.platform.bing.com` (edge-tts, 2026-10-12): симптом на чужой сети —
   TCP:443 открыт, WSS-апгрейд флапает 403/ок. **В списки НЕЛЬЗЯ**: проба
   добавления в list-general ПРОВАЛЕНА — наш desync ЛОМАЕТ домен (curl 3/3
