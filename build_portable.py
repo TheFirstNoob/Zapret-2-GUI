@@ -104,13 +104,13 @@ def main() -> None:
     pth = PY / f"python{PY_SHORT}._pth"
     pth.write_text(f"python{PY_SHORT}.zip\n.\nLib\\site-packages\nimport site\n", encoding="ascii")
 
-    # 2. pip + pywebview
+    # 2. pip + runtime (pywebview, niquests[http3] для QUIC-пробы тестера)
     pip_script = ROOT / "build" / "get-pip.py"
     _download(PIP_URL, pip_script)
     subprocess.run([str(PY / "python.exe"), str(pip_script), "--no-warn-script-location"],
                    check=True)
     subprocess.run([str(PY / "python.exe"), "-m", "pip", "install", "--no-warn-script-location",
-                    "pywebview"], check=True)
+                    "pywebview", "niquests[http3]>=3.21.2"], check=True)
 
     # 3. код приложения
     for d in COPY_DIRS:

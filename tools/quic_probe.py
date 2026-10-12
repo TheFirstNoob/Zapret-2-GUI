@@ -9,7 +9,7 @@ r"""quic_probe.py — настоящая QUIC/HTTP3-проба (niquests+qh3) п
   - воркер-пины (193.233.112.68/.67) пропускаем: QUIC у воркера нет (SSLError);
   - DNS-спуф (NameResolutionError) -> фолбэк через cloudflare DoH + patch.
 
-Запуск (нужен venv с niquests[h3], напр. %TEMP%\opencode\h3env):
+Запуск (нужен venv с niquests[http3], напр. %TEMP%\opencode\h3env):
     <venv>\Scripts\python.exe tools/quic_probe.py [--repeat N] [host|url ...]
   --repeat N — несколько прогонов подряд (пауза 1с): детект флапа QUIC-пути.
 """
@@ -28,7 +28,7 @@ try:
     import niquests
 except ImportError:
     print("нет niquests — venv: python -m venv v; "
-          "v\\Scripts\\pip install \"niquests[h3]\"")
+          "v\\Scripts\\pip install \"niquests[http3]\"")
     sys.exit(1)
 
 DEFAULT = [

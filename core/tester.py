@@ -558,8 +558,12 @@ class Zapret2Tester:
                     if detail.startswith("нет niquests"):
                         return TestResult(domain, test_type, "QUIC", code,
                                           elapsed, detail)
-                    return TestResult(domain, test_type, "BLOCKED", code,
-                                      elapsed, f"QUIC нет: {detail}")
+                    # Проба выполнена, но H3 не подтверждён: НЕ приравниваем к
+                    # BLOCKED (ошибка инструмента/таймаут != доказательство
+                    # блокировки; ревью 12.10). Статус нейтрален и не входит
+                    # в ok/fail-статистику (_build_result).
+                    return TestResult(domain, test_type, "H3_NONE", code,
+                                      elapsed, f"H3 не подтверждён: {detail}")
                 return TestResult(domain, test_type, "BLOCKED", code, elapsed)
             if test_type == "tls:443" and rc == 0:
                 return TestResult(domain, test_type, "OK", time_ms=elapsed)

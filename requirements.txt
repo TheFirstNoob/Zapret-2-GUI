@@ -1,2 +1,3 @@
 pywebview>=5.0.0
+niquests[http3]>=3.21.2  # QUIC/HTTP3-проба тестера (в рантайме опционально)
 # For building the exe: pip install pyinstaller

@@ -84,19 +84,33 @@ EXCLUDES = [
     "pydantic",
     "pydantic.v1",
     "pydantic_core",
-    "h11",
     "httptools",
     "anyio",
     "sniffio",
     "multipart",
 ]
 
+# niquests[http3] для QUIC-пробы тестера: бандлим стек целиком (динамические
+# импорты/lazy). h11 из EXCLUDES УБРАН (нужен niquests). Проверять сборку на
+# чистой машине (без предустановленных пакетов).
+from PyInstaller.utils.hooks import collect_all  # noqa: E402
+
+NIQ_DATAS, NIQ_BINARIES, NIQ_HIDDEN = [], [], []
+for _pkg in ("niquests", "urllib3_future", "urllib3", "qh3", "wassima", "jh2"):
+    try:
+        _d, _b, _h = collect_all(_pkg)
+    except Exception:  # noqa: BLE001 — пакет отсутствует в build-env
+        continue
+    NIQ_DATAS += _d
+    NIQ_BINARIES += _b
+    NIQ_HIDDEN += _h
+
 a = Analysis(
     [str(ROOT / "main.py")],
     pathex=[str(ROOT)],
-    binaries=[],
-    datas=DATAS,
-    hiddenimports=[],
+    binaries=NIQ_BINARIES,
+    datas=DATAS + NIQ_DATAS,
+    hiddenimports=NIQ_HIDDEN,
     hookspath=[],
     excludes=EXCLUDES,
     noarchive=False,
