@@ -49,9 +49,12 @@ SOFTWARE.
 ## Flowseal/zapret-discord-youtube — Zapret 1
 
 - Источник: https://github.com/Flowseal/zapret-discord-youtube
+- Лицензия: MIT (Copyright (c) 2016-2026 bol-van, 2024-2026 Flowseal)
 - Что используется: справочные материалы и данные — структура батников
   (установка/удаление службы), синхронизация `hosts.txt`, пресеты для
-  сравнения в тестах. Спасибо автору.
+  сравнения в тестах, бинарные блобы из `blobs/` — `ACTIVE_DISCORD_UDP.bin`,
+  `ACTIVE_GAME_UDP.bin`, `stun2.bin` (образцы UDP-пакетов для fake-режима).
+  Спасибо автору.
 
 ## V3nilla/IPSets-For-Bypass-in-Russia — CIDR-списки
 
