@@ -849,6 +849,10 @@ raw/objects/release-assets/private-user-images/gist/avatars* — стабиль�
   CF-эндпоинты ровные). Блобы Flowseal забраны в `blobs/` (MIT):
   `ACTIVE_DISCORD_UDP.bin` (1200б), `ACTIVE_GAME_UDP.bin` (1250б),
   `stun2.bin` (120б) — кандидаты V1-V4 к прогону на живом лоссе.
+  Сплит готов: `presets/cand-voice-50000.txt` — копия `default`, 5000х вынесен
+  отдельным сегментом в самый низ (`--comment=Discord Voice 50000 (exp)`),
+  baseline 1:1 (discovery-сегмент `19294-19344` не тронут); тест = выбрать
+  пресет в GUI + снимки `voice_flap_watch`; итерируем ТОЛЬКО нижний сегмент.
 - Flowseal актуалии (сверка 2026-10-12, репо 34.6k★, последний push 01.10):
   ALT11-серия практически не изменилась (всё та же жёсткая fake+multisplit +
   always-ipset) — их ALT-пресеты способны рвать CDN (кейс CurseForge-друга).
