@@ -5,13 +5,16 @@ r"""tls_ver_probe.py — пробы с прибитыми версиями TLS (
 Диагностика: если конкретная версия TLS «валится» (DPI или стек) — видно
 раздельно. Вердикты: OK(code) / UNSUP / FAIL / TIMEOUT.
 
-Запуск: python tools/tls_ver_probe.py <host|url> ...
+Запуск: python tools/tls_ver_probe.py [--repeat N] <host|url> ...
+  --repeat N — повторы (пауза 0.5с): детект флапа блокировки по версии TLS.
 """
 from __future__ import annotations
 
+import argparse
 import subprocess
 import sys
 import time
+from collections import Counter
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
@@ -21,6 +24,12 @@ VARIANTS = [
     ("TLS1.2", ["--tlsv1.2", "--tls-max", "1.2"]),
     ("TLS1.3", ["--tlsv1.3", "--tls-max", "1.3"]),
 ]
+
+
+def urlspec(arg: str) -> str:
+    if "://" in arg:
+        return arg
+    return f"https://{arg}" if "/" in arg else f"https://{arg}/"
 
 
 def run(url: str, args: list[str], timeout: float = 8.0):
@@ -48,33 +57,49 @@ def run(url: str, args: list[str], timeout: float = 8.0):
     return f"OK({code})", wall, err[:70]
 
 
-def urlspec(arg: str) -> str:
-    if "://" in arg:
-        return arg
-    return f"https://{arg}" if "/" in arg else f"https://{arg}/"
+def all_bad(vs: list[str]) -> bool:
+    return all(v.startswith(("FAIL", "TIMEOUT")) for v in vs)
+
+
+def any_ok(vs: list[str]) -> bool:
+    return any(v.startswith("OK") for v in vs)
 
 
 def main() -> int:
-    urls = [urlspec(a) for a in sys.argv[1:]]
+    ap = argparse.ArgumentParser(description="pinned-TLS пробы (1.2 / 1.3)")
+    ap.add_argument("--repeat", type=int, default=1,
+                    help="число повторов (пауза 0.5с) — детект флапа")
+    ap.add_argument("targets", nargs="*")
+    a = ap.parse_args()
+    urls = [urlspec(t) for t in a.targets]
     if not urls:
-        print("укажи хост: python tools/tls_ver_probe.py ya.ru ...")
+        print("укажи хост: python tools/tls_ver_probe.py [--repeat N] ya.ru ...")
         return 1
     for url in urls:
         print(f"\n{url}")
-        res: dict[str, str] = {}
+        res: dict[str, list[str]] = {}
         for label, args in VARIANTS:
-            verdict, wall, err = run(url, args)
-            res[label] = verdict
-            note = f"  [{err}]" if err and verdict.startswith(("FAIL", "UNSUP",
-                                                               "TIMEOUT")) else ""
-            print(f"  {label:8s} {verdict:10s} {wall * 1000:.0f}мс{note}")
-        good = lambda v: v.startswith("OK")
-        if good(res.get("TLS1.2", "")) and \
-                res.get("TLS1.3", "").startswith(("FAIL", "TIMEOUT")):
+            verdicts: list[str] = []
+            for i in range(max(1, a.repeat)):
+                if i:
+                    time.sleep(0.5)
+                verdict, wall, err = run(url, args)
+                verdicts.append(verdict)
+                if a.repeat == 1:
+                    note = f"  [{err}]" if err and verdict.startswith(
+                        ("FAIL", "UNSUP", "TIMEOUT")) else ""
+                    print(f"  {label:8s} {verdict:10s} {wall * 1000:.0f}мс{note}")
+            if a.repeat > 1:
+                cnt = Counter(v.split("(")[0] for v in verdicts)
+                summ = ", ".join(f"{k} x{v}" for k, v in cnt.items())
+                print(f"  {label:8s} {summ}")
+            res[label] = verdicts
+        if any_ok(res["TLS1.2"]) and all_bad(res["TLS1.3"]):
             print("  -> подозрение: TLS1.3 валится (возможен DPI по версии TLS)")
-        if good(res.get("TLS1.3", "")) and \
-                res.get("TLS1.2", "").startswith(("FAIL", "TIMEOUT")):
+        if any_ok(res["TLS1.3"]) and all_bad(res["TLS1.2"]):
             print("  -> подозрение: TLS1.2 валится (возможен DPI по версии TLS)")
+        if all_bad(res["TLS1.2"]) and all_bad(res["TLS1.3"]):
+            print("  (все версии TLS недоступны: TCP-блок, не-TLS сервер или FAIL)")
     return 0
 
 

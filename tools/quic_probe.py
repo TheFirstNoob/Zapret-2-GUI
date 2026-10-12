@@ -10,16 +10,19 @@ r"""quic_probe.py — настоящая QUIC/HTTP3-проба (niquests+qh3) п
   - DNS-спуф (NameResolutionError) -> фолбэк через cloudflare DoH + patch.
 
 Запуск (нужен venv с niquests[h3], напр. %TEMP%\opencode\h3env):
-    <venv>\Scripts\python.exe tools/quic_probe.py [host|url ...]
+    <venv>\Scripts\python.exe tools/quic_probe.py [--repeat N] [host|url ...]
+  --repeat N — несколько прогонов подряд (пауза 1с): детект флапа QUIC-пути.
 """
 from __future__ import annotations
 
+import argparse
 import json
 import socket
 import subprocess
 import sys
 import threading
 import time
+from collections import Counter
 
 try:
     import niquests
@@ -87,13 +90,14 @@ def install_doh_patch(host: str) -> bool:
     return True
 
 
-def probe(url: str) -> None:
+def probe(url: str) -> str:
+    """Одна проба. Печатает детали, возвращает короткий вердикт."""
     host = url.split("//", 1)[1].split("/", 1)[0]
     print(f"\n{url}")
     ips = resolved_ips(host)
     if ips & WORKER_IPS:
         print("  SKIP: воркер-пин — QUIC у воркера нет")
-        return
+        return "SKIP"
 
     box: dict = {}
 
@@ -122,28 +126,44 @@ def probe(url: str) -> None:
     wall = (time.perf_counter() - t0) * 1000
     if th.is_alive():
         print(f"  TIMEOUT: висит > {WALL_DEADLINE:.0f}с (внешний дедлайн)")
-        return
+        return "TIMEOUT"
     if "r" in box:
         code, raw, dur = box["r"]
         ver = VER.get(raw, raw)
         if raw == 30:
             print(f"  OK  H3: {code} {ver}  {dur:.0f}мс")
-        else:
-            print(f"  NOT-H3: {code} {ver} ({dur:.0f}мс) — QUIC не подтверждён")
-    elif "e" in box:
+            return "H3"
+        print(f"  NOT-H3: {code} {ver} ({dur:.0f}мс) — QUIC не подтверждён")
+        return "NOT-H3"
+    if "e" in box:
         e = box["e"]
         if "NameResolution" in e:
             print(f"  ERR DNS: {e}")
             if install_doh_patch(host):
                 print("  (DoH-патч поставлен — повтори запуск)")
-        else:
-            print(f"  FAIL: {e}")
-    print(f"  wall {wall:.0f}мс")
+            return "DNS"
+        print(f"  FAIL: {e}")
+        return "FAIL"
+    return "?"
 
 
 def main() -> int:
-    for arg in (sys.argv[1:] or DEFAULT):
-        probe(urlspec(arg))
+    ap = argparse.ArgumentParser(description="QUIC/HTTP3-проба (forced H3)")
+    ap.add_argument("--repeat", type=int, default=1,
+                    help="число прогонов (пауза 1с) — детект флапа")
+    ap.add_argument("targets", nargs="*")
+    a = ap.parse_args()
+    for arg in (a.targets or DEFAULT):
+        url = urlspec(arg)
+        results = []
+        for i in range(max(1, a.repeat)):
+            if i:
+                time.sleep(1.0)
+            results.append(probe(url))
+        if a.repeat > 1:
+            cnt = Counter(results)
+            summ = ", ".join(f"{k} x{v}" for k, v in cnt.items())
+            print(f"  ИТОГ {a.repeat}x: {summ}")
     return 0
 
 
