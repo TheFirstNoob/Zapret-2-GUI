@@ -837,22 +837,17 @@ raw/objects/release-assets/private-user-images/gist/avatars* — стабиль�
   на UDP (QUIC/игры) против наших 1; (4) `max_ru`/`stun2` блобы для
   general/fake-http/unknown; (5) `--ip-id=zero`; (6) any-protocol +
   cutoff=n4 для игр. Кандидаты на наши A/B (`tools/ab_candidate.py`): (2)/(3)/(4).
-  (4) Голос/стрим Discord на 50000+ (GCP): отдельный сегмент-эксперимент —
-  fake ВСЕХ `l7=discord,stun` пакетов (не только discovery) реальным
-  записанным UDP-блобом (аналог `ACTIVE_DISCORD_UDP.bin` — записать свой
-  через pktmon) + repeats 6-11; у Flowseal иного лекарства для 5000х нет.
-  Ожидание низкое (A/B показал блок IP-уровня), но их точную схему не
-  проверяли. План на 2026-10-12+ (см. VOICE_FLAP док). Статус 12.10:
-  сервер друзей переехал на C-AMS (перестали терпеть флапы); юзер поймал
-  новую финку `finland14087` = **35.217.60.132:50008** — то же GCP-семейство
-  (35.216-219.x:500xx), ранние лоссы уже есть (снимок 12:06: провал 9/12,
-  CF-эндпоинты ровные). Блобы Flowseal забраны в `blobs/` (MIT):
-  `ACTIVE_DISCORD_UDP.bin` (1200б), `ACTIVE_GAME_UDP.bin` (1250б),
-  `stun2.bin` (120б) — кандидаты V1-V4 к прогону на живом лоссе.
-  Сплит готов: `presets/cand-voice-50000.txt` — копия `default`, 5000х вынесен
-  отдельным сегментом в самый низ (`--comment=Discord Voice 50000 (exp)`),
-  baseline 1:1 (discovery-сегмент `19294-19344` не тронут); тест = выбрать
-  пресет в GUI + снимки `voice_flap_watch`; итерируем ТОЛЬКО нижний сегмент.
+  (4) Голос/стрим Discord на 50000+ (GCP): **эксперимент 12.10 проведён —
+  отрицательно** (метрика: keepalive-пинги `voice_flap_watch`; провод: pktmon;
+  подробно — VOICE_FLAP док, §«5000+ эксперимент»). Кандидаты в репо:
+  `presets/cand-voice-active.txt` (схема Flowseal 1:1, их ACTIVE-блоб, l7),
+  `cand-voice-any.txt` (gamefilter-стиль), `cand-voice-all.txt` (`:payload=all`).
+  НИ ОДИН не меняет клиентский лосс (фейки на проводе = есть, результат 0) —
+  блок на обратном пути IP-уровня. Ключ механики: Lua `fake` по умолчанию
+  трогает только known-пейлоады; «fake всего» = `:payload=all` (исходники:
+  `nfq2/` + `lua/zapret-antidpi.lua:449`). Остался 1 тест: свежий поток
+  (reconnect при активном кандидате) — если и он деградирует, вопрос закрыт.
+
 - Flowseal актуалии (сверка 2026-10-12, репо 34.6k★, последний push 01.10):
   ALT11-серия практически не изменилась (всё та же жёсткая fake+multisplit +
   always-ipset) — их ALT-пресеты способны рвать CDN (кейс CurseForge-друга).
