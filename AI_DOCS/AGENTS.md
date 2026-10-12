@@ -845,6 +845,17 @@ etsh dns delete encryption server=.... В README пока не выносим.
   желанию; 0.11 не торопим — QUIC/новые библиотеки гоняем не спеша. Тумблер
   «UDP-длина» на главной ОСТАЁТСЯ (нам на блоченных финах ломает, другим
   сетям может помогать).
+  **Точность тестера — инструменты готовы (12.10, `tools/`, проверено вживую)**:
+  `quic_probe.py` — forced-H3 (`disable_http1/2` + preemptive `quic_cache_layer`),
+  успех только при `http_version==30`, skip воркер-пинов, внешний wall-clock,
+  DoH-фолбэк. `upload_probe.py` — POST-N байт, учёт `size_upload/size_download/
+  time_total`, вердикт `LIKELY_BLOCKED` («ТСПУ-яма»: ушло/ответа 0/время на
+  пределе; идея из теста Flowseal). `tls_ver_probe.py` — pinned-TLS
+  (1.2-only/1.3-only). Пруф: `i.ytimg.com` — H3 204 при мёртвом TCP у curl;
+  воркер-пины -> SKIP; ya.ru/CF/yt — ок. Интеграция в тестер — по контрактам
+  ревью: strategy-test = свежие соединения, bulk = multiplexed; H2 — только
+  диагностика; DNS-таксономия OK/mismatch/suspicious/failed; niquests
+  env-proxy off; внешний дедлайн обязателен.
 - `speech.platform.bing.com` (edge-tts, 2026-10-12): симптом на чужой сети —
   TCP:443 открыт, WSS-апгрейд флапает 403/ок. **В списки НЕЛЬЗЯ**: проба
   добавления в list-general ПРОВАЛЕНА — наш desync ЛОМАЕТ домен (curl 3/3
