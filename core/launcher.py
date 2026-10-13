@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import os
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 from typing import Optional
@@ -26,6 +28,75 @@ _DRY_RUN_ERROR_MARKERS = (
 )
 
 
+def _winws2_env() -> dict[str, str]:
+    """env для winws2: Cygwin ждёт UTF-8-локаль (кривой LANG у юзера ломает пути)."""
+    env = os.environ.copy()
+    env["LANG"] = "C.UTF-8"
+    env["LC_ALL"] = "C.UTF-8"
+    return env
+
+
+def _conf_quote_token(t: str) -> str:
+    """Токен конфига: пробелы требуют DQ (Cygwin-парсер контента @file)."""
+    return f'"{t}"' if (" " in t or "\t" in t) else t
+
+
+def _conf_text(tokens: list[str]) -> str:
+    return "\n".join(_conf_quote_token(str(t)) for t in tokens) + "\n"
+
+
+def _winws2_raw_cmdline(exe_path: Path, conf_path: Path) -> str:
+    """Командная строка вида `"exe" @"conf"`.
+
+    Кавычки вокруг ПУТИ, @ снаружи: только так Cygwin раскрывает @file
+    (`"@conf"` - кавычка перед @ - отключает раскрытие, см.
+    AI_DOCS/ARG_FILE_RESEARCH_2026-10-14.md, dcrt0.cc sawquote).
+    """
+    return f'"{exe_path}" @"{conf_path}"'
+
+
+def write_run_conf(root_dir: Path, args: list[str], name: str = "run.conf") -> Path:
+    """Пишет аргументы winws2 в logs/<name> (токен на строку, LF, UTF-8).
+
+    Атомарная запись (tmp + os.replace): winws2 читает конфиг только целиком.
+    """
+    logs = root_dir / "logs"
+    logs.mkdir(parents=True, exist_ok=True)
+    conf = logs / name
+    tmp = conf.with_name(conf.name + ".tmp")
+    tmp.write_text(_conf_text(args), encoding="utf-8")
+    os.replace(tmp, conf)
+    return conf
+
+
+def _write_temp_conf(tokens: list[str]) -> Path:
+    """Временный conf для dry-run/lua-проверок (в TEMP)."""
+    fd, name = tempfile.mkstemp(prefix="zapret2_preflight_", suffix=".conf")
+    os.close(fd)
+    p = Path(name)
+    p.write_text(_conf_text(tokens), encoding="utf-8")
+    return p
+
+
+def _read_stderr_sink(root_dir: Path, limit: int = 1500) -> str:
+    """Перехваченный вывод winws2 (logs/winws2_last_stderr.log).
+
+    Ранние ошибки (getopt/lua) печатаются в НАЧАЛЕ вывода, поэтому при
+    длинном тексте возвращаем начало+конец, а не только хвост.
+    """
+    p = root_dir / "logs" / "winws2_last_stderr.log"
+    try:
+        data = p.read_bytes()
+    except OSError:
+        return ""
+    text = data.decode("utf-8", "replace").strip()
+    if len(text) <= limit:
+        return text
+    head = text[: limit // 2].strip()
+    tail = text[-limit // 2:].strip()
+    return head + "\n...\n" + tail
+
+
 def validate_args(exe_path: Path, args: list[str], cwd: Optional[Path] = None, timeout: float = 10.0) -> tuple[bool, str]:
     """Проверка аргументов winws2 через --dry-run перед реальным запуском.
 
@@ -34,9 +105,10 @@ def validate_args(exe_path: Path, args: list[str], cwd: Optional[Path] = None, t
     или (False, первая проблемная строка вывода).  WinDivert не грузится -
     состояние драйвера не затрагивается.
     """
+    conf = _write_temp_conf(list(args) + ["--dry-run"])
     try:
         r = subprocess.run(
-            [str(exe_path), "--dry-run"] + args,
+            _winws2_raw_cmdline(exe_path, conf),
             capture_output=True,
             text=True,
             encoding="oem",
@@ -44,9 +116,12 @@ def validate_args(exe_path: Path, args: list[str], cwd: Optional[Path] = None, t
             timeout=timeout,
             cwd=str(cwd) if cwd else None,
             creationflags=subprocess.CREATE_NO_WINDOW,
+            env=_winws2_env(),
         )
     except (subprocess.TimeoutExpired, OSError) as e:
         return False, f"winws2 --dry-run не выполнился: {e}"
+    finally:
+        conf.unlink(missing_ok=True)
     output = ((r.stdout or "") + "\n" + (r.stderr or "")).lower()
     for line in output.splitlines():
         stripped = line.strip()
@@ -78,9 +153,10 @@ def validate_lua(exe_path: Path, args: list[str], cwd: Optional[Path] = None, ti
     lua_tokens = [t for t in args if t.startswith("--lua-init") or t.startswith("--blob") or t.startswith("--lua-gc")]
     if not lua_tokens:
         return True, ""
+    conf = _write_temp_conf(lua_tokens + ["--intercept=0"])
     try:
         r = subprocess.run(
-            [str(exe_path), "--intercept=0"] + lua_tokens,
+            _winws2_raw_cmdline(exe_path, conf),
             capture_output=True,
             text=True,
             encoding="oem",
@@ -88,9 +164,12 @@ def validate_lua(exe_path: Path, args: list[str], cwd: Optional[Path] = None, ti
             timeout=timeout,
             cwd=str(cwd) if cwd else None,
             creationflags=subprocess.CREATE_NO_WINDOW,
+            env=_winws2_env(),
         )
     except (subprocess.TimeoutExpired, OSError) as e:
         return False, f"winws2 --intercept=0 не выполнился: {e}"
+    finally:
+        conf.unlink(missing_ok=True)
     output = ((r.stdout or "") + "\n" + (r.stderr or "")).lower()
     for line in output.splitlines():
         stripped = line.strip()
@@ -624,27 +703,47 @@ def _wait_winws2_alive(timeout: float,
 def launch_winws2_direct(root_dir: Path, exe_path: Path, args: list[str],
                          timeout: float = 5.0,
                          ) -> tuple[Optional[subprocess.Popen], str]:
-    """Прямой запуск winws2.exe без cmd/bat. -> (proc | None, ошибка).
+    """Прямой запуск winws2.exe через @config_file. -> (proc | None, ошибка).
 
-    Аргументы передаются списком: Windows строит command line сама, argv-
-    лимиты cmd (8191) и парсинг кавычек не участвуют.
+    Аргументы пишутся в logs/run.conf, командная строка - `"exe" @"conf"`:
+    @file раскрывает Cygwin-рантайм ещё до main() (это снимает лимиты длины
+    cmd 8191/CreateProcess), кавычки стоят ПОСЛЕ @ (см. _winws2_raw_cmdline).
+    stdout/stderr winws2 пишутся в logs/winws2_last_stderr.log (PIPE без
+    чтения использовать нельзя - deadlock на полном буфере).
     """
     ok, msg = _launch_preflight(root_dir, exe_path, args, "direct")
     if not ok:
         _applog("launch", f"preflight FAIL: {msg}")
         return None, msg
+    try:
+        conf = write_run_conf(root_dir, args)
+    except OSError as e:
+        _applog("launch", f"run.conf write FAIL: {e!r}")
+        return None, f"run.conf: {e}"
     _prepare_winws2_launch(root_dir)
+    sink = None
+    try:
+        sink = open(root_dir / "logs" / "winws2_last_stderr.log", "wb")
+    except OSError:
+        sink = None
+    kw: dict = dict(cwd=str(root_dir),
+                    creationflags=subprocess.CREATE_NO_WINDOW,
+                    close_fds=True, env=_winws2_env())
+    if sink is not None:
+        kw.update(stdout=sink, stderr=subprocess.STDOUT)
     try:
         proc = subprocess.Popen(
-            [str(exe_path)] + [str(a) for a in args],
-            cwd=str(root_dir),
-            creationflags=subprocess.CREATE_NO_WINDOW,
-            close_fds=True,
+            _winws2_raw_cmdline(exe_path, conf),
+            executable=str(exe_path),
+            **kw,
         )
     except (OSError, subprocess.SubprocessError) as e:
         _applog("launch", f"direct Popen FAIL: {e!r}")
         return None, f"Popen: {e}"
-    _applog("launch", f"direct Popen ok pid={proc.pid}")
+    finally:
+        if sink is not None:
+            sink.close()
+    _applog("launch", f"direct Popen ok pid={proc.pid} conf=logs/{conf.name}")
     return proc, ""
 
 
@@ -667,6 +766,9 @@ def launch_winws2(root_dir: Path, exe_path: Path, args: list[str],
         _applog("launch", f"direct FAIL: winws2 упал rc={proc.returncode}")
     elif err:
         _applog("launch", f"direct FAIL: {err}")
+    tail = _read_stderr_sink(root_dir)
+    if tail:
+        _applog("launch", f"winws2 stderr: {tail}")
     bat = root_dir / "_zapret_run.bat"
     write_run_bat(root_dir, bat, exe_path, args)
     ok = launch_winws2_bat(bat, root_dir, timeout=timeout)

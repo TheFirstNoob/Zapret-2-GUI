@@ -61,6 +61,7 @@
 | T8/T10 | `--debug=@file` ВНУТРИ конфига | ✅ rc=0, лог-файл пишется (1589-4398Б, реальные строки) |
 | T9 | Служба: binPath `"winws2.exe" @C:\ProgramData\Zapret2\probe.conf` | ✅ start rc=0 RUNNING, debug-лог создан LocalSystem'ом, stop/delete чисто |
 | T9/T10 | Служба: binPath `"winws2.exe" @"C:\ProgramData\Zapret2\probe conf.txt"` | ✅ cmdline процесса перехвачена WMI — SCM передаёт аргумент ВЕРБАТИМ; winws2 RUNNING (первый замер дал ложный 1053 — dup-mutex артефакт, см. §5) |
+| T11 | Этап 1 (внедрён): golden argv vs conf — REPO и MIRROR(пробелы) | ✅ SAME=True (8+verified / 9+dup-mutex-квирк); validate=True; живой direct `@file` на пробельном MIRROR: alive + curl 200; sink поймал вывод падения |
 
 Побочно: лог winws2 показывает пути урезанно (`/lists/...`) — косметика;
 `--comment` в контенте не мешает; `--hostlist=` принимает ТОЛЬКО обычный путь
@@ -101,19 +102,33 @@
    конвенция миграции: dry-run внутри файла.
 8. `$`-вариант на Windows — НЕ использовать (сломан).
 
-## 4. Черновик миграции (обновлён; НЕ начато)
+## 4. Миграция (Этап 1 — ✅ ВЫПОЛНЕН 14.10; этапы 2-4 ждут)
 
-1. `launcher.write_run_conf(root, path)` — токены в файл; запуск `winws2 @<conf>`;
-   при пробельном корне — `@"<conf>"` (без 8.3-костылей для самого conf-пути).
-2. Служба: `binPath = "C:\...\winws2.exe" @C:\...\service_run.conf`
-   (или `@"C:\Program Files\...\service_run.conf"`); смена стратегии/игр =
-   перезаписать файл + restart (без ChangeServiceConfigW).
-3. bat-фолбэк: `start /min winws2.exe @"<conf>"` — в bat попадает только путь conf.
-4. `validate_args`: писать временный conf и `winws2 @<conf>` (+ `--dry-run` внутри);
-   либо оставить прямой argv (32К хватает).
-5. Golden перед миграцией: conf-снапшоты по всем `presets/*.txt` × тогглам;
-   сверка «8 profiles» / «verified»; прямой argv — fallback.
-6. НЕ трогать схлопывание пресетов/дедуп Discord — с @file длина не критична.
+**Этап 1 (внедрён, `core/launcher.py`; tester подключён тем же `launch_winws2`):**
+- `write_run_conf` → `logs/run.conf` (токен на строку, LF, UTF-8; токены с
+  пробелами — DQ; атомарно tmp+os.replace).
+- `_winws2_raw_cmdline` → `"exe" @"conf"` (кавычки вокруг пути, @ снаружи).
+  Лаунчер/тестер запускают `winws2 @run.conf` — лимиты длины cmd сняты;
+  прямой argv-путь заменён.
+- `validate_args`/`validate_lua` — временный conf в TEMP, `--dry-run`/
+  `--intercept=0` ВНУТРИ файла.
+- stderr-sink: stdout+stderr winws2 → `logs/winws2_last_stderr.log` (не PIPE!);
+  при падении direct — head+tail в applog. (Хвост ревью — ✅.)
+- env запусков: `LANG/LC_ALL=C.UTF-8`. (Хвост ревью — ✅.)
+- Golden: argv-форма vs conf-форма идентичны — REPO (8 профилей + verified);
+  MIRROR с пробелами (9 профилей; пойман pre-existing квирк: при службе с ТОЙ
+  ЖЕ стратегией dry-run обрывается dup-mutex'ом «A copy of winws2 is already
+  running with the same filter» — старое и новое поведение совпадает).
+  Живой тест: служба стоп → direct @file на пробельном MIRROR → alive +
+  curl 200 → kill → служба RUNNING.
+
+**Этап 2 (bat/build_lite):** в bat только `winws2.exe @"<conf>"` (проверить
+пробельный корень в lite-сборке).
+**Этап 3 (служба):** binPath `"winws2.exe" @C:\ProgramData\Zapret2\service_run.conf`
+(PoC ✅, §5); смена стратегии/игр = перезапись conf + restart (без
+ChangeServiceConfigW).
+**Этап 4 (зачистка):** sc-bat fallback/`_verify_binpath`, ImagePath-чек в
+`status()`, timestamps без PS + вызов из тестера, CDN service-ветка.
 
 ## 5. Что осталось проверить (точки продолжения)
 
@@ -129,12 +144,12 @@
 3. Юникод/не-ASCII — ✅ проверено (T8: кириллица в @-пути через `@"..."` ок).
 4. (Если когда-нибудь Linux-порт) — контент под wordexp-семантику отличий.
 
-## 6. Принятые, но НЕ сделанные хвосты (из внешнего ревью 14.10)
+## 6. Хвосты ревью 14.10 (первые два — ✅ сделаны в Этапе 1)
 
-- **Перехват stderr winws2 в файл** (launcher + tester): fd → `logs/winws2_last_stderr.log`,
-  `stdout=f, stderr=STDOUT`; при раннем падении дампить в session/log. (PIPE без
-  чтения — нельзя: deadlock.)
-- **`LANG=C.UTF-8`/`LC_ALL=C.UTF-8`** в env winws2 (Cygwin).
+- ✅ **Перехват stderr winws2 в файл** — ВНЕДРЕНО: stdout+stderr →
+  `logs/winws2_last_stderr.log` (не PIPE!); при падении direct — head+tail в applog
+  (ранний getopt-вывод пишется в НАЧАЛО файла — читаем оба конца).
+- ✅ **`LANG=C.UTF-8`/`LC_ALL=C.UTF-8`** — ВНЕДРЕНО в env всех запусков winws2.
 - **TCP timestamps**: убрать PowerShell из горячего пути (netsh по коду возврата;
   чтение — локализация!); вызывать и из тестера (heisenbug «тест работает после
   обычного запуска»).
@@ -151,8 +166,11 @@
   `zapret2-v1.0.5\` (распакованный релиз; наш bin/winws2.exe = релизный бинарь,
   sha256 A2535593...).
 - Тест-скрипты: `argfile_test5.py`, `argfile_test6.py`, `argfile_test7.py`,
-  `argfile_test7g.py`, `cygwin_probe.py`; отчёты `argfile_results5/6/7/7g.txt`,
-  `cygwin_probe_results.txt`; песочницы `%TEMP%\opencode\argfile\`,
+  `argfile_test7g.py`, `argfile_test8.py`, `argfile_test9_service.py`,
+  `argfile_test10.py`, `t11b_stage1.py`, `t12_mirror_dry.py`, `cygwin_probe.py`;
+  отчёты `argfile_results5/6/7/7g.txt`, `cygwin_probe_results.txt`,
+  `t8_unicode_dbg_cmd.txt`, `t9_service_poc.txt`, `t10_a2b_probe2diag.txt`,
+  `t11b_stage1.txt`, `t12_mirror_dry.txt`; песочницы `%TEMP%\opencode\argfile\`,
   `C:\Users\Public\argfile_test\` (+ `arg file\`).
 - Внешнее ревью (НЕ коммитим, решение 14.10): зеркало
   `AI_DOCS\ARCH_REVIEW_2026-10-14.md` — 3 «срочных» (2 починены в `053af51`,
