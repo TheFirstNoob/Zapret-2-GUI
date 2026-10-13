@@ -262,17 +262,24 @@ def _run_update_worker(kind: str, tag: str, info: dict) -> None:
                     _ui_debug(f"update: stop service failed: {e}")
                 time.sleep(1.0)
             prog(70, "Применение обновления…")
-            applied = apply_portable(zip_path, root_dir,
-                                     progress_cb=lambda m: prog(80, str(m)))
+            # try/finally: служба, остановленная ДО apply, обязана подняться и
+            # при исключении в apply (внешнее ревью 14.10: иначе пользователь
+            # остаётся без обхода).
+            applied = None
+            try:
+                applied = apply_portable(
+                    zip_path, root_dir,
+                    progress_cb=lambda m: prog(80, str(m)))
+            finally:
+                if svc_was and _svc_start:
+                    prog(92, "Запуск обхода…")
+                    try:
+                        _svc_start()
+                    except Exception as e:  # noqa: BLE001
+                        _ui_debug(f"update: start service failed: {e}")
             result.update(applied=applied["updated"],
                           skipped_user=applied["skipped_user"],
                           backup=applied["backup"])
-            if svc_was and _svc_start:
-                prog(92, "Запуск обхода…")
-                try:
-                    _svc_start()
-                except Exception as e:  # noqa: BLE001
-                    _ui_debug(f"update: start service failed: {e}")
             # Автоперезапуск приложения (portable/dev): сервер уже на новых
             # файлах, но процесс - старый; батник убьёт наш PID и запустит
             # заново тем же интерпретатором. Ошибки не фатальны - останется
@@ -2325,6 +2332,14 @@ class ZapretHandler(BaseHTTPRequestHandler):
         self._send_json({"status": "ok", "message": "Все процессы zapret остановлены"})
 
     def _handle_save_list(self, data: dict, filename: str) -> None:
+        # Пустой/битый POST НЕ должен стирать пользовательский список: требуем
+        # явный ключ content (внешнее ревью 14.10 - класс "потери данных").
+        # content:"" допустим - это осознанная очистка списка пользователем.
+        if "content" not in data:
+            self._send_json({"status": "error",
+                             "message": "Нет поля content - список не изменён"},
+                            HTTPStatus.BAD_REQUEST)
+            return
         content = _clean_list_text(data.get("content", "")).strip()
         try:
             # Атомарно и под локом (core.list_health.save_user_list): запись
@@ -2985,6 +3000,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
             winws2_debug=cfg.winws2_debug,
             autohostlist=cfg.autohostlist,
             ipset_catchall=cfg.ipset_catchall,
+            discord_alt=cfg.discord_alt,
         )
         if not restart_ok and written:
             self._send_json({"status": "error",

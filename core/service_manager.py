@@ -658,16 +658,20 @@ _recovery_lock = threading.Lock()
 
 
 def pause_recovery() -> None:
-    """Не бросает исключений: зависший sc.exe не должен ронять worker (L4)."""
+    """На время тестов/починки: отключаем sc.exe restart на время worker (L4)."""
     global _recovery_paused, _recovery_was_on
     with _recovery_lock:
         if _recovery_paused:
             return
         try:
             code, out = _sc(["qfailure", SERVICE_NAME])
-            _recovery_was_on = code == 0 and (
-                "restart" in (out or "").lower()
-                or "перезапуск" in (out or "").lower())
+            if code != 0:
+                # Не смогли ПРОЧИТАТЬ конфиг recovery (timeout/отказ прав):
+                # НЕ мутируем SCM и не помечаем паузу - иначе безусловный
+                # сброс actions терял recovery навсегда (внешнее ревью 14.10).
+                return
+            _recovery_was_on = ("restart" in (out or "").lower()
+                                or "перезапуск" in (out or "").lower())
             _sc(["failure", SERVICE_NAME, "reset=", "0", "actions=", ""])
             _recovery_paused = True
         except Exception:
