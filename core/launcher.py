@@ -8,12 +8,10 @@ from pathlib import Path
 from typing import Optional
 
 from core.admin import enable_privilege, get_enabled_privileges
-from core import games as games_store
-from core import list_health
+from core import args_transforms, list_health, preset_parse
 from core.applog import log as _applog
 from core.utils import short_path
 
-_GAME_PORT = "1024-65535"
 
 # Маркеры ошибок winws2 на неверные параметры (exit code ненадёжен: даже на
 # "unknown option" возвращает 0 - вывод приходится сканировать).
@@ -190,19 +188,6 @@ def validate_lua(exe_path: Path, args: list[str], cwd: Optional[Path] = None, ti
     return True, ""
 
 
-def _append_wf_udp_ports(tokens: list[str], ports: str) -> None:
-    """Дописать порты в --wf-udp-out (его значение - следующий токен)."""
-    for i, t in enumerate(tokens):
-        if t == "--wf-udp-out" and i + 1 < len(tokens):
-            cur = tokens[i + 1]
-            have = cur.split(",")
-            missing = [p for p in ports.split(",") if p and p not in have]
-            if missing:
-                tokens[i + 1] = cur + "," + ",".join(missing)
-            return
-    tokens.insert(0, f"--wf-udp-out={ports}")
-
-
 def build_args_from_preset(
     root_dir: Path,
     lua_dir: Path,
@@ -221,364 +206,56 @@ def build_args_from_preset(
 ) -> list[str]:
     """Читает .txt пресет и возвращает токены командной строки.
 
-    @lua/ и @blobs/ остаются с @ (--lua-init/--blob), @lists/ и @windivert/
-    разворачиваются в короткие пути без @ (--hostlist, --ipset).
-    %GameFilter% -> 1024-65535 при включённом game_filter_mode, иначе
-    вырезается.  ipset_catchall заменяет list-general на IP-catch-all,
-    отбрасывая SNI-include: winws2 AND-ит ipset с hostlist, и включение
-    обнулило бы catch-all; list-exclude и юзер-исключения действуют.
-    debug дописывает --debug=@debug_winws2.log.  Токены НЕ квотируются -
-    это делает write_run_bat через subprocess.list2cmdline.
+    Тонкий оркестратор: core.preset_parse (чтение и подстановки пресета) +
+    core.args_transforms.PIPELINE (постобработки; порядок критичен и
+    зафиксирован списком). Раньше всё это была одна функция на 380 строк.
 
-    discord_alt: альтернативный режим Discord (вернуть :nodrop в Discord-профили)
-    - для сетей, где базовый drop-режим не пробивает «холодный старт».
+    Публичная сигнатура стабильна: её зовут build_lite/build_portable и
+    server._prepare_service_args (аудит #4, инварианты §7).
     """
     if lists_dir is None:
         lists_dir = root_dir / "lists"
     if windivert_dir is None:
         windivert_dir = root_dir / "windivert"
-    lists_base = str(lists_dir)
-    lines = preset_path.read_text(encoding="utf-8-sig").strip().splitlines()
     game_on = game_filter_mode != "off"
     # Discord Voice: legacy bool + новый селект. Неизвестное значение -> off.
     voice_mode = (discord_voice_mode or ("fake" if discord_voice else "off")).strip().lower()
     if voice_mode not in ("off", "fake", "udplen"):
         voice_mode = "off"
-    tokens: list[str] = []
 
-    auto_file = lists_dir / "zapret-auto.txt"
+    auto_path = ""
     if autohostlist:
+        auto_file = lists_dir / "zapret-auto.txt"
         if not auto_file.exists():
             auto_file.write_text("", encoding="utf-8")
         auto_path = str(auto_file)
 
-    # User IP-include list: только непустой файл меняет args - пустой не
-    # должен трогать конфиг вообще (байт-в-байт прежний default).
+    # User IP-include/exclude: только НЕПУСТОЙ файл меняет args - пустой не
+    # должен трогать конфиг вообще (байт-в-байт прежний default). Exclude
+    # всегда сильнее include (ipset.c проверяет ips_exclude первым) - без
+    # этой связки редактор «IP-сети - исключения» писал в файл, который
+    # winws2 никогда не получал.
     ipset_inc_file = lists_dir / "ipset-include-user.txt"
-    ipset_inc_path = ""
-    if list_health.read_entries(ipset_inc_file):
-        ipset_inc_path = str(ipset_inc_file)
-
-    # User IP-exclude list: exclude всегда сильнее include (ipset.c проверяет
-    # ips_exclude первым) - без этой связки редактор «IP-сети - исключения»
-    # писал в файл, который winws2 никогда не получал.
+    ipset_inc_path = str(ipset_inc_file) if list_health.read_entries(ipset_inc_file) else ""
     ipset_excl_file = lists_dir / "ipset-exclude-user.txt"
-    ipset_excl_path = ""
-    if list_health.read_entries(ipset_excl_file):
-        ipset_excl_path = str(ipset_excl_file)
+    ipset_excl_path = str(ipset_excl_file) if list_health.read_entries(ipset_excl_file) else ""
 
-    for line in lines:
-        line = line.strip()
-        if not line or line.startswith("#") or line.startswith("--comment"):
-            continue
-        # Targeted-mode override: SNI-блоки list-general -> IP catch-all.
-        if ipset_catchall and line.startswith("--hostlist=") and "list-general.txt" in line:
-            tokens.append(f"--ipset={lists_base}\\ipset-all.txt.gz")
-            if ipset_inc_path:
-                # Несколько --ipset OR-ятся (winws2 help: "multiple ipsets
-                # allowed") - юзер-подсети десинкаются тоже.
-                tokens.append(f"--ipset={ipset_inc_path}")
-            tokens.append(f"--ipset-exclude={lists_base}\\ipset-exclude.txt")
-            if ipset_excl_path:
-                # Несколько exclude коллекций поддерживаются (ipset.c
-                # итерирует список); юзер-сети сильнее ipset-all.
-                tokens.append(f"--ipset-exclude={ipset_excl_path}")
-            if autohostlist:
-                # catch-all заменяет hostlist на ipset, но --hostlist-auto
-                # должен остаться: иначе тумблер молча холостой (аудит 2026-10)
-                tokens.append(f"--hostlist-auto={auto_path}")
-            continue
-        if "@lists/" in line:
-            line = line.replace("@lists/", str(lists_base) + "\\")
-        for dir_name, dir_path in [("@lua/", lua_dir), ("@blobs/", blobs_dir), ("@windivert/", windivert_dir)]:
-            if dir_name in line:
-                line = line.replace(dir_name, "@" + str(dir_path) + "\\")
-        if "%GameFilter%" in line:
-            port = _GAME_PORT if game_on else ""
-            cleaned = line.replace("%GameFilter%", port).strip(",").strip()
-            if not cleaned:
-                continue
-            line = cleaned
-        tokens.append(line)
-        # --autohostlist добавляется в блоки фильтра list-general
-        if autohostlist and "--hostlist=" in line and "list-general" in line:
-            tokens.append(f"--hostlist-auto={auto_path}")
-    # ── Fake blob selector: подмена TLS-фейка без записи в пресет ──
-    # Регистрируется отдельное имя alt_tls на новый файл и переписываются
-    # ТОЛЬКО fake:blob=<tls-blob> - seqovl_pattern (выравнивание перекрытия)
-    # и QUIC/HTTP блобы остаются родными.
-    if fake_blob:
-        alt_file = blobs_dir / f"tls_clienthello_{fake_blob}.bin"
-        if not alt_file.exists() and fake_blob.startswith("blob_"):
-            # цифро-ключи сервер отдаёт в селект как "blob_<key>" (имена с
-            # цифры winws2 не принимает) - резолвим алиас к реальному файлу
-            alt_file = blobs_dir / f"tls_clienthello_{fake_blob[5:]}.bin"
-        if alt_file.exists():
-            # имена --blob, чьи файлы - TLS clienthello (не quic/http)
-            tls_blob_names = set()
-            for i, t in enumerate(tokens):
-                if t == "--blob" and i + 1 < len(tokens) and "tls_clienthello_" in tokens[i + 1]:
-                    tls_blob_names.add(tokens[i + 1].split(":", 1)[0])
-            tokens.insert(0, "--blob")
-            tokens.insert(1, f"alt_tls:@{alt_file}")
-            def _swap_fake_ref(t: str) -> str:
-                if not t.startswith("--lua-desync=fake:blob="):
-                    return t
-                for n in tls_blob_names:
-                    if t == f"--lua-desync=fake:blob={n}":
-                        return "--lua-desync=fake:blob=alt_tls"
-                    if t.startswith(f"--lua-desync=fake:blob={n}:"):
-                        return t.replace(f"fake:blob={n}", "fake:blob=alt_tls", 1)
-                return t
-            tokens = [_swap_fake_ref(t) for t in tokens]
-    # ── Discord Voice udplen: переписать инлайн голосовой блок ──
-    # Гипотеза (STRATEGY_ROADMAP §1): UDP-сегментации нет, DPI с жёсткой
-    # привязкой к длине/сигнатуре голосовых пакетов промахивается при сдвиге
-    # длины. Блок независим (сегментация --new) - переписывается на месте:
-    # без --payload/--out-range (медиа-поток непрерывный), udplen вместо fake.
-    if voice_mode == "udplen":
-        segs: list[list[str]] = [[]]
-        for t in tokens:
-            if t == "--new":
-                segs.append([])
-            else:
-                segs[-1].append(t)
-        rebuilt: list[str] = []
-        for si, seg in enumerate(segs):
-            if si > 0:
-                rebuilt.append("--new")
-            is_voice = any("19294-19344,50000-50100" in t for t in seg)
-            for t in seg:
-                if is_voice:
-                    if t == "--payload" or t == "--out-range":
-                        continue  # пары (option, value) выкидываем с ключом
-                    if t == "discord_ip_discovery" or t == "-d10":
-                        continue
-                    if t.startswith("--lua-desync=") and "fake:blob=quic_google" in t:
-                        rebuilt.append("--lua-desync=udplen:increment=5:pattern=0xDEADBEEF")
-                        continue
-                rebuilt.append(t)
-        tokens = rebuilt
-    # CRITICAL (AGENTS.md §23): --lua-init @path отдельным аргументом с путём
-    # БЕЗ пробелов убивает парсинг winws2 - все опции после молча отбрасываются,
-    # остаётся 1 профиль no_action → десинка нет, результаты всех пресетов
-    # идентичны. Форма `=` работает с любым путём.
-    merged: list[str] = []
-    i = 0
-    while i < len(tokens):
-        t = tokens[i]
-        if t == "--lua-init" and i + 1 < len(tokens) and tokens[i + 1].startswith("@"):
-            merged.append(t + "=" + tokens[i + 1])
-            i += 2
-        else:
-            merged.append(t)
-            i += 1
-    tokens = merged
-    # Юзер-списки инжектятся в КАЖДЫЙ блок с hostlist. winws2 (desync.c
-    # dp_match/dp_find) матчит hostlist ПО ПРОФИЛЮ и берёт ПЕРВЫЙ подходящий
-    # профиль; несколько --hostlist внутри профиля объединяются (hostlist.c
-    # AppendHostList). Добавление в конец затрагивало только последний
-    # (QUIC) блок - TCP-блоки юзерских доменов не видели. Инжект - сразу
-    # после первого hostlist-токена.
-    # Ссылаемся на user-файлы ВСЕГДА (даже пустые): winws2 перечитывает
-    # hostlist/ipset на лету по mtime (проверено 2026-09-14), поэтому первая
-    # же правка применится к новым подключениям без перезапуска обхода.
-    # Пустой файл не влияет на выбор профиля (0 доменов = нет фильтра).
-    exclude_file = lists_dir / "list-exclude-user.txt"
-    user_excl = ""
-    if exclude_file.exists():
-        user_excl = f"--hostlist-exclude={exclude_file}"
-    # User + games домены - ОДИН union-файл и один --hostlist-токен вместо
-    # двух (2026-09-25): файлы-владельцы не смешиваются (user-файл юзерский,
-    # list-games.txt генерируемый), но args не растут от числа игр.
-    include_file = lists_dir / "list-include-user.txt"
-    include_path = games_store.sync_include_list(root_dir, include_file)
-    user_inc = ""
-    if include_path is not None:
-        user_inc = f"--hostlist={include_path}"
-    if user_excl or user_inc:
-        # winws2 ANDs --ipset с --hostlist внутри профиля (§24.2): инжект
-        # SNI-include в ipset-сегмент схлопнул бы catch-all до доменов юзера.
-        # hostlist-exclude безопасен в обоих случаях.
-        segs: list[list[str]] = [[]]
-        for t in tokens:
-            if t == "--new":
-                segs.append([])
-            else:
-                segs[-1].append(t)
-        out: list[str] = []
-        for i, seg in enumerate(segs):
-            if i > 0:
-                out.append("--new")
-            has_ipset = any(t.startswith("--ipset=") for t in seg)
-            injected_once = False
-            for t in seg:
-                if not injected_once and (t.startswith("--hostlist=")
-                                          or t.startswith("--hostlist-exclude=")):
-                    if user_excl:
-                        out.append(user_excl)
-                    if user_inc and not has_ipset:
-                        out.append(user_inc)
-                    injected_once = True
-                out.append(t)
-        tokens = out
-    # ── GameFilter: захват высоких портов + catch-all профили ──
-    if game_filter_mode in ("udp", "both"):
-        # Raw-части не покрывают 1024-65535 → явный --wf-udp-out
-        tokens.insert(0, "--wf-udp-out=1024-65535")
-    if game_filter_mode in ("tcp", "both"):
-        tokens.append("--new")
-        tokens.append("--filter-tcp=1024-65535")
-        tokens.append("--filter-l7=tls")
-        tokens.append("--out-range")
-        tokens.append("-d10")
-        tokens.append("--payload")
-        tokens.append("tls_client_hello")
-        # Выбранный fake_blob (секция «Fake blob selector» выше) должен
-        # применяться и здесь: сегмент добавляется ПОСЛЕ подмены, поэтому
-        # имя выбираем сами (аудит 2026-10: alt_tls не доходил до игрового TLS).
-        game_tls_blob = "google_tls"
-        if fake_blob:
-            _alt = blobs_dir / f"tls_clienthello_{fake_blob}.bin"
-            if not _alt.exists() and fake_blob.startswith("blob_"):
-                _alt = blobs_dir / f"tls_clienthello_{fake_blob[5:]}.bin"
-            if _alt.exists():
-                game_tls_blob = "alt_tls"
-        tokens.append(f"--lua-desync=fake:blob={game_tls_blob}:repeats=6")
-    if game_filter_mode in ("udp", "both"):
-        tokens.append("--new")
-        tokens.append("--filter-udp=1024-65535")
-        tokens.append("--out-range")
-        tokens.append("-d10")
-        # payload=all обязателен: lua fake по умолчанию не трогает unknown-UDP
-        # (игровой трафик) - без него тоггл «Игровые порты» был холостым
-        tokens.append("--lua-desync=fake:blob=quic_google:repeats=10:payload=all")
-    # ── Discord Voice: фикс UDP ──
-    # Отдельный сегмент добавляем ТОЛЬКО пресетам без инлайн-голосового
-    # блока: у релизных он уже есть (fake - как есть, udplen - переписан
-    # трансформацией выше), добавление давало дубль профиля (аудит 2026-10:
-    # 9 сегментов вместо 8).
-    has_inline_voice = any("19294-19344,50000-50100" in t for t in tokens)
-    if voice_mode == "udplen" and not has_inline_voice:
-        tokens.append("--new")
-        tokens.append("--filter-udp=19294-19344,50000-50100")
-        tokens.append("--filter-l7=discord,stun")
-        tokens.append("--lua-desync=udplen:increment=5:pattern=0xDEADBEEF")
-    elif voice_mode == "fake" and not has_inline_voice:
-        tokens.append("--new")
-        tokens.append("--filter-udp=19294-19344,50000-50100")
-        tokens.append("--filter-l7=discord,stun")
-        tokens.append("--payload=discord_ip_discovery")
-        tokens.append("--out-range=-d10")
-        tokens.append("--lua-desync=fake:blob=quic_google")
-    # ── Игровые блокировки: UDP-фиксы (только старт соединения) ──
-    # Пул (2026-09-25): ОДИН --new-сегмент на группу правил с одинаковыми
-    # repeats/cutoff; порты - списком, CIDR всех правил группы - в общий
-    # pool-файл. Раньше каждый сегмент весил ~150 симв. и args пухли от игр.
-    # fake с payload=all обязателен: lua не трогает unknown-UDP (игровой
-    # трафик) без явного аргумента.
-    game_rules = games_store.enabled_udp_rules(games_store.load_games(root_dir))
-    if game_rules and game_filter_mode in ("udp", "both"):
-        # GameFilter уже ловит 1024-65535 с payload=all: отдельные игровые
-        # правила и дописывание портов избыточны (порты уже в диапазоне).
-        _applog("games", f"UDP-правила игр пропущены: GameFilter="
-                         f"{game_filter_mode} покрывает порты "
-                         f"({len(game_rules)} правил)")
-    elif game_rules:
-        if not any(t.startswith("quic_google:") for t in tokens):
-            # Тот же блоб, что объявляют пресеты, но ПУТЬ АБСОЛЮТНЫЙ (как
-            # @blobs/ в строках пресета, :210-212). Относительный путь
-            # резолвится движком относительно cwd: validate_args всегда
-            # гоняет с cwd=root (зелёный), а служба стартует winws2 с
-            # cwd=%SystemRoot%\System32 → «cannot access file
-            # 'blobs/quic_initial_www_google_com.bin'» и обход не поднимается
-            # вообще (REVIEW_VERDICT.md §2.5).
-            quic_blob = blobs_dir / "quic_initial_www_google_com.bin"
-            if quic_blob.exists():
-                tokens += ["--blob",
-                           f"quic_google:@{quic_blob}"]
-            else:
-                _applog("games", "UDP-пул: quic_google блоб не найден "
-                                 f"({quic_blob}) - игровые сегменты пропущены")
-                game_rules = []
-        # Группируем и по наличию подсетей: правила без CIDR идут «широким»
-        # пулом без --ipset (весь трафик на порту - для ручных правил игр).
-        groups: dict[tuple[int, int, bool], list[dict]] = {}
-        for rule in game_rules:
-            wide = not rule["cidrs"]
-            groups.setdefault((rule["cutoff"], rule["repeats"], wide),
-                              []).append(rule)
-        for (cutoff, repeats, wide), rules in groups.items():
-            ports = ",".join(dict.fromkeys(str(r["ports"]) for r in rules))
-            seg = ["--new", f"--filter-udp={ports}"]
-            if not wide:
-                cidrs = [c for r in rules for c in r["cidrs"]]
-                pool = games_store.write_cidr_pool_file(
-                    root_dir, f"d{cutoff}r{repeats}", cidrs)
-                seg.append(f"--ipset={pool}")
-            seg += ["--out-range", f"-d{cutoff}",
-                    "--lua-desync=fake:blob=quic_google:"
-                    f"repeats={repeats}:payload=all"]
-            _append_wf_udp_ports(tokens, ports)
-            tokens += seg
-        _applog("games", f"UDP-пул: rules={len(game_rules)} "
-                         f"pools={len(groups)} "
-                         f"wide={sum(1 for k in groups if k[2])}")
-    # ── Юзерские IP-include, targeted-режим ──
-    # winws2 ANDs --ipset с --hostlist внутри профиля, поэтому юзер-подсети
-    # не могут жить в общем блоке. Дублируем каждый блок с list-general и
-    # меняем SNI-hostlist на --ipset=<user file>: те же фильтры/payload/desync,
-    # но матчинг по IP назначения.
-    if ipset_inc_path and not ipset_catchall:
-        segs: list[list[str]] = [[]]
-        for t in tokens:
-            if t == "--new":
-                segs.append([])
-            else:
-                segs[-1].append(t)
-        out_segs: list[list[str]] = []
-        for seg in segs:
-            out_segs.append(seg)
-            if not any(t.startswith("--hostlist=") and "list-general.txt" in t for t in seg):
-                continue
-            dup: list[str] = []
-            for t in seg:
-                if t.startswith("--hostlist=") and "list-general.txt" in t:
-                    dup.append(f"--ipset={ipset_inc_path}")
-                    dup.append(f"--ipset-exclude={lists_base}\\ipset-exclude.txt")
-                    if ipset_excl_path:
-                        dup.append(f"--ipset-exclude={ipset_excl_path}")
-                elif t.startswith("--hostlist=") or t.startswith("--hostlist-auto="):
-                    continue  # SNI-include бессмысленен в IP-дубле
-                else:
-                    dup.append(t)
-            out_segs.append(dup)
-        tokens = [x for i, s in enumerate(out_segs) for x in ([] if i == 0 else ["--new"]) + s]
-    if discord_alt:
-        # ALT-режим Discord: вернуть :nodrop в lua-desync Discord-профилей
-        # (профиль определяется по hostlist list-discord; voice-профиль не
-        # затрагивается). Для сетей, где drop-режим не бьёт холодный старт.
-        segs_alt: list[list[str]] = [[]]
-        for t in tokens:
-            if t == "--new":
-                segs_alt.append([])
-            else:
-                segs_alt[-1].append(t)
-        for seg in segs_alt:
-            if not any(t.startswith("--hostlist=") and "list-discord" in t
-                       for t in seg):
-                continue
-            for i, t in enumerate(seg):
-                if t.startswith("--lua-desync=") and ":nodrop" not in t:
-                    seg[i] = t + ":nodrop"
-        tokens = [x for i, s in enumerate(segs_alt)
-                  for x in ([] if i == 0 else ["--new"]) + s]
-    if debug:
-        debug_file = root_dir / "debug_winws2.log"
-        if not debug_file.exists():
-            debug_file.write_text("")
-        debug_path = str(debug_file)
-        tokens.append(f"--debug=@{debug_path}")
+    tokens = preset_parse.parse_preset(
+        preset_path, lists_base=str(lists_dir), lua_dir=lua_dir,
+        blobs_dir=blobs_dir, windivert_dir=windivert_dir, game_on=game_on,
+        ipset_catchall=ipset_catchall, autohostlist=autohostlist,
+        auto_path=auto_path, ipset_inc_path=ipset_inc_path,
+        ipset_excl_path=ipset_excl_path)
+    ctx = args_transforms.ArgsCtx(
+        root_dir=root_dir, lua_dir=lua_dir, blobs_dir=blobs_dir,
+        lists_dir=lists_dir, windivert_dir=windivert_dir,
+        game_filter_mode=game_filter_mode, voice_mode=voice_mode, debug=debug,
+        fake_blob=fake_blob, autohostlist=autohostlist,
+        ipset_catchall=ipset_catchall, discord_alt=discord_alt,
+        auto_path=auto_path, ipset_inc_path=ipset_inc_path,
+        ipset_excl_path=ipset_excl_path)
+    for step in args_transforms.PIPELINE:
+        tokens = step(tokens, ctx)
     return tokens
 
 
