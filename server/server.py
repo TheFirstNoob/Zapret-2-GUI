@@ -27,7 +27,11 @@ from core.service_manager import (SERVICE_NAME, is_installed as svc_installed,
 from core.collector import export_data_package
 from core.launcher import build_args_from_preset, validate_args
 from core.test_logger import TestLogger
-from server.app_state import STATE, TesterState
+from server.app_state import (STATE, TesterState,
+                              checkers_busy as _checkers_busy,
+                              get_config_manager, get_controller,
+                              get_root_dir, get_tester)
+from server import api_service
 
 
 CONTENT_TYPES = {
@@ -68,7 +72,7 @@ _GET_ROUTES: dict[str, tuple[str, tuple]] = {
     "/api/ipset-include-list": ("_handle_get_list", ("ipset-include-user.txt",)),
     "/api/lists/health": ("_handle_lists_health", ()),
     "/api/contested/status": ("_handle_contested_status", ()),
-    "/api/service/status": ("_handle_service_status", ()),
+    "/api/service/status": (api_service.service_status, ("@ctx",)),
     "/api/zapret1/strategies": ("_handle_zapret1_strategies", ()),
     "/api/tester/status": ("_handle_tester_status", ()),
     "/api/update-check": ("_handle_update_check", ("@params",)),
@@ -93,11 +97,11 @@ _POST_ROUTES: dict[str, tuple[str, tuple]] = {
     "/api/contested/check": ("_handle_contested_check", ("@data",)),
     "/api/lists/dedupe": ("_handle_lists_dedupe", ()),
     "/api/lists/add-domain": ("_handle_lists_add_domain", ("@data",)),
-    "/api/service/install": ("_handle_service_install", ("@data",)),
-    "/api/service/remove": ("_handle_service_remove", ()),
-    "/api/service/start": ("_handle_service_start", ()),
-    "/api/service/stop": ("_handle_service_stop", ()),
-    "/api/service/repair": ("_handle_service_repair", ()),
+    "/api/service/install": (api_service.service_install, ("@ctx", "@data")),
+    "/api/service/remove": (api_service.service_remove, ("@ctx",)),
+    "/api/service/start": (api_service.service_start, ("@ctx",)),
+    "/api/service/stop": (api_service.service_stop, ("@ctx",)),
+    "/api/service/repair": (api_service.service_repair, ("@ctx",)),
     "/api/diagnose/action": ("_handle_diagnose_action", ("@data",)),
     "/api/diagnose/status": ("_handle_diagnose_status", ()),
     "/api/export-report": ("_handle_export_report", ("@data",)),
@@ -341,12 +345,6 @@ def _mk(dir_path: Path) -> Path:
 
 # ── Хелперы ──────────────────────────────────────────────────
 
-def get_root_dir() -> Path:
-    if STATE.root_dir is None:
-        raise RuntimeError("Service not initialised")
-    return STATE.root_dir
-
-
 def _ui_presets() -> list[str]:
     """Профили для GUI: exp-/test-/cand- префиксы - стенды экспериментов и
     кандидатов, пользователь не должен видеть их в интерфейсе."""
@@ -357,35 +355,6 @@ def _ui_presets() -> list[str]:
         f.stem for f in presets_dir.glob("*.txt")
         if not f.stem.startswith(("exp-", "test-", "cand-", "_probe"))
     )
-
-def get_controller() -> ZapretController:
-    if STATE.controller is None:
-        raise RuntimeError("Service not initialised")
-    return STATE.controller
-
-def get_config_manager() -> ConfigManager:
-    if STATE.config_manager is None:
-        raise RuntimeError("Service not initialised")
-    return STATE.config_manager
-
-def get_tester() -> Zapret2Tester:
-    if STATE.tester is None:
-        raise RuntimeError("Service not initialised")
-    return STATE.tester
-
-
-def _checkers_busy() -> Optional[str]:
-    """Сообщение о занятости проверки, или None, если всё свободно.
-    Тестер (стратегии/CDN/ASN/blob) и диагностика взаимоисключающие; запуск/
-    остановка обхода и службы во время проверки тоже запрещены."""
-    with _tester_state.lock:
-        if _tester_state.running:
-            return "Тестер занят - завершите текущую проверку"
-    with _diag_lock:
-        if _diag_state.get("running"):
-            return "Диагностика выполняется - дождитесь завершения"
-    return None
-
 
 # Списки, редактируемые через GUI: нормализуются при старте - BOM/zero-width
 # в первой строке не даёт движку сматчить домен/подсеть (кейс 2026-09-14).
@@ -1662,17 +1631,30 @@ class ZapretHandler(BaseHTTPRequestHandler):
     def _dispatch(self, routes: dict, path: str,
                   params: Optional[dict] = None,
                   data: Optional[dict] = None) -> bool:
-        """Роутинг по таблице (аудит #1): path -> (метод, спец-аргументы).
+        """Роутинг по таблице (аудит #1): path -> (цель, спец-аргументы).
 
-        "@params"/"@data" подставляют query-параметры / тело запроса.
+        Цель - либо имя метода класса (старый вид: сам зовёт _send_json),
+        либо функция api_*(ctx, ...) нового вида: возвращает dict (отправляем
+        как JSON 200) или кидает ApiError(статус, payload).
+        "@ctx"/"@params"/"@data" подставляют контекст / query / тело.
         False - маршрут не найден (do_GET: статика, do_POST: 404)."""
         spec = routes.get(path)
         if spec is None:
             return False
-        name, args = spec
-        vals = [params if a == "@params" else data if a == "@data" else a
-                for a in args]
-        getattr(self, name)(*vals)
+        target, args = spec
+        vals = [STATE if a == "@ctx" else params if a == "@params"
+                else data if a == "@data" else a for a in args]
+        if isinstance(target, str):
+            getattr(self, target)(*vals)
+            return True
+        from server.api_common import ApiError
+        try:
+            result = target(*vals)
+        except ApiError as e:
+            self._send_json(e.payload, e.status)
+            return True
+        if result is not None:
+            self._send_json(result)
         return True
 
     def _handle_index(self, params: dict) -> None:
@@ -1820,14 +1802,6 @@ class ZapretHandler(BaseHTTPRequestHandler):
         for name in ("list-general.txt", "list-google.txt", "list-discord.txt"):
             domains.update(list_health.read_entries(get_root_dir() / "lists" / name))
         self._send_json({"status": "ok", "domains": sorted(domains)})
-
-    def _handle_service_status(self) -> None:
-        self._send_json({
-            "status": "ok",
-            "service": SERVICE_NAME,
-            "installed": svc_installed(),
-            "running": svc_status() == "running",
-        })
 
     def _handle_tester_status(self) -> None:
         self._send_json(_tester_state.to_dict())
@@ -2341,113 +2315,9 @@ class ZapretHandler(BaseHTTPRequestHandler):
         self._send_json({"status": "ok" if ok else "error", **result})
 
     def _prepare_service_args(self, data: dict) -> tuple[Optional[list[str]], str]:
-        """Сборка и валидация аргументов winws2 для службы (direct-exe):
-        служба запускает winws2.exe сама, аргументы вшиты в binPath
-        и обновляются при install/start - без cmd/bat-обёртки."""
-        cfg = get_config_manager().load()
-        profile = data.get("profile") or cfg.last_profile or DEFAULT_PROFILE
-        game_filter = data.get("game_filter") or cfg.game_filter_mode or "off"
-        voice_mode = (str(data.get("discord_voice_mode") or "").strip().lower()
-                      or cfg.discord_voice_mode
-                      or ("fake" if data.get("discord_voice", cfg.discord_voice) else "off"))
-        discord_voice = voice_mode != "off"
-        debug = bool(data.get("debug", cfg.winws2_debug))
-        autohostlist = bool(data.get("autohostlist", cfg.autohostlist))
-        ipset_catchall = bool(data.get("ipset_catchall", cfg.ipset_catchall))
-        root = get_root_dir()
-        exe = get_controller().winws2_path
-        if exe is None:
-            return None, "winws2.exe не найден"
-        preset = root / "presets" / f"{profile}.txt"
-        if not preset.exists():
-            return None, f"Пресет '{profile}.txt' не найден"
-        args = build_args_from_preset(root, root / "lua", root / "blobs", preset, debug=debug,
-                                       game_filter_mode=game_filter,
-                                       discord_voice=discord_voice,
-                                       discord_voice_mode=voice_mode,
-                                       fake_blob=str(data.get("fake_blob") or cfg.fake_blob or ""),
-                                       autohostlist=autohostlist,
-                                       ipset_catchall=ipset_catchall,
-                                       discord_alt=bool(data.get("discord_alt", cfg.discord_alt)))
-        ok, err = validate_args(exe, args, cwd=root)
-        if not ok:
-            return None, err
-        return args, ""
-
-    def _handle_service_install(self, data: dict) -> None:
-        busy = _checkers_busy()
-        if busy:
-            self._send_json({"status": "error", "message": busy})
-            return
-        args, err = self._prepare_service_args(data)
-        if err:
-            self._send_json({"status": "error", "message": f"Установка отменена - {err}"})
-            return
-        cleanup = bool(data.get("cleanup_zapret1")) if isinstance(data, dict) else False
-        ok, msg = svc_install(root_dir=get_root_dir(), args=args,
-                              cleanup_zapret1=cleanup)
-        if ok:
-            # статус на главной показывал «стратегия «?»» - служба запускается
-            # вне controller, и тот не знал профиль
-            try:
-                profile = str(data.get("profile") or "").strip()
-                if profile:
-                    get_controller().current_strategy = profile
-            except Exception:
-                pass
-        self._send_json({"status": "ok" if ok else "error", "message": msg})
-
-    def _handle_service_remove(self) -> None:
-        busy = _checkers_busy()
-        if busy:
-            self._send_json({"status": "error", "message": busy})
-            return
-        ok, msg = svc_remove()
-        self._send_json({"status": "ok" if ok else "error", "message": msg})
-
-    def _handle_service_repair(self) -> None:
-        busy = _checkers_busy()
-        if busy:
-            self._send_json({"status": "error", "message": busy})
-            return
-        try:
-            result = svc_repair(root_dir=get_root_dir())
-        except Exception as e:
-            self._send_json({"status": "error", "message": str(e)})
-            return
-        self._send_json({"status": "ok", **result})
-
-    def _handle_service_start(self) -> None:
-        busy = _checkers_busy()
-        if busy:
-            self._send_json({"status": "error", "message": busy})
-            return
-        # Обновляем binPath текущими аргументами: у direct-exe службы они
-        # вшиты, устаревшая cmdline молча запустит старую стратегию.
-        args, err = self._prepare_service_args({})
-        if err:
-            self._send_json({"status": "error", "message": f"Служба не запущена - {err}"})
-            return
-        ok, msg = svc_start(args)
-        if ok:
-            try:
-                get_controller().current_strategy = get_config_manager().load().last_profile
-            except Exception:
-                pass
-        self._send_json({"status": "ok" if ok else "error", "message": msg})
-
-    def _handle_service_stop(self) -> None:
-        busy = _checkers_busy()
-        if busy:
-            self._send_json({"status": "error", "message": busy})
-            return
-        ok, msg = svc_stop()
-        if ok:
-            try:
-                get_controller().current_strategy = None
-            except Exception:
-                pass
-        self._send_json({"status": "ok" if ok else "error", "message": msg})
+        """Делегат в api_service (аудит #1, Inc C): остались вызовы из
+        _handle_start_zapret и CDN-ручек, которые уедут на следующих шагах."""
+        return api_service.prepare_service_args(data)
 
     def _handle_diagnose_action(self, data: dict) -> None:
         import threading as _th

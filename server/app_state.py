@@ -14,6 +14,9 @@ from pathlib import Path
 from typing import Optional
 
 from core.test_logger import TestLogger
+from core.config import ConfigManager
+from core.tester import Zapret2Tester
+from core.zapret_controller import ZapretController
 
 
 class TesterState:
@@ -107,3 +110,43 @@ class AppContext:
 
 
 STATE = AppContext()
+
+
+# ── Фабрики доступа (переехали из server.py, Inc B/C) ──────────────
+
+def get_root_dir() -> Path:
+    if STATE.root_dir is None:
+        raise RuntimeError("Service not initialised")
+    return STATE.root_dir
+
+
+def get_controller() -> ZapretController:
+    if STATE.controller is None:
+        raise RuntimeError("Service not initialised")
+    return STATE.controller
+
+
+def get_config_manager() -> ConfigManager:
+    if STATE.config_manager is None:
+        raise RuntimeError("Service not initialised")
+    return STATE.config_manager
+
+
+def get_tester() -> Zapret2Tester:
+    if STATE.tester is None:
+        raise RuntimeError("Service not initialised")
+    return STATE.tester
+
+
+def checkers_busy() -> Optional[str]:
+    """Сообщение о занятости проверки, или None, если всё свободно.
+
+    Тестер (стратегии/CDN/ASN/blob) и диагностика взаимоисключающие; запуск/
+    остановка обхода и службы во время проверки тоже запрещены."""
+    with STATE.tester_state.lock:
+        if STATE.tester_state.running:
+            return "Тестер занят - завершите текущую проверку"
+    with STATE.diag_lock:
+        if STATE.diag_state.get("running"):
+            return "Диагностика выполняется - дождитесь завершения"
+    return None
