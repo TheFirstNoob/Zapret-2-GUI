@@ -456,9 +456,10 @@ def main_gui() -> None:
         print("[zapret2] Window closing, shutting down...")
         stop_server()
         try:
-            from server.server import _tester
-            if _tester:
-                _tester.signal_shutdown()
+            from server.server import get_tester
+            tester = get_tester()
+            if tester:
+                tester.signal_shutdown()
         except Exception:
             pass
         try:

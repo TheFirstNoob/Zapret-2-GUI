@@ -680,9 +680,11 @@ Severity: S1 — мешает пониманию/сопровождению си
   мёртвые ветки OK_BLOCKED и DPI_DROP (Python их не выдаёт); новый `tools/status_contract.py`
   замораживает wire-множество и ловит JS-дрейф (класс OK_BLOCKED).
 - 🟡 **#1 (server, В РАБОТЕ)** — Inc A2 (14.10): таблицы _GET_ROUTES (22) /
-  _POST_ROUTES (40) + _dispatch вместо if/elif-цепочек; хендлеры пока
-  методы (далее: AppContext Inc B, вынос по доменам Inc C). Смоук-стенд
-  	ools/api_smoke.py (12 проверок) — OK.
+  _POST_ROUTES (40) + _dispatch вместо if/elif-цепочек. Inc B (14.10):
+  server/app_state.py — единый AppContext/STATE (скаляры+кэши через STATE,
+  TesterState перенесён, алиасы объектов; main.py → get_tester()).
+  Смоук-стенд 	ools/api_smoke.py (12 проверок) — OK. Далее: Inc C
+  (вынос хендлеров в api_*.py с DI) → публичный AppContext.
 - ⏳ осталось: #1-продолжение (AppContext + выносы) -> #3
   (_run_tester_action) -> #5 (tester) -> #9 (QUIC/timeouts) -> #2 (app.js
   ПОСЛЕДНИМ; склейка файлов на сервере).

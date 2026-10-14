@@ -27,6 +27,7 @@ from core.service_manager import (SERVICE_NAME, is_installed as svc_installed,
 from core.collector import export_data_package
 from core.launcher import build_args_from_preset, validate_args
 from core.test_logger import TestLogger
+from server.app_state import STATE, TesterState
 
 
 CONTENT_TYPES = {
@@ -123,92 +124,27 @@ _POST_ROUTES: dict[str, tuple[str, tuple]] = {
 
 # ── Глобальное состояние ─────────────────────────────────────
 
-_root_dir: Optional[Path] = None
-_controller: Optional[ZapretController] = None
-_tester: Optional[Zapret2Tester] = None
-_config_manager: Optional[ConfigManager] = None
-_app_token: str = ""
-_tester_lock = threading.Lock()
+# Скаляры (root_dir/token/controller/tester/config/server) живут в
+# server.app_state.STATE (аудит #1, Inc B). Ниже - алиасы ОБЪЕКТОВ,
+# которые не переприсваиваются: ссылки стабильны, старые места работают.
+_tester_lock = STATE.tester_lock
 
 # Состояние диагностики (как у тестера): running / progress / report.
-_diag_lock = threading.Lock()
-_diag_state = {"running": False, "progress": "", "report": None, "error": None,
-               "started": 0.0}
-_server: Optional[HTTPServer] = None
+_diag_lock = STATE.diag_lock
+_diag_state = STATE.diag_state
 
 
 # ── Общее состояние тестера (polling вместо WebSocket) ──
-
-class TesterState:
-    def __init__(self):
-        self.lock = threading.Lock()
-        self.running = False
-        self.progress_pct = 0
-        self.progress_msg = ""
-        self.results: list[dict] = []
-        self.final_result: Optional[dict] = None
-        self.all_results: Optional[list[dict]] = None
-        self.error: Optional[str] = None
-        self.cancelled = False
-        self.action_type: Optional[str] = None
-        self.logger: Optional[TestLogger] = None
-        # ярлыки завершённых стратегий: UI закрывает их строки при каждом
-        # опросе (сообщение «Стратегия X: N%» могло перезаписаться следующим)
-        self.completed: list[str] = []
-    def reset(self):
-        self.progress_pct = 0
-        self.progress_msg = ""
-        self.results = []
-        self.final_result = None
-        self.all_results = None
-        self.error = None
-        self.cancelled = False
-        self.action_type = None
-        self.logger = None
-        self.completed = []
-
-    def to_dict(self) -> dict:
-        with self.lock:
-            return {
-                "running": self.running,
-                "progress": {"percent": self.progress_pct, "message": self.progress_msg},
-                "results": list(self.results),
-                "final_result": self.final_result,
-                "all_results": self.all_results,
-                "error": self.error,
-                "cancelled": self.cancelled,
-                "action": self.action_type,
-                "completed": list(self.completed),
-            }
-
-    def set_progress(self, pct: int, msg: str) -> None:
-        with self.lock:
-            self.progress_pct = pct
-            self.progress_msg = msg
-
-    def add_result(self, data: dict) -> None:
-        with self.lock:
-            self.results.append(data)
-
-    def set_final(self, result: dict, all_results: Optional[list[dict]] = None) -> None:
-        with self.lock:
-            self.final_result = result
-            self.all_results = all_results
-            self.running = False
-
-
-_tester_state = TesterState()
+# Класс TesterState и инстанс переехали в server/app_state.py (Inc B).
+_tester_state = STATE.tester_state
 
 # Probe сетевой активности процесса (анализ игры/приложения) - singleton
-_process_probe = None
-
-
+# в STATE (аудит #1, Inc B)
 def get_process_probe():
-    global _process_probe
-    if _process_probe is None:
+    if STATE.process_probe is None:
         from core.process_probe import ProcessProbe
-        _process_probe = ProcessProbe()
-    return _process_probe
+        STATE.process_probe = ProcessProbe()
+    return STATE.process_probe
 
 
 def _debug_append(file_name: str, msg: str) -> None:
@@ -240,19 +176,12 @@ def _ui_debug(msg: str) -> None:
     Всегда активен: ловит «выкинуло на главный блок посреди теста»."""
     _debug_append("ui_debug.log", msg)
 
-# Кэш проверки обновлений: одна проверка за сессию приложения.
-_update_check_cache: Optional[dict] = None
-_update_check_at: float = 0.0
+# Кэш проверки обновлений: одна проверка за сессию приложения
+# (значения - в STATE, аудит #1).
 _UPDATE_CHECK_TTL = 6 * 3600  # авто-проверка не чаще раза в 6 часов
 
 # ── Состояние апдейтера (0.8) ───────────────────────────────
-_updater_state = {
-    "running": False,
-    "phase": "",
-    "percent": 0,
-    "error": None,
-    "result": None,   # {applied, backup, service_mismatch, restart_required}
-}
+_updater_state = STATE.updater_state
 
 
 def _run_update_worker(kind: str, tag: str, info: dict) -> None:
@@ -413,9 +342,9 @@ def _mk(dir_path: Path) -> Path:
 # ── Хелперы ──────────────────────────────────────────────────
 
 def get_root_dir() -> Path:
-    if _root_dir is None:
+    if STATE.root_dir is None:
         raise RuntimeError("Service not initialised")
-    return _root_dir
+    return STATE.root_dir
 
 
 def _ui_presets() -> list[str]:
@@ -430,19 +359,19 @@ def _ui_presets() -> list[str]:
     )
 
 def get_controller() -> ZapretController:
-    if _controller is None:
+    if STATE.controller is None:
         raise RuntimeError("Service not initialised")
-    return _controller
+    return STATE.controller
 
 def get_config_manager() -> ConfigManager:
-    if _config_manager is None:
+    if STATE.config_manager is None:
         raise RuntimeError("Service not initialised")
-    return _config_manager
+    return STATE.config_manager
 
 def get_tester() -> Zapret2Tester:
-    if _tester is None:
+    if STATE.tester is None:
         raise RuntimeError("Service not initialised")
-    return _tester
+    return STATE.tester
 
 
 def _checkers_busy() -> Optional[str]:
@@ -492,12 +421,11 @@ def _normalize_user_lists() -> None:
 
 
 def init(root_dir: Path, token: str = "") -> None:
-    global _root_dir, _controller, _tester, _config_manager, _app_token
-    _root_dir = Path(root_dir)
-    _app_token = token
-    _config_manager = ConfigManager(root_dir)
-    _controller = ZapretController(root_dir, config_manager=_config_manager)
-    _tester = Zapret2Tester(root_dir)
+    STATE.root_dir = Path(root_dir)
+    STATE.app_token = token
+    STATE.config_manager = ConfigManager(root_dir)
+    STATE.controller = ZapretController(root_dir, config_manager=STATE.config_manager)
+    STATE.tester = Zapret2Tester(root_dir)
     _normalize_user_lists()
 
 
@@ -825,18 +753,14 @@ def _scan_winws_exe() -> dict:
     return {"running": bool(pids), "pid": pids[0] if pids else 0}
 
 
-_zapret1_installed_cache: Optional[bool] = None
-
-
 def _zapret1_installed() -> bool:
     """Zapret 1 есть в системе? (настроенная папка или служба zapret).
 
     Нужно, чтобы не показывать панель «Zapret 1» тем, у кого его нет.
     Кэшируется на сеанс: службы в рамках сеанса не появляются/исчезают.
     """
-    global _zapret1_installed_cache
-    if _zapret1_installed_cache is not None:
-        return _zapret1_installed_cache
+    if STATE.zapret1_installed_cache is not None:
+        return STATE.zapret1_installed_cache
     installed = False
     try:
         cfg = get_config_manager().load()
@@ -850,7 +774,7 @@ def _zapret1_installed() -> bool:
             installed = code == 0
         except Exception:
             installed = False
-    _zapret1_installed_cache = installed
+    STATE.zapret1_installed_cache = installed
     return installed
 
 
@@ -1657,9 +1581,9 @@ class ZapretHandler(BaseHTTPRequestHandler):
         return name in ("127.0.0.1", "localhost", "::1", "[::1]")
 
     def _check_token(self) -> bool:
-        if _app_token:
+        if STATE.app_token:
             token = self.headers.get("x-app-token", "")
-            if token != _app_token:
+            if token != STATE.app_token:
                 self._send_json({"detail": "Forbidden"}, HTTPStatus.FORBIDDEN)
                 return False
         return True
@@ -2570,15 +2494,14 @@ class ZapretHandler(BaseHTTPRequestHandler):
                              "report": _diag_state["report"]})
 
     def _handle_update_check(self, params: Optional[dict] = None) -> None:
-        global _update_check_cache, _update_check_at
         force = "1" in (params or {}).get("force", [])
         now = time.time()
-        if (force or _update_check_cache is None
-                or (now - _update_check_at) > _UPDATE_CHECK_TTL):
+        if (force or STATE.update_check_cache is None
+                or (now - STATE.update_check_at) > _UPDATE_CHECK_TTL):
             from core.updates import check_for_updates
-            _update_check_cache = check_for_updates()
-            _update_check_at = now
-        self._send_json({"status": "ok", **_update_check_cache})
+            STATE.update_check_cache = check_for_updates()
+            STATE.update_check_at = now
+        self._send_json({"status": "ok", **STATE.update_check_cache})
 
     def _handle_update_status(self) -> None:
         self._send_json({"status": "ok", **_updater_state})
@@ -2588,7 +2511,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
             self._send_json({"status": "error",
                              "message": "Обновление уже выполняется"})
             return
-        info = (_update_check_cache or {}).copy()
+        info = (STATE.update_check_cache or {}).copy()
         if not info.get("available"):
             self._send_json({"status": "error",
                              "message": "Обновление недоступно или версия уже актуальна"})
@@ -2985,14 +2908,12 @@ class ThreadedHTTPServer(HTTPServer):
 
 
 def create_server(host: str, port: int) -> ThreadedHTTPServer:
-    global _server
     srv = ThreadedHTTPServer((host, port), ZapretHandler)
-    _server = srv
+    STATE.server = srv
     return srv
 
 
 def stop_server() -> None:
-    global _server
-    if _server:
-        _server.shutdown()
-        _server = None
+    if STATE.server:
+        STATE.server.shutdown()
+        STATE.server = None
