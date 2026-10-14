@@ -683,8 +683,12 @@ Severity: S1 — мешает пониманию/сопровождению си
   _POST_ROUTES (40) + _dispatch вместо if/elif-цепочек. Inc B (14.10):
   server/app_state.py — единый AppContext/STATE (скаляры+кэши через STATE,
   TesterState перенесён, алиасы объектов; main.py → get_tester()).
-  Смоук-стенд 	ools/api_smoke.py (12 проверок) — OK. Далее: Inc C
-  (вынос хендлеров в api_*.py с DI) → публичный AppContext.
+  Смоук-стенд `tools/api_smoke.py` (12 проверок) — OK.
+  Inc C-пилот (14.10): домен «служба» вынесен в `server/api_service.py` (6
+  хендлеров `(ctx)->dict`), router понимает и методы, и api-функции
+  (dict/ApiError); app_state добавил фабрики+`checkers_busy`; T22+api_smoke OK.
+  Осталось: вынести остальные ~50 хендлеров (probe/games/
+  zapret1/update/contested/lists/diag/tester/cdn/одиночки).
 - ⏳ осталось: #1-продолжение (AppContext + выносы) -> #3
   (_run_tester_action) -> #5 (tester) -> #9 (QUIC/timeouts) -> #2 (app.js
   ПОСЛЕДНИМ; склейка файлов на сервере).
