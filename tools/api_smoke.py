@@ -52,7 +52,8 @@ def main() -> int:
                  "/api/service/status", "/api/bundled-domains",
                  "/api/fake-blobs", "/api/process-probe/status", "/api/games",
                  "/api/zapret1/strategies", "/api/contested/status",
-                 "/api/lists/health", "/api/diagnose/status"):
+                 "/api/lists/health", "/api/diagnose/status",
+                 "/api/update/status"):
         try:
             st, j = get(path)
             good = st == 200 and j.get("status") == "ok"

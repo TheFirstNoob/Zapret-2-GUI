@@ -34,8 +34,9 @@ from server.app_state import (STATE, TesterState,
                               get_process_probe, get_root_dir, get_tester,
                               probe_debug as _probe_debug,
                               ui_debug as _ui_debug)
-from server import (api_contested, api_diag, api_games, api_lists,
-                    api_probe, api_service, api_zapret1)
+from server import (api_cdn, api_config, api_contested, api_diag,
+                    api_games, api_lists, api_probe, api_service,
+                    api_update, api_zapret1)
 
 
 CONTENT_TYPES = {
@@ -59,7 +60,7 @@ CONTENT_TYPES = {
 _GET_ROUTES: dict[str, tuple[str, tuple]] = {
     "/": ("_handle_index", ("@params",)),
     "/api/diagnose/status": (api_diag.diagnose_status, ("@ctx",)),
-    "/api/config": ("_handle_get_config", ()),
+    "/api/config": (api_config.get_config, ("@ctx",)),
     "/api/version": ("_handle_version", ()),
     "/api/app-info": ("_handle_app_info", ()),
     "/api/status": ("_handle_status", ()),
@@ -79,14 +80,14 @@ _GET_ROUTES: dict[str, tuple[str, tuple]] = {
     "/api/service/status": (api_service.service_status, ("@ctx",)),
     "/api/zapret1/strategies": (api_zapret1.zapret1_strategies, ("@ctx",)),
     "/api/tester/status": ("_handle_tester_status", ()),
-    "/api/update-check": ("_handle_update_check", ("@params",)),
-    "/api/update/status": ("_handle_update_status", ()),
+    "/api/update-check": (api_update.update_check, ("@ctx", "@params")),
+    "/api/update/status": (api_update.update_status, ("@ctx",)),
     "/api/process-probe/status": (api_probe.probe_status, ("@ctx",)),
     "/api/games": (api_games.games_get, ("@ctx",)),
 }
 
 _POST_ROUTES: dict[str, tuple[str, tuple]] = {
-    "/api/config": ("_handle_save_config", ("@data",)),
+    "/api/config": (api_config.save_config, ("@ctx", "@data")),
     "/api/zapret1/save-dir": (api_zapret1.zapret1_save_dir, ("@ctx", "@data")),
     "/api/zapret1/start": (api_zapret1.zapret1_start, ("@ctx", "@data")),
     "/api/zapret1/stop": (api_zapret1.zapret1_stop, ("@ctx",)),
@@ -112,12 +113,12 @@ _POST_ROUTES: dict[str, tuple[str, tuple]] = {
     "/api/asn-scan": ("_handle_asn_scan", ("@data",)),
     "/api/blob-probe": ("_handle_blob_probe", ("@data",)),
     "/api/tester/action": ("_handle_tester_action", ("@data",)),
-    "/api/update/start": ("_handle_update_start", ()),
-    "/api/update/apply": ("_handle_update_apply", ()),
-    "/api/settings/export": ("_handle_settings_export", ()),
-    "/api/settings/import": ("_handle_settings_import", ("@data",)),
-    "/api/cdn/recommendation": ("_handle_cdn_recommendation", ("@data",)),
-    "/api/cdn/apply-all": ("_handle_cdn_apply_all", ("@data",)),
+    "/api/update/start": (api_update.update_start, ("@ctx",)),
+    "/api/update/apply": (api_update.update_apply, ("@ctx",)),
+    "/api/settings/export": (api_config.settings_export, ("@ctx",)),
+    "/api/settings/import": (api_config.settings_import, ("@ctx", "@data")),
+    "/api/cdn/recommendation": (api_cdn.cdn_recommendation, ("@ctx", "@data")),
+    "/api/cdn/apply-all": (api_cdn.cdn_apply_all, ("@ctx", "@data")),
     "/api/process-probe/scan": (api_probe.probe_scan, ("@ctx",)),
     "/api/process-probe/start": (api_probe.probe_start, ("@ctx", "@data")),
     "/api/process-probe/stop": (api_probe.probe_stop, ("@ctx",)),
@@ -146,170 +147,8 @@ _diag_state = STATE.diag_state
 # Класс TesterState и инстанс переехали в server/app_state.py (Inc B).
 _tester_state = STATE.tester_state
 
-# Кэш проверки обновлений: одна проверка за сессию приложения
-# (значения - в STATE, аудит #1).
-_UPDATE_CHECK_TTL = 6 * 3600  # авто-проверка не чаще раза в 6 часов
-
-# ── Состояние апдейтера (0.8) ───────────────────────────────
-_updater_state = STATE.updater_state
-
-
-def _run_update_worker(kind: str, tag: str, info: dict) -> None:
-    """Worker обновления: скачать → бэкап → применить (portable) или
-    подготовить self-update (exe) → проверить службу (аргументы устарели?)."""
-    from core.updater import (apply_portable, fetch_release_manifest,
-                              fetch_update, prepare_app_restart_bat,
-                              prepare_exe_update,
-                              service_args_stale, validate_release)
-    from core.update_verify import verify as verify_signature
-    from core.config import ConfigManager
-    from core.launcher import build_args_from_preset
-    from core.service_manager import (_read_stored_binpath, is_installed as
-                                      svc_installed)
-
-    def prog(pct, msg):
-        _updater_state["percent"] = pct
-        _updater_state["phase"] = msg
-        _ui_debug(f"update: {pct}% {msg}")
-
-    # Сброс состояния: повторный прогон не должен видеть error/result прошлого
-    _updater_state.update({"running": True, "phase": "проверка подписи",
-                           "percent": 0, "error": None, "result": None})
-    try:
-        root_dir = get_root_dir()
-        update_dir = root_dir / "updates"
-        update_dir = update_dir if update_dir.is_dir() else _mk(update_dir)
-
-        prog(10, "Проверка подписи обновления…")
-        # Fail-closed: без валидной подписи офлайн-ключа обновление не ставим
-        manifest_bytes, sig_text = fetch_release_manifest(tag, update_dir)
-        if not verify_signature(manifest_bytes, sig_text):
-            raise RuntimeError(
-                "обновление не прошло проверку подлинности - скачайте версию "
-                "вручную с GitHub и сверьте SHA256 из описания релиза")
-        try:
-            manifest = json.loads(manifest_bytes.decode("utf-8"))
-        except Exception:
-            raise RuntimeError("манифест обновления повреждён")
-        manifest_err = validate_release(manifest, tag, VERSION, kind)
-        if manifest_err:
-            raise RuntimeError(manifest_err)
-        expected = str(manifest["artifacts"][kind]["sha256"]).lower()
-
-        prog(25, "Скачивание обновления…")
-        zip_path = fetch_update(kind, tag, update_dir,
-                                sha256_expected=expected)
-
-        prog(55, "Резервная копия настроек…")
-        result: dict = {"applied": 0, "backup": None,
-                        "service_mismatch": False,
-                        "signature_verified": True,
-                        "restart_required": True}
-
-        if kind == "exe":
-            prog(70, "Подготовка замены EXE…")
-            # %TEMP%\_MEI* (onefile) удаляет сам батник: нас убивает taskkill,
-            # а закрыться мы не успеваем - папка осталась бы висеть в TEMP.
-            mei = getattr(sys, "_MEIPASS", "") if getattr(sys, "frozen", False) else ""
-            bat = prepare_exe_update(
-                zip_path, root_dir,
-                exe_sha256=manifest["artifacts"]["exe"].get("exe_sha256"),
-                mei_dir=mei or None)
-            # Батник НЕ запускаем здесь: пользователь должен увидеть
-            # «обновление применено» до того, как программа закроется.
-            # Запуск - отдельным запросом /api/update/apply (REVIEW_VERDICT.md §2.7).
-            result["update_bat"] = str(bat)
-            result["restart_required"] = True
-        else:
-            # «Как в стиме»: обход стопаем ДО замены файлов (winws2 держит
-            # bin/winws2.exe на диске - копирование в занятый файл падало бы),
-            # после применения поднимаем обратно тем же binPath.
-            svc_was = False
-            try:
-                from core.service_manager import start as _svc_start
-                from core.service_manager import status as _svc_status
-                from core.service_manager import stop as _svc_stop
-                svc_was = _svc_status() == "running"
-            except Exception:
-                _svc_stop = _svc_start = None
-            if svc_was and _svc_stop:
-                prog(58, "Остановка обхода…")
-                try:
-                    _svc_stop()
-                except Exception as e:  # noqa: BLE001
-                    _ui_debug(f"update: stop service failed: {e}")
-                time.sleep(1.0)
-            prog(70, "Применение обновления…")
-            # try/finally: служба, остановленная ДО apply, обязана подняться и
-            # при исключении в apply (внешнее ревью 14.10: иначе пользователь
-            # остаётся без обхода).
-            applied = None
-            try:
-                applied = apply_portable(
-                    zip_path, root_dir,
-                    progress_cb=lambda m: prog(80, str(m)))
-            finally:
-                if svc_was and _svc_start:
-                    prog(92, "Запуск обхода…")
-                    try:
-                        _svc_start()
-                    except Exception as e:  # noqa: BLE001
-                        _ui_debug(f"update: start service failed: {e}")
-            result.update(applied=applied["updated"],
-                          skipped_user=applied["skipped_user"],
-                          backup=applied["backup"])
-            # Автоперезапуск приложения (portable/dev): сервер уже на новых
-            # файлах, но процесс - старый; батник убьёт наш PID и запустит
-            # заново тем же интерпретатором. Ошибки не фатальны - останется
-            # ручной перезапуск.
-            try:
-                import os as _os
-                bat = prepare_app_restart_bat(root_dir, _os.getpid())
-                result["restart_bat"] = str(bat) if bat else ""
-            except Exception as e:  # noqa: BLE001
-                _ui_debug(f"update: restart bat failed: {e}")
-                result["restart_bat"] = ""
-            result["restart_required"] = True
-
-        # Служба установлена? Сравнить её аргументы с собранными из НОВЫХ
-        # файлов - при расхождении предложить переустановку службы
-        prog(95, "Проверка конфигурации службы…")
-        if svc_installed():
-            cfg = ConfigManager(root_dir).load()
-            new_args = build_args_from_preset(
-                root_dir, root_dir / "lua", root_dir / "blobs",
-                root_dir / "presets" / f"{cfg.last_profile or 'default'}.txt",
-                lists_dir=root_dir / "lists",
-                windivert_dir=root_dir / "windivert",
-                debug=cfg.winws2_debug, game_filter_mode=cfg.game_filter_mode,
-                discord_voice=cfg.discord_voice,
-                discord_voice_mode=cfg.discord_voice_mode,
-                autohostlist=cfg.autohostlist,
-                ipset_catchall=cfg.ipset_catchall,
-                fake_blob=cfg.fake_blob,
-                discord_alt=cfg.discord_alt)
-            stored = _read_stored_binpath()
-            result["service_mismatch"] = service_args_stale(stored, new_args)
-            _ui_debug(f"update: service_mismatch={result['service_mismatch']}")
-        else:
-            result["service_mismatch"] = False
-
-        prog(100, "Обновление готово")
-        _updater_state["result"] = result
-    except Exception as e:
-        _ui_debug(f"update: EXCEPTION {e}")
-        _updater_state["error"] = str(e)[:200]
-    finally:
-        _updater_state["running"] = False
-
-
-def _mk(dir_path: Path) -> Path:
-    dir_path.mkdir(exist_ok=True)
-    return dir_path
-
-
-
-# ── Хелперы ──────────────────────────────────────────────────
+# Кэш проверки обновлений и состояние апдейтера - в STATE; логика и TTL:
+# server/api_update.py (аудит #1, Inc C).
 
 def _ui_presets() -> list[str]:
     """Профили для GUI: exp-/test-/cand- префиксы - стенды экспериментов и
@@ -483,126 +322,10 @@ def _svc_was_running() -> bool:
         return False
 
 
-def _resolve_many(domains: list[str], concurrency: int = 8) -> set[str]:
-    """Параллельный резолв набора доменов - protection-множество для
-    «какой префикс трогать безопасно» при ipset-правках CDN."""
-    from concurrent.futures import ThreadPoolExecutor, as_completed
-    out: set[str] = set()
-    try:
-        with ThreadPoolExecutor(max_workers=concurrency) as pool:
-            futs = [pool.submit(Zapret2Tester._resolve_ips, d) for d in domains]
-            for f in as_completed(futs):
-                out.update(f.result())
-    except Exception:
-        pass
-    return out
-
-
 def _clean_list_text(text: str) -> str:
     """Убирает невидимый мусор (BOM/zero-width), который ломает матчинг
     домена/подсети: прилетает из буфера обмена или из старых файлов с BOM."""
     return text.replace("\ufeff", "").replace("\u200b", "")
-
-
-def _read_lines(fname: str) -> set[str]:
-    """Значимые записи списка (делегат в единый парсер core.list_health).
-
-    Раньше дублировал парсинг, а докстринг врал: `#`-комментарии фактически
-    не срезались. Все вызовы - membership-тесты lower-case значений, поэтому
-    общий read_entries (lower + `#`-срез + невидимки) строго корректнее."""
-    from core import list_health
-    return set(list_health.read_entries(get_root_dir() / "lists" / fname))
-
-
-def _read_networks(fnames: list[str]) -> list:
-    """Читает сети/адреса списков в ipaddress.ip_network (strict=False)."""
-    nets = []
-    for fname in fnames:
-        for l in sorted(_read_lines(fname)):
-            try:
-                nets.append(ipaddress.ip_network(l, strict=False))
-            except ValueError:
-                pass
-    return nets
-
-
-def _plan_cdn_action(domain: str, action: str, ips: list[str],
-                     protection: set[str], ipset_mode: bool) -> tuple[bool, str, list[tuple[str, list[str]]]]:
-    """Чистое планирование одной CDN-правки без записи на диск.
-
-    Возвращает (ok, err_msg, entries), где entries = [(fname, values)] -
-    значения, которые НУЖНО дописать в списки (дедуп по текущему
-    содержимому выполнен).  Проверки наложений - как в ручном хендлере:
-    ipset-include не включает сети из ipset-exclude[-user], general в
-    ipset-режиме пишет сырые IP, ipset-include - префиксы _safe_prefixes
-    относительно protection.
-    """
-    values: list[str] = []
-    if action in ("ipset-include", "ipset-exclude"):
-        fname = "ipset-include-user.txt" if action == "ipset-include" else "ipset-exclude-user.txt"
-        if not ips:
-            return False, "у кандидата нет резолвнутых IP - добавьте вручную", []
-        try:
-            ip_list = [str(ipaddress.ip_address(i)) for i in ips]
-        except ValueError:
-            return False, "Некорректный IP в запросе", []
-        prefixes = Zapret2Tester._safe_prefixes(ip_list, protection)
-        if not prefixes:
-            return False, f"{domain}: все адреса пересекаются с рабочими IP - пропускаем", []
-        if action == "ipset-include":
-            blocked = [p for p in prefixes
-                       if any(ipaddress.ip_network(p, strict=False).overlaps(n)
-                              for n in _read_networks(["ipset-exclude.txt", "ipset-exclude-user.txt"]))]
-            if blocked:
-                return False, f"Наложение: {domain} ({', '.join(blocked)}) уже в ipset-исключениях - пропускаем", []
-        existing = _read_lines(fname)
-        values = [p for p in prefixes if p not in existing]
-        if not values:
-            return True, "уже в списке", []
-        return True, "", [(fname, values)]
-    if action == "exclude":
-        fname = "list-exclude.txt"
-        from core import list_health
-        cov = list_health.coverage(get_root_dir(), [domain]).get(domain, {})
-        if cov.get("excludes"):
-            return True, f"уже в исключениях ({', '.join(cov['excludes'])})", []
-        existing = _read_lines(fname)
-        values = [domain] if domain not in existing else []
-        if not values:
-            return True, "уже в списке", []
-        return True, "", [(fname, values)]
-    # action == "general"
-    if ipset_mode:
-        fname = "ipset-include-user.txt"
-        if not ips:
-            return False, "ipset-режим: у кандидата нет резолвнутых IP - добавьте вручную", []
-        try:
-            ip_list = [str(ipaddress.ip_address(i)) for i in ips]
-        except ValueError:
-            return False, "Некорректный IP в запросе", []
-        blocked = [ip for ip in ip_list
-                   if any(ipaddress.ip_address(ip) in n
-                          for n in _read_networks(["ipset-exclude.txt", "ipset-exclude-user.txt"]))]
-        if blocked:
-            return False, f"Наложение: {domain} ({', '.join(blocked)}) уже в ipset-исключениях - пропускаем", []
-        existing = _read_lines(fname)
-        values = [ip for ip in ip_list if ip not in existing]
-        if not values:
-            return True, "уже в списке", []
-        return True, "", [(fname, values)]
-    fname = "list-general.txt"
-    from core import list_health
-    cov = list_health.coverage(get_root_dir(), [domain]).get(domain, {})
-    if any(n in list_health.DOMAIN_EXCLUDE_BUNDLED for n in cov.get("excludes", [])):
-        return False, (f"{domain} уже в стандартных исключениях - исключение "
-                       "сильнее, пропускаем"), []
-    if cov.get("includes"):
-        return True, f"уже в обходе ({', '.join(cov['includes'])})", []
-    existing = _read_lines(fname)
-    values = [domain] if domain not in existing else []
-    if not values:
-        return True, "уже в списке", []
-    return True, "", [(fname, values)]
 
 
 def _restore_protection_after_naked(z2_was: bool, z1_was: bool, state, svc_was: bool = False) -> str:
@@ -1646,29 +1369,6 @@ class ZapretHandler(BaseHTTPRequestHandler):
         else:
             self._send_html("<html><body><h1>Frontend not found</h1></body></html>")
 
-    def _handle_get_config(self) -> None:
-        cfg = get_config_manager().load()
-        self._send_json({"status": "ok", "config": {
-            "root_dir": cfg.root_dir,
-            "last_profile": cfg.last_profile,
-            "zapret1_dir": cfg.zapret1_dir,
-            "zapret1_last_strategy": cfg.zapret1_last_strategy,
-            "game_filter_mode": cfg.game_filter_mode,
-            "discord_voice": cfg.discord_voice,
-            "discord_voice_mode": cfg.discord_voice_mode,
-            "winws2_debug": cfg.winws2_debug,
-            "autohostlist": cfg.autohostlist,
-            "ipset_catchall": cfg.ipset_catchall,
-            "discord_alt": cfg.discord_alt,
-            # fake_blob обязателен в ответе: фронт читает его при старте
-            # (app.js loadConfig) и без него селект блока сбрасывается на
-            # «Пресет (Google)», а следующий save/restart затирал бы настройку
-            # (REVIEW_VERDICT.md §2.3).
-            "fake_blob": cfg.fake_blob,
-            "tour_done": cfg.tour_done,
-            "notice_done": cfg.notice_done,
-        }})
-
     def _handle_version(self) -> None:
         self._send_json({"status": "ok", "version": VERSION})
 
@@ -1815,39 +1515,6 @@ class ZapretHandler(BaseHTTPRequestHandler):
             _probe_debug(f"api 500 POST {path}: {e}")
             self._send_json({"status": "error", "message": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR)
 
-    def _handle_save_config(self, data: dict) -> None:
-        cfg = get_config_manager().load()
-        if "last_profile" in data: cfg.last_profile = data["last_profile"]
-        if "zapret1_dir" in data: cfg.zapret1_dir = data["zapret1_dir"]
-        if "game_filter_mode" in data: cfg.game_filter_mode = data["game_filter_mode"]
-        if "discord_voice" in data: cfg.discord_voice = bool(data["discord_voice"])
-        if "discord_voice_mode" in data:
-            mode = str(data["discord_voice_mode"]).lower()
-            if mode in ("off", "fake", "udplen"):
-                cfg.discord_voice_mode = mode
-                cfg.discord_voice = mode != "off"  # совместимость со старыми сборками
-        if "winws2_debug" in data: cfg.winws2_debug = bool(data["winws2_debug"])
-        if "fake_blob" in data:
-            fb = str(data["fake_blob"]).strip()
-            if fb:
-                blobs_dir = get_root_dir() / "blobs"
-                alt = blobs_dir / f"tls_clienthello_{fb}.bin"
-                if not alt.exists() and fb.startswith("blob_"):
-                    # цифро-ключи селект отдаёт как "blob_<key>" - проверяем
-                    # и алиас, иначе выбор молча не сохранялся (аудит 2026-10)
-                    alt = blobs_dir / f"tls_clienthello_{fb[5:]}.bin"
-                if not alt.exists():
-                    self._send_json({"status": "error", "message": f"неизвестный блоб: {fb}"})
-                    return
-            cfg.fake_blob = fb
-        if "autohostlist" in data: cfg.autohostlist = bool(data["autohostlist"])
-        if "ipset_catchall" in data: cfg.ipset_catchall = bool(data["ipset_catchall"])
-        if "discord_alt" in data: cfg.discord_alt = bool(data["discord_alt"])
-        if "tour_done" in data: cfg.tour_done = bool(data["tour_done"])
-        if "notice_done" in data: cfg.notice_done = bool(data["notice_done"])
-        ok = get_config_manager().save(cfg)
-        self._send_json({"status": "ok" if ok else "error"})
-
     def _handle_start_zapret(self, data: dict) -> None:
         busy = _checkers_busy()
         if busy:
@@ -1944,106 +1611,6 @@ class ZapretHandler(BaseHTTPRequestHandler):
         """Делегат в api_service (аудит #1, Inc C): остались вызовы из
         _handle_start_zapret и CDN-ручек, которые уедут на следующих шагах."""
         return api_service.prepare_service_args(data)
-
-    def _handle_update_check(self, params: Optional[dict] = None) -> None:
-        force = "1" in (params or {}).get("force", [])
-        now = time.time()
-        if (force or STATE.update_check_cache is None
-                or (now - STATE.update_check_at) > _UPDATE_CHECK_TTL):
-            from core.updates import check_for_updates
-            STATE.update_check_cache = check_for_updates()
-            STATE.update_check_at = now
-        self._send_json({"status": "ok", **STATE.update_check_cache})
-
-    def _handle_update_status(self) -> None:
-        self._send_json({"status": "ok", **_updater_state})
-
-    def _handle_update_start(self) -> None:
-        if _updater_state["running"]:
-            self._send_json({"status": "error",
-                             "message": "Обновление уже выполняется"})
-            return
-        info = (STATE.update_check_cache or {}).copy()
-        if not info.get("available"):
-            self._send_json({"status": "error",
-                             "message": "Обновление недоступно или версия уже актуальна"})
-            return
-
-        tag = info.get("tag") or info.get("latest", "").replace(" ", "-")
-        kind = "portable" if not getattr(sys, "frozen", False) else "exe"
-        _updater_state.update({"running": True, "phase": "скачивание",
-                               "percent": 5, "error": None, "result": None})
-        t = threading.Thread(target=_run_update_worker,
-                             args=(kind, tag, info), daemon=True)
-        t.start()
-        self._send_json({"status": "ok", "action": "started"})
-
-    def _handle_update_apply(self) -> None:
-        """Запуск замены EXE (шаг 2 самообновления).
-
-        Батник лежит рядом с exe (_update_self.bat), путь клиент не задаёт:
-        он переживает наш процесс и закрывает его сам. Вызывается один раз
-        после того, как пользователь увидел результат проверки подписи.
-        """
-        from core.updater import launch_update_bat
-        if _updater_state["running"]:
-            self._send_json({"status": "error",
-                             "message": "Обновление ещё выполняется"})
-            return
-        res = _updater_state.get("result") or {}
-        cand = str(res.get("update_bat") or res.get("restart_bat") or "")
-        bat_name = Path(cand).name
-        if bat_name not in ("_update_self.bat", "_restart_app.bat"):
-            self._send_json({"status": "error", "message":
-                             "Замена программы не подготовлена - запустите обновление заново"})
-            return
-        bat = get_root_dir() / bat_name
-        if not bat.exists():
-            self._send_json({"status": "error", "message":
-                             "Файл обновления не найден, запустите обновление заново"})
-            return
-        try:
-            launch_update_bat(bat)
-        except RuntimeError as e:
-            self._send_json({"status": "error", "message": str(e)})
-            return
-        _ui_debug("update: self-update bat launched")
-        self._send_json({"status": "ok", "message":
-                         "Программа сейчас закроется и запустится заново"})
-
-    def _handle_settings_export(self) -> None:
-        """Экспорт настроек: config + *-user.txt + юзерские пресеты → один zip."""
-        from core.updater import export_settings_zip
-        path = export_settings_zip(get_root_dir())
-        if not path:
-            self._send_json({"status": "error", "message": "Не удалось создать файл экспорта"})
-            return
-        self._send_json({"status": "ok", "file": str(path),
-                         "name": path.name})
-
-    def _handle_settings_import(self, data: dict) -> None:
-        """Импорт настроек из zip (base64): только юзер-файлы восстанавливаются."""
-        import base64
-        try:
-            zip_data = base64.b64decode(data.get("data") or "")
-        except Exception:
-            self._send_json({"status": "error", "message": "Некорректный файл"})
-            return
-        if not zip_data:
-            self._send_json({"status": "error", "message": "Пустой файл"})
-            return
-        from core.updater import import_settings_zip, read_settings_meta
-        meta = read_settings_meta(zip_data)
-        imported, skipped = import_settings_zip(zip_data, get_root_dir())
-        note = ""
-        ver = str(meta.get("version") or "")
-        if ver and ver != VERSION:
-            note = (f" Архив из версии {ver}: настройки перенесены, "
-                    "недостающие параметры взяты из текущей версии.")
-        self._send_json({"status": "ok", "imported": imported,
-                         "skipped": skipped, "source_version": ver,
-                         "message": f"Восстановлено записей: {imported}." + note
-                                    + " Перезапустите программу, чтобы применилось."})
 
     def _handle_export_report(self, data: dict) -> None:
         consent = data.get("consent", False)
@@ -2149,196 +1716,6 @@ class ZapretHandler(BaseHTTPRequestHandler):
         t = threading.Thread(target=_run_tester_action, args=(data,), daemon=True)
         t.start()
         self._send_json({"status": "ok", "action": "started"})
-
-    def _handle_cdn_recommendation(self, data: dict) -> None:
-        """Полу-автономное применение вердикта CDN-скана без наложений.
-
-        general - домен → list-general.txt (в ipset-режиме IP кандидата →
-        ipset-include-user.txt, с проверкой пересечения с ipset-exclude);
-        exclude - домен → list-exclude.txt (работает в обоих режимах);
-        ipset-include/ipset-exclude - IP → ipset-include-user.txt.
-        Применение перезапускает обход - busy-чек не даёт делать это во время
-        теста (M1: кнопки строк CDN активны во время прогона).
-        """
-        busy = _checkers_busy()
-        if busy:
-            self._send_json({"status": "error", "message": busy},
-                            HTTPStatus.CONFLICT)
-            return
-        domain = (data.get("domain") or "").strip().lower().rstrip(".")
-        action = data.get("action", "")
-        ips = [str(i).strip() for i in (data.get("ips") or []) if str(i).strip()]
-        if not domain or action not in ("general", "exclude", "ipset-include", "ipset-exclude"):
-            self._send_json({"status": "error",
-                             "message": "Нужны domain и action (general|exclude|ipset-include|ipset-exclude)"})
-            return
-        cfg = get_config_manager().load()
-        ipset_mode = bool(cfg.ipset_catchall)
-        working_domains = [str(d).strip().lower().rstrip(".")
-                           for d in (data.get("working_domains") or []) if str(d).strip()]
-        protection: set[str] = set()
-        if working_domains:
-            protection = _resolve_many(working_domains)
-        ok, msg, entries = _plan_cdn_action(domain, action, ips, protection, ipset_mode)
-        if not ok:
-            self._send_json({"status": "error", "message": msg})
-            return
-        fname = entries[0][0] if entries else ""
-        values = entries[0][1] if entries else []
-        if not values:
-            self._send_json({"status": "ok",
-                             "message": msg or "Нечего применять - правки уже в списках"})
-            return
-        from core import list_health
-        list_health.append_lines(get_root_dir() / "lists" / fname, values)
-        ctrl = get_controller()
-        if not ctrl.status().running:
-            self._send_json({"status": "ok",
-                             "message": f"{domain}: правки записаны в {fname}. "
-                                        "Обход не был запущен - применится при "
-                                        "следующем запуске"})
-            return
-        profile = cfg.last_profile or DEFAULT_PROFILE
-        if svc_installed():
-            # Служба установлена - перезапуск через SCM (аудит 2026-10: прямой
-            # ctrl.start плодил второй winws2, а SCM-recovery поднимал службу
-            # конкурентно; образец - _handle_start_zapret).
-            svc_args, svc_err = self._prepare_service_args(
-                data if isinstance(data, dict) else {})
-            if svc_err:
-                self._send_json({"status": "error",
-                                 "message": f"{domain}: {fname} обновлён, но "
-                                            f"аргументы службы не собрались: {svc_err}"})
-                return
-            ok, restart_msg = svc_start(svc_args)
-        else:
-            ok, restart_msg = ctrl.start(
-                profile,
-                game_filter_mode=cfg.game_filter_mode,
-                discord_voice=cfg.discord_voice,
-                discord_voice_mode=cfg.discord_voice_mode,
-                fake_blob=cfg.fake_blob,
-                winws2_debug=cfg.winws2_debug,
-                autohostlist=cfg.autohostlist,
-                ipset_catchall=cfg.ipset_catchall,
-                discord_alt=cfg.discord_alt,
-            )
-        if ok:
-            if action in ("ipset-include", "ipset-exclude") or (action == "general" and ipset_mode):
-                detail = f"{len(values) or 'все'} сети -> {fname}"
-            else:
-                detail = f"{domain} -> {fname}"
-            self._send_json({"status": "ok",
-                             "message": f"{domain}: {detail}, пресет {profile} перезапущен"})
-        else:
-            self._send_json({"status": "error",
-                             "message": f"{domain}: {fname} обновлён, но перезапуск не удался: {restart_msg}"})
-
-    def _handle_cdn_apply_all(self, data: dict) -> None:
-        """«Применить всё по матрице»: батч вердиктов CDN-скана за один перезапуск.
-
-        actions = [{domain, action, ips}, ...]; working_domains - живые в основном
-        прогоне (protection для safe_prefixes). Каждая правка планируется как в
-        ручном хендлере; наложения/ошибки не валят батч, а пропускаются с причиной.
-        Записи дедуплицируются по файлам, затем один перезапуск.
-        """
-        busy = _checkers_busy()
-        if busy:
-            self._send_json({"status": "error", "message": busy},
-                            HTTPStatus.CONFLICT)
-            return
-        actions = data.get("actions") or []
-        if not isinstance(actions, list) or not actions:
-            self._send_json({"status": "error", "message": "Нет правок в запросе"})
-            return
-        clean = []
-        for a in actions:
-            if not isinstance(a, dict):
-                continue
-            domain = (a.get("domain") or "").strip().lower().rstrip(".")
-            action = a.get("action", "")
-            ips = [str(i).strip() for i in (a.get("ips") or []) if str(i).strip()]
-            if domain and action in ("general", "exclude", "ipset-include", "ipset-exclude"):
-                clean.append((domain, action, ips))
-        if not clean:
-            self._send_json({"status": "error", "message": "Нет валидных правок в запросе"})
-            return
-        cfg = get_config_manager().load()
-        ipset_mode = bool(cfg.ipset_catchall)
-        working_domains = [str(d).strip().lower().rstrip(".")
-                           for d in (data.get("working_domains") or []) if str(d).strip()]
-        protection: set[str] = set()
-        if working_domains:
-            protection = _resolve_many(working_domains)
-        pending: dict[str, list[str]] = {}
-        applied: list[str] = []
-        skipped: list[dict] = []
-        for domain, action, ips in clean:
-            ok, msg, entries = _plan_cdn_action(domain, action, ips, protection, ipset_mode)
-            if not ok:
-                skipped.append({"domain": domain, "reason": msg})
-                continue
-            for fname, values in entries:
-                pending.setdefault(fname, []).extend(values)
-            applied.append(domain)
-        written: dict[str, list[str]] = {}
-        if pending:
-            for fname, values in pending.items():
-                existing = _read_lines(fname)
-                values = [v for v in values if v not in existing]
-                if not values:
-                    continue
-                from core import list_health
-                list_health.append_lines(get_root_dir() / "lists" / fname, values)
-                written[fname] = values
-        # После дедупа могло не остаться реальных записей - перезапуск не нужен.
-        if not written:
-            self._send_json({"status": "ok",
-                             "message": "Нечего применять - правки уже в списках",
-                             "applied": [], "skipped": skipped})
-            return
-        ctrl = get_controller()
-        if not ctrl.status().running:
-            files_touched = ", ".join(sorted(written))
-            self._send_json({"status": "ok",
-                             "message": f"Применено {len(applied)} правок "
-                                        f"({files_touched}). Обход не был запущен - "
-                                        "применится при следующем запуске",
-                             "applied": applied, "skipped": skipped})
-            return
-        profile = cfg.last_profile or DEFAULT_PROFILE
-        if svc_installed():
-            svc_args, svc_err = self._prepare_service_args(
-                data if isinstance(data, dict) else {})
-            if svc_err:
-                self._send_json({"status": "error",
-                                 "message": f"Применено {len(applied)} правок, "
-                                            f"но аргументы службы не собрались: {svc_err}",
-                                 "applied": applied, "skipped": skipped})
-                return
-            restart_ok, restart_msg = svc_start(svc_args)
-        else:
-            restart_ok, restart_msg = ctrl.start(
-                profile,
-                game_filter_mode=cfg.game_filter_mode,
-                discord_voice=cfg.discord_voice,
-                discord_voice_mode=cfg.discord_voice_mode,
-                fake_blob=cfg.fake_blob,
-                winws2_debug=cfg.winws2_debug,
-                autohostlist=cfg.autohostlist,
-                ipset_catchall=cfg.ipset_catchall,
-                discord_alt=cfg.discord_alt,
-            )
-        if not restart_ok and written:
-            self._send_json({"status": "error",
-                             "message": f"Применено {len(applied)} правок, но перезапуск не удался: {restart_msg}",
-                             "applied": applied, "skipped": skipped})
-            return
-        files_touched = ", ".join(sorted(written)) if written else "-"
-        self._send_json({"status": "ok",
-                         "message": f"Применено {len(applied)} правок ({files_touched}), пресет {profile} перезапущен",
-                         "applied": applied, "skipped": skipped})
-
 
 # ── Жизненный цикл сервера ───────────────────────────────────
 

@@ -691,9 +691,12 @@ Severity: S1 — мешает пониманию/сопровождению си
   api_probe/api_games/api_zapret1 (debug-хелперы и get_process_probe — в app_state;
   zapret1_stop busy остался 409-контрактом через ApiError).
   Раунд 2 (14.10): contested/lists/diag — ещё 8 хендлеров
-  (api_contested/api_lists/api_diag; итого 29/56). Осталось ~27:
-  update/tester/cdn/конфиг+сеттингс/одиночки (из них index/static —
-  транспортные, остаются в хендлере).
+  (api_contested/api_lists/api_diag). Раунд 3 (14.10): update (+worker
+  run_update_worker), cdn (планировщики _plan_cdn_action/_read_*/
+  _resolve_many), config+settings — api_update/api_cdn/api_config — итого
+  39/56. Осталось ~15: tester(2), start/stop(2), lists CRUD(4),
+  одиночки (status/app-info/version/bundled/fake-blobs/export-report/
+  asn-scan/blob-probe); index/static — транспортные.
 - ⏳ осталось: #1-продолжение (AppContext + выносы) -> #3
   (_run_tester_action) -> #5 (tester) -> #9 (QUIC/timeouts) -> #2 (app.js
   ПОСЛЕДНИМ; склейка файлов на сервере).
