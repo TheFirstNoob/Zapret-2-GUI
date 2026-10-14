@@ -335,3 +335,35 @@ def run_quiet(cmd: list[str], timeout: int = 30) -> None:
                        creationflags=subprocess.CREATE_NO_WINDOW)
     except Exception:
         pass
+
+
+def split_windows_cmdline(s: str) -> list[str]:
+    """Разбор командной строки Windows на аргументы (CommandLineToArgvW).
+
+    Точный парсер SCM/CRT: кавычки снимаются (в т.ч. форма `@"path"` ->
+    `@path`), backslash-кавычки учитываются. Фолбэк - regex.
+    """
+    if not s or not s.strip():
+        return []
+    try:
+        import ctypes
+        import ctypes.wintypes as wt
+        sh = ctypes.WinDLL("shell32", use_last_error=True)
+        sh.CommandLineToArgvW.restype = ctypes.POINTER(wt.LPWSTR)
+        sh.CommandLineToArgvW.argtypes = [wt.LPCWSTR,
+                                          ctypes.POINTER(ctypes.c_int)]
+        n = ctypes.c_int(0)
+        arr = sh.CommandLineToArgvW(s, ctypes.byref(n))
+        if arr:
+            try:
+                return [arr[i] for i in range(n.value)]
+            finally:
+                k32 = ctypes.WinDLL("kernel32")
+                k32.LocalFree.argtypes = [ctypes.c_void_p]
+                k32.LocalFree.restype = None
+                k32.LocalFree(arr)
+    except Exception:  # noqa: BLE001
+        pass
+    import re
+    return [m.group(1) if m.group(1) is not None else m.group(2)
+            for m in re.finditer(r'"([^"]*)"|(\S+)', s)]

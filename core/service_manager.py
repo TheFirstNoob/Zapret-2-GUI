@@ -99,14 +99,12 @@ def _zapret1_service_exists() -> bool:
     return code == 0
 
 
-def _service_cmdline(exe: Path, args: list[str]) -> str:
-    """binPath в формате Zapret 1: \"exe\" \"arg\" ... - обратные слэш-кавычки
-    обрабатываются парсером cmd.exe, ровно как в v1's service.bat. Обычные
-    кавычки через argv заставляют sc ронять путь или хранить экранированный
-    вид буквально."""
-    parts = [f'\\"{exe}\\"']
-    parts += [f'\\"{a}\\"' if " " in a else a for a in args]
-    return " ".join(parts)
+def _service_cmdline(exe: Path, conf: Path) -> str:
+    """Транспорт binPath для sc-bat (v1-стиль, backslash-кавычки в cmd).
+
+    Итог в SCM: \"exe\" @\"conf\" - кавычки вокруг ПУТИ, @ снаружи (только так
+    Cygwin раскрывает @file, см. AI_DOCS/ARG_FILE_RESEARCH_2026-10-14.md)."""
+    return f'\\"{exe}\\" @\\"{conf}\\"'
 
 
 def _read_stored_binpath() -> str:
@@ -131,35 +129,23 @@ def _read_stored_binpath() -> str:
         return ""
 
 
-def _path_from_token(t: str) -> Optional[str]:
-    """Путь к файлу из токена аргументов, если он там есть."""
-    if "@" in t and "\\" in t:
-        return t.split("@", 1)[1]
-    if "=" in t and "\\" in t:
-        return t.split("=", 1)[1]
-    if "--blob" in t and not t.startswith("--blob"):
-        return None
-    return None
+def _verify_binpath(exe: Path, conf: Path) -> tuple[bool, str]:
+    """Проверяет сохранённый binPath нового формата: [exe, @conf].
 
-
-def _verify_binpath(exe: Path, args: list[str]) -> tuple[bool, str]:
-    """Проверяет, что SCM сохранил всю командную строку: старый/кривой SCM
-    Win10 мог молча исказить binPath (случай кривой установки 2026-09-12) -
-    сверяем число аргументов и существование всех путей."""
+    Кривой SCM Win10 исторически молча искажал длинные binPath (случай
+    2026-09-12) - теперь binPath короткий, сверяем: число токенов, наличие
+    @conf-токена и существование conf-файла (его путь SCM мог исказить)."""
     stored = _read_stored_binpath()
     if not stored:
         return False, "binPath пуст - SCM не сохранил командную строку"
-    s = stored.replace('\\"', '"')
-    tokens = [m.group(1) if m.group(1) is not None else m.group(2)
-              for m in re.finditer(r'"([^"]*)"|(\S+)', s)]
-    if len(tokens) != 1 + len(args):
-        return False, (f"binPath содержит {len(tokens)} аргументов вместо "
-                       f"{1 + len(args)} - часть командной строки потеряна "
-                       f"(нестандартный путь установки?)")
-    for t in tokens[1:]:
-        p = _path_from_token(t)
-        if p and not Path(p).exists():
-            return False, f"путь из binPath не существует: {p} - установка кривая"
+    from core.utils import split_windows_cmdline
+    tokens = split_windows_cmdline(stored.replace('\\"', '"'))
+    if len(tokens) != 2 or not tokens[1].startswith("@"):
+        return False, (f"binPath не в формате @conf (токенов: {len(tokens)}) - "
+                       f"командная строка потеряна (нестандартный SCM?)")
+    conf_path = Path(tokens[1][1:])
+    if not conf_path.exists():
+        return False, f"conf-файл из binPath не существует: {conf_path}"
     return True, ""
 
 
@@ -195,15 +181,14 @@ def _sc_run_bat(lines: list[str]) -> tuple[int, str]:
             pass
 
 
-def _service_binpath(exe: Path, args: list[str]) -> str:
-    """binPath с ОБЫЧНЫМИ кавычками (для Win32 API): \"exe\" \"arg\" arg.
+def _service_binpath(exe: Path, conf: Path) -> str:
+    """binPath с ОБЫЧНЫМИ кавычками (для Win32 API): \"exe\" @\"conf\".
 
-    API/SCM хранят строку дословно - v1-стиль с backslash-кавычками нужен
-    только транспорту через cmd/bat (sc create), см. _service_cmdline.
+    Аргументы в binPath больше не хранятся (лимит SCM ~4К и искажения Win10
+    не применимы): движок читает их из conf-файла - Cygwin раскрывает @file
+    до main. Транспорт через cmd/bat - см. _service_cmdline.
     """
-    parts = [f'"{exe}"']
-    parts += [f'"{a}"' if " " in a else a for a in args]
-    return " ".join(parts)
+    return f'"{exe}" @"{conf}"'
 
 
 def _win32_advapi():
@@ -478,12 +463,17 @@ def install(root_dir: Optional[Path] = None, args: Optional[list[str]] = None,
         return False, f"winws2.exe вне каталога программы: {exe}"
     if args is None:
         args = []
-    # winws2.exe - бинарник службы НАПРЯМУЮ (как service.bat у Zapret 1:
-    # binPath = "winws.exe <args>", start= auto). cmd-обёртка - то, что
-    # поведенческие детекты Defender помечают подозрительным.
-    cmdline = _service_cmdline(exe, args)
-    native = _service_binpath(exe, args)
-    _svc_log(f"install: exe={exe} args={len(args)} cmdline={len(cmdline)}")
+    # winws2.exe - бинарник службы НАПРЯМУЮ, аргументы - в logs/service_run.conf
+    # (binPath короткий: "exe" @"conf"; cmd-обёртку ловит Defender, а длинные
+    # binPath исторически искажались SCM Win10).
+    from core.launcher import write_run_conf
+    try:
+        conf = write_run_conf(root_dir, args, name="service_run.conf")
+    except OSError as e:
+        return False, f"не записался service_run.conf: {e}"
+    cmdline = _service_cmdline(exe, conf)
+    native = _service_binpath(exe, conf)
+    _svc_log(f"install: exe={exe} args={len(args)} conf={conf}")
     ok_a, det_a = _win32_create_service(native)
     if ok_a:
         _svc_log(f"install: Win32 API create ok (binPath={len(native)})")
@@ -501,7 +491,7 @@ def install(root_dir: Optional[Path] = None, args: Optional[list[str]] = None,
     # Verify BEFORE start: old/broken SCM может молча исказить binPath
     # (аргументы по пробелам рвутся, кириллические пути не читаются) -
     # тогда служба «стоит», но обхода нет и автозапуск валится.
-    okv, msgv = _verify_binpath(exe, args)
+    okv, msgv = _verify_binpath(exe, conf)
     if not okv:
         _svc_log(f"install FAIL: verify binPath: {msgv}")
         remove()
@@ -537,8 +527,9 @@ def install(root_dir: Optional[Path] = None, args: Optional[list[str]] = None,
 
 @_serialized
 def reconfigure(args: list[str]) -> tuple[bool, str]:
-    """Обновляет binPath службы текущими args (служба запускает exe напрямую,
-    поэтому смена стратегии требует перезаписи командной строки)."""
+    """Обновляет параметры службы: args пишутся в logs/service_run.conf,
+    binPath становится коротким "exe" @"conf" (лимит SCM ~4К и искажения
+    Win10 больше не применимы)."""
     _invalidate_service_cache()
     root_dir = app_root()
     exe = root_dir / "bin" / "winws2.exe"
@@ -546,14 +537,20 @@ def reconfigure(args: list[str]) -> tuple[bool, str]:
         exe = root_dir / "winws2.exe"
     if not str(exe.resolve()).lower().startswith(str(app_root()).lower()):
         return False, f"winws2.exe вне каталога программы: {exe}"
-    cmdline = _service_cmdline(exe, args)
-    native = _service_binpath(exe, args)
-    _svc_log(f"reconfigure: args={len(args)} cmdline={len(cmdline)}")
+    from core.launcher import write_run_conf
+    try:
+        conf = write_run_conf(root_dir, args, name="service_run.conf")
+    except OSError as e:
+        _svc_log(f"reconfigure FAIL: conf write: {e!r}")
+        return False, f"не записался service_run.conf: {e}"
+    native = _service_binpath(exe, conf)
+    _svc_log(f"reconfigure: args={len(args)} conf={conf}")
     ok_a, det_a = _win32_change_service(native)
     if ok_a:
         _svc_log(f"reconfigure: Win32 API change ok (binPath={len(native)})")
     else:
         _svc_log(f"reconfigure: Win32 API change failed: {det_a} - fallback sc-bat")
+        cmdline = _service_cmdline(exe, conf)
         code, out = _sc_run_bat([f'sc config {SERVICE_NAME} binPath= "{cmdline}"'])
         if code != 0:
             _svc_log(f"reconfigure FAIL: sc config rc={code} "
@@ -564,10 +561,75 @@ def reconfigure(args: list[str]) -> tuple[bool, str]:
     stored = _read_stored_binpath()
     if stored.replace('\\"', '"') != native:
         _svc_log(f"reconfigure FAIL: stored={len(stored)} != native={len(native)}")
-        return False, ("sc config не сохранил аргументы дословно - служба "
+        return False, ("sc config не сохранил binPath дословно - служба "
                        "осталась на старых (запустите переустановку службы)")
     _svc_log("reconfigure OK")
     return True, "Параметры службы обновлены"
+
+
+@_serialized
+def migrate_if_needed() -> tuple[bool, str]:
+    """0.11: перевод legacy-службы (аргументы зашиты в binPath) на @conf.
+
+    Legacy-аргументы парсятся из сохранённого binPath и переносятся в
+    logs/service_run.conf; binPath становится коротким "exe" @"conf".
+    Служба перезапускается, если была запущена. Ничего не делает, если
+    службы нет или она уже в новом формате."""
+    if not is_installed():
+        return True, "службы нет"
+    stored = _read_stored_binpath()
+    if not stored:
+        return True, "binPath не прочитан"
+    from core.utils import split_windows_cmdline
+    tokens = split_windows_cmdline(stored.replace('\\"', '"'))
+    if len(tokens) < 2:
+        return True, "аргументов в binPath нет"
+    if tokens[1].startswith("@"):
+        return True, "уже новый формат"
+    args = tokens[1:]
+    root_dir = app_root()
+    exe = root_dir / "bin" / "winws2.exe"
+    if not exe.exists():
+        exe = root_dir / "winws2.exe"
+    if not str(exe.resolve()).lower().startswith(str(app_root()).lower()):
+        return False, f"winws2.exe вне каталога программы: {exe}"
+    _invalidate_service_cache()
+    _svc_log(f"migrate: legacy binPath args={len(args)} -> @conf")
+    was_running = status() == "running"
+    if was_running:
+        stop()
+    from core.launcher import write_run_conf
+    try:
+        conf = write_run_conf(root_dir, args, name="service_run.conf")
+    except OSError as e:
+        _svc_log(f"migrate FAIL: conf write: {e!r}")
+        if was_running:
+            start()
+        return False, f"не записался service_run.conf: {e}"
+    native = _service_binpath(exe, conf)
+    ok_a, det_a = _win32_change_service(native)
+    if not ok_a:
+        _svc_log(f"migrate: Win32 API change failed: {det_a} - fallback sc-bat")
+        cmdline = _service_cmdline(exe, conf)
+        code, out = _sc_run_bat([f'sc config {SERVICE_NAME} binPath= "{cmdline}"'])
+        if code != 0:
+            _svc_log(f"migrate FAIL: sc config rc={code} out={out.strip()[:200]!r}")
+            if was_running:
+                start()
+            return False, f"sc config failed: {out.strip()}"
+    okv, msgv = _verify_binpath(exe, conf)
+    if not okv:
+        _svc_log(f"migrate FAIL: verify: {msgv}")
+        if was_running:
+            start()
+        return False, f"binPath не верифицировался: {msgv}"
+    if was_running:
+        ok_s, msg_s = start()
+        if not ok_s:
+            _svc_log(f"migrate WARN: служба не запустилась: {msg_s}")
+            return False, f"служба переведена, но не запустилась: {msg_s}"
+    _svc_log("migrate OK")
+    return True, "служба переведена на conf-формат"
 
 
 @_serialized
@@ -629,6 +691,14 @@ def start(args: Optional[list[str]] = None):
         ok_r, msg_r = reconfigure(args)
         if not ok_r:
             return False, msg_r
+    else:
+        # 0.11: старт без новых аргументов - заодно мигрируем legacy-службу
+        try:
+            ok_m, msg_m = migrate_if_needed()
+            if not ok_m:
+                _svc_log(f"start: migrate warn: {msg_m}")
+        except Exception as e:  # noqa: BLE001
+            _svc_log(f"start: migrate exception: {e!r}")
     code, out = _sc(["start", SERVICE_NAME])
     _svc_log(f"start: sc start rc={code} out={out.strip()[:200]!r}")
     if code != 0:

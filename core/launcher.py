@@ -588,16 +588,18 @@ def write_run_bat(
     exe_path: Path,
     args: list[str],
 ) -> None:
-    """Пишет .bat, запускающий winws2 через `start /min`.
+    """Пишет .bat, запускающий winws2 через `start /min` (аргументы - из conf).
 
-    subprocess.list2cmdline корректно квотирует токены с пробелами,
-    короткие пути убирают не-ASCII из .bat.
+    Как и в прямом запуске, аргументы идут через logs/run.conf: bat не зависит
+    от длины и кавычек аргументов. Короткие пути убирают не-ASCII из ASCII-bat.
     """
+    conf = write_run_conf(root_dir, args)
     short_exe = short_path(exe_path)
     short_root = short_path(root_dir)
-    cmd_line = subprocess.list2cmdline([str(short_exe)] + args)
+    short_conf = short_path(conf)
     bat_path.write_text(
-        f'@echo off\r\ncd /d "{short_root}"\r\nstart "zapret2" /min {cmd_line}',
+        f'@echo off\r\ncd /d "{short_root}"\r\n'
+        f'start "zapret2" /min "{short_exe}" @"{short_conf}"',
         encoding="ascii",
         errors="replace",
     )

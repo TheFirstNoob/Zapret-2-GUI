@@ -570,15 +570,27 @@ def write_manifest(base_dir: Path, version: str) -> Path:
 
 def service_args_stale(stored_binpath: str, new_args: list[str]) -> bool:
     """True, если аргументы установленной службы отличаются от собранных
-    из НОВЫХ файлов (после обновления) - службе нужен пересбор."""
+    из НОВЫХ файлов (после обновления) - службе нужен пересбор.
+
+    binPath нового формата ("exe" @"conf") хранит аргументы в conf-файле -
+    сравниваем его построчно (токен на строку, DQ-кавычки снимаем)."""
     try:
         if not stored_binpath:
             return False
-        import re as _re
-        s = stored_binpath.replace('\\"', '"')
-        tokens = [m.group(1) if m.group(1) is not None else m.group(2)
-                  for m in _re.finditer(r'"([^"]*)"|(\S+)', s)]
-        old_args = tokens[1:]  # exe-токен пропускаем, сравниваем аргументы
+        from core.utils import split_windows_cmdline
+        tokens = split_windows_cmdline(stored_binpath.replace('\\"', '"'))
+        if len(tokens) >= 2 and tokens[1].startswith("@"):
+            conf = Path(tokens[1][1:])
+            old_args = []
+            for line in conf.read_text(encoding="utf-8").splitlines():
+                t = line.strip()
+                if not t:
+                    continue
+                if len(t) >= 2 and t[0] == '"' and t[-1] == '"':
+                    t = t[1:-1]
+                old_args.append(t)
+        else:
+            old_args = tokens[1:]  # exe-токен пропускаем, сравниваем аргументы
         new_tokens = [str(a) for a in new_args]
         if len(old_args) != len(new_tokens):
             return True

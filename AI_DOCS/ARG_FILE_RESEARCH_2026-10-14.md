@@ -62,6 +62,8 @@
 | T9 | Служба: binPath `"winws2.exe" @C:\ProgramData\Zapret2\probe.conf` | ✅ start rc=0 RUNNING, debug-лог создан LocalSystem'ом, stop/delete чисто |
 | T9/T10 | Служба: binPath `"winws2.exe" @"C:\ProgramData\Zapret2\probe conf.txt"` | ✅ cmdline процесса перехвачена WMI — SCM передаёт аргумент ВЕРБАТИМ; winws2 RUNNING (первый замер дал ложный 1053 — dup-mutex артефакт, см. §5) |
 | T11 | Этап 1 (внедрён): golden argv vs conf — REPO и MIRROR(пробелы) | ✅ SAME=True (8+verified / 9+dup-mutex-квирк); validate=True; живой direct `@file` на пробельном MIRROR: alive + curl 200; sink поймал вывод падения |
+| T13 | Этап 3 (внедрён): живая миграция службы зеркала на conf | ✅ binPath 3854→151 симв; golden conf==legacy args (117/117); RUNNING + curl 200; бэкап старого binPath в `mirror/logs/` |
+| T14 | write_run_bat через conf (`start /min exe @"conf"`) | ✅ rc=0, debug-лог пишется, левых winws2 нет |
 
 Побочно: лог winws2 показывает пути урезанно (`/lists/...`) — косметика;
 `--comment` в контенте не мешает; `--hostlist=` принимает ТОЛЬКО обычный путь
@@ -124,9 +126,15 @@
 
 **Этап 2 (bat/build_lite):** в bat только `winws2.exe @"<conf>"` (проверить
 пробельный корень в lite-сборке).
-**Этап 3 (служба):** binPath `"winws2.exe" @C:\ProgramData\Zapret2\service_run.conf`
-(PoC ✅, §5); смена стратегии/игр = перезапись conf + restart (без
-ChangeServiceConfigW).
+**Этап 3 (служба — ✅ ВЫПОЛНЕН 14.10):** binPath = `"exe" @"<root>\logs\service_run.conf"`
+(у живой службы зеркала 3854 → 151 симв); `install`/`reconfigure` пишут
+`service_run.conf` и меняют короткий binPath (Win32 API; sc-bat — транспорт
+`@\"conf\"`); **legacy-миграция**: `migrate_if_needed()` парсит старый binPath
+(CommandLineToArgvW) → conf → ChangeServiceConfigW → verify → restart, если
+служба была запущена; зовётся и из `start(args=None)`. `updater.service_args_stale`
+сравнивает содержимое conf-файла. Живой прогон: golden conf==старые args
+(117/117), RUNNING + curl 200; бэкап старого binPath в
+`mirror/logs/binpath_legacy_backup.txt` (откат `t13_rollback.py`).
 **Этап 4 (зачистка):** sc-bat fallback/`_verify_binpath`, ImagePath-чек в
 `status()`, timestamps без PS + вызов из тестера, CDN service-ветка.
 
@@ -153,9 +161,10 @@ ChangeServiceConfigW).
 - **TCP timestamps**: убрать PowerShell из горячего пути (netsh по коду возврата;
   чтение — локализация!); вызывать и из тестера (heisenbug «тест работает после
   обычного запуска»).
-- **Служба**: убрать sc-bat fallback/`_verify_binpath` (после @file); ImagePath-чек
-  в `status()` → PATH_MISMATCH/авто-ChangeServiceConfigW; порядок 1072 (закрыть
-  HANDLE + убить winws до delete).
+- **Служба (остаток)**: sc-bat fallback оставлен осознанно (транспорт для кривых
+  SCM, теперь `@\"conf\"`); `_verify_binpath` переписан под @conf; НЕ сделаны:
+  ImagePath-чек в `status()` (PATH_MISMATCH) и порядок 1072 (закрыть HANDLE +
+  убить winws до delete) — отдельная задача.
 - **CDN-ручки**: service-ветка (U1 из внешнего ARCH_REVIEW) — ждёт VM-теста.
 
 ## 7. Артефакты и ссылки
