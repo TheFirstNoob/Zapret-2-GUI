@@ -649,8 +649,11 @@ happy-path прогонах):
   legacy-миграция (migrate_if_needed, CommandLineToArgvW; живой прогон зеркала
   3854→151 симв, golden 117/117, бэкап в mirror/logs). Этап 2 (bat/lite) —
   start-батовые conf-файлы + service-install echo-блок (песочница проверена).
-  Timestamps: кэш на процесс + вызов из тестера. Хвосты: ImagePath в status,
-  1072, CDN service (док §6).
+  Тираж-раунд 2: CDN-ручки через ветку службы; квотирование DQ для
+  пробелов/бэкслэшей/'/[]; validate fail-closed (флаги дублируются в argv);
+  long-пути в контенте (short_path — только для bat). Golden-инструмент:
+  `tools/check_arg_file.py [--quoting]`. Хвосты: ImagePath в status, 1072,
+  pause_recovery-trade-off, conf в logs/ (решения — док §6).
 
 ## Хосты / AI-пины (2026-09-24) — не гонять пачками
 

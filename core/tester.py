@@ -881,6 +881,11 @@ class Zapret2Tester:
                                  discord_alt=discord_alt):
             # диагностика «у друга не запускается»: точные пути в лог сессии
             if self._logger:
+                from core.launcher import _read_stderr_sink
+                sink = _read_stderr_sink(self.root_dir)
+                if sink:
+                    self._logger.progress(profile_name,
+                                          f"winws2 output: {sink[:600]}")
                 self._logger.progress(
                     profile_name,
                     f"ABORT: spawn failed | exe={self.bin_dir / 'winws2.exe'} "
@@ -898,6 +903,11 @@ class Zapret2Tester:
         if not self._any_winws2_running():
             self._ensure_winws2_dead()
             if self._logger:
+                from core.launcher import _read_stderr_sink
+                sink = _read_stderr_sink(self.root_dir)
+                if sink:
+                    self._logger.progress(profile_name,
+                                          f"winws2 output: {sink[:600]}")
                 self._logger.progress(
                     profile_name,
                     "ABORT: winws2 died immediately after spawn "

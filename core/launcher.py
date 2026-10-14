@@ -37,22 +37,33 @@ def _winws2_env() -> dict[str, str]:
 
 
 def _conf_quote_token(t: str) -> str:
-    """Токен конфига: пробелы требуют DQ (Cygwin-парсер контента @file)."""
-    return f'"{t}"' if (" " in t or "\t" in t) else t
+    """Токен конфига: DQ при пробелах/бэкслэшах/glob-символах.
+
+    Unquoted-токены Cygwin прогоняет через globify (`'`, `[`, `]`, `(`, `)`,
+    `{`, `}`, `?`, `*`, `~`) - пути с такими символами калечатся (внешнее
+    ревью 14.10: путь с `'`/`[]` терял бэкслэши: `C:Users...`). Пути с
+    бэкслэшами квотим всегда - единообразно и дёшево."""
+    if any(c in t for c in " \t\\'(){}[]?*~"):
+        return f'"{t}"'
+    return t
 
 
 def _conf_text(tokens: list[str]) -> str:
     return "\n".join(_conf_quote_token(str(t)) for t in tokens) + "\n"
 
 
-def _winws2_raw_cmdline(exe_path: Path, conf_path: Path) -> str:
-    """Командная строка вида `"exe" @"conf"`.
+def _winws2_raw_cmdline(exe_path: Path, conf_path: Path, *pre: str) -> str:
+    """Командная строка вида `"exe" [pre...] @"conf"`.
 
     Кавычки вокруг ПУТИ, @ снаружи: только так Cygwin раскрывает @file
     (`"@conf"` - кавычка перед @ - отключает раскрытие, см.
     AI_DOCS/ARG_FILE_RESEARCH_2026-10-14.md, dcrt0.cc sawquote).
+    `pre` - флаги безопасности (--dry-run/--intercept=0) ДУБЛИРУЮТСЯ в argv:
+    если раскрытие @file когда-нибудь сломается (обновление winws2), процесс
+    всё равно не уйдёт в живой перехват (fail-closed, внешнее ревью 14.10).
     """
-    return f'"{exe_path}" @"{conf_path}"'
+    pre_str = " ".join(pre)
+    return f'"{exe_path}" {pre_str + " " if pre_str else ""}@"{conf_path}"'
 
 
 def write_run_conf(root_dir: Path, args: list[str], name: str = "run.conf") -> Path:
@@ -108,7 +119,7 @@ def validate_args(exe_path: Path, args: list[str], cwd: Optional[Path] = None, t
     conf = _write_temp_conf(list(args) + ["--dry-run"])
     try:
         r = subprocess.run(
-            _winws2_raw_cmdline(exe_path, conf),
+            _winws2_raw_cmdline(exe_path, conf, "--dry-run"),
             capture_output=True,
             text=True,
             encoding="oem",
@@ -156,7 +167,7 @@ def validate_lua(exe_path: Path, args: list[str], cwd: Optional[Path] = None, ti
     conf = _write_temp_conf(lua_tokens + ["--intercept=0"])
     try:
         r = subprocess.run(
-            _winws2_raw_cmdline(exe_path, conf),
+            _winws2_raw_cmdline(exe_path, conf, "--intercept=0"),
             capture_output=True,
             text=True,
             encoding="oem",
@@ -225,7 +236,7 @@ def build_args_from_preset(
         lists_dir = root_dir / "lists"
     if windivert_dir is None:
         windivert_dir = root_dir / "windivert"
-    short_lists = short_path(lists_dir)
+    lists_base = str(lists_dir)
     lines = preset_path.read_text(encoding="utf-8-sig").strip().splitlines()
     game_on = game_filter_mode != "off"
     # Discord Voice: legacy bool + новый селект. Неизвестное значение -> off.
@@ -238,7 +249,7 @@ def build_args_from_preset(
     if autohostlist:
         if not auto_file.exists():
             auto_file.write_text("", encoding="utf-8")
-        auto_path = short_path(auto_file)
+        auto_path = str(auto_file)
 
     # User IP-include list: только непустой файл меняет args - пустой не
     # должен трогать конфиг вообще (байт-в-байт прежний default).
@@ -251,7 +262,7 @@ def build_args_from_preset(
         except OSError:
             has_entry = False
         if has_entry:
-            ipset_inc_path = str(short_path(ipset_inc_file))
+            ipset_inc_path = str(ipset_inc_file)
 
     # User IP-exclude list: exclude всегда сильнее include (ipset.c проверяет
     # ips_exclude первым) - без этой связки редактор «IP-сети - исключения»
@@ -265,7 +276,7 @@ def build_args_from_preset(
         except OSError:
             has_entry = False
         if has_entry:
-            ipset_excl_path = str(short_path(ipset_excl_file))
+            ipset_excl_path = str(ipset_excl_file)
 
     for line in lines:
         line = line.strip()
@@ -273,12 +284,12 @@ def build_args_from_preset(
             continue
         # Targeted-mode override: SNI-блоки list-general -> IP catch-all.
         if ipset_catchall and line.startswith("--hostlist=") and "list-general.txt" in line:
-            tokens.append(f"--ipset={short_lists}\\ipset-all.txt.gz")
+            tokens.append(f"--ipset={lists_base}\\ipset-all.txt.gz")
             if ipset_inc_path:
                 # Несколько --ipset OR-ятся (winws2 help: "multiple ipsets
                 # allowed") - юзер-подсети десинкаются тоже.
                 tokens.append(f"--ipset={ipset_inc_path}")
-            tokens.append(f"--ipset-exclude={short_lists}\\ipset-exclude.txt")
+            tokens.append(f"--ipset-exclude={lists_base}\\ipset-exclude.txt")
             if ipset_excl_path:
                 # Несколько exclude коллекций поддерживаются (ipset.c
                 # итерирует список); юзер-сети сильнее ipset-all.
@@ -289,7 +300,7 @@ def build_args_from_preset(
                 tokens.append(f"--hostlist-auto={auto_path}")
             continue
         if "@lists/" in line:
-            line = line.replace("@lists/", str(short_lists) + "\\")
+            line = line.replace("@lists/", str(lists_base) + "\\")
         for dir_name, dir_path in [("@lua/", lua_dir), ("@blobs/", blobs_dir), ("@windivert/", windivert_dir)]:
             if dir_name in line:
                 line = line.replace(dir_name, "@" + str(dir_path) + "\\")
@@ -320,7 +331,7 @@ def build_args_from_preset(
                 if t == "--blob" and i + 1 < len(tokens) and "tls_clienthello_" in tokens[i + 1]:
                     tls_blob_names.add(tokens[i + 1].split(":", 1)[0])
             tokens.insert(0, "--blob")
-            tokens.insert(1, f"alt_tls:@{short_path(alt_file)}")
+            tokens.insert(1, f"alt_tls:@{alt_file}")
             def _swap_fake_ref(t: str) -> str:
                 if not t.startswith("--lua-desync=fake:blob="):
                     return t
@@ -387,7 +398,7 @@ def build_args_from_preset(
     exclude_file = lists_dir / "list-exclude-user.txt"
     user_excl = ""
     if exclude_file.exists():
-        user_excl = f"--hostlist-exclude={short_path(exclude_file)}"
+        user_excl = f"--hostlist-exclude={exclude_file}"
     # User + games домены - ОДИН union-файл и один --hostlist-токен вместо
     # двух (2026-09-25): файлы-владельцы не смешиваются (user-файл юзерский,
     # list-games.txt генерируемый), но args не растут от числа игр.
@@ -395,7 +406,7 @@ def build_args_from_preset(
     include_path = games_store.sync_include_list(root_dir, include_file)
     user_inc = ""
     if include_path is not None:
-        user_inc = f"--hostlist={short_path(include_path)}"
+        user_inc = f"--hostlist={include_path}"
     if user_excl or user_inc:
         # winws2 ANDs --ipset с --hostlist внутри профиля (§24.2): инжект
         # SNI-include в ipset-сегмент схлопнул бы catch-all до доменов юзера.
@@ -496,7 +507,7 @@ def build_args_from_preset(
             quic_blob = blobs_dir / "quic_initial_www_google_com.bin"
             if quic_blob.exists():
                 tokens += ["--blob",
-                           f"quic_google:@{short_path(quic_blob)}"]
+                           f"quic_google:@{quic_blob}"]
             else:
                 _applog("games", "UDP-пул: quic_google блоб не найден "
                                  f"({quic_blob}) - игровые сегменты пропущены")
@@ -515,7 +526,7 @@ def build_args_from_preset(
                 cidrs = [c for r in rules for c in r["cidrs"]]
                 pool = games_store.write_cidr_pool_file(
                     root_dir, f"d{cutoff}r{repeats}", cidrs)
-                seg.append(f"--ipset={short_path(pool)}")
+                seg.append(f"--ipset={pool}")
             seg += ["--out-range", f"-d{cutoff}",
                     "--lua-desync=fake:blob=quic_google:"
                     f"repeats={repeats}:payload=all"]
@@ -545,7 +556,7 @@ def build_args_from_preset(
             for t in seg:
                 if t.startswith("--hostlist=") and "list-general.txt" in t:
                     dup.append(f"--ipset={ipset_inc_path}")
-                    dup.append(f"--ipset-exclude={short_lists}\\ipset-exclude.txt")
+                    dup.append(f"--ipset-exclude={lists_base}\\ipset-exclude.txt")
                     if ipset_excl_path:
                         dup.append(f"--ipset-exclude={ipset_excl_path}")
                 elif t.startswith("--hostlist=") or t.startswith("--hostlist-auto="):
@@ -577,7 +588,7 @@ def build_args_from_preset(
         debug_file = root_dir / "debug_winws2.log"
         if not debug_file.exists():
             debug_file.write_text("")
-        debug_path = short_path(debug_file)
+        debug_path = str(debug_file)
         tokens.append(f"--debug=@{debug_path}")
     return tokens
 

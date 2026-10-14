@@ -2896,17 +2896,30 @@ class ZapretHandler(BaseHTTPRequestHandler):
                                         "следующем запуске"})
             return
         profile = cfg.last_profile or DEFAULT_PROFILE
-        ok, restart_msg = ctrl.start(
-            profile,
-            game_filter_mode=cfg.game_filter_mode,
-            discord_voice=cfg.discord_voice,
-            discord_voice_mode=cfg.discord_voice_mode,
-            fake_blob=cfg.fake_blob,
-            winws2_debug=cfg.winws2_debug,
-            autohostlist=cfg.autohostlist,
-            ipset_catchall=cfg.ipset_catchall,
-            discord_alt=cfg.discord_alt,
-        )
+        if svc_installed():
+            # Служба установлена - перезапуск через SCM (аудит 2026-10: прямой
+            # ctrl.start плодил второй winws2, а SCM-recovery поднимал службу
+            # конкурентно; образец - _handle_start_zapret).
+            svc_args, svc_err = self._prepare_service_args(
+                data if isinstance(data, dict) else {})
+            if svc_err:
+                self._send_json({"status": "error",
+                                 "message": f"{domain}: {fname} обновлён, но "
+                                            f"аргументы службы не собрались: {svc_err}"})
+                return
+            ok, restart_msg = svc_start(svc_args)
+        else:
+            ok, restart_msg = ctrl.start(
+                profile,
+                game_filter_mode=cfg.game_filter_mode,
+                discord_voice=cfg.discord_voice,
+                discord_voice_mode=cfg.discord_voice_mode,
+                fake_blob=cfg.fake_blob,
+                winws2_debug=cfg.winws2_debug,
+                autohostlist=cfg.autohostlist,
+                ipset_catchall=cfg.ipset_catchall,
+                discord_alt=cfg.discord_alt,
+            )
         if ok:
             if action in ("ipset-include", "ipset-exclude") or (action == "general" and ipset_mode):
                 detail = f"{len(values) or 'все'} сети -> {fname}"
@@ -2991,17 +3004,28 @@ class ZapretHandler(BaseHTTPRequestHandler):
                              "applied": applied, "skipped": skipped})
             return
         profile = cfg.last_profile or DEFAULT_PROFILE
-        restart_ok, restart_msg = ctrl.start(
-            profile,
-            game_filter_mode=cfg.game_filter_mode,
-            discord_voice=cfg.discord_voice,
-            discord_voice_mode=cfg.discord_voice_mode,
-            fake_blob=cfg.fake_blob,
-            winws2_debug=cfg.winws2_debug,
-            autohostlist=cfg.autohostlist,
-            ipset_catchall=cfg.ipset_catchall,
-            discord_alt=cfg.discord_alt,
-        )
+        if svc_installed():
+            svc_args, svc_err = self._prepare_service_args(
+                data if isinstance(data, dict) else {})
+            if svc_err:
+                self._send_json({"status": "error",
+                                 "message": f"Применено {len(applied)} правок, "
+                                            f"но аргументы службы не собрались: {svc_err}",
+                                 "applied": applied, "skipped": skipped})
+                return
+            restart_ok, restart_msg = svc_start(svc_args)
+        else:
+            restart_ok, restart_msg = ctrl.start(
+                profile,
+                game_filter_mode=cfg.game_filter_mode,
+                discord_voice=cfg.discord_voice,
+                discord_voice_mode=cfg.discord_voice_mode,
+                fake_blob=cfg.fake_blob,
+                winws2_debug=cfg.winws2_debug,
+                autohostlist=cfg.autohostlist,
+                ipset_catchall=cfg.ipset_catchall,
+                discord_alt=cfg.discord_alt,
+            )
         if not restart_ok and written:
             self._send_json({"status": "error",
                              "message": f"Применено {len(applied)} правок, но перезапуск не удался: {restart_msg}",
