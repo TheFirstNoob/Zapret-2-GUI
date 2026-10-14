@@ -94,6 +94,30 @@ def status() -> str:
     return _status_cache_value
 
 
+def path_status() -> tuple[str, str]:
+    """Сверка exe из binPath службы с текущим каталогом программы.
+
+    Возвращает ("ok"|"mismatch"|"none"|"unknown", описание). Ловит переезд
+    папки и запуск GUI из другой копии: служба молча продолжает работать со
+    старым exe, а текущая копия об этом не знает."""
+    if not is_installed():
+        return "none", ""
+    stored = _read_stored_binpath()
+    if not stored:
+        return "unknown", "binPath не прочитан"
+    from core.utils import split_windows_cmdline
+    tokens = split_windows_cmdline(stored.replace('\\"', '"'))
+    if not tokens:
+        return "unknown", "binPath пуст"
+    cur = app_root() / "bin" / "winws2.exe"
+    if not cur.exists():
+        cur = app_root() / "winws2.exe"
+    if str(tokens[0]).strip('"').lower() != str(cur).lower():
+        return "mismatch", (f"служба запускает {tokens[0]}, "
+                            f"текущая копия программы: {cur}")
+    return "ok", ""
+
+
 def _zapret1_service_exists() -> bool:
     code, _ = _sc(["query", "zapret"])
     return code == 0
@@ -677,6 +701,9 @@ def start(args: Optional[list[str]] = None):
     _invalidate_service_cache()
     from core.tcp_timestamps import enable_for_engine
     enable_for_engine()
+    ps, pmsg = path_status()
+    if ps == "mismatch":
+        _svc_log(f"start WARN: binPath ведёт на другую копию: {pmsg}")
     stop()
     # Даём SCM время закрыть состояние (иначе первый sc start может дать 1053).
     time.sleep(0.5)

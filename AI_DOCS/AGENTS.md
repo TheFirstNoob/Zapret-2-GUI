@@ -652,8 +652,9 @@ happy-path прогонах):
   Тираж-раунд 2: CDN-ручки через ветку службы; квотирование DQ для
   пробелов/бэкслэшей/'/[]; validate fail-closed (флаги дублируются в argv);
   long-пути в контенте (short_path — только для bat). Golden-инструмент:
-  `tools/check_arg_file.py [--quoting]`. Хвосты: ImagePath в status, 1072,
-  pause_recovery-trade-off, conf в logs/ (решения — док §6).
+  `tools/check_arg_file.py [--quoting]`. Хвосты: path_status (PATH_MISMATCH) и
+  1072 (порядок ревизован) закрыты; принятые решения (pause-trade-off, conf в
+  logs/) — док §6.
 
 ## Хосты / AI-пины (2026-09-24) — не гонять пачками
 

@@ -739,8 +739,15 @@ def run_diagnostics(root_dir: Path, cfg: AppConfig, progress_cb=None) -> dict:
     try:
         from core.service_manager import is_installed as svc_installed, status as svc_status
         if svc_installed():
+            from core.service_manager import path_status as svc_path_status
+            pstate, pmsg = svc_path_status()
             st = svc_status()
-            if st == "running":
+            if pstate == "mismatch":
+                _add(Check("service", "Служба zapret2", "warn",
+                           "путь службы указывает на другую копию программы - "
+                           "переустановите службу, иначе обходит старый exe",
+                           tech=pmsg))
+            elif st == "running":
                 _add(Check("service", "Служба zapret2", "ok", "установлена и работает"))
             elif _pid_of("winws2.exe") is not None:
                 _add(Check("service", "Служба zapret2", "warn",
