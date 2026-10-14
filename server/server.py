@@ -42,6 +42,85 @@ CONTENT_TYPES = {
 }
 
 
+# ── Таблицы маршрутов (аудит #1) ─────────────────────────────
+# path -> (имя метода-хендлера, спец-аргументы). "@params"/"@data" в таблице
+# подставляют query-параметры / распарсенное тело. Таблицы - единый источник
+# правды о роутинге; следующие шаги: AppContext + вынос хендлеров по доменам.
+
+_GET_ROUTES: dict[str, tuple[str, tuple]] = {
+    "/": ("_handle_index", ("@params",)),
+    "/api/diagnose/status": ("_handle_diagnose_status", ()),
+    "/api/config": ("_handle_get_config", ()),
+    "/api/version": ("_handle_version", ()),
+    "/api/app-info": ("_handle_app_info", ()),
+    "/api/status": ("_handle_status", ()),
+    "/api/profiles": ("_handle_list_profiles", ()),
+    "/api/exclude-list": ("_handle_get_list", ("list-exclude-user.txt",)),
+    "/api/include-list": ("_handle_get_list", ("list-include-user.txt",)),
+    "/api/bundled-domains": ("_handle_bundled_domains", ()),
+    "/api/fake-blobs": ("_handle_fake_blobs", ()),
+    # USER-файл: lists/ipset-exclude.txt — СИСТЕМНЫЙ список (приватные
+    # диапазоны), его не редактируем из GUI (решение автора,
+    # REVIEW_VERDICT.md §2.9). Движок учитывает ipset-exclude-user.txt
+    # вторым --ipset-exclude (core/launcher.py).
+    "/api/ipset-exclude-list": ("_handle_get_list", ("ipset-exclude-user.txt",)),
+    "/api/ipset-include-list": ("_handle_get_list", ("ipset-include-user.txt",)),
+    "/api/lists/health": ("_handle_lists_health", ()),
+    "/api/contested/status": ("_handle_contested_status", ()),
+    "/api/service/status": ("_handle_service_status", ()),
+    "/api/zapret1/strategies": ("_handle_zapret1_strategies", ()),
+    "/api/tester/status": ("_handle_tester_status", ()),
+    "/api/update-check": ("_handle_update_check", ("@params",)),
+    "/api/update/status": ("_handle_update_status", ()),
+    "/api/process-probe/status": ("_handle_probe_status", ()),
+    "/api/games": ("_handle_games_get", ()),
+}
+
+_POST_ROUTES: dict[str, tuple[str, tuple]] = {
+    "/api/config": ("_handle_save_config", ("@data",)),
+    "/api/zapret1/save-dir": ("_handle_zapret1_save_dir", ("@data",)),
+    "/api/zapret1/start": ("_handle_zapret1_start", ("@data",)),
+    "/api/zapret1/stop": ("_handle_zapret1_stop", ()),
+    "/api/start": ("_handle_start_zapret", ("@data",)),
+    "/api/stop": ("_handle_stop_zapret", ()),
+    "/api/exclude-list": ("_handle_save_list", ("@data", "list-exclude-user.txt")),
+    "/api/include-list": ("_handle_save_list", ("@data", "list-include-user.txt")),
+    # USER-файл (см. GET выше): системный ipset-exclude.txt из GUI не правим.
+    "/api/ipset-exclude-list": ("_handle_save_list", ("@data", "ipset-exclude-user.txt")),
+    "/api/ipset-include-list": ("_handle_save_list", ("@data", "ipset-include-user.txt")),
+    "/api/contested/toggle": ("_handle_contested_toggle", ("@data",)),
+    "/api/contested/check": ("_handle_contested_check", ("@data",)),
+    "/api/lists/dedupe": ("_handle_lists_dedupe", ()),
+    "/api/lists/add-domain": ("_handle_lists_add_domain", ("@data",)),
+    "/api/service/install": ("_handle_service_install", ("@data",)),
+    "/api/service/remove": ("_handle_service_remove", ()),
+    "/api/service/start": ("_handle_service_start", ()),
+    "/api/service/stop": ("_handle_service_stop", ()),
+    "/api/service/repair": ("_handle_service_repair", ()),
+    "/api/diagnose/action": ("_handle_diagnose_action", ("@data",)),
+    "/api/diagnose/status": ("_handle_diagnose_status", ()),
+    "/api/export-report": ("_handle_export_report", ("@data",)),
+    "/api/asn-scan": ("_handle_asn_scan", ("@data",)),
+    "/api/blob-probe": ("_handle_blob_probe", ("@data",)),
+    "/api/tester/action": ("_handle_tester_action", ("@data",)),
+    "/api/update/start": ("_handle_update_start", ()),
+    "/api/update/apply": ("_handle_update_apply", ()),
+    "/api/settings/export": ("_handle_settings_export", ()),
+    "/api/settings/import": ("_handle_settings_import", ("@data",)),
+    "/api/cdn/recommendation": ("_handle_cdn_recommendation", ("@data",)),
+    "/api/cdn/apply-all": ("_handle_cdn_apply_all", ("@data",)),
+    "/api/process-probe/scan": ("_handle_probe_scan", ()),
+    "/api/process-probe/start": ("_handle_probe_start", ("@data",)),
+    "/api/process-probe/stop": ("_handle_probe_stop", ()),
+    "/api/process-probe/report": ("_handle_probe_report", ()),
+    "/api/games/save": ("_handle_games_save", ("@data",)),
+    "/api/games/check": ("_handle_games_check", ("@data",)),
+    "/api/games/add-domain": ("_handle_games_add_domain", ("@data",)),
+    "/api/games/custom": ("_handle_games_custom", ("@data",)),
+    "/api/frontend-log": ("_handle_probe_debug", ("@data",)),
+}
+
+
 # ── Глобальное состояние ─────────────────────────────────────
 
 _root_dir: Optional[Path] = None
@@ -1648,62 +1727,29 @@ class ZapretHandler(BaseHTTPRequestHandler):
             return
 
         try:
-            if path == "/":
-                self._handle_index(params)
-            elif path == "/api/diagnose/status":
-                self._handle_diagnose_status()
-            elif path == "/api/config":
-                self._handle_get_config()
-            elif path == "/api/version":
-                self._handle_version()
-            elif path == "/api/app-info":
-                self._handle_app_info()
-            elif path == "/api/status":
-                self._handle_status()
-            elif path == "/api/profiles":
-                self._handle_list_profiles()
-            elif path == "/api/exclude-list":
-                self._handle_get_list("list-exclude-user.txt")
-            elif path == "/api/include-list":
-                self._handle_get_list("list-include-user.txt")
-            elif path == "/api/bundled-domains":
-                self._handle_bundled_domains()
-            elif path == "/api/fake-blobs":
-                self._handle_fake_blobs()
-            elif path == "/api/ipset-exclude-list":
-                # USER-файл: lists/ipset-exclude.txt — СИСТЕМНЫЙ список
-                # (приватные диапазоны), его не редактируем из GUI
-                # (решение автора, REVIEW_VERDICT.md §2.9). Движок уже
-                # учитывает ipset-exclude-user.txt вторым --ipset-exclude
-                # (core/launcher.py:180-189).
-                self._handle_get_list("ipset-exclude-user.txt")
-            elif path == "/api/ipset-include-list":
-                self._handle_get_list("ipset-include-user.txt")
-            elif path == "/api/lists/health":
-                self._handle_lists_health()
-            elif path == "/api/contested/status":
-                self._handle_contested_status()
-            elif path == "/api/service/status":
-                self._handle_service_status()
-            elif path == "/api/zapret1/strategies":
-                self._handle_zapret1_strategies()
-            elif path == "/api/tester/status":
-                self._handle_tester_status()
-            elif path == "/api/update-check":
-                self._handle_update_check(params)
-            elif path == "/api/update/status":
-                self._handle_update_status()
-            elif path == "/api/process-probe/status":
-                self._handle_probe_status()
-            elif path == "/api/games":
-                self._handle_games_get()
-            else:
+            if not self._dispatch(_GET_ROUTES, path, params=params):
                 self._handle_static(path)
         except RuntimeError as e:
             self._send_json({"status": "error", "message": str(e)}, HTTPStatus.SERVICE_UNAVAILABLE)
         except Exception as e:
             _probe_debug(f"api 500 GET {path}: {e}")
             self._send_json({"status": "error", "message": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def _dispatch(self, routes: dict, path: str,
+                  params: Optional[dict] = None,
+                  data: Optional[dict] = None) -> bool:
+        """Роутинг по таблице (аудит #1): path -> (метод, спец-аргументы).
+
+        "@params"/"@data" подставляют query-параметры / тело запроса.
+        False - маршрут не найден (do_GET: статика, do_POST: 404)."""
+        spec = routes.get(path)
+        if spec is None:
+            return False
+        name, args = spec
+        vals = [params if a == "@params" else data if a == "@data" else a
+                for a in args]
+        getattr(self, name)(*vals)
+        return True
 
     def _handle_index(self, params: dict) -> None:
         frontend = get_root_dir() / "frontend"
@@ -1910,89 +1956,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
 
         data = self._parse_body()
         try:
-            if path == "/api/config":
-                self._handle_save_config(data)
-            elif path == "/api/zapret1/save-dir":
-                self._handle_zapret1_save_dir(data)
-            elif path == "/api/zapret1/start":
-                self._handle_zapret1_start(data)
-            elif path == "/api/zapret1/stop":
-                self._handle_zapret1_stop()
-            elif path == "/api/start":
-                self._handle_start_zapret(data)
-            elif path == "/api/stop":
-                self._handle_stop_zapret()
-            elif path == "/api/exclude-list":
-                self._handle_save_list(data, "list-exclude-user.txt")
-            elif path == "/api/include-list":
-                self._handle_save_list(data, "list-include-user.txt")
-            elif path == "/api/ipset-exclude-list":
-                # USER-файл (см. GET выше): системный ipset-exclude.txt
-                # из GUI не правим.
-                self._handle_save_list(data, "ipset-exclude-user.txt")
-            elif path == "/api/ipset-include-list":
-                self._handle_save_list(data, "ipset-include-user.txt")
-            elif path == "/api/contested/toggle":
-                self._handle_contested_toggle(data)
-            elif path == "/api/contested/check":
-                self._handle_contested_check(data)
-            elif path == "/api/lists/dedupe":
-                self._handle_lists_dedupe()
-            elif path == "/api/lists/add-domain":
-                self._handle_lists_add_domain(data)
-            elif path == "/api/service/install":
-                self._handle_service_install(data)
-            elif path == "/api/service/remove":
-                self._handle_service_remove()
-            elif path == "/api/service/start":
-                self._handle_service_start()
-            elif path == "/api/service/stop":
-                self._handle_service_stop()
-            elif path == "/api/service/repair":
-                self._handle_service_repair()
-            elif path == "/api/diagnose/action":
-                self._handle_diagnose_action(data)
-            elif path == "/api/diagnose/status":
-                self._handle_diagnose_status()
-            elif path == "/api/export-report":
-                self._handle_export_report(data)
-            elif path == "/api/asn-scan":
-                self._handle_asn_scan(data)
-            elif path == "/api/blob-probe":
-                self._handle_blob_probe(data)
-            elif path == "/api/tester/action":
-                self._handle_tester_action(data)
-            elif path == "/api/update/start":
-                self._handle_update_start()
-            elif path == "/api/update/apply":
-                self._handle_update_apply()
-            elif path == "/api/settings/export":
-                self._handle_settings_export()
-            elif path == "/api/settings/import":
-                self._handle_settings_import(data)
-            elif path == "/api/cdn/recommendation":
-                self._handle_cdn_recommendation(data)
-            elif path == "/api/cdn/apply-all":
-                self._handle_cdn_apply_all(data)
-            elif path == "/api/process-probe/scan":
-                self._handle_probe_scan()
-            elif path == "/api/process-probe/start":
-                self._handle_probe_start(data)
-            elif path == "/api/process-probe/stop":
-                self._handle_probe_stop()
-            elif path == "/api/process-probe/report":
-                self._handle_probe_report()
-            elif path == "/api/games/save":
-                self._handle_games_save(data)
-            elif path == "/api/games/check":
-                self._handle_games_check(data)
-            elif path == "/api/games/add-domain":
-                self._handle_games_add_domain(data)
-            elif path == "/api/games/custom":
-                self._handle_games_custom(data)
-            elif path == "/api/frontend-log":
-                self._handle_probe_debug(data)
-            else:
+            if not self._dispatch(_POST_ROUTES, path, data=data):
                 self._send_json({"error": "Not found"}, HTTPStatus.NOT_FOUND)
         except RuntimeError as e:
             self._send_json({"status": "error", "message": str(e)}, HTTPStatus.SERVICE_UNAVAILABLE)

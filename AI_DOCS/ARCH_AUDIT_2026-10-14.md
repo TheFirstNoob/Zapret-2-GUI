@@ -679,9 +679,13 @@ Severity: S1 — мешает пониманию/сопровождению си
   публичный `is_control`; server: убраны 2 инлайн-копии www-алиаса; JS: удалены
   мёртвые ветки OK_BLOCKED и DPI_DROP (Python их не выдаёт); новый `tools/status_contract.py`
   замораживает wire-множество и ловит JS-дрейф (класс OK_BLOCKED).
-- ⏳ осталось по новому порядку: #1 (server: AppContext+DI) ->
-  #3 (_run_tester_action) -> #5 (tester) -> #9 (QUIC/timeouts) -> #2
-  (app.js ПОСЛЕДНИМ; склейка файлов на сервере).
+- 🟡 **#1 (server, В РАБОТЕ)** — Inc A2 (14.10): таблицы _GET_ROUTES (22) /
+  _POST_ROUTES (40) + _dispatch вместо if/elif-цепочек; хендлеры пока
+  методы (далее: AppContext Inc B, вынос по доменам Inc C). Смоук-стенд
+  	ools/api_smoke.py (12 проверок) — OK.
+- ⏳ осталось: #1-продолжение (AppContext + выносы) -> #3
+  (_run_tester_action) -> #5 (tester) -> #9 (QUIC/timeouts) -> #2 (app.js
+  ПОСЛЕДНИМ; склейка файлов на сервере).
 
 
 ### Корректировка порядка и решения (советник, 14.10)
