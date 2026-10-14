@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from core.test_logger import TestLogger
 
 from core.launcher import build_args_from_preset, launch_winws2
+from core.status import FAIL_STATUSES
 
 
 # ── Уровни хостов ──────────────────────────────────────────────────
@@ -69,9 +70,11 @@ TEST_HOSTS = RATED_HOSTS + CONTROL_HOSTS
 CONTROL_DOMAINS = frozenset(CONTROL_HOSTS)
 
 
-def _is_control_alias(domain: str) -> bool:
-    """www-алиас control-хоста (из _expand_with_www) не должен искажать
-    network_rate: например www.x.com из control-хоста x.com."""
+def is_control(domain: str) -> bool:
+    """control-хост и его www-алиас (из _expand_with_www) не должны искажать
+    network_rate: например www.x.com из control-хоста x.com.
+
+    Публичная (аудит #10): server.py раньше держал инлайн-копии этой логики."""
     base = domain[4:] if domain.startswith("www.") else ""
     return base in CONTROL_DOMAINS
 
@@ -762,7 +765,7 @@ class Zapret2Tester:
         net = [r for r in results
                if r.test_type != "ping" and r.domain not in CONTROL_DOMAINS
                and r.domain not in QUIC_QUIRK_DOMAINS
-               and not _is_control_alias(r.domain)]
+               and not is_control(r.domain)]
         pings = [r for r in results if r.test_type == "ping"]
         net_ok = sum(1 for r in net if r.status == "OK")
         net_total = len(net)
@@ -918,7 +921,7 @@ class Zapret2Tester:
         _logged_progress(97, "Остановка...")
         self._ensure_winws2_dead()
         ok_count = sum(1 for r in all_results if r.status == "OK")
-        fail_count = sum(1 for r in all_results if r.status in ("BLOCKED", "TIMEOUT", "FAIL", "ERROR"))
+        fail_count = sum(1 for r in all_results if r.status in FAIL_STATUSES)
         total_time = sum(r.time_ms for r in all_results)
         total = ok_count + fail_count
         success_rate = (ok_count / total * 100) if total else 0
@@ -1476,7 +1479,7 @@ class Zapret2Tester:
             progress_cb(55 + int(ping_done * 20 / ping_total), f"{profile_name} ping {host}")
 
         ok_count = sum(1 for r in all_results if r.status == "OK")
-        fail_count = sum(1 for r in all_results if r.status in ("BLOCKED", "TIMEOUT", "FAIL", "ERROR"))
+        fail_count = sum(1 for r in all_results if r.status in FAIL_STATUSES)
         total_time = sum(r.time_ms for r in all_results)
         total = ok_count + fail_count
         success_rate = (ok_count / total * 100) if total else 0

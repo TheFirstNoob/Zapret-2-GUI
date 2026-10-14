@@ -18,7 +18,7 @@ from core.config import ConfigManager, DEFAULT_PROFILE, VERSION
 from core.zapret_controller import ZapretController
 from core.tester import (Zapret2Tester, CDN_PROVIDERS, NAKED_BASELINE_HOSTS,
                           RATED_HOSTS, QUIC_QUIRK_DOMAINS, CONTROL_DOMAINS,
-                          _is_control_alias)
+                          is_control)
 from core.service_manager import (SERVICE_NAME, is_installed as svc_installed,
                                   status as svc_status, install as svc_install,
                                   remove as svc_remove, start as svc_start,
@@ -476,10 +476,8 @@ def _make_result_cb(state: TesterState, profile: Optional[str] = None) -> Callab
             # чтобы не прыгали (17/17 → 8/8) на финальном network_rate
             "rated": (r.domain not in CONTROL_DOMAINS
                       and r.domain not in QUIC_QUIRK_DOMAINS
-                      and not _is_control_alias(r.domain)),
-            "control": (r.domain in CONTROL_DOMAINS
-                        or (r.domain.startswith("www.") and
-                            r.domain[4:] in CONTROL_DOMAINS)),
+                      and not is_control(r.domain)),
+            "control": (r.domain in CONTROL_DOMAINS or is_control(r.domain)),
         }
         if profile:
             payload["profile"] = profile
@@ -804,8 +802,7 @@ def _build_recommendation(all_results, naked, sanity: dict) -> dict:
                       if r.test_type != "ping" and r.status not in ("OK", "QUIC")
                       and r.domain not in QUIC_QUIRK_DOMAINS
                       and r.domain not in CONTROL_DOMAINS
-                      and not (r.domain.startswith("www.")
-                               and r.domain[4:] in CONTROL_DOMAINS)})
+                      and not is_control(r.domain)})
     net_rate = best.network_rate
 
     same_as_naked = False

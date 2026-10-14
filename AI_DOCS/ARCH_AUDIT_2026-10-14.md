@@ -674,8 +674,14 @@ Severity: S1 — мешает пониманию/сопровождению си
   launcher 792→468 строк, `build_args_from_preset` — тонкий оркестратор
   (сигнатура стабильна). Страховка: `tools/args_golden.py` (snapshot/compare,
   22 кейса — все пресеты × тоглы; байт-идентичность подтверждена).
-- ⏳ осталось по новому порядку: #10 (статусы, StrEnum+контракт-тест) ->
-  #1 (server: AppContext+DI) -> #3 -> #5 -> #9 -> #2 (app.js ПОСЛЕДНИМ; склейка).
+- ✅ **#10 (статусы)** — 14.10: `core/status.py` (HostStatus StrEnum: 15 wire-значений,
+  FAIL_STATUSES); тестер: 2 копии fail-tuple → общий набор, `_is_control_alias` →
+  публичный `is_control`; server: убраны 2 инлайн-копии www-алиаса; JS: удалены
+  мёртвые ветки OK_BLOCKED и DPI_DROP (Python их не выдаёт); новый `tools/status_contract.py`
+  замораживает wire-множество и ловит JS-дрейф (класс OK_BLOCKED).
+- ⏳ осталось по новому порядку: #1 (server: AppContext+DI) ->
+  #3 (_run_tester_action) -> #5 (tester) -> #9 (QUIC/timeouts) -> #2
+  (app.js ПОСЛЕДНИМ; склейка файлов на сервере).
 
 
 ### Корректировка порядка и решения (советник, 14.10)

@@ -2947,7 +2947,7 @@ const TesterPage = {
   _addHostImmediate(data) {
     const row = this._rowFor(data.profile);
     const mapKey = (data.domain || '') + '|' + (data.test_type || '');
-    const isOk = data.status === 'OK' || data.status === 'OK_BLOCKED';
+    const isOk = data.status === 'OK';
     const isPing = data.test_type === 'ping';
     // QUIC-класс (youtube и др.): TCP-проба сторонним клиентом под десинком
     // не показательная - нейтральный серый статус вместо красного креста.
@@ -2997,7 +2997,7 @@ const TesterPage = {
     const cells = h.tr.children;
     cells[0].innerHTML = stIcon;
     cells[2].textContent = data.test_type || '';
-    cells[3].textContent = data.status_code || (data.status === 'TCP16_20' || data.status === 'DPI_DROP' ? 'DPI' : '');
+    cells[3].textContent = data.status_code || (data.status === 'TCP16_20' ? 'DPI' : '');
     cells[4].textContent = data.time_ms != null ? formatTime(data.time_ms) : '';
     cells[5].textContent = data.error || '';
     row.hosts.set(mapKey, h);
@@ -3365,7 +3365,7 @@ const TesterPage = {
       const statusOf = (domains) => {
         const found = (r.results || []).filter(x => domains.includes(x.domain) && x.test_type !== 'ping');
         if (!found.length) return '-';
-        if (found.some(x => x.status === 'OK' || x.status === 'OK_BLOCKED'))
+        if (found.some(x => x.status === 'OK'))
           return '<span class="st-ok">✓</span>';
         // QUIC-класс: подтверждённый QUIC - нейтральный бейдж; H3_NONE - серый
         // маркер вместо красного креста (внешнее ревью 13.10, P2-2).

@@ -662,8 +662,8 @@ happy-path прогонах):
 Порядок (скорректирован советником 14.10): 8→6 → 7(proc) → 4(args-конвейер,
 golden) → 10(StrEnum+контракт-тест) → 1(server: AppContext+DI, хендлеры
 возвращают dict) → 3/5 → 9 → 2(app.js ПОСЛЕДНИМ; склейка файлов на сервере,
-ES-модули нельзя). #8, #6, #7, #4 закрыты 14.10 (golden-страховки:
-`tools/args_golden.py` и `tools/check_arg_file.py`).
+ES-модули нельзя). #8, #6, #7, #4, #10 закрыты 14.10 (golden-страховки:
+`tools/args_golden.py`, `tools/check_arg_file.py`, `tools/status_contract.py`).
 Инварианты распила — §7 аудита (сигнатуры build_args/write_manifest, порядок
 трансформов, wire-строки статусов, cache-buster "js/app.js", локи). #8 закрыт
 14.10 (единый парсер листов).
