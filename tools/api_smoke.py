@@ -50,7 +50,8 @@ def main() -> int:
     ok = True
     for path in ("/api/version", "/api/status", "/api/config", "/api/profiles",
                  "/api/service/status", "/api/bundled-domains",
-                 "/api/fake-blobs"):
+                 "/api/fake-blobs", "/api/process-probe/status", "/api/games",
+                 "/api/zapret1/strategies"):
         try:
             st, j = get(path)
             good = st == 200 and j.get("status") == "ok"

@@ -29,9 +29,12 @@ from core.launcher import build_args_from_preset, validate_args
 from core.test_logger import TestLogger
 from server.app_state import (STATE, TesterState,
                               checkers_busy as _checkers_busy,
+                              debug_append as _debug_append,
                               get_config_manager, get_controller,
-                              get_root_dir, get_tester)
-from server import api_service
+                              get_process_probe, get_root_dir, get_tester,
+                              probe_debug as _probe_debug,
+                              ui_debug as _ui_debug)
+from server import api_games, api_probe, api_service, api_zapret1
 
 
 CONTENT_TYPES = {
@@ -73,19 +76,19 @@ _GET_ROUTES: dict[str, tuple[str, tuple]] = {
     "/api/lists/health": ("_handle_lists_health", ()),
     "/api/contested/status": ("_handle_contested_status", ()),
     "/api/service/status": (api_service.service_status, ("@ctx",)),
-    "/api/zapret1/strategies": ("_handle_zapret1_strategies", ()),
+    "/api/zapret1/strategies": (api_zapret1.zapret1_strategies, ("@ctx",)),
     "/api/tester/status": ("_handle_tester_status", ()),
     "/api/update-check": ("_handle_update_check", ("@params",)),
     "/api/update/status": ("_handle_update_status", ()),
-    "/api/process-probe/status": ("_handle_probe_status", ()),
-    "/api/games": ("_handle_games_get", ()),
+    "/api/process-probe/status": (api_probe.probe_status, ("@ctx",)),
+    "/api/games": (api_games.games_get, ("@ctx",)),
 }
 
 _POST_ROUTES: dict[str, tuple[str, tuple]] = {
     "/api/config": ("_handle_save_config", ("@data",)),
-    "/api/zapret1/save-dir": ("_handle_zapret1_save_dir", ("@data",)),
-    "/api/zapret1/start": ("_handle_zapret1_start", ("@data",)),
-    "/api/zapret1/stop": ("_handle_zapret1_stop", ()),
+    "/api/zapret1/save-dir": (api_zapret1.zapret1_save_dir, ("@ctx", "@data")),
+    "/api/zapret1/start": (api_zapret1.zapret1_start, ("@ctx", "@data")),
+    "/api/zapret1/stop": (api_zapret1.zapret1_stop, ("@ctx",)),
     "/api/start": ("_handle_start_zapret", ("@data",)),
     "/api/stop": ("_handle_stop_zapret", ()),
     "/api/exclude-list": ("_handle_save_list", ("@data", "list-exclude-user.txt")),
@@ -114,15 +117,15 @@ _POST_ROUTES: dict[str, tuple[str, tuple]] = {
     "/api/settings/import": ("_handle_settings_import", ("@data",)),
     "/api/cdn/recommendation": ("_handle_cdn_recommendation", ("@data",)),
     "/api/cdn/apply-all": ("_handle_cdn_apply_all", ("@data",)),
-    "/api/process-probe/scan": ("_handle_probe_scan", ()),
-    "/api/process-probe/start": ("_handle_probe_start", ("@data",)),
-    "/api/process-probe/stop": ("_handle_probe_stop", ()),
-    "/api/process-probe/report": ("_handle_probe_report", ()),
-    "/api/games/save": ("_handle_games_save", ("@data",)),
-    "/api/games/check": ("_handle_games_check", ("@data",)),
-    "/api/games/add-domain": ("_handle_games_add_domain", ("@data",)),
-    "/api/games/custom": ("_handle_games_custom", ("@data",)),
-    "/api/frontend-log": ("_handle_probe_debug", ("@data",)),
+    "/api/process-probe/scan": (api_probe.probe_scan, ("@ctx",)),
+    "/api/process-probe/start": (api_probe.probe_start, ("@ctx", "@data")),
+    "/api/process-probe/stop": (api_probe.probe_stop, ("@ctx",)),
+    "/api/process-probe/report": (api_probe.probe_report, ("@ctx",)),
+    "/api/games/save": (api_games.games_save, ("@ctx", "@data")),
+    "/api/games/check": (api_games.games_check, ("@ctx", "@data")),
+    "/api/games/add-domain": (api_games.games_add_domain, ("@ctx", "@data")),
+    "/api/games/custom": (api_games.games_custom, ("@ctx", "@data")),
+    "/api/frontend-log": (api_probe.probe_debug_log, ("@ctx", "@data")),
 }
 
 
@@ -141,44 +144,6 @@ _diag_state = STATE.diag_state
 # ── Общее состояние тестера (polling вместо WebSocket) ──
 # Класс TesterState и инстанс переехали в server/app_state.py (Inc B).
 _tester_state = STATE.tester_state
-
-# Probe сетевой активности процесса (анализ игры/приложения) - singleton
-# в STATE (аудит #1, Inc B)
-def get_process_probe():
-    if STATE.process_probe is None:
-        from core.process_probe import ProcessProbe
-        STATE.process_probe = ProcessProbe()
-    return STATE.process_probe
-
-
-def _debug_append(file_name: str, msg: str) -> None:
-    """Debug-лог с ротацией (L7): >5MB - старый уходит в .old.log."""
-    import datetime as _dt
-    try:
-        from core.utils import get_temp_dir
-        p = get_temp_dir() / file_name
-        if p.exists() and p.stat().st_size > 5 * 1024 * 1024:
-            try:
-                p.replace(p.with_suffix(".old.log"))
-            except OSError:
-                pass
-        with open(p, "a", encoding="utf-8") as f:
-            f.write(f"{_dt.datetime.now().strftime('%H:%M:%S.%f')[:-3]} {msg}\n")
-    except Exception:
-        pass
-
-
-def _probe_debug(msg: str) -> None:
-    """Probe-логи: в консоль (если есть) + в файл (GUI без консоли)."""
-    print(f"[probe] {msg}", flush=True)
-    _debug_append("probe_debug.log", msg)
-
-
-def _ui_debug(msg: str) -> None:
-    """UI/flow-логи (вкладки, кнопки, сбросы тестера) - ui_debug.log.
-
-    Всегда активен: ловит «выкинуло на главный блок посреди теста»."""
-    _debug_append("ui_debug.log", msg)
 
 # Кэш проверки обновлений: одна проверка за сессию приложения
 # (значения - в STATE, аудит #1).
@@ -1806,19 +1771,6 @@ class ZapretHandler(BaseHTTPRequestHandler):
     def _handle_tester_status(self) -> None:
         self._send_json(_tester_state.to_dict())
 
-    def _handle_zapret1_strategies(self) -> None:
-        cfg = get_config_manager().load()
-        dir_path = cfg.zapret1_dir
-        if not dir_path or not Path(dir_path).is_dir():
-            self._send_json({"status": "ok", "strategies": []})
-            return
-        bats = []
-        for f in sorted(Path(dir_path).glob("*.bat")):
-            name = f.stem.lower()
-            if name == "service": continue
-            bats.append({"name": f.stem, "path": str(f)})
-        self._send_json({"status": "ok", "strategies": bats})
-
     def _handle_static(self, path: str) -> None:
         frontend = get_root_dir() / "frontend"
         # /static/... или прямые пути (/css/..., /js/...)
@@ -1862,147 +1814,6 @@ class ZapretHandler(BaseHTTPRequestHandler):
             _probe_debug(f"api 500 POST {path}: {e}")
             self._send_json({"status": "error", "message": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR)
 
-    # ── Probe сетевой активности процессов (игра/приложение) ──
-    def _handle_probe_scan(self) -> None:
-        """Список процессов с сетью - ТОЛЬКО по явной кнопке (AV-safe)."""
-        try:
-            from core.process_probe import list_processes
-            procs = list_processes()
-            self._send_json({"status": "ok", "processes": procs})
-        except Exception as e:  # noqa: BLE001
-            import traceback
-            traceback.print_exc()
-            _probe_debug(f"scan: ОШИБКА {e}")
-            self._send_json({"status": "error", "message": str(e)})
-
-    def _handle_probe_start(self, data: dict) -> None:
-        proc = str(data.get("process") or "").strip()
-        if not proc:
-            self._send_json({"status": "error",
-                             "message": "Укажите имя процесса или PID"})
-            return
-        try:
-            d = int(data.get("duration") or 60)
-            # 0 = постоянная запись до кнопки «Стоп» (фронт даёт option value=0)
-            duration = 0 if d == 0 else max(10, min(d, 300))
-        except (TypeError, ValueError):
-            duration = 60
-        ok, msg = get_process_probe().start(proc, duration)
-        if not ok:
-            _probe_debug(f"start: FAIL - {msg}")
-        self._send_json({"status": "ok" if ok else "error", "message": msg})
-
-    def _handle_probe_stop(self) -> None:
-        st = get_process_probe().stop()
-        self._send_json({"status": "ok", "state": st})
-
-    def _handle_probe_debug(self, data: dict) -> None:
-        """Frontend-логи (вкладки, кнопки, ошибки JS) - в ui_debug.log."""
-        msg = str(data.get("msg") or "")
-        if msg:
-            _ui_debug(f"frontend: {msg}")
-        self._send_json({"status": "ok"})
-
-    def _handle_probe_status(self) -> None:
-        self._send_json({"status": "ok", "state": get_process_probe().get_status()})
-
-    def _handle_probe_report(self) -> None:
-        probe = get_process_probe()
-        path = probe.save_report()
-        self._send_json({"status": "ok", "report": probe.report_text(),
-                         "path": str(path)})
-
-    def _handle_games_get(self) -> None:
-        from core import games as games_store
-        self._send_json({"status": "ok",
-                         "games": games_store.load_games(get_root_dir())})
-
-    def _handle_games_save(self, data: dict) -> None:
-        """Сохранение игровых блокировок: домены применяются сразу (hot-reload
-        hostlist), UDP-профили - при следующем запуске/переустановке службы."""
-        from core import games as games_store
-        payload = data.get("games") if isinstance(data, dict) else None
-        if not isinstance(payload, dict) or \
-                not isinstance(payload.get("games"), list):
-            self._send_json({"status": "error",
-                             "message": "некорректные данные"})
-            return
-        if not games_store.save_games(get_root_dir(), payload):
-            self._send_json({"status": "error",
-                             "message": "не удалось сохранить"})
-            return
-        games_store.sync_include_list(get_root_dir(), data=payload)
-        self._send_json({
-            "status": "ok",
-            "message": "Сохранено. Домены применятся к новым подключениям; "
-                       "UDP-фикс - после перезапуска обхода (службу - "
-                       "переустановкой)"})
-
-    def _handle_games_custom(self, data: dict) -> None:
-        """Своя игра: add/update/delete. Встроенные игры не редактируются."""
-        from core import games as games_store
-        action = str(data.get("action") or "save")
-        cur = games_store.load_games(get_root_dir())
-        if action == "delete":
-            ok, msg, cur = games_store.delete_custom_game(
-                cur, str(data.get("id") or ""))
-        else:
-            game = data.get("game") if isinstance(data.get("game"), dict) else {}
-            ok, msg, cur = games_store.upsert_custom_game(cur, game)
-        if not ok:
-            self._send_json({"status": "error", "message": msg})
-            return
-        if not games_store.save_games(get_root_dir(), cur):
-            self._send_json({"status": "error",
-                             "message": "не удалось сохранить"})
-            return
-        games_store.sync_include_list(get_root_dir(), data=cur)
-        self._send_json({"status": "ok", "games": cur,
-                         "message": "Сохранено. Домены применятся к новым "
-                                    "подключениям; UDP-фикс - после "
-                                    "перезапуска обхода"})
-
-    def _handle_games_check(self, data: dict) -> None:
-        """Проба доменов игры: открываются ли они сейчас (сквозь работающий
-        обход, если он запущен). Возвращает код по каждому включённому домену."""
-        from core import games as games_store
-        game_id = str(data.get("id") or "")
-        game = next((g for g in (games_store.load_games(get_root_dir())
-                                 .get("games") or [])
-                     if str(g.get("id")) == game_id), None)
-        if game is None:
-            self._send_json({"status": "error", "message": "Игра не найдена"})
-            return
-        hosts = [str(d.get("domain") or "").strip()
-                 for d in (game.get("domains") or []) if d.get("on")]
-        hosts = [h for h in hosts if h]
-
-        def _probe(host: str) -> dict:
-            t0 = time.time()
-            from core.probe_http import curl_code
-            n = curl_code(f"https://{host}/", timeout=8, wall_pad=4)
-            code = str(n) if n else "000"
-            return {"domain": host, "code": code,
-                    "ok": code not in ("000", "000000"),
-                    "elapsed": round(time.time() - t0, 2)}
-
-        # Параллельно: последовательные curl'ы (до 12 с на домен) не
-        # укладывались в клиентский таймаут 30 с уже на 4-5 доменах (аудит 2026-10)
-        from concurrent.futures import ThreadPoolExecutor
-        with ThreadPoolExecutor(max_workers=5) as ex:
-            results = list(ex.map(_probe, hosts))
-        self._send_json({"status": "ok", "results": results})
-
-    def _handle_games_add_domain(self, data: dict) -> None:
-        """Добавить найденный в анализе домен прямо в игру."""
-        from core import games as games_store
-        game_id = str(data.get("game_id") or data.get("id") or "")
-        domain = str(data.get("domain") or "")
-        ok, message, added = games_store.add_game_domain(
-            get_root_dir(), game_id, domain)
-        self._send_json({"status": "ok" if ok else "error",
-                         "message": message, "added": added})
-
     def _handle_save_config(self, data: dict) -> None:
         cfg = get_config_manager().load()
         if "last_profile" in data: cfg.last_profile = data["last_profile"]
@@ -2035,68 +1846,6 @@ class ZapretHandler(BaseHTTPRequestHandler):
         if "notice_done" in data: cfg.notice_done = bool(data["notice_done"])
         ok = get_config_manager().save(cfg)
         self._send_json({"status": "ok" if ok else "error"})
-
-    def _handle_zapret1_save_dir(self, data: dict) -> None:
-        path = data.get("path", "").strip()
-        if not path or not Path(path).is_dir():
-            self._send_json({"status": "error", "message": "Укажите существующую папку Zapret 1"})
-            return
-        cfg = get_config_manager().load()
-        cfg.zapret1_dir = path
-        get_config_manager().save(cfg)
-        self._send_json({"status": "ok", "message": "Путь сохранён"})
-
-    def _handle_zapret1_start(self, data: dict) -> None:
-        busy = _checkers_busy()
-        if busy:
-            self._send_json({"status": "error", "message": busy})
-            return
-        strategy = data.get("strategy", "").strip()
-        if not strategy:
-            self._send_json({"status": "error", "message": "Стратегия не указана"})
-            return
-        # имя файла стратегии строится из клиентского значения (L2):
-        # без этой проверки '..'/'../..' запускали .bat вне папки Zapret 1
-        if Path(strategy).name != strategy or ".." in strategy or any(
-                c in strategy for c in "/\\:*?\"<>|"):
-            self._send_json({"status": "error", "message": "Недопустимое имя стратегии"})
-            return
-        controller = get_controller()
-        z2 = controller.status()
-        if z2.running:
-            self._send_json({"status": "error", "message": "Zapret 2 (winws2.exe) запущен. Остановите его перед запуском Zapret 1."})
-            return
-        cfg = get_config_manager().load()
-        dir_path = cfg.zapret1_dir
-        if not dir_path:
-            self._send_json({"status": "error", "message": "Папка Zapret 1 не указана"})
-            return
-        bat_path = Path(dir_path) / f"{strategy}.bat"
-        if not bat_path.exists():
-            self._send_json({"status": "error", "message": f"Файл {strategy}.bat не найден"})
-            return
-        try:
-            subprocess.Popen([str(bat_path)], cwd=str(bat_path.parent),
-                             creationflags=subprocess.CREATE_NO_WINDOW)
-            cfg.zapret1_last_strategy = strategy
-            get_config_manager().save(cfg)
-            self._send_json({"status": "ok", "message": f"Zapret 1 запущен: {strategy}.bat"})
-        except OSError as e:
-            self._send_json({"status": "error", "message": str(e)})
-
-    def _handle_zapret1_stop(self) -> None:
-        busy = _checkers_busy()
-        if busy:
-            self._send_json({"status": "error", "message": busy},
-                            HTTPStatus.CONFLICT)
-            return
-        try:
-            subprocess.run(["taskkill", "/F", "/IM", "winws.exe"],
-                           capture_output=True, timeout=8,
-                           creationflags=subprocess.CREATE_NO_WINDOW)
-            self._send_json({"status": "ok", "message": "Zapret 1 остановлен"})
-        except (subprocess.TimeoutExpired, OSError) as e:
-            self._send_json({"status": "error", "message": str(e)})
 
     def _handle_start_zapret(self, data: dict) -> None:
         busy = _checkers_busy()

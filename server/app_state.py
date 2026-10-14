@@ -138,6 +138,14 @@ def get_tester() -> Zapret2Tester:
     return STATE.tester
 
 
+def get_process_probe():
+    """Singleton process-probe (анализ сетевой активности игры/приложения)."""
+    if STATE.process_probe is None:
+        from core.process_probe import ProcessProbe
+        STATE.process_probe = ProcessProbe()
+    return STATE.process_probe
+
+
 def checkers_busy() -> Optional[str]:
     """Сообщение о занятости проверки, или None, если всё свободно.
 
@@ -150,3 +158,35 @@ def checkers_busy() -> Optional[str]:
         if STATE.diag_state.get("running"):
             return "Диагностика выполняется - дождитесь завершения"
     return None
+
+
+# ── Debug-логи (переехали из server.py, Inc C) ────────────────────
+
+def debug_append(file_name: str, msg: str) -> None:
+    """Debug-лог с ротацией (L7): >5MB - старый уходит в .old.log."""
+    import datetime as _dt
+    try:
+        from core.utils import get_temp_dir
+        p = get_temp_dir() / file_name
+        if p.exists() and p.stat().st_size > 5 * 1024 * 1024:
+            try:
+                p.replace(p.with_suffix(".old.log"))
+            except OSError:
+                pass
+        with open(p, "a", encoding="utf-8") as f:
+            f.write(f"{_dt.datetime.now().strftime('%H:%M:%S.%f')[:-3]} {msg}\n")
+    except Exception:
+        pass
+
+
+def probe_debug(msg: str) -> None:
+    """Probe-логи: в консоль (если есть) + в файл (GUI без консоли)."""
+    print(f"[probe] {msg}", flush=True)
+    debug_append("probe_debug.log", msg)
+
+
+def ui_debug(msg: str) -> None:
+    """UI/flow-логи (вкладки, кнопки, сбросы тестера) - ui_debug.log.
+
+    Всегда активен: ловит «выкинуло на главный блок посреди теста»."""
+    debug_append("ui_debug.log", msg)

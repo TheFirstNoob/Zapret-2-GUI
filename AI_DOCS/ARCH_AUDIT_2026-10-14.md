@@ -687,8 +687,11 @@ Severity: S1 — мешает пониманию/сопровождению си
   Inc C-пилот (14.10): домен «служба» вынесен в `server/api_service.py` (6
   хендлеров `(ctx)->dict`), router понимает и методы, и api-функции
   (dict/ApiError); app_state добавил фабрики+`checkers_busy`; T22+api_smoke OK.
-  Осталось: вынести остальные ~50 хендлеров (probe/games/
-  zapret1/update/contested/lists/diag/tester/cdn/одиночки).
+  Группы probe/games/zapret1 (15 хендлеров) вынесены 14.10 в
+  api_probe/api_games/api_zapret1 (debug-хелперы и get_process_probe — в app_state;
+  zapret1_stop busy остался 409-контрактом через ApiError).
+  Осталось ~35 хендлеров (update/contested/lists/
+  diag/tester/cdn/конфиг/одиночки).
 - ⏳ осталось: #1-продолжение (AppContext + выносы) -> #3
   (_run_tester_action) -> #5 (tester) -> #9 (QUIC/timeouts) -> #2 (app.js
   ПОСЛЕДНИМ; склейка файлов на сервере).
