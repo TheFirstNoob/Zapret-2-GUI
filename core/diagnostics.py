@@ -73,22 +73,9 @@ class Check:
 
 
 def _pid_of(image_name: str) -> Optional[int]:
-    try:
-        r = subprocess.run(
-            ["tasklist", "/FI", f"IMAGENAME eq {image_name}", "/FO", "CSV", "/NH"],
-            capture_output=True, text=True, encoding="oem", errors="replace",
-            timeout=5, creationflags=subprocess.CREATE_NO_WINDOW,
-        )
-        for line in r.stdout.splitlines():
-            parts = line.split(",")
-            if len(parts) >= 2 and image_name.lower() in parts[0].lower():
-                try:
-                    return int(parts[1].strip('"'))
-                except ValueError:
-                    return None
-    except (subprocess.TimeoutExpired, OSError):
-        pass
-    return None
+    from core.proc import image_pids
+    pids = image_pids(image_name, timeout=5)
+    return pids[0] if pids else None
 
 
 def _curl_code(host: str, timeout: int = 6, scheme: str = "https") -> Optional[int]:

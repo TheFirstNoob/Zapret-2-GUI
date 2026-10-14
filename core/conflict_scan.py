@@ -64,21 +64,8 @@ class ConflictReport:
 
 
 def _running_images() -> List[str]:
-    try:
-        r = subprocess.run(
-            ["tasklist", "/FO", "CSV", "/NH"],
-            capture_output=True, text=True, timeout=10,
-            encoding="oem", errors="replace",
-            creationflags=subprocess.CREATE_NO_WINDOW,
-        )
-        out = []
-        for line in r.stdout.strip().splitlines():
-            parts = line.split(",")
-            if parts:
-                out.append(parts[0].strip('"').lower())
-        return out
-    except (subprocess.TimeoutExpired, OSError):
-        return []
+    from core.proc import running_images
+    return running_images(timeout=10)
 
 
 def _adapter_descriptions() -> List[str]:

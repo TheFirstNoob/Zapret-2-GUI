@@ -530,8 +530,9 @@ def _check_vpn() -> dict:
 
 
 def _kill_never_hang(image_names: list[str]) -> None:
+    from core.proc import kill_image
     for name in image_names:
-        _run_with_timeout_quiet(["taskkill", "/F", "/IM", name], timeout=6.0)
+        kill_image(name, timeout=6)
 
 
 def _svc_was_running() -> bool:
@@ -742,23 +743,9 @@ def _run_with_timeout_quiet(args: list[str], timeout: float = 5.0) -> None:
 
 
 def _scan_winws_exe() -> dict:
-    pid = 0
-    try:
-        r = _run_with_timeout(
-            ["tasklist", "/FI", "IMAGENAME eq winws.exe", "/FO", "CSV", "/NH"],
-            timeout=6.0,
-        )
-        for line in r.stdout.splitlines():
-            parts = [p.strip(' "') for p in line.split(",")]
-            if len(parts) >= 2 and parts[0].lower() == "winws.exe":
-                try:
-                    pid = int(parts[1])
-                except ValueError:
-                    continue  # нестандартный вывод tasklist (L1)
-                break
-    except (OSError, subprocess.TimeoutExpired):
-        pass
-    return {"running": bool(pid), "pid": pid}
+    from core.proc import image_pids
+    pids = image_pids("winws.exe", timeout=6)
+    return {"running": bool(pids), "pid": pids[0] if pids else 0}
 
 
 _zapret1_installed_cache: Optional[bool] = None

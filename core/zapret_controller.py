@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -94,18 +93,12 @@ class ZapretController:
     def stop(self) -> bool:
         pid = self.get_running_pid(force=True)
         if pid is not None:
-            try:
-                subprocess.run(
-                    ["taskkill", "/F", "/PID", str(pid)],
-                    capture_output=True, timeout=5,
-                    creationflags=subprocess.CREATE_NO_WINDOW,
-                )
+            from core.proc import kill_pid
+            if kill_pid(pid, timeout=5):
                 self._cached_pid = None
                 self._cached_pid_at = 0.0
                 self.current_strategy = None
                 return True
-            except (subprocess.TimeoutExpired, OSError):
-                pass
 
         return False
 
@@ -125,27 +118,12 @@ class ZapretController:
         now = time.time()
         if not force and self._cached_pid is not None and (now - self._cached_pid_at) < 1.0:
             return self._cached_pid
-        try:
-            result = subprocess.run(
-                ["tasklist", "/FI", "IMAGENAME eq winws2.exe", "/FO", "CSV", "/NH"],
-                capture_output=True, text=True, timeout=5,
-                encoding="oem", errors="replace",
-                creationflags=subprocess.CREATE_NO_WINDOW,
-            )
-            for line in result.stdout.strip().splitlines():
-                if not line:
-                    continue
-                parts = line.split(",")
-                if len(parts) >= 2 and "winws2.exe" in parts[0]:
-                    pid_str = parts[1].strip('"')
-                    try:
-                        self._cached_pid = int(pid_str)
-                        self._cached_pid_at = now
-                        return self._cached_pid
-                    except ValueError:
-                        pass
-        except (subprocess.TimeoutExpired, OSError):
-            pass
+        from core.proc import image_pids
+        pids = image_pids("winws2.exe", timeout=5)
+        if pids:
+            self._cached_pid = pids[0]
+            self._cached_pid_at = now
+            return self._cached_pid
         self._cached_pid = None
         self._cached_pid_at = now
         return None

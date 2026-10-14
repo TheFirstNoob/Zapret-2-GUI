@@ -687,17 +687,9 @@ def _wait_winws2_alive(timeout: float,
     while time.time() < deadline:
         if proc is not None and proc.poll() is not None:
             return False  # процесс уже упал - ждать нечего
-        try:
-            r = subprocess.run(
-                ["tasklist", "/FI", "IMAGENAME eq winws2.exe", "/NH"],
-                capture_output=True, text=True, encoding="oem",
-                errors="replace", timeout=3,
-                creationflags=subprocess.CREATE_NO_WINDOW,
-            )
-            if "winws2.exe" in r.stdout:
-                return True
-        except (subprocess.TimeoutExpired, OSError):
-            pass
+        from core.proc import image_running
+        if image_running("winws2.exe", timeout=3):
+            return True
         time.sleep(0.2)
     return False
 

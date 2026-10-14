@@ -58,11 +58,9 @@ def _svc_log(msg: str) -> None:
 
 
 def _taskkill_winws2():
-    subprocess.run(
-        ["taskkill", "/F", "/IM", "winws2.exe"],
-        capture_output=True, timeout=10,
-        creationflags=subprocess.CREATE_NO_WINDOW,
-    )
+    """Аудит #7: единый kill_image (раньше таймаут taskkill не обрабатывался)."""
+    from core.proc import kill_image
+    kill_image("winws2.exe", timeout=10)
 
 
 def is_installed() -> bool:

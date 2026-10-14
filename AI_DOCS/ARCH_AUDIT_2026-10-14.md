@@ -661,7 +661,32 @@ Severity: S1 — мешает пониманию/сопровождению си
   `server._read_lines/_read_networks/_handle_bundled_domains/
   _include_user_domains` (фикс: комментарии больше не попадают в «домены»),
   sanity-парсер тестера и `has_entry` лаунчера. Юнит-тест + golden 9/9.
-- ⏳ далее по порядку: #6 (curl → `core/probe_http.py`), #1 (server:
-  транспорт+роуты), #3 (`_run_tester_action`), #2 (app.js + разобраться с
-  cache-buster в одном коммите), #4 (launcher-трансформы), #5 (tester),
-  #7 (`core/proc.py`), #10 (статусы), #9 (QUIC/timeouts).
+- ✅ **#6 (curl → `core/probe_http.py`)** — 14.10: `CurlResult/curl_code`,
+  diagnostics + server переведены (DoH-тело через body_mode; contested
+  больше не падает на таймауте).
+- ✅ **#7 (proc-обвязка)** — 14.10: `core/proc.py`
+  (`image_pids/image_running/running_images/kill_pid/kill_image`, CSV,
+  локаль-независимо, не бросает); переведены utils/zapret_controller/
+  tester/server/diagnostics/conflict_scan/launcher/service_manager
+  (11 мест; бонус: необработанный таймаут taskkill в службе закрыт).
+- ⏳ осталось по новому порядку: #4 (launcher-конвейер, golden) -> #10 (статусы,
+  StrEnum+контракт-тест) -> #1 (server: AppContext+DI) -> #3 -> #5 -> #9 -> #2
+  (app.js ПОСЛЕДНИМ; склейка файлов на сервере).
+
+
+### Корректировка порядка и решения (советник, 14.10)
+
+- **Порядок изменён**: #4 (конвейер аргументов) и #7 (proc) — ВПЕРЁД распилов
+  server/tester (иначе один и тот же код правим дважды); **#2 (app.js) —
+  ПОСЛЕДНИМ** (риск «белого экрана» при кастомном кэш-бастинге перевешивает).
+  Итоговая цепочка: **[8,6] → 7 → 4 → 10 → 1 → 3 → 5 → 9 → 2**.
+- **HTTP-слой (#1)**: не миксины и не голый синглтон, а **AppContext (DI)**:
+  хендлеры — свободные функции `(ctx, req) -> dict | ApiError`, без
+  `self._send_json`; тонкий роутер `ROUTES[(method, path)]` + один `_send_json`.
+  Промежуточный шаг допустим (`req_ctx.send_json`) при доменном распиле.
+- **Фронтенд (#2)**: ES-модули НЕЛЬЗЯ (глобальный скоуп/`onclick` сломаются);
+  выбран путь **склейки на сервере**: мелкие файлы `ui/js/*`, единственный
+  `<script src="app.<hash>.js">` (текущий кэш-бастинг не трогаем), server.py
+  конкатенирует по списку. Альтернатива — `?v=`-плейсхолдеры в HTML.
+- **Статусы (#10)**: `StrEnum` (`str`-наследование обязательно для json/`==`) +
+  контракт-тест на точное множество значений + авто-генерация JS-констант.

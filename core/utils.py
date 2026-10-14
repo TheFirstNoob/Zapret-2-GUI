@@ -131,15 +131,9 @@ def _is_marked_for_delete(out: str) -> bool:
 
 
 def winws2_running() -> bool:
-    try:
-        r = subprocess.run(
-            ["tasklist", "/FI", "IMAGENAME eq winws2.exe"],
-            capture_output=True, text=True, encoding="oem", errors="replace",
-            timeout=10, creationflags=subprocess.CREATE_NO_WINDOW)
-    except Exception:
-        return False
-    text = r.stdout or ""
-    return "winws2.exe" in text and "No tasks" not in text
+    """winws2.exe запущен? (общий CSV-детектор из core.proc, аудит #7)."""
+    from core.proc import image_running
+    return image_running("winws2.exe", timeout=10)
 
 
 def _local_windivert_sys(root_dir: Optional[Path]) -> Optional[Path]:

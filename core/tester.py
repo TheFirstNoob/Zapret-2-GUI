@@ -342,33 +342,15 @@ class Zapret2Tester:
         self._wait_windivert_free()
 
     def _any_winws_running(self) -> bool:
-        """True если хотя бы один winws2.exe или winws.exe запущен."""
-        for image_name in ("winws2.exe", "winws.exe"):
-            try:
-                r = subprocess.run(
-                    ["tasklist", "/FI", f"IMAGENAME eq {image_name}", "/NH"],
-                    capture_output=True, text=True, encoding="oem", errors="replace", timeout=3,
-                    creationflags=subprocess.CREATE_NO_WINDOW,
-                )
-                if image_name.lower() in r.stdout.lower():
-                    return True
-            except (subprocess.TimeoutExpired, OSError):
-                pass
-        return False
+        """True если хотя бы один winws2.exe или winws.exe запущен (аудит #7)."""
+        from core.proc import image_running
+        return (image_running("winws2.exe", timeout=3)
+                or image_running("winws.exe", timeout=3))
 
     def _any_winws2_running(self) -> bool:
         """True если winws2.exe запущен (только winws2, без winws.exe)."""
-        try:
-            r = subprocess.run(
-                ["tasklist", "/FI", "IMAGENAME eq winws2.exe", "/NH"],
-                capture_output=True, text=True, encoding="oem", errors="replace", timeout=3,
-                creationflags=subprocess.CREATE_NO_WINDOW,
-            )
-            if "winws2.exe" in r.stdout.lower():
-                return True
-        except (subprocess.TimeoutExpired, OSError):
-            pass
-        return False
+        from core.proc import image_running
+        return image_running("winws2.exe", timeout=3)
 
     def _wait_windivert_free(self, timeout: float = WINDIVERT_CLEANUP_DELAY * 4) -> None:
         """Poll пока winws2 процессы не исчезнут (WinDivert освобождается).
@@ -386,7 +368,8 @@ class Zapret2Tester:
         pid = proc.pid
         self._process = None
         # taskkill по PID надёжнее цепочки terminate/kill
-        self._run_quiet(["taskkill", "/F", "/PID", str(pid)], timeout=5.0)
+        from core.proc import kill_pid
+        kill_pid(pid, timeout=5)
         if not self._any_winws2_running():
             return
         # Фолбэк: terminate → kill
@@ -423,16 +406,9 @@ class Zapret2Tester:
 
     @staticmethod
     def _process_exists(image_name: str) -> bool:
-        """Быстрая проверка: запущен ли процесс с таким именем."""
-        try:
-            r = subprocess.run(
-                ["tasklist", "/FI", f"IMAGENAME eq {image_name}", "/NH"],
-                capture_output=True, text=True, encoding="oem", errors="replace", timeout=5,
-                creationflags=subprocess.CREATE_NO_WINDOW,
-            )
-            return image_name.lower() in r.stdout.lower()
-        except (subprocess.TimeoutExpired, OSError):
-            return False
+        """Быстрая проверка: запущен ли процесс с таким именем (аудит #7)."""
+        from core.proc import image_running
+        return image_running(image_name, timeout=5)
 
     @staticmethod
     def _kill_never_hang(image_name: str) -> None:
