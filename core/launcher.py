@@ -9,6 +9,7 @@ from typing import Optional
 
 from core.admin import enable_privilege, get_enabled_privileges
 from core import games as games_store
+from core import list_health
 from core.applog import log as _applog
 from core.utils import short_path
 
@@ -255,28 +256,16 @@ def build_args_from_preset(
     # должен трогать конфиг вообще (байт-в-байт прежний default).
     ipset_inc_file = lists_dir / "ipset-include-user.txt"
     ipset_inc_path = ""
-    if ipset_inc_file.exists():
-        try:
-            has_entry = any(l.strip() and not l.strip().startswith("#")
-                            for l in ipset_inc_file.read_text(encoding="utf-8-sig").splitlines())
-        except OSError:
-            has_entry = False
-        if has_entry:
-            ipset_inc_path = str(ipset_inc_file)
+    if list_health.read_entries(ipset_inc_file):
+        ipset_inc_path = str(ipset_inc_file)
 
     # User IP-exclude list: exclude всегда сильнее include (ipset.c проверяет
     # ips_exclude первым) - без этой связки редактор «IP-сети - исключения»
     # писал в файл, который winws2 никогда не получал.
     ipset_excl_file = lists_dir / "ipset-exclude-user.txt"
     ipset_excl_path = ""
-    if ipset_excl_file.exists():
-        try:
-            has_entry = any(l.strip() and not l.strip().startswith("#")
-                            for l in ipset_excl_file.read_text(encoding="utf-8-sig").splitlines())
-        except OSError:
-            has_entry = False
-        if has_entry:
-            ipset_excl_path = str(ipset_excl_file)
+    if list_health.read_entries(ipset_excl_file):
+        ipset_excl_path = str(ipset_excl_file)
 
     for line in lines:
         line = line.strip()

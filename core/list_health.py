@@ -43,13 +43,18 @@ def _entry(line: str) -> str:
 
 
 def read_entries(path: Path) -> list[str]:
-    """Записи файла по порядку (без пустых строк и комментариев), с BOM-фиксом."""
+    """Записи файла по порядку (без пустых строк и комментариев), с BOM-фиксом.
+
+    Единственный парсер list-файлов (аудит 2026-10): срезает `#`-хвосты,
+    приводит к нижнему регистру и вычищает невидимый мусор (BOM/zero-width
+    из буфера обмена ломает матчинг домена)."""
     if not path.exists():
         return []
     try:
         text = path.read_text(encoding="utf-8-sig", errors="replace")
     except OSError:
         return []
+    text = text.replace("\ufeff", "").replace("\u200b", "")
     return [e for e in (_entry(ln) for ln in text.splitlines()) if e]
 
 

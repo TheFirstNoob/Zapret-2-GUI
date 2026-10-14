@@ -1649,14 +1649,8 @@ class Zapret2Tester:
         for name, path in include_lists:
             if not path.exists():
                 continue
-            try:
-                list_entries[name] = [
-                    l.strip().lower()
-                    for l in path.read_text(encoding="utf-8-sig").splitlines()
-                    if l.strip() and not l.strip().startswith(("#", "//"))
-                ]
-            except OSError:
-                continue
+            from core import list_health
+            list_entries[name] = list_health.read_entries(path)
         for domain in blocked_domains:
             d = domain.lower()
             found = [name for name, entries in list_entries.items()

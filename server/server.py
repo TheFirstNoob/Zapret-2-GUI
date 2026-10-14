@@ -564,12 +564,13 @@ def _clean_list_text(text: str) -> str:
 
 
 def _read_lines(fname: str) -> set[str]:
-    """Читает строки списка (без комментариев) в set; отсутствующий файл = пусто."""
-    path = get_root_dir() / "lists" / fname
-    if not path.exists():
-        return set()
-    text = _clean_list_text(path.read_text(encoding="utf-8-sig"))
-    return {l.strip() for l in text.splitlines() if l.strip()}
+    """Значимые записи списка (делегат в единый парсер core.list_health).
+
+    Раньше дублировал парсинг, а докстринг врал: `#`-комментарии фактически
+    не срезались. Все вызовы - membership-тесты lower-case значений, поэтому
+    общий read_entries (lower + `#`-срез + невидимки) строго корректнее."""
+    from core import list_health
+    return set(list_health.read_entries(get_root_dir() / "lists" / fname))
 
 
 def _read_networks(fnames: list[str]) -> list:
@@ -577,8 +578,6 @@ def _read_networks(fnames: list[str]) -> list:
     nets = []
     for fname in fnames:
         for l in sorted(_read_lines(fname)):
-            if l.startswith("#"):
-                continue
             try:
                 nets.append(ipaddress.ip_network(l, strict=False))
             except ValueError:
@@ -1862,18 +1861,10 @@ class ZapretHandler(BaseHTTPRequestHandler):
     def _handle_bundled_domains(self) -> None:
         """Домены из наших (не пользовательских) включений - для клиентского
         guard'а приоритетов список/исключение на странице «Списки»."""
+        from core import list_health
         domains: set[str] = set()
         for name in ("list-general.txt", "list-google.txt", "list-discord.txt"):
-            f = get_root_dir() / "lists" / name
-            if not f.exists():
-                continue
-            try:
-                for line in f.read_text(encoding="utf-8", errors="replace").splitlines():
-                    line = line.strip().lower()
-                    if line and not line.startswith("#"):
-                        domains.add(line)
-            except OSError:
-                pass
+            domains.update(list_health.read_entries(get_root_dir() / "lists" / name))
         self._send_json({"status": "ok", "domains": sorted(domains)})
 
     def _handle_service_status(self) -> None:
@@ -2371,12 +2362,11 @@ class ZapretHandler(BaseHTTPRequestHandler):
     ]
 
     def _include_user_domains(self) -> set:
-        path = get_root_dir() / "lists" / "list-include-user.txt"
-        if not path.exists():
-            return set()
-        return {ln.strip().lower() for ln in
-                path.read_text(encoding="utf-8").splitlines()
-                if ln.strip()}
+        # Единый парсер: раньше `#`-комментарии попадали в набор как «домены»,
+        # а BOM ломал первую запись (находка аудита 2026-10).
+        from core import list_health
+        return set(list_health.read_entries(
+            get_root_dir() / "lists" / "list-include-user.txt"))
 
     def _handle_contested_status(self) -> None:
         items = []
