@@ -484,6 +484,13 @@ class Zapret2Tester:
         args = build_args_from_preset(self.root_dir, self.lua_dir, self.blobs_dir, preset,
                                       ipset_catchall=ipset_catchall, fake_blob=fake_blob,
                                       discord_alt=discord_alt)
+        # ts-fooling-стратегии требуют включённых timestamps в ОС: без этого
+        # тест ложно валится, если служба ни разу не запускалась (кэш внутри).
+        try:
+            from core.tcp_timestamps import enable_for_engine
+            enable_for_engine()
+        except Exception:
+            pass
         ok = launch_winws2(self.root_dir, exe_path, args, timeout=5.0)
         self._process = None
         return ok

@@ -15,7 +15,7 @@ import shutil
 import sys
 import zipfile
 
-from core.launcher import build_args_from_preset
+from core.launcher import build_args_from_preset, _conf_quote_token
 from core.utils import short_path
 
 ROOT = pathlib.Path(__file__).resolve().parent
@@ -58,13 +58,40 @@ def _portable_args(args: list[str], root_abs: str, root_short: str) -> list[str]
     return out
 
 
-def _write_start_bat(name: str, args: list[str]) -> None:
-    cmdline = " ".join(f'"{a}"' for a in args)
+def _conf_portable_args(args: list[str], root_abs: str, root_short: str) -> list[str]:
+    """Абсолютные пути -> ОТНОСИТЕЛЬНЫЕ (для conf-файла start-батов).
+
+    Conf читает Cygwin, а не cmd: `%~dp0` в контенте не раскрывается, зато
+    winws2 резолвит относительные пути от cwd, который bat ставит в %~dp0."""
+    out = []
+    for a in args:
+        for prefix in (root_abs, root_short):
+            for marker, repl in ((f"@{prefix}\\", "@"), (f"{prefix}\\", "")):
+                if marker in a:
+                    a = a.replace(marker, repl)
+                    break
+            else:
+                continue
+            break
+        out.append(a)
+    return out
+
+
+def _write_start_bat(name: str, args_rel: list[str]) -> None:
+    """start-<name>.bat + conf-<name>.conf: bat запускает winws2 @"conf".
+
+    Аргументы не зависят от длины и кавычек cmd; относительные пути - от cwd
+    (bat делает `cd /d %~dp0`)."""
+    stem = name[:-4] if name.endswith(".bat") else name
+    conf_name = f"conf-{stem}.conf"
+    conf = LITE / conf_name
+    conf.write_text("\n".join(_conf_quote_token(t) for t in args_rel) + "\n",
+                    encoding="utf-8")
     (LITE / name).write_text(
         '@echo off\r\n'
         'cd /d "%~dp0"\r\n'
         + Z1_CHECK_BLOCK +
-        f'start "zapret2" /min "%~dp0bin\\winws2.exe" {cmdline}\r\n',
+        f'start "zapret2" /min "%~dp0bin\\winws2.exe" @"%~dp0{conf_name}"\r\n',
         encoding="ascii",
     )
 
@@ -118,9 +145,16 @@ goto menu
 
 
 def _svc_install_bat(portable_args: list[str]) -> str:
-    """Служба напрямую на exe, как в Zapret 1 (binPath = winws2.exe + args,
-    start= auto): cmd/bat-обёртку как раз и ловит Defender."""
-    argstr = " ".join(f'\\"{a}\\"' for a in portable_args)
+    """service-install.bat: на месте генерит service_run.conf (echo-блок,
+    %~dp0 раскрывается cmd) и ставит короткий binPath = exe + @"conf"."""
+    # build-time инвариант: токены уходят в `echo "..."` - внутри кавычек
+    # cmd опасны только `"` и `%` (вне `%~dp0`); ломаем сборку громко, если
+    # пресет изменился и занёс такие символы.
+    bad = [a for a in portable_args
+           if '"' in a or "%" in a.replace("%~dp0", "")]
+    if bad:
+        raise SystemExit(f"service-install: небезопасные для cmd токены: {bad[:3]}")
+    body = "".join(f'    echo "{a}"\r\n' for a in portable_args)
     return (
         '@echo off\r\n'
         'cd /d "%~dp0"\r\n'
@@ -128,7 +162,10 @@ def _svc_install_bat(portable_args: list[str]) -> str:
         + Z1_CHECK_BLOCK +
         'sc stop zapret2 >nul 2>&1\r\n'
         'sc delete zapret2 >nul 2>&1\r\n'
-        f'sc create zapret2 binPath= "\\"%~dp0bin\\winws2.exe\\" {argstr}" '
+        '> "%~dp0service_run.conf" (\r\n'
+        + body +
+        ')\r\n'
+        'sc create zapret2 binPath= "\\"%~dp0bin\\winws2.exe\\" @\\"%~dp0service_run.conf\\"" '
         'DisplayName= "Zapret 2 DPI Bypass" start= auto\r\n'
         'sc start zapret2\r\n'
         'echo.\r\n'
@@ -218,22 +255,24 @@ def main() -> None:
     from core.config import VERSION
     from core.updater import write_manifest
 
-    # по одному start-<preset>.bat на стратегию (портативные %~dp0-пути)
+    # по одному start-<preset>.bat на стратегию (conf-файлы с относительными
+    # путями; bat дописывает cwd=%~dp0)
     for pf in sorted((LITE / "presets").glob("*.txt")):
         if not RELEASE_PRESETS(pf.stem):
             continue
         args = build_args_from_preset(LITE, LITE / "lua", LITE / "blobs", pf)
-        portable = _portable_args(args, str(LITE), short_path(LITE))
-        _write_start_bat(f"start-{pf.stem}.bat", portable)
+        conf_args = _conf_portable_args(args, str(LITE), short_path(LITE))
+        _write_start_bat(f"start-{pf.stem}.bat", conf_args)
 
     # ipset-вариант default (catch-all) — им пользуется стабилизатор test.ps1 в A/B
     ipset_args = build_args_from_preset(LITE, LITE / "lua", LITE / "blobs",
                                         LITE / "presets" / "default.txt",
                                         ipset_catchall=True)
-    ipset_portable = _portable_args(ipset_args, str(LITE), short_path(LITE))
-    _write_start_bat("start-ipset.bat", ipset_portable)
+    ipset_conf = _conf_portable_args(ipset_args, str(LITE), short_path(LITE))
+    _write_start_bat("start-ipset.bat", ipset_conf)
 
-    # default-пресет для службы
+    # default-пресет для службы (%~dp0-токены: echo-блок раскроет их в момент
+    # установки службы, conf получит абсолютные пути)
     args = build_args_from_preset(LITE, LITE / "lua", LITE / "blobs",
                                   LITE / "presets" / "default.txt")
     portable = _portable_args(args, str(LITE), short_path(LITE))

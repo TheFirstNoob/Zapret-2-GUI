@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+import threading
 import winreg
 from typing import Optional
 
@@ -52,10 +53,26 @@ def _legacy_ts_enabled() -> bool:
 
 
 def timestamps_enabled() -> bool:
+    """Состояние TCP timestamps (кэш на процесс: PS-чтение занимает 3-5с)."""
+    global _ts_cache
+    with _ts_lock:
+        if _ts_cache is None:
+            _ts_cache = _ts_read_uncached()
+        return bool(_ts_cache)
+
+
+def _ts_read_uncached() -> bool:
     modern = _modern_ts_state()
     if modern is not None:
         return modern
     return _legacy_ts_enabled()
+
+
+# Кэш живёт на процесс: PowerShell-чтение ~3-5с раньше платилось НА КАЖДОМ
+# старте движка (рестарты службы/обхода). Внешние изменения timestamps посреди
+# сессии не отслеживаются - осознанный размен (мы сами их и включаем).
+_ts_cache: Optional[bool] = None
+_ts_lock = threading.Lock()
 
 
 def _set_modern(enabled: bool) -> bool:
@@ -73,7 +90,7 @@ def _set_modern(enabled: bool) -> bool:
             return False
     except (subprocess.TimeoutExpired, OSError):
         return False
-    return timestamps_enabled() is (True if enabled else False)
+    return _ts_read_uncached() is (True if enabled else False)
 
 
 def _set_legacy_netsh(enabled: bool) -> bool:
@@ -100,12 +117,21 @@ def enable_for_engine() -> tuple[bool, str]:
     """Гарантирует включённые TCP timestamps перед стартом движка.
 
     ts-fooling (tcp_ts=...) молча ничего не делает при выключенных
-    timestamps в ОС.  Возвращает (ok, note).
+    timestamps в ОС.  Возвращает (ok, note).  Состояние кэшируется на
+    процесс (см. _ts_cache) - горячий путь старта больше не платит PS.
     """
-    if timestamps_enabled():
-        return True, ""
-    if _set_modern(True) or _set_legacy_netsh(True):
-        if timestamps_enabled():
+    global _ts_cache
+    with _ts_lock:
+        if _ts_cache is None:
+            _ts_cache = _ts_read_uncached()
+        if _ts_cache:
+            return True, ""
+        if _set_modern(True):
+            _ts_cache = True
             return True, "TCP timestamps включены (были выключены - tcp_ts не работал)"
-        return False, "timestamps включить не удалось"
-    return False, "включить TCP timestamps не удалось (нужны права администратора)"
+        if _set_legacy_netsh(True) and _ts_read_uncached():
+            # netsh мог примениться только к legacy-пути - подтверждаем чтением
+            _ts_cache = True
+            return True, "TCP timestamps включены (были выключены - tcp_ts не работал)"
+        _ts_cache = False
+        return False, "включить TCP timestamps не удалось (нужны права администратора)"

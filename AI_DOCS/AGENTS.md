@@ -643,12 +643,14 @@ happy-path прогонах):
   стратегии = перезапись + restart. ✅ PoC службы выполнен 14.10: оба варианта
   (без пробелов и `@"..."`) работают end-to-end (start/лог/stop; SCM передаёт
   аргумент вербатим). ⚠ повторные пробы с тем же wf-фильтром ловят dup-mutex.
-- ✅ Этапы 1+3 внедрены 14.10: launcher/tester — запуск/валидация через
+- ✅ Этапы 1-3 внедрены 14.10: launcher/tester — запуск/валидация через
   logs/run.conf (`"exe" @"conf"`), stderr winws2 → logs/winws2_last_stderr.log,
   LANG=C.UTF-8; служба — binPath короткий `"exe" @"logs\service_run.conf"` +
   legacy-миграция (migrate_if_needed, CommandLineToArgvW; живой прогон зеркала
-  3854→151 симв, golden 117/117, бэкап в mirror/logs). Этап 2-lite (bat-сборка)
-  и хвосты (timestamps без PS, ImagePath в status, 1072, CDN service) — в доке §6.
+  3854→151 симв, golden 117/117, бэкап в mirror/logs). Этап 2 (bat/lite) —
+  start-батовые conf-файлы + service-install echo-блок (песочница проверена).
+  Timestamps: кэш на процесс + вызов из тестера. Хвосты: ImagePath в status,
+  1072, CDN service (док §6).
 
 ## Хосты / AI-пины (2026-09-24) — не гонять пачками
 

@@ -64,6 +64,7 @@
 | T11 | Этап 1 (внедрён): golden argv vs conf — REPO и MIRROR(пробелы) | ✅ SAME=True (8+verified / 9+dup-mutex-квирк); validate=True; живой direct `@file` на пробельном MIRROR: alive + curl 200; sink поймал вывод падения |
 | T13 | Этап 3 (внедрён): живая миграция службы зеркала на conf | ✅ binPath 3854→151 симв; golden conf==legacy args (117/117); RUNNING + curl 200; бэкап старого binPath в `mirror/logs/` |
 | T14 | write_run_bat через conf (`start /min exe @"conf"`) | ✅ rc=0, debug-лог пишется, левых winws2 нет |
+| T16 | Этап 2: lite start-bat (dry) + service-install в пробельной песочнице | ✅ dbg-лог 1589Б; conf 111 строк с абсолютными путями; ImagePath `"exe" @"conf"` дословно; probe4 удалён |
 
 Побочно: лог winws2 показывает пути урезанно (`/lists/...`) — косметика;
 `--comment` в контенте не мешает; `--hostlist=` принимает ТОЛЬКО обычный путь
@@ -124,8 +125,12 @@
   Живой тест: служба стоп → direct @file на пробельном MIRROR → alive +
   curl 200 → kill → служба RUNNING.
 
-**Этап 2 (bat/build_lite):** в bat только `winws2.exe @"<conf>"` (проверить
-пробельный корень в lite-сборке).
+**Этап 2 (bat/build_lite — ✅ ВЫПОЛНЕН 14.10):** GUI-фолбэк `write_run_bat` —
+`start /min "exe" @"conf"` (смоук: dry-запуск → debug-лог 1589Б); lite:
+`start-*.bat` + `conf-*.conf` (относительные пути, cwd=%~dp0), а
+`service-install.bat` генерит `service_run.conf` echo-блоком НА МЕСТЕ (%~dp0
+раскрывает cmd; build-time инвариант: токены без `"` и `%`); песочница с
+пробелами: ImagePath `"exe" @"conf"` сохранён дословно (probe4), conf 111 строк.
 **Этап 3 (служба — ✅ ВЫПОЛНЕН 14.10):** binPath = `"exe" @"<root>\logs\service_run.conf"`
 (у живой службы зеркала 3854 → 151 симв); `install`/`reconfigure` пишут
 `service_run.conf` и меняют короткий binPath (Win32 API; sc-bat — транспорт
@@ -158,9 +163,11 @@
   `logs/winws2_last_stderr.log` (не PIPE!); при падении direct — head+tail в applog
   (ранний getopt-вывод пишется в НАЧАЛО файла — читаем оба конца).
 - ✅ **`LANG=C.UTF-8`/`LC_ALL=C.UTF-8`** — ВНЕДРЕНО в env всех запусков winws2.
-- **TCP timestamps**: убрать PowerShell из горячего пути (netsh по коду возврата;
-  чтение — локализация!); вызывать и из тестера (heisenbug «тест работает после
-  обычного запуска»).
+- ✅ **TCP timestamps**: горячий путь обезболен — кэш состояния на процесс
+  (PS-чтение 0.8-5с раньше платилось на КАЖДОМ старте движка; теперь 0.000с)
+  и вызов `enable_for_engine` из тестера (heisenbug «тест валится, пока
+  служба ни разу не запускалась»). Первичное чтение и путь «включить» —
+  всё ещё PS (редко, осознанно).
 - **Служба (остаток)**: sc-bat fallback оставлен осознанно (транспорт для кривых
   SCM, теперь `@\"conf\"`); `_verify_binpath` переписан под @conf; НЕ сделаны:
   ImagePath-чек в `status()` (PATH_MISMATCH) и порядок 1072 (закрыть HANDLE +
