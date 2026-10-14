@@ -2133,17 +2133,9 @@ class ZapretHandler(BaseHTTPRequestHandler):
 
         def _probe(host: str) -> dict:
             t0 = time.time()
-            try:
-                r = _run_with_timeout(
-                    ["curl.exe", "-4", "-s", "-o", "NUL", "-m", "8",
-                     "-w", "%{http_code}", f"https://{host}/"],
-                    timeout=12.0,
-                )
-                code = (r.stdout or "").strip()
-            except Exception:  # noqa: BLE001
-                code = "000"
-            if not code:
-                code = "000"
+            from core.probe_http import curl_code
+            n = curl_code(f"https://{host}/", timeout=8, wall_pad=4)
+            code = str(n) if n else "000"
             return {"domain": host, "code": code,
                     "ok": code not in ("000", "000000"),
                     "elapsed": round(time.time() - t0, 2)}
@@ -2404,7 +2396,6 @@ class ZapretHandler(BaseHTTPRequestHandler):
                                              "(перезапуск не нужен)"})
 
     def _handle_contested_check(self, data: dict) -> None:
-        import subprocess as _sp
         import time as _time
         item_id = str(data.get("id") or "")
         item = next((i for i in self._CONTESTED if i["id"] == item_id), None)
@@ -2419,12 +2410,11 @@ class ZapretHandler(BaseHTTPRequestHandler):
         enabled = item["domain"].lower() in self._include_user_domains()
         with_protection = engine_running and enabled
         t0 = _time.time()
-        r = _sp.run(
-            ["curl.exe", "-4", "-s", "-o", "NUL", "-m", "10",
-             "-w", "%{http_code}", f"https://{item['probe']}/"],
-            capture_output=True, text=True, encoding="oem", errors="replace",
-            timeout=15, creationflags=subprocess.CREATE_NO_WINDOW)
-        code = (r.stdout or "").strip()
+        from core.probe_http import curl_code
+        n = curl_code(f"https://{item['probe']}/", timeout=10, wall_pad=5)
+        # Раньше TimeoutExpired отсюда ронял запрос - теперь "000" (как в
+        # соседних пробах; владелец "000" = провал, см. app.js).
+        code = str(n) if n else "000"
         self._send_json({"status": "ok", "code": code,
                          "elapsed": round(_time.time() - t0, 2),
                          "with_protection": with_protection,

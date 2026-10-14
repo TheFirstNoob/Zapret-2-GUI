@@ -92,19 +92,10 @@ def _pid_of(image_name: str) -> Optional[int]:
 
 
 def _curl_code(host: str, timeout: int = 6, scheme: str = "https") -> Optional[int]:
-    """HTTP-код через curl; None при таймауте/ошибке транспорта."""
-    try:
-        r = subprocess.run(
-            ["curl.exe", "-4", "-s", "-m", str(timeout),
-             "-H", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-             "-o", "NUL", "-w", "%{http_code}", f"{scheme}://{host}/"],
-            capture_output=True, text=True, encoding="oem", errors="replace",
-            timeout=timeout + 3, creationflags=subprocess.CREATE_NO_WINDOW,
-        )
-        code = r.stdout.strip()
-        return int(code) if code.isdigit() else None
-    except (subprocess.TimeoutExpired, OSError):
-        return None
+    """HTTP-код через curl; None при таймауте/ошибке транспорта (аудит #6)."""
+    from core.probe_http import curl_code
+    return curl_code(f"{scheme}://{host}/", timeout=timeout, wall_pad=3,
+                     headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
 
 
 def _check_path(root_dir: Path) -> Check:
@@ -617,12 +608,11 @@ def _check_dns_spoof_servers() -> Check:
     servers = [("8.8.8.8", "Google"), ("1.1.1.1", "Cloudflare"),
                ("77.88.8.8", "Яндекс"), ("9.9.9.9", "Quad9")]
     try:
-        r = subprocess.run(
-            ["curl.exe", "-4", "-s", "-m", "8",
-             "https://dns.google/resolve?name=%s&type=A" % test_domain],
-            capture_output=True, text=True, encoding="utf-8", errors="replace",
-            timeout=12, creationflags=subprocess.CREATE_NO_WINDOW)
-        clean = {a for a in _IP_RE.findall(r.stdout or "")
+        from core.probe_http import curl_result
+        res = curl_result(
+            "https://dns.google/resolve?name=%s&type=A" % test_domain,
+            timeout=8, wall_pad=4, body_mode=True, encoding="utf-8")
+        clean = {a for a in _IP_RE.findall(res.body)
                  if not a.startswith(("127.", "10.", "192.168."))}
         if not clean:
             return Check("dns_spoof", "DNS-подмена по серверам", "skip",
