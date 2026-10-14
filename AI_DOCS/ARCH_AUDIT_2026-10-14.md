@@ -690,8 +690,10 @@ Severity: S1 — мешает пониманию/сопровождению си
   Группы probe/games/zapret1 (15 хендлеров) вынесены 14.10 в
   api_probe/api_games/api_zapret1 (debug-хелперы и get_process_probe — в app_state;
   zapret1_stop busy остался 409-контрактом через ApiError).
-  Осталось ~35 хендлеров (update/contested/lists/
-  diag/tester/cdn/конфиг/одиночки).
+  Раунд 2 (14.10): contested/lists/diag — ещё 8 хендлеров
+  (api_contested/api_lists/api_diag; итого 29/56). Осталось ~27:
+  update/tester/cdn/конфиг+сеттингс/одиночки (из них index/static —
+  транспортные, остаются в хендлере).
 - ⏳ осталось: #1-продолжение (AppContext + выносы) -> #3
   (_run_tester_action) -> #5 (tester) -> #9 (QUIC/timeouts) -> #2 (app.js
   ПОСЛЕДНИМ; склейка файлов на сервере).

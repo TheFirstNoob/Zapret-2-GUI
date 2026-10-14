@@ -34,7 +34,8 @@ from server.app_state import (STATE, TesterState,
                               get_process_probe, get_root_dir, get_tester,
                               probe_debug as _probe_debug,
                               ui_debug as _ui_debug)
-from server import api_games, api_probe, api_service, api_zapret1
+from server import (api_contested, api_diag, api_games, api_lists,
+                    api_probe, api_service, api_zapret1)
 
 
 CONTENT_TYPES = {
@@ -57,7 +58,7 @@ CONTENT_TYPES = {
 
 _GET_ROUTES: dict[str, tuple[str, tuple]] = {
     "/": ("_handle_index", ("@params",)),
-    "/api/diagnose/status": ("_handle_diagnose_status", ()),
+    "/api/diagnose/status": (api_diag.diagnose_status, ("@ctx",)),
     "/api/config": ("_handle_get_config", ()),
     "/api/version": ("_handle_version", ()),
     "/api/app-info": ("_handle_app_info", ()),
@@ -73,8 +74,8 @@ _GET_ROUTES: dict[str, tuple[str, tuple]] = {
     # вторым --ipset-exclude (core/launcher.py).
     "/api/ipset-exclude-list": ("_handle_get_list", ("ipset-exclude-user.txt",)),
     "/api/ipset-include-list": ("_handle_get_list", ("ipset-include-user.txt",)),
-    "/api/lists/health": ("_handle_lists_health", ()),
-    "/api/contested/status": ("_handle_contested_status", ()),
+    "/api/lists/health": (api_lists.lists_health, ("@ctx",)),
+    "/api/contested/status": (api_contested.contested_status, ("@ctx",)),
     "/api/service/status": (api_service.service_status, ("@ctx",)),
     "/api/zapret1/strategies": (api_zapret1.zapret1_strategies, ("@ctx",)),
     "/api/tester/status": ("_handle_tester_status", ()),
@@ -96,17 +97,17 @@ _POST_ROUTES: dict[str, tuple[str, tuple]] = {
     # USER-файл (см. GET выше): системный ipset-exclude.txt из GUI не правим.
     "/api/ipset-exclude-list": ("_handle_save_list", ("@data", "ipset-exclude-user.txt")),
     "/api/ipset-include-list": ("_handle_save_list", ("@data", "ipset-include-user.txt")),
-    "/api/contested/toggle": ("_handle_contested_toggle", ("@data",)),
-    "/api/contested/check": ("_handle_contested_check", ("@data",)),
-    "/api/lists/dedupe": ("_handle_lists_dedupe", ()),
-    "/api/lists/add-domain": ("_handle_lists_add_domain", ("@data",)),
+    "/api/contested/toggle": (api_contested.contested_toggle, ("@ctx", "@data")),
+    "/api/contested/check": (api_contested.contested_check, ("@ctx", "@data")),
+    "/api/lists/dedupe": (api_lists.lists_dedupe, ("@ctx",)),
+    "/api/lists/add-domain": (api_lists.lists_add_domain, ("@ctx", "@data")),
     "/api/service/install": (api_service.service_install, ("@ctx", "@data")),
     "/api/service/remove": (api_service.service_remove, ("@ctx",)),
     "/api/service/start": (api_service.service_start, ("@ctx",)),
     "/api/service/stop": (api_service.service_stop, ("@ctx",)),
     "/api/service/repair": (api_service.service_repair, ("@ctx",)),
-    "/api/diagnose/action": ("_handle_diagnose_action", ("@data",)),
-    "/api/diagnose/status": ("_handle_diagnose_status", ()),
+    "/api/diagnose/action": (api_diag.diagnose_action, ("@ctx", "@data")),
+    "/api/diagnose/status": (api_diag.diagnose_status, ("@ctx",)),
     "/api/export-report": ("_handle_export_report", ("@data",)),
     "/api/asn-scan": ("_handle_asn_scan", ("@data",)),
     "/api/blob-probe": ("_handle_blob_probe", ("@data",)),
@@ -1939,178 +1940,10 @@ class ZapretHandler(BaseHTTPRequestHandler):
         except OSError as e:
             self._send_json({"status": "error", "message": str(e)})
 
-    # ── Спорные домены (нужен десинк одним, ломается у других - §15) ──
-    _CONTESTED = [
-        {"id": "aws", "domain": "amazonaws.com", "probe": "s3.amazonaws.com",
-         "title": "AWS (S3 / DynamoDB)",
-         "why": "Часть провайдеров режет AWS по SNI - нужен десинк. У других "
-                "AWS жив в голую, а наш десинк ломает DynamoDB/S3. Проверь "
-                "пробой и включай только если без десинка не живёт."},
-    ]
-
-    def _include_user_domains(self) -> set:
-        # Единый парсер: раньше `#`-комментарии попадали в набор как «домены»,
-        # а BOM ломал первую запись (находка аудита 2026-10).
-        from core import list_health
-        return set(list_health.read_entries(
-            get_root_dir() / "lists" / "list-include-user.txt"))
-
-    def _handle_contested_status(self) -> None:
-        items = []
-        enabled = self._include_user_domains()
-        for item in self._CONTESTED:
-            items.append({**item, "enabled": item["domain"] in enabled})
-        self._send_json({"status": "ok", "items": items,
-                         "protection_running": get_controller().status().running})
-
-    def _handle_contested_toggle(self, data: dict) -> None:
-        item_id = str(data.get("id") or "")
-        item = next((i for i in self._CONTESTED if i["id"] == item_id), None)
-        if not item:
-            self._send_json({"status": "error", "message": "Неизвестный домен"})
-            return
-        # Единый слой list_health: дедуп, переносы из исключений, конфликты
-        from core import list_health
-        enable = bool(data.get("enabled"))
-        if enable:
-            r = list_health.add_domain(get_root_dir(), item["domain"], "include")
-            if r.get("result") in ("invalid", "blocked"):
-                self._send_json({"status": "error",
-                                 "message": r.get("message", "ошибка")})
-                return
-            prefix = {"already": "Уже в обходе",
-                      "moved": "Перенесён из Исключений"}.get(
-                          r.get("result"), "Добавлено в Включения")
-        else:
-            removed = list_health.remove_domain(get_root_dir(),
-                                                item["domain"], "include")
-            prefix = ("Убрано из Включений" if removed
-                      else "Домен и так не был включён")
-        self._send_json({"status": "ok",
-                         "message": prefix + " - применится к новым подключениям "
-                                             "(перезапуск не нужен)"})
-
-    def _handle_contested_check(self, data: dict) -> None:
-        import time as _time
-        item_id = str(data.get("id") or "")
-        item = next((i for i in self._CONTESTED if i["id"] == item_id), None)
-        if not item:
-            self._send_json({"status": "error", "message": "Неизвестный домен"})
-            return
-        engine_running = get_controller().status().running
-        # «В обходе» - это про КОНКРЕТНЫЙ домен: движок запущен И домен
-        # добавлен в обход (тумблер). Раньше учитывался только статус
-        # движка - при выключенном тумблере вердикт врал («оставьте
-        # включённым», хотя домен обходом не обрабатывается).
-        enabled = item["domain"].lower() in self._include_user_domains()
-        with_protection = engine_running and enabled
-        t0 = _time.time()
-        from core.probe_http import curl_code
-        n = curl_code(f"https://{item['probe']}/", timeout=10, wall_pad=5)
-        # Раньше TimeoutExpired отсюда ронял запрос - теперь "000" (как в
-        # соседних пробах; владелец "000" = провал, см. app.js).
-        code = str(n) if n else "000"
-        self._send_json({"status": "ok", "code": code,
-                         "elapsed": round(_time.time() - t0, 2),
-                         "with_protection": with_protection,
-                         "engine_running": engine_running,
-                         "enabled": enabled})
-
-    # ── Здоровье списков: дубли, пересечения, покрытие (list_health) ──
-
-    def _handle_lists_health(self) -> None:
-        try:
-            from core import list_health
-            report = list_health.check_health(get_root_dir())
-        except Exception as e:  # noqa: BLE001
-            self._send_json({"status": "error", "message": str(e)})
-            return
-        self._send_json({"status": "ok", **report})
-
-    def _handle_lists_dedupe(self) -> None:
-        busy = _checkers_busy()
-        if busy:
-            self._send_json({"status": "error", "message": busy})
-            return
-        try:
-            from core import list_health
-            result = list_health.dedupe(get_root_dir())
-        except Exception as e:  # noqa: BLE001
-            self._send_json({"status": "error", "message": str(e)})
-            return
-        self._send_json({"status": "ok", **result})
-
-    def _handle_lists_add_domain(self, data: dict) -> None:
-        busy = _checkers_busy()
-        if busy:
-            self._send_json({"status": "error", "message": busy})
-            return
-        mode = "exclude" if data.get("mode") == "exclude" else "include"
-        try:
-            from core import list_health
-            result = list_health.add_domain(
-                get_root_dir(), str(data.get("domain") or ""), mode)
-        except Exception as e:  # noqa: BLE001
-            self._send_json({"status": "error", "message": str(e)})
-            return
-        ok = result.get("result") in ("added", "moved", "already")
-        if ok and mode == "include":
-            # combined-файл (user+games) - то, на что ссылаются args
-            try:
-                from core import games as games_store
-                games_store.sync_include_list(get_root_dir())
-            except Exception:
-                pass
-        self._send_json({"status": "ok" if ok else "error", **result})
-
     def _prepare_service_args(self, data: dict) -> tuple[Optional[list[str]], str]:
         """Делегат в api_service (аудит #1, Inc C): остались вызовы из
         _handle_start_zapret и CDN-ручек, которые уедут на следующих шагах."""
         return api_service.prepare_service_args(data)
-
-    def _handle_diagnose_action(self, data: dict) -> None:
-        import threading as _th
-        import time as _time
-        from core.diagnostics import run_diagnostics, format_report_text
-        # Диагностика и тестер - взаимно исключающие проверки: во время прогона
-        # тестера отчёт был бы смесью «стабильно/перезапускается».
-        busy = _checkers_busy()
-        if busy:
-            self._send_json({"status": "error", "message": busy})
-            return
-        # Атомарная отметка «занято» - закрывает окно для параллельного POST.
-        with _diag_lock:
-            if _diag_state.get("running"):
-                self._send_json({"status": "error", "message": "Проверка уже выполняется"})
-                return
-            _diag_state.update({"running": True, "progress": "", "report": None,
-                                "error": None, "started": _time.time()})
-
-        def _worker():
-            try:
-                def _cb(name):
-                    with _diag_lock:
-                        _diag_state["progress"] = name
-                report = run_diagnostics(get_root_dir(), get_config_manager().load(), progress_cb=_cb)
-                report["elapsed_sec"] = round(_time.time() - _diag_state["started"], 1)
-                report["report_text"] = format_report_text(report)
-                with _diag_lock:
-                    _diag_state["report"] = report
-            except Exception as e:
-                with _diag_lock:
-                    _diag_state["error"] = str(e)
-            finally:
-                with _diag_lock:
-                    _diag_state["running"] = False
-
-        _th.Thread(target=_worker, daemon=True).start()
-        self._send_json({"status": "ok"})
-
-    def _handle_diagnose_status(self) -> None:
-        with _diag_lock:
-            self._send_json({"status": "ok", **{k: _diag_state[k] for k in
-                                                ("running", "progress", "error")},
-                             "report": _diag_state["report"]})
 
     def _handle_update_check(self, params: Optional[dict] = None) -> None:
         force = "1" in (params or {}).get("force", [])
