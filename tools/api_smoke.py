@@ -47,6 +47,13 @@ def main() -> int:
         with urllib.request.urlopen(req, timeout=15) as r:
             return r.status, json.loads(r.read().decode())
 
+    def get_raw(path, token=False):
+        h = {"X-App-Token": TOKEN} if token else {}
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{PORT}" + path, headers=h)
+        with urllib.request.urlopen(req, timeout=15) as r:
+            return r.status, r.headers.get("Content-Type", ""), r.read()
+
     ok = True
     for path in ("/api/version", "/api/status", "/api/config", "/api/profiles",
                  "/api/service/status", "/api/bundled-domains",
@@ -78,6 +85,26 @@ def main() -> int:
         ok = ok and st == 200
     except Exception as e:  # noqa: BLE001
         print("FAIL POST frontend-log", repr(e)[:120])
+        ok = False
+
+    try:
+        st, _ct, html = get_raw("/")
+        good = st == 200 and b"js/app.js" in html and b"__APP_TOKEN__" not in html
+        print(("PASS" if good else "FAIL"), "GET / (index)", st)
+        ok = ok and good
+    except Exception as e:  # noqa: BLE001
+        print("FAIL GET / (index)", repr(e)[:120])
+        ok = False
+
+    try:
+        st, ct, js = get_raw("/js/app.js")
+        good = (st == 200 and ct.startswith("application/javascript")
+                and len(js) > 100000)
+        print(("PASS" if good else "FAIL"), "GET /js/app.js (bundle)",
+              st, len(js), "bytes")
+        ok = ok and good
+    except Exception as e:  # noqa: BLE001
+        print("FAIL GET /js/app.js (bundle)", repr(e)[:120])
         ok = False
 
     try:

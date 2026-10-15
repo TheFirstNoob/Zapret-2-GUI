@@ -31,6 +31,35 @@ CONTENT_TYPES = {
 }
 
 
+# ── JS-бандл (аудит #2) ──────────────────────────────────────
+# app.js собран из частей frontend/js/app/*.js; склейка - НА СЕРВЕРЕ (единый
+# <script src="js/app.js">; ES-модули нельзя - глобальный скоуп и inline
+# onclick). Порядок фиксирован, все части обязательны. Порезка проверена
+# байт-в-байт: b"\n".join(parts) == исходный app.js (sha256 совпадал).
+_JS_BUNDLE_PARTS = (
+    "app/00_utils.js", "app/10_status.js", "app/20_app.js", "app/30_main.js",
+    "app/40_diagnostics.js", "app/50_games.js", "app/55_appinfo.js",
+    "app/60_lists.js", "app/70_cdn.js", "app/75_asn.js", "app/80_tester.js",
+    "app/90_ui_boot.js",
+)
+
+
+def _js_bundle_bytes(frontend: Path) -> bytes:
+    """Склейка частей бандла в единый JS (источник - js/app.js URL)."""
+    parts = []
+    for rel in _JS_BUNDLE_PARTS:
+        parts.append((frontend / "js" / rel).read_bytes())
+    return b"\n".join(parts)
+
+
+def _js_bundle_mtime(frontend: Path) -> float:
+    """Самая свежая mtime частей - кэш-бастер WebView2 (замена mtime app.js)."""
+    newest = 0.0
+    for rel in _JS_BUNDLE_PARTS:
+        newest = max(newest, (frontend / "js" / rel).stat().st_mtime)
+    return newest
+
+
 # ── Таблицы маршрутов (аудит #1, Inc C завершён) ─────────────
 # path -> (цель, спец-аргументы). Цель - функция api_*(ctx, ...) -> dict
 # (или ApiError); "@ctx"/"@params"/"@data" подставляют контекст/query/тело
@@ -183,6 +212,21 @@ class ZapretHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _send_js_bundle(self) -> None:
+        """Склейка frontend/js/app/*.js -> ответ на js/app.js (аудит #2)."""
+        try:
+            body = _js_bundle_bytes(get_root_dir() / "frontend")
+        except OSError:
+            self._send_json({"error": "JS bundle incomplete"},
+                            HTTPStatus.INTERNAL_SERVER_ERROR)
+            return
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "application/javascript; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
     def _parse_body(self) -> dict:
         length = int(self.headers.get("Content-Length", 0))
         if length == 0:
@@ -235,6 +279,9 @@ class ZapretHandler(BaseHTTPRequestHandler):
         target, args = spec
         vals = [STATE if a == "@ctx" else params if a == "@params"
                 else data if a == "@data" else a for a in args]
+        if isinstance(target, str):
+            getattr(self, target)(*vals)
+            return True
         from server.api_common import ApiError
         try:
             result = target(*vals)
@@ -255,7 +302,7 @@ class ZapretHandler(BaseHTTPRequestHandler):
             # Кэш-buster: версия по mtime app.js / app.css - WebView2
             # кэширует статику, свежие правки не доходили (случай 2026-09-12)
             try:
-                js_mtime = int((frontend / "js" / "app.js").stat().st_mtime)
+                js_mtime = int(_js_bundle_mtime(frontend))
                 html = html.replace("js/app.js", f"js/app.js?v={js_mtime}")
             except OSError:
                 pass
@@ -274,6 +321,9 @@ class ZapretHandler(BaseHTTPRequestHandler):
         rel = path.lstrip("/")
         if rel.startswith("static/"):
             rel = rel[7:]
+        if rel == "js/app.js":
+            self._send_js_bundle()
+            return
         file_path = frontend / rel
         # Защита от path traversal (is_relative_to - не строковый
         # префикс: sibling-папка frontend2/backup не проходит)
