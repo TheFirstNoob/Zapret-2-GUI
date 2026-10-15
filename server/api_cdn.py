@@ -9,7 +9,7 @@ import ipaddress
 from core.config import DEFAULT_PROFILE
 from core.service_manager import is_installed as svc_installed
 from core.service_manager import start as svc_start
-from core.tester import Zapret2Tester
+from core.tester_probes import resolve_ips, safe_prefixes
 from server import api_service
 from server.api_common import ApiError
 from server.app_state import (AppContext, checkers_busy, get_config_manager,
@@ -23,7 +23,7 @@ def _resolve_many(domains: list[str], concurrency: int = 8) -> set[str]:
     out: set[str] = set()
     try:
         with ThreadPoolExecutor(max_workers=concurrency) as pool:
-            futs = [pool.submit(Zapret2Tester._resolve_ips, d) for d in domains]
+            futs = [pool.submit(resolve_ips, d) for d in domains]
             for f in as_completed(futs):
                 out.update(f.result())
     except Exception:
@@ -69,7 +69,7 @@ def _plan_cdn_action(domain: str, action: str, ips: list[str],
             ip_list = [str(ipaddress.ip_address(i)) for i in ips]
         except ValueError:
             return False, "Некорректный IP в запросе", []
-        prefixes = Zapret2Tester._safe_prefixes(ip_list, protection)
+        prefixes = safe_prefixes(ip_list, protection)
         if not prefixes:
             return False, f"{domain}: все адреса пересекаются с рабочими IP - пропускаем", []
         if action == "ipset-include":

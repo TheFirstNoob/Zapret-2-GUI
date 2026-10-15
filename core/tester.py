@@ -1,13 +1,10 @@
 from __future__ import annotations
 
-import gzip
 import ipaddress
 import os
-import socket
 import subprocess
 import threading
 import time
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional, TYPE_CHECKING
 
@@ -16,236 +13,20 @@ if TYPE_CHECKING:
 
 from core.launcher import build_args_from_preset, launch_winws2
 from core.status import FAIL_STATUSES
-
-
-# ── Уровни хостов ──────────────────────────────────────────────────
-
-# Реалистичные браузерные заголовки - иначе CDN отвечают 403 на bot-подобные
-# запросы без User-Agent.
-BROWSER_USER_AGENT = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) "
-    "Gecko/20100101 Firefox/128.0"
+from core import tester_probes, tester_proc, tester_scoring
+# Ре-экспорт статических определений (аудит #5): внешние модули исторически
+# импортируют их из core.tester; probes/proc/scoring берут напрямую из defs.
+from core.tester_defs import (  # noqa: F401
+    BROWSER_HEADERS, BROWSER_USER_AGENT, CDN_HOSTS, CDN_PROVIDERS,
+    CONTROL_DOMAINS, CONTROL_HOSTS, H3_WALL_DEADLINE, HOST_TEST,
+    NAKED_BASELINE_HOSTS, PING_HOSTS, QUIC_QUIRK_DOMAINS, RATED_HOSTS,
+    TCP1620_BODY, TEST_HOSTS, WINDIVERT_CLEANUP_DELAY,
+    CdnScanResult, CdnScanVerdict, ProfileTestResult, TestResult, _TestAbort,
+    is_control,
 )
-BROWSER_HEADERS = [
-    "-H", f"User-Agent: {BROWSER_USER_AGENT}",
-    "-H", "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "-H", "Accept-Language: en-US,en;q=0.5",
-    "-H", "Accept-Encoding: identity",
-]
-
-# Домены, которые идут в network_rate - ОБЯЗАНЫ быть покрыты нашими
-# hostlist'ами (иначе блок вне контроля пресета исказит скор стратегии).
-RATED_HOSTS = [
-    "discord.com", "gateway.discord.gg", "cdn.discordapp.com", "updates.discord.com",
-    "www.youtube.com", "youtu.be", "i.ytimg.com", "redirector.googlevideo.com",
-    "github.com", "raw.githubusercontent.com", "storage.googleapis.com",
-]
-
-# QUIC-класс (§15/§17): браузер ходит к этим хостам через QUIC, а тестер -
-# «чужим» TLS-клиентом (curl): google-блок (fake+multisplit) рвёт сторонний
-# ClientHello → 000 ПРИ работающем браузере. Измеряют «чужого клиента», а не
-# стратегию: из network_rate исключены, статус при 000 - QUIC (не BLOCKED).
-QUIC_QUIRK_DOMAINS = frozenset({
-    "www.youtube.com", "youtu.be", "i.ytimg.com",
-    "redirector.googlevideo.com", "storage.googleapis.com",
-})
-
-# QUIC-проба (12.10): реальный H3 вместо эвристики. niquests+qh3 - опциональная
-# зависимость сборки; без неё - прежний нейтральный статус QUIC. Контракт:
-# forced-H3, ассерт http_version==30, свежая сессия, внешний wall-clock дедлайн.
-H3_WALL_DEADLINE = 12.0
-
-# Пробуются, но НЕ в network_rate: excluded/непокрытые хосты показывают сырую
-# сеть без искажения сравнения стратегий. Чистка 2026-09-11: убраны мёртвые
-# (telegram/x/fb/inst/linkedin/whatsapp/fcm/apple - глубокий IP-блок, не лечится
-# движком, только шум и +50с к прогону); оставлены живые канарейки и РФ-домены
-# (vk/ya/gosuslugi - «сеть жива»).
-CONTROL_HOSTS = [
-    "www.google.com", "www.gstatic.com",
-    "www.cloudflare.com", "cdnjs.cloudflare.com",
-    "vk.ru", "ya.ru", "www.gosuslugi.ru",
-]
-
-TEST_HOSTS = RATED_HOSTS + CONTROL_HOSTS
-CONTROL_DOMAINS = frozenset(CONTROL_HOSTS)
-
-
-def is_control(domain: str) -> bool:
-    """control-хост и его www-алиас (из _expand_with_www) не должны искажать
-    network_rate: например www.x.com из control-хоста x.com.
-
-    Публичная (аудит #10): server.py раньше держал инлайн-копии этой логики."""
-    base = domain[4:] if domain.startswith("www.") else ""
-    return base in CONTROL_DOMAINS
-
-# Тип теста по домену: "http" = curl GET (HTTP-код), "tls" = только handshake.
-HOST_TEST: dict[str, str] = {
-    "discord.com":              "http",
-    "gateway.discord.gg":       "tls",
-    "cdn.discordapp.com":       "tls",
-    "updates.discord.com":      "tls",
-    "www.youtube.com":          "http",
-    "youtu.be":                 "http",
-    "i.ytimg.com":              "tls",
-    "redirector.googlevideo.com": "tls",
-    "github.com":               "http",
-    "raw.githubusercontent.com": "http",
-    "storage.googleapis.com":   "tls",
-    "www.google.com":           "http",
-    "www.gstatic.com":          "tls",
-    "www.cloudflare.com":       "http",
-    "cdnjs.cloudflare.com":     "tls",
-    "vk.ru":                    "http",
-    "ya.ru":                    "http",
-    "www.gosuslugi.ru":         "http",
-}
-
-# Пинги - только DNS-канарейки (IP): доменные пинги убраны 2026-09-13 -
-# ICMP к discord/открытым сервисам всегда блокирован и краснил рабочие хосты.
-PING_HOSTS: list[str] = [
-    "1.1.1.1", "1.0.0.1",
-    "8.8.8.8", "8.8.4.4",
-    "9.9.9.9",
-]
-
-# Хосты голого теста (без защиты) перед прогоном профилей: если все стратегии
-# дают тот же результат - winws2 не перехватывает трафик или DPI экстремальный.
-# 2026-09-12: расширен до полного RATED-набора (без www-алиасов) - «Голый тест
-# N/4» был слишком узким для same_as_naked; QUIC-класс НЕ включён (их TCP-проба
-# в голую всегда 000), www.google.com - канарейка «сеть жива».
-NAKED_BASELINE_HOSTS: list[str] = [
-    "discord.com", "gateway.discord.gg", "cdn.discordapp.com", "updates.discord.com",
-    "github.com", "raw.githubusercontent.com",
-    "www.google.com",
-]
-
-# Размер тела TCP 16-20 теста: 64 КБ случайных данных - stateful DPI режет поток в середине передачи.
-TCP1620_BODY = 64 * 1024
-
-# CDN-хосты теста (опционально, через галочку)
-CDN_HOSTS = [
-    "hyperion-cs.github.io", "www.mobil.com.se", "cdn.apple-mapkit.com",
-    "amplifon.com", "optout.aboutads.info", "cdn.eso.org",
-    "go.coveo.com", "justice.gov", "img.wzstats.gg", "esm.sh",
-    "antoniotartaglia.it", "status.moow.info", "ui-arts.com",
-    "app.thecuriositylibrary.com", "admin.survey54.com", "ssl.p.jwpcdn.com",
-    "www.jetblue.com", "buyvm.net", "dmvideo.download",
-    "gcore.com", "api.usercentrics.eu", "widgets.reputation.com",
-    "king.hr", "mail.server.apaone.com", "nioges.com",
-    "5fd8bdae.nip.io", "net4u.de", "elecane.com",
-    "store.takeda.com", "sh00065.hostgator.com", "ged.com.sg",
-    "www.adwin.fr", "www.emca.be", "www.velivole.fr",
-    "askit-app.de", "us.rudder.qntmnet.com",
-]
-CDN_PROVIDERS: dict[str, str] = {
-    "hyperion-cs.github.io": "Self",
-    "www.mobil.com.se": "Akamai",
-    "cdn.apple-mapkit.com": "Akamai",
-    "amplifon.com": "AWS",
-    "optout.aboutads.info": "AWS",
-    "cdn.eso.org": "CDN77",
-    "go.coveo.com": "Cloudflare",
-    "justice.gov": "Cloudflare",
-    "img.wzstats.gg": "Cloudflare",
-    "esm.sh": "Cloudflare",
-    "antoniotartaglia.it": "Contabo",
-    "status.moow.info": "Contabo",
-    "ui-arts.com": "DigitalOcean",
-    "app.thecuriositylibrary.com": "DigitalOcean",
-    "admin.survey54.com": "DigitalOcean",
-    "ssl.p.jwpcdn.com": "Fastly",
-    "www.jetblue.com": "Fastly",
-    "buyvm.net": "FT/BuyVM",
-    "dmvideo.download": "FT/BuyVM",
-    "gcore.com": "Gcore",
-    "api.usercentrics.eu": "GCP",
-    "widgets.reputation.com": "GCP",
-    "king.hr": "Hetzner",
-    "mail.server.apaone.com": "Hetzner",
-    "nioges.com": "Hetzner",
-    "5fd8bdae.nip.io": "Hetzner",
-    "net4u.de": "Hetzner",
-    "elecane.com": "Melbicom",
-    "store.takeda.com": "Azure",
-    "sh00065.hostgator.com": "Oracle",
-    "ged.com.sg": "Oracle",
-    "www.adwin.fr": "OVH",
-    "www.emca.be": "OVH",
-    "www.velivole.fr": "Scaleway",
-    "askit-app.de": "Vultr",
-    "us.rudder.qntmnet.com": "Vultr",
-}
-
-WINDIVERT_CLEANUP_DELAY = 0.5
-
-
-@dataclass
-class TestResult:
-    domain: str
-    test_type: str
-    status: str
-    status_code: int = 0
-    time_ms: float = 0.0
-    error: str = ""
-
-
-@dataclass
-class ProfileTestResult:
-    profile_name: str
-    results: list[TestResult] = field(default_factory=list)
-    ok_count: int = 0
-    fail_count: int = 0
-    total_time: float = 0.0
-    success_rate: float = 0.0
-    # Скор стратегии ТОЛЬКО по сетевым тестам (curl/TLS, пинги исключены):
-    # пинги меряют голую связность, их включение даёт лживый «partial».
-    net_ok_count: int = 0
-    net_fail_count: int = 0
-    net_total: int = 0
-    network_rate: float = 0.0
-    ping_ok_count: int = 0
-    ping_total: int = 0
-    tier: str = "full"
-    provider_hop: int = 0      # первый хоп вне локальной сети (TTL-проба)
-    provider_ip: str = ""       # IP этого хопа
-
-
-class _TestAbort(Exception):
-    def __init__(self, result=None): self.result = result
-
-
-@dataclass
-class CdnScanVerdict:
-    domain: str
-    provider: str
-    alive: str            # "A" - жив под защитой, "x" - мёртв
-    dpi: str              # "DET" - stateful DPI режет, "ok" - не режет, "-" - не проверялось
-    naked: str            # "A"/"x"/"-" - живой/мёртвый без защиты (- если не проверялось)
-    verdict: str          # fix / ok / break / dead / unknown / hard / covered
-    ips: list[str] = field(default_factory=list)   # IP кандидата (для ipset-включений)
-    covered: bool = False  # все IP уже внутри ipset-all - наложения нет
-    ipset: str = "-"       # A/B: чинит | ломает | - (эффект IP-обхода для хоста)
-
-
-@dataclass
-class CdnScanResult:
-    verdicts: list[CdnScanVerdict] = field(default_factory=list)
-    naked_done: bool = False
-    z2_was: bool = False
-    z1_was: bool = False
-    error: str = ""
-    ipset_mode: bool = False
-    protection_touched: bool = False  # скан сам перезапускал защиту - рестор обязателен
-    ab_done: bool = False             # A/B-прогон (второй режим ipset) состоялся
-    ab_fixed: int = 0                 # хостов, которые чинит IP-обход
-    ab_broken: int = 0                # хостов, которые IP-обход ломает
 
 
 class Zapret2Tester:
-    # Кэш наличия niquests+qh3 (опциональный бандл сборки): False - фолбэк на
-    # прежнюю эвристику QUIC (см. _quic_h3_probe).
-    _has_niquests: Optional[bool] = None
-
     def __init__(self, root_dir: Path, timeout: int = 8) -> None:
         self.root_dir = Path(root_dir)
         self.bin_dir = self.root_dir / "bin"
@@ -269,182 +50,22 @@ class Zapret2Tester:
         """CIDR-сети из ipset-all.txt.gz (кэш на инстанс) - для проверки
         «IP кандидата уже десинкается ipset-режимом» (нет наложений)."""
         if self._ipset_net_cache is None:
-            nets: list = []
-            try:
-                with gzip.open(self.root_dir / "lists" / "ipset-all.txt.gz", "rt",
-                               encoding="utf-8", errors="replace") as f:
-                    for line in f:
-                        line = line.strip()
-                        if not line or line.startswith("#"):
-                            continue
-                        try:
-                            nets.append(ipaddress.ip_network(line, strict=False))
-                        except ValueError:
-                            continue
-            except OSError:
-                pass
-            self._ipset_net_cache = nets
+            self._ipset_net_cache = tester_probes.ipset_networks(self.root_dir)
         return self._ipset_net_cache
 
-    @staticmethod
-    def _resolve_ips(domain: str, timeout: float = 2.0) -> list[str]:
-        """A-записи домена (для ipset-включений: winws2 --ipset принимает IP)."""
-        try:
-            return sorted({addr[4][0] for addr in
-                           socket.getaddrinfo(domain, None, socket.AF_INET,
-                                              socket.SOCK_STREAM)
-                           if addr[4]})
-        except OSError:
-            return []
-
-    @staticmethod
-    def _safe_prefixes(ips: list[str], protection: set[str], max_prefix: int = 24) -> list[str]:
-        """Для каждого IP - НАИБОЛЬШИЙ чистый префикс, не пересекающийся с
-        защищёнными адресами: /max_prefix (натуральная аллокация, переживает
-        ротацию) или /32 (Anycast - общие адреса тысяч доменов). «ip/prefix»."""
-        out: list[str] = []
-        prot_objs: set[ipaddress.IPv4Address | ipaddress.IPv6Address] = set()
-        for p in protection:
-            try:
-                prot_objs.add(ipaddress.ip_address(p))
-            except ValueError:
-                continue
-        for s in ips:
-            try:
-                ip = ipaddress.ip_address(s)
-            except ValueError:
-                continue
-            # Только /max_prefix (натуральная аллокация CDN) или /32 (голый
-            # IP): промежуточные /25-/31 дают границы, чуждые реальным
-            # аллокациям провайдеров.
-            for plen in (max_prefix, 32):
-                net = ipaddress.ip_network(f"{ip}/{plen}", strict=False)
-                if any(p in net for p in prot_objs):
-                    continue
-                net_s = str(net)
-                if net_s not in out:
-                    out.append(net_s)
-                break
-        return out
-
     def _ensure_winws2_dead(self) -> None:
-        # Сначала managed-процесс по PID (чистый PID-таргетинг)
-        self._kill_managed()
-
-        # Минимальная задержка на освобождение WinDivert: даже если процесс
-        # уже мёртв, драйвер освобождает хендлы асинхронно.
-        time.sleep(WINDIVERT_CLEANUP_DELAY)
-
-        if not self._any_winws2_running():
-            return
-
-        # Чужой winws2 ещё жив - blanket kill (крайняя мера)
-        self._taskkill_safe("winws2.exe")
-
-        # Поллинг: ждём освобождения WinDivert вместо фиксированного sleep
-        self._wait_windivert_free()
-
-    def _any_winws_running(self) -> bool:
-        """True если хотя бы один winws2.exe или winws.exe запущен (аудит #7)."""
-        from core.proc import image_running
-        return (image_running("winws2.exe", timeout=3)
-                or image_running("winws.exe", timeout=3))
-
-    def _any_winws2_running(self) -> bool:
-        """True если winws2.exe запущен (только winws2, без winws.exe)."""
-        from core.proc import image_running
-        return image_running("winws2.exe", timeout=3)
-
-    def _wait_windivert_free(self, timeout: float = WINDIVERT_CLEANUP_DELAY * 4) -> None:
-        """Poll пока winws2 процессы не исчезнут (WinDivert освобождается).
-        _TIMEOUT - upper bound, обычно <100ms если kill уже отработал."""
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            if not self._any_winws2_running():
-                return
-            time.sleep(0.1)
+        tester_proc.ensure_winws2_dead(self._kill_managed)
 
     def _kill_managed(self) -> None:
         proc = self._process
-        if proc is None:
-            return
-        pid = proc.pid
         self._process = None
-        # taskkill по PID надёжнее цепочки terminate/kill
-        from core.proc import kill_pid
-        kill_pid(pid, timeout=5)
-        if not self._any_winws2_running():
-            return
-        # Фолбэк: terminate → kill
-        try:
-            if proc.poll() is None:
-                proc.terminate()
-                proc.wait(timeout=2)
-        except (subprocess.TimeoutExpired, OSError):
-            try:
-                proc.kill()
-                proc.wait(timeout=1)
-            except (OSError, subprocess.TimeoutExpired):
-                pass
+        tester_proc.kill_managed(proc)
 
-    @staticmethod
-    def _run_quiet(args: list[str], timeout: float = 6.0) -> None:
-        """Подпроцесс с гарантированным таймаутом; не бросает исключений."""
-        try:
-            proc = subprocess.Popen(
-                args,
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                text=True, encoding="oem", errors="replace",
-                creationflags=subprocess.CREATE_NO_WINDOW,
-            )
-            proc.communicate(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            try:
-                proc.kill()
-                proc.wait(timeout=2)
-            except Exception:
-                pass
-        except Exception:
-            pass
+    def _any_winws_running(self) -> bool:
+        return tester_proc.any_winws_running()
 
-    @staticmethod
-    def _process_exists(image_name: str) -> bool:
-        """Быстрая проверка: запущен ли процесс с таким именем (аудит #7)."""
-        from core.proc import image_running
-        return image_running(image_name, timeout=5)
-
-    @staticmethod
-    def _kill_never_hang(image_name: str) -> None:
-        """Убить процесс по имени (несколько способов) без зависаний:
-        сначала проверка существования, у каждого способа свой таймаут."""
-        if not Zapret2Tester._process_exists(image_name):
-            return
-
-        # Способ 1: taskkill
-        Zapret2Tester._run_quiet(["taskkill", "/F", "/IM", image_name], timeout=6.0)
-        if not Zapret2Tester._process_exists(image_name):
-            return
-
-        # Способ 2: wmic
-        Zapret2Tester._run_quiet(
-            ["wmic", "process", "where", f"name='{image_name}'", "delete"],
-            timeout=6.0,
-        )
-        if not Zapret2Tester._process_exists(image_name):
-            return
-
-        # Способ 3: PowerShell
-        base = image_name.replace(".exe", "").replace(".EXE", "")
-        Zapret2Tester._run_quiet(
-            ["powershell", "-NoProfile", "-Command",
-             f"Stop-Process -Name '{base}' -Force -ErrorAction SilentlyContinue"],
-            timeout=6.0,
-        )
-
-    @staticmethod
-    def _taskkill_safe(image_name: str) -> None:
-        """Убить процесс без зависаний: делегирует в _kill_never_hang."""
-        Zapret2Tester._kill_never_hang(image_name)
+    def _any_winws2_running(self) -> bool:
+        return tester_proc.any_winws2_running()
 
     def _run_profile(self, profile_name: str, ipset_catchall: bool = False,
                      fake_blob: str = "", discord_alt: bool = False) -> bool:
@@ -458,7 +79,7 @@ class Zapret2Tester:
         if not preset.exists():
             return False
 
-        self._wait_windivert_free()
+        tester_proc.wait_windivert_free()
 
         args = build_args_from_preset(self.root_dir, self.lua_dir, self.blobs_dir, preset,
                                       ipset_catchall=ipset_catchall, fake_blob=fake_blob,
@@ -474,365 +95,21 @@ class Zapret2Tester:
         self._process = None
         return ok
 
-    def _ping_test(self, domain: str) -> TestResult:
-        start = time.time()
-        try:
-            result = subprocess.run(
-                ["ping", "-n", "1", "-w", str(self.timeout * 1000), domain],
-                capture_output=True, text=True, encoding="oem", errors="replace", timeout=self.timeout + 2,
-                creationflags=subprocess.CREATE_NO_WINDOW,
-            )
-            elapsed = (time.time() - start) * 1000
-            if result.returncode == 0:
-                return TestResult(domain, "ping", "OK", time_ms=elapsed)
-            return TestResult(domain, "ping", "FAIL", time_ms=elapsed, error="Ping failed")
-        except (subprocess.TimeoutExpired, OSError) as e:
-            elapsed = (time.time() - start) * 1000
-            return TestResult(domain, "ping", "ERROR", time_ms=elapsed, error=str(e))
-
-    # ── curl-тесты (как в zapret_test_final.py - проверено, работает) ──
-
-    def _curl_attempt(self, url: str, head: bool, timeout: float) -> tuple[Optional[int], int, float, str]:
-        """Один curl к url: (http_code | None, returncode, elapsed_ms, stderr).
-
-        head=True - HEAD (-I), иначе полный GET; timeout - curl -m, а
-        --connect-timeout всегда 2с. TimeoutExpired/OSError - наружу (ловит _curl_test)."""
-        t0 = time.time()
-        args = ["curl.exe", "-4", "-s", "-m", str(int(timeout)),
-                "--connect-timeout", "2", "--show-error"]
-        if head:
-            args.insert(2, "-I")
-        args += BROWSER_HEADERS + ["-o", "NUL", "-w", "%{http_code}", url]
-        r = subprocess.run(
-            args, capture_output=True, text=True, encoding="oem", errors="replace",
-            timeout=timeout + 5, creationflags=subprocess.CREATE_NO_WINDOW,
-        )
-        s = r.stdout.strip()
-        code = int(s) if s.isdigit() else None
-        return code, r.returncode, (time.time() - t0) * 1000, (r.stderr or "")[:80]
-
-    def _curl_test(self, domain: str, test_type: str, path: str = "/") -> TestResult:
-        start = time.time()
-        url = f"https://{domain}{path}"
-        timeout = float(min(int(self.timeout), 6))
-        if domain in QUIC_QUIRK_DOMAINS:
-            # QUIC-класс: 000 для стороннего TLS-клиента неизбежен, статус
-            # всё равно QUIC - не ждём полные 6с
-            timeout = 3.0
-        try:
-            # HEAD быстрый, но не все серверы отвечают (#14: ложные 403/418) -
-            # при «000» GET-фолбэк. Пер-хостовых ретраев НЕТ: флак фиксируется
-            # как есть, спорные домены перепроверяет ОДИН общий речек (§29).
-            code, _, _, _ = self._curl_attempt(url, head=True, timeout=timeout)
-            if code is not None and code >= 100:
-                return TestResult(domain, test_type, "OK", code, (time.time() - start) * 1000)
-
-            code, rc, _, stderr = self._curl_attempt(url, head=False, timeout=timeout)
-            elapsed = (time.time() - start) * 1000
-            if code is not None and code >= 100:
-                return TestResult(domain, test_type, "OK", code, elapsed)
-            if code is not None:
-                # GET вернул «000» - нет HTTP-ответа.
-                if domain in QUIC_QUIRK_DOMAINS:
-                    # QUIC-класс: TCP-проба под десинком не показательная
-                    # (браузер ходит через QUIC). 12.10: реальная H3-проба
-                    # вместо эвристики; без niquests - прежний нейтральный QUIC.
-                    h3_ok, detail = self._quic_h3_probe(domain)
-                    # Полное время с пробой (ревью 13.10, P3-1): раньше в чипе
-                    # висело время провального TCP-этапа.
-                    elapsed = (time.time() - start) * 1000
-                    if h3_ok:
-                        return TestResult(domain, test_type, "QUIC", code,
-                                          elapsed, f"H3 подтверждён ({detail})")
-                    if detail.startswith("нет niquests"):
-                        return TestResult(domain, test_type, "QUIC", code,
-                                          elapsed, detail)
-                    # Проба выполнена, но H3 не подтверждён: НЕ приравниваем к
-                    # BLOCKED (ошибка инструмента/таймаут != доказательство
-                    # блокировки; ревью 12.10). Статус нейтрален и не входит
-                    # в ok/fail-статистику (_build_result).
-                    return TestResult(domain, test_type, "H3_NONE", code,
-                                      elapsed, f"H3 не подтверждён: {detail}")
-                return TestResult(domain, test_type, "BLOCKED", code, elapsed)
-            if test_type == "tls:443" and rc == 0:
-                return TestResult(domain, test_type, "OK", time_ms=elapsed)
-            err = stderr or f"rc={rc}"
-            return TestResult(domain, test_type, "ERROR", 0, elapsed, err)
-        except subprocess.TimeoutExpired:
-            elapsed = (time.time() - start) * 1000
-            return TestResult(domain, test_type, "TIMEOUT", 0, elapsed, "timeout")
-        except OSError as e:
-            elapsed = (time.time() - start) * 1000
-            return TestResult(domain, test_type, "ERROR", 0, elapsed, f"curl not found: {e}")
-
-    def _quic_h3_probe(self, domain: str) -> tuple[bool, str]:
-        """Настоящая QUIC/HTTP3-проба (niquests+qh3) - контракт точности:
-        forced-H3 (disable_http1/2 + preemptive quic_cache_layer, без TCP),
-        свежая сессия (strategy-test), внешний wall-clock дедлайн (поток-сторож).
-        Возвращает (ok, detail). Без niquests - (False, "нет niquests")."""
-        if Zapret2Tester._has_niquests is None:
-            try:
-                import niquests  # noqa: F401
-                Zapret2Tester._has_niquests = True
-            except ImportError:
-                Zapret2Tester._has_niquests = False
-        if not Zapret2Tester._has_niquests:
-            return False, "нет niquests"
-        import niquests
-
-        box: dict = {}
-
-        def worker() -> None:
-            s = None
-            try:
-                s = niquests.Session(disable_http1=True, disable_http2=True)
-                # Контракт: env/системные прокси не подхватываем (ревью 13.10,
-                # P2-1) - иначе проба уходит через прокси и умирает (H3_NONE).
-                s.trust_env = False
-                s.quic_cache_layer.add_domain(domain)
-                r = s.get(f"https://{domain}/", timeout=(4, 8),
-                          allow_redirects=False)
-                box["ver"] = getattr(r, "http_version", None)
-                box["code"] = r.status_code
-            except Exception as e:  # noqa: BLE001
-                box["err"] = type(e).__name__
-            finally:
-                if s is not None:
-                    try:
-                        s.close()
-                    except Exception:  # noqa: BLE001
-                        pass
-
-        th = threading.Thread(target=worker, daemon=True)
-        th.start()
-        th.join(H3_WALL_DEADLINE)
-        if th.is_alive():
-            return False, "H3 висит (дедлайн)"
-        if box.get("ver") == 30:
-            return True, f"H3 {box.get('code')}"
-        if "err" in box:
-            return False, f"QUIC {box['err']}"
-        return False, "H3 не подтверждён"
-
-    def _expand_with_www(self, domains: list[str]) -> list[str]:
-        """Расширяет список www-вариантами (плоский, без дублей). Поддомены
-        (redirector./gateway./cdn./cdnjs./i./updates.) и youtu.be - без www;
-        указанные с www. тестируются только как www (non-www часто редиректит)."""
-        CDN_PREFIXES = ("redirector.", "gateway.", "cdn.", "cdnjs.", "i.", "updates.")
-        NO_WWW = {"youtu.be"}
-        expanded: list[str] = []
-        seen: set[str] = set()
-        for d in domains:
-            base = d[4:] if d.startswith("www.") else d
-            # CDN-поддомены, NO_WWW и любые 3+ level-поддомены
-            # (web.telegram.org, api.push.apple.com) www-варианта не имеют.
-            if base in NO_WWW or base.startswith(CDN_PREFIXES) or base.count(".") >= 2:
-                if base not in seen:
-                    expanded.append(base)
-                    seen.add(base)
-                continue
-            if d.startswith("www."):
-                # домен указан с www - тестируем только www-вариант
-                if d not in seen:
-                    expanded.append(d)
-                    seen.add(d)
-                continue
-            for variant in (base, f"www.{base}"):
-                if variant not in seen:
-                    expanded.append(variant)
-                    seen.add(variant)
-        return expanded
-
-    def _host_test_type(self, domain: str) -> str:
-        """Тип теста для домена; если www-варианта нет в HOST_TEST - по базовому."""
-        t = HOST_TEST.get(domain)
-        if t:
-            return t
-        base = domain[4:] if domain.startswith("www.") else domain
-        return HOST_TEST.get(base, "http")
-
     def _run_domain_tests(self, domains: list[str], concurrency: int = 5, http_only: bool = False, result_cb=None, expand_www: bool = False, progress_cb=None) -> list[TestResult]:
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-        if expand_www:
-            test_items = self._expand_with_www(domains)
-        else:
-            test_items = list(domains)
-        total = len(test_items)
-        done = 0
-        results = []
-        with ThreadPoolExecutor(max_workers=concurrency) as pool:
-            futures = {}
-            for d in test_items:
-                if http_only:
-                    futures[pool.submit(self._curl_test, d, "http", path="/")] = d
-                else:
-                    ttype = self._host_test_type(d)
-                    label = "tls:443" if ttype == "tls" else "https"
-                    futures[pool.submit(self._curl_test, d, label)] = d
-            for fut in as_completed(futures):
-                d = futures[fut]
-                r = fut.result()
-                results.append(r)
-                done += 1
-                if progress_cb:
-                    progress_cb(done, total)
-                if result_cb:
-                    result_cb(r)
-        return results
-
-    # ── TCP 16-20 тест (из dpi-checkers) ───────────────────────────
-    # POST с 64 КБ случайного тела: если HEAD прошёл, а POST-соединение
-    # умирает (timeout/reset) - stateful DPI оборвал поток по контенту.
-
-    def _run_tcp1620_tests(self, domains: list[str], concurrency: int = 5) -> list[TestResult]:
-        """TCP 16-20: curl POST с 64 КБ случайного тела."""
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-        results = []
-        body_file = self.root_dir / "tcp1620_test_body.bin"
-        try:
-            body_file.write_bytes(os.urandom(TCP1620_BODY))
-        except OSError:
-            return [TestResult(d, "tcp1620", "ERROR", error="Cannot create test body") for d in domains]
-        with ThreadPoolExecutor(max_workers=concurrency) as pool:
-            futures = {}
-            for d in domains:
-                futures[pool.submit(self._tcp1620_test_curl, d, body_file)] = d
-            for fut in as_completed(futures):
-                results.append(fut.result())
-        try:
-            body_file.unlink()
-        except OSError:
-            pass
-        return results
-
-    def _tcp1620_test_curl(self, domain: str, body_file: Path) -> TestResult:
-        """TCP 16-20 через curl: POST 64 КБ, детект обрыва stateful DPI.
-
-        Классификация по size_upload, а не только по http-коду: сигнатура
-        «обрыв на N КБ» (как в dpi-detector, окно 12-36 КБ)."""
-        start = time.time()
-        try:
-            r = subprocess.run(
-                ["curl.exe", "-4", "--no-sessionid", "--no-keepalive",
-                 "-s", "-m", str(min(int(self.timeout), 6)),
-                 "-w", "%{http_code} %{size_upload}", "-o", "NUL",
-                 "--data-binary", f"@{body_file}",
-                 f"https://{domain}/"],
-                capture_output=True, text=True, encoding="oem", errors="replace", timeout=self.timeout + 5,
-                creationflags=subprocess.CREATE_NO_WINDOW,
-            )
-            elapsed = (time.time() - start) * 1000
-            parts = r.stdout.strip().split()
-            code = int(parts[0]) if parts and parts[0].isdigit() else 0
-            uploaded = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
-            if code >= 200 and code < 500:
-                # Сервер ответил - загрузка 64 КБ пережила поток: обрыва нет.
-                return TestResult(domain, "tcp1620", "OK", code, elapsed)
-            if uploaded >= TCP1620_BODY:
-                # Полный объём ушёл, ответа нет (сервер молчит/таймаут) -
-                # поток НЕ резан: это не сигнатура stateful DPI.
-                return TestResult(domain, "tcp1620", "OK", 0, elapsed,
-                                  "upload OK, ответа нет")
-            if uploaded > 0:
-                # Поток обрезан на N КБ - сигнатура stateful DPI (dpich Detected).
-                return TestResult(domain, "tcp1620", "TCP16_20", 0, elapsed,
-                                  f"обрыв на {uploaded // 1024} КБ - stateful DPI")
-            # uploaded == 0: соединение умерло до/в начале загрузки - фаза.
-            err = (r.stderr or "").lower()
-            if "reset by peer" in err or "recv failure" in err:
-                return TestResult(domain, "tcp1620", "BLOCKED", 0, elapsed, "TCP RST")
-            if "connection timed out" in err:
-                return TestResult(domain, "tcp1620", "BLOCKED", 0, elapsed, "SYN DROP")
-            if "ssl" in err and ("handshake" in err or "alert" in err):
-                return TestResult(domain, "tcp1620", "BLOCKED", 0, elapsed, "TLS RST")
-            if "timed out" in err:
-                return TestResult(domain, "tcp1620", "BLOCKED", 0, elapsed, "TIMEOUT")
-            return TestResult(domain, "tcp1620", "BLOCKED", 0, elapsed,
-                              (err.strip()[:60] or f"код {r.returncode}"))
-        except subprocess.TimeoutExpired:
-            elapsed = (time.time() - start) * 1000
-            return TestResult(domain, "tcp1620", "TIMEOUT", 0, elapsed, "POST timeout")
-        except OSError as e:
-            elapsed = (time.time() - start) * 1000
-            return TestResult(domain, "tcp1620", "ERROR", 0, elapsed, f"curl: {e}")
-
-    @staticmethod
-    def _net_stats(results: list[TestResult]) -> tuple[int, int, int, float, int, int]:
-        """Сетевые счётчики (curl/TLS) отдельно от пингов: (net_ok, net_fail,
-        net_total, network_rate, ping_ok, ping_total). network_rate - скор
-        стратегии: пинги меряют голую связность и завышают скор (все 8 пресетов
-        «20/30 (67%)» при реальной связности 4/13)."""
-        net = [r for r in results
-               if r.test_type != "ping" and r.domain not in CONTROL_DOMAINS
-               and r.domain not in QUIC_QUIRK_DOMAINS
-               and not is_control(r.domain)]
-        pings = [r for r in results if r.test_type == "ping"]
-        net_ok = sum(1 for r in net if r.status == "OK")
-        net_total = len(net)
-        net_fail = net_total - net_ok
-        ping_ok = sum(1 for r in pings if r.status == "OK")
-        rate = (net_ok / net_total * 100) if net_total else 0.0
-        return net_ok, net_fail, net_total, rate, ping_ok, len(pings)
+        return tester_probes.run_domain_tests(
+            domains, concurrency=concurrency, http_only=http_only,
+            result_cb=result_cb, expand_www=expand_www,
+            progress_cb=progress_cb, timeout=self.timeout)
 
     # ── TTL-проба ──────────────────────────────────────────────────
     # Traceroute до первого хопа вне локальной сети - вероятный DPI-бокс
     # провайдера; результат в ProfileTestResult для autottl-оптимизации.
 
-    @staticmethod
-    def _is_private_ip(ip: str) -> bool:
-        try:
-            return ipaddress.ip_address(ip).is_private
-        except ValueError:
-            return False
-
     def _probe_provider_ttl(self) -> dict:
         """tracert до google.com: первый не-приватный хоп (hop, ip, target).
         hop=0 при неудаче; результат кэшируется на инстанс (см. __init__)."""
-
-        if self._ttl_cache is not None:
-            return self._ttl_cache
-
-        # 5 хопов / 900 мс на пробу - достаточно, чтобы увидеть DPI-бокс
-        # провайдера (обычно хоп 1-4); худший случай ~14с вместо 25с+.
-        tracert_targets = ["google.com", "discord.com", "github.com"]
-        for target in tracert_targets:
-            try:
-                r = subprocess.run(
-                    ["tracert", "-d", "-h", "5", "-w", "900", target],
-                    capture_output=True, text=True, encoding="oem", errors="replace", timeout=14,
-                    creationflags=subprocess.CREATE_NO_WINDOW,
-                )
-                output = r.stdout
-                if not output:
-                    continue
-                lines = output.splitlines()
-                import re as _re
-                for line in lines:
-                    line = line.strip()
-                    # Формат: " 3    12 ms    15 ms    10 ms  213.180.36.1"
-                    m = _re.match(r'\s*(\d+)\s+<\d+', line)
-                    if not m:
-                        m = _re.match(r'\s*(\d+)\s+\d+', line)
-                    if not m:
-                        continue
-                    hop = int(m.group(1))
-                    # IP в конце строки
-                    ip_match = _re.findall(r'(\d+\.\d+\.\d+\.\d+)', line)
-                    if not ip_match:
-                        continue
-                    ip = ip_match[-1]
-                    if not Zapret2Tester._is_private_ip(ip):
-                        self._ttl_cache = {"hop": hop, "ip": ip, "target": target}
-                        return self._ttl_cache
-                    # все хопы приватные - отдаём последний
-                    if hop >= 5:
-                        self._ttl_cache = {"hop": hop, "ip": ip, "target": target}
-                        return self._ttl_cache
-            except (subprocess.TimeoutExpired, OSError):
-                continue
-
-        # Ни один target не дал результата - идём без TTL
-        self._ttl_cache = {"hop": 0, "ip": "", "target": ""}
+        if self._ttl_cache is None:
+            self._ttl_cache = tester_probes.probe_provider_ttl()
         return self._ttl_cache
 
     def _get_tier_hosts(self, tier: str) -> list[str]:
@@ -918,28 +195,10 @@ class Zapret2Tester:
         return profile_name, provider_hop, provider_ip, self.timeout
 
     def _build_result(self, profile_name, all_results, provider_hop, provider_ip, tier, _logged_progress):
-        _logged_progress(97, "Остановка...")
-        self._ensure_winws2_dead()
-        ok_count = sum(1 for r in all_results if r.status == "OK")
-        fail_count = sum(1 for r in all_results if r.status in FAIL_STATUSES)
-        total_time = sum(r.time_ms for r in all_results)
-        total = ok_count + fail_count
-        success_rate = (ok_count / total * 100) if total else 0
-        net_ok, net_fail, net_total, network_rate, ping_ok, ping_total = self._net_stats(all_results)
-        if self._logger:
-            self._logger.result(profile_name, ok_count, fail_count, success_rate, provider_hop, provider_ip or "")
-        _logged_progress(
-            100,
-            f"Профиль завершён: сеть {net_ok}/{net_total} ({network_rate:.0f}%), "
-            f"всего проверок {total}")
-        return ProfileTestResult(
-            profile_name=profile_name, results=all_results,
-            ok_count=ok_count, fail_count=fail_count, total_time=total_time,
-            success_rate=success_rate, tier=tier,
-            net_ok_count=net_ok, net_fail_count=net_fail, net_total=net_total,
-            network_rate=network_rate, ping_ok_count=ping_ok, ping_total=ping_total,
-            provider_hop=provider_hop, provider_ip=provider_ip,
-        )
+        return tester_scoring.build_result(
+            profile_name, all_results, provider_hop, provider_ip, tier,
+            _logged_progress, kill_fn=self._ensure_winws2_dead,
+            logger=self._logger)
 
     def test_profile(
         self,
@@ -1005,7 +264,7 @@ class Zapret2Tester:
 
             for host in PING_HOSTS:
                 if self.shutdown_event.is_set(): break
-                all_results.append(self._ping_test(host))
+                all_results.append(tester_probes.ping_test(host, self.timeout))
                 if result_cb: result_cb(all_results[-1])
                 ping_done += 1
                 progress_cb(55 + int(ping_done * 20 / ping_total), f"ping {host}")
@@ -1049,7 +308,7 @@ class Zapret2Tester:
             dpi_map: dict[str, str] = {}
             if alive:
                 progress_cb(25, "Проверка stateful DPI (TCP 16-20)...")
-                for r in self._run_tcp1620_tests(alive):
+                for r in tester_probes.run_tcp1620_tests(self.root_dir, alive, timeout=self.timeout):
                     dpi_map[r.domain] = "DET" if r.status == "TCP16_20" else "ok"
             # ── A/B: второй прогон в противоположном режиме ipset ──
             # Включение/выключение IP-обхода меняет картину «пробило/сломало»:
@@ -1074,7 +333,7 @@ class Zapret2Tester:
                     alive2 = [r.domain for r in battery2 if r.status == "OK"]
                     if alive2 and not self.shutdown_event.is_set():
                         progress_cb(42, "Проверка stateful DPI во втором прогоне...")
-                        for r in self._run_tcp1620_tests(alive2):
+                        for r in tester_probes.run_tcp1620_tests(self.root_dir, alive2, timeout=self.timeout):
                             det2_map[r.domain] = "DET" if r.status == "TCP16_20" else "ok"
                 else:
                     progress_cb(48, "A/B-прогон не состоялся (пресет не стартовал)")
@@ -1114,7 +373,7 @@ class Zapret2Tester:
                 nets = self._ipset_networks()
                 fix_domains = [d for d in verify_map if verify_map[d] == "fix"]
                 for d in fix_domains:
-                    ips = self._resolve_ips(d)
+                    ips = tester_probes.resolve_ips(d)
                     ip_map[d] = ips
                     cover_map[d] = bool(ips) and all(
                         any(ipaddress.ip_address(ip) in n for n in nets) for ip in ips)
@@ -1167,7 +426,7 @@ class Zapret2Tester:
             need_ips = [v.domain for v in result.verdicts if v.ipset in ("чинит", "ломает")]
             if need_ips and not self.shutdown_event.is_set():
                 progress_cb(95, f"Резолв IP для точечных действий ({len(need_ips)})...")
-                ip_by_domain = {d: self._resolve_ips(d) for d in need_ips}
+                ip_by_domain = {d: tester_probes.resolve_ips(d) for d in need_ips}
                 for v in result.verdicts:
                     if v.ipset in ("чинит", "ломает"):
                         v.ips = ip_by_domain.get(v.domain, [])
@@ -1370,7 +629,7 @@ class Zapret2Tester:
             for d in domains:
                 result[d] = "hard" if d not in alive_names else "fix"
             if alive_names:
-                for r in self._run_tcp1620_tests(sorted(alive_names)):
+                for r in tester_probes.run_tcp1620_tests(self.root_dir, sorted(alive_names), timeout=self.timeout):
                     if r.status == "TCP16_20":
                         result[r.domain] = "hard"
             return result
@@ -1394,7 +653,7 @@ class Zapret2Tester:
                  if inc_path.exists() else None)
         all_ips: set[str] = set()
         for d in domains:
-            all_ips.update(self._resolve_ips(d))
+            all_ips.update(tester_probes.resolve_ips(d))
         if not all_ips:
             return result
         try:
@@ -1411,7 +670,7 @@ class Zapret2Tester:
             for d in domains:
                 result[d] = "hard" if d not in alive_names else "fix"
             if alive_names:
-                for r in self._run_tcp1620_tests(sorted(alive_names)):
+                for r in tester_probes.run_tcp1620_tests(self.root_dir, sorted(alive_names), timeout=self.timeout):
                     if r.status == "TCP16_20":
                         result[r.domain] = "hard"
             return result
@@ -1472,7 +731,7 @@ class Zapret2Tester:
         for host in PING_HOSTS:
             if self.shutdown_event.is_set():
                 return ProfileTestResult(profile_name=profile_name)
-            all_results.append(self._ping_test(host))
+            all_results.append(tester_probes.ping_test(host, self.timeout))
             if result_cb:
                 result_cb(all_results[-1])
             ping_done += 1
@@ -1483,7 +742,7 @@ class Zapret2Tester:
         total_time = sum(r.time_ms for r in all_results)
         total = ok_count + fail_count
         success_rate = (ok_count / total * 100) if total else 0
-        net_ok, net_fail, net_total, network_rate, ping_ok, ping_total = self._net_stats(all_results)
+        net_ok, net_fail, net_total, network_rate, ping_ok, ping_total = tester_scoring.net_stats(all_results)
 
         result = ProfileTestResult(
             profile_name=profile_name,
@@ -1544,7 +803,7 @@ class Zapret2Tester:
             NAKED_BASELINE_HOSTS, concurrency=4, expand_www=False,
             result_cb=result_cb,
         )
-        net_ok, net_fail, net_total, network_rate, *_ = self._net_stats(results)
+        net_ok, net_fail, net_total, network_rate, *_ = tester_scoring.net_stats(results)
         return ProfileTestResult(
             profile_name="__naked__", results=results,
             ok_count=net_ok, fail_count=net_fail,
