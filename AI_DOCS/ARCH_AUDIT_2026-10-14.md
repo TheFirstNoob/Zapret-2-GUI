@@ -710,9 +710,15 @@ Severity: S1 — мешает пониманию/сопровождению си
   в api_update), main.py берёт get_tester из app_state, удалён мёртвый
   _run_with_timeout*. Верификация: T26 (22 GET + 40 POST роутов) +
   api_smoke + 46 security-тестов — OK; служба RUNNING.
-- ⏳ осталось: #3 (дробление веток run_tester_action + custom_build) ->
-  #5 (tester) -> #9 (QUIC/timeouts) -> #2 (app.js ПОСЛЕДНИМ; склейка
-  файлов на сервере).
+- ✅ **#3 (run_tester_action + custom)** — 14.10 (после #1): воркеры тестера
+  увезены из server.py в `server/tester_flow.py`, run_tester_action раздроблен
+  на ветки-функции (`_test_branch/_test_profiles_branch/_cdn_scan_branch/
+  _current_branch/_naked_branch/_full_analysis_branch`, state/tester - явно);
+  сборка/валидация/smoke личной стратегии - `server/custom_build.py`
+  (`build_custom_strategy`). Логика прогонов не менялась. T27 (структурный)
+  + api_smoke OK.
+- ⏳ осталось: #5 (tester) -> #9 (QUIC/timeouts) -> #2 (app.js ПОСЛЕДНИМ;
+  склейка файлов на сервере).
 
 
 ### Корректировка порядка и решения (советник, 14.10)
