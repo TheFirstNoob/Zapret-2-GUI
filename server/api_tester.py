@@ -9,7 +9,8 @@ import threading
 
 from server import tester_flow
 from server.api_common import ApiError
-from server.app_state import STATE, AppContext, checkers_busy, get_tester
+from server.app_state import (STATE, AppContext, checkers_busy, get_tester,
+                              scan_winws_exe)
 
 
 def tester_status(ctx: AppContext) -> dict:
@@ -26,6 +27,14 @@ def tester_action(ctx: AppContext, data: dict) -> dict:
     busy = checkers_busy()
     if busy:
         raise ApiError(409, {"status": "error", "message": busy})
+    # P1-2: Zapret 1 (winws.exe) своим десинком искажает «голый» тест и все
+    # профили. Действия, которые сами его не обрабатывают (current/naked/
+    # cdn_scan умеют), отказывают - как это делает кнопка «Запустить».
+    if action in ("test", "test_profiles", "full_analysis") and \
+            scan_winws_exe()["running"]:
+        raise ApiError(409, {"status": "error",
+                             "message": "Zapret 1 (winws.exe) запущен. "
+                                        "Остановите его перед запуском проверки."})
     # Решение «занят/свободен» принимаем атомарно под локом: отметка
     # running=True здесь же закрывает окно для второго параллельного POST.
     with STATE.tester_state.lock:

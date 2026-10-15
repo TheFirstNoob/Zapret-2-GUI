@@ -322,6 +322,20 @@ def _test_branch(state, tester, data: dict) -> None:
     state.set_final(serialize_result(result))
 
 
+def _is_start_failure(res) -> bool:
+    """Профиль НЕ запустился (аборт движка/пустой результат).
+
+    Аборт test_profile возвращает ProfileTestResult с единственным служебным
+    TestResult(test_type="process"); такие НЕ должны попадать в ранжирование
+    как 0%-стратегии (ревью-раунд 3: ошибка запуска != плохая стратегия)."""
+    if res is None:
+        return True
+    res_list = getattr(res, "results", None) or []
+    if not res_list:
+        return True
+    return all(r.test_type == "process" for r in res_list)
+
+
 def _test_profiles_branch(state, tester, data: dict) -> None:
     profiles = data.get("profiles", None)
     if not profiles:
@@ -341,6 +355,7 @@ def _test_profiles_branch(state, tester, data: dict) -> None:
     # свежая сборка получает одну проверочную сессию ниже.
     profiles = [p for p in profiles if p != "custom"]
     all_results = []
+    start_failures: list[str] = []
     alt_params = bool(data.get("alt_params", False))
     # Прогоны: база для всех пресетов; с галочкой - ещё и ALT
     # (справочно: в рекомендацию идут только базовые прогоны).
@@ -383,21 +398,29 @@ def _test_profiles_branch(state, tester, data: dict) -> None:
             progress(overall, msg)
 
         cb_for_profile = make_result_cb(state, profile=label)
-        res = run_tester(
-            lambda pn=profile_name, cb=cb_for_profile, alt=is_alt: tester.test_profile(
-                pn, _inner_progress, tier=_tier,
-                result_cb=cb,
-                ipset_catchall=ipset_mode,
-                discord_alt=alt)
-        )
-        if res is not None:
+        try:
+            res = run_tester(
+                lambda pn=profile_name, cb=cb_for_profile, alt=is_alt: tester.test_profile(
+                    pn, _inner_progress, tier=_tier,
+                    result_cb=cb,
+                    ipset_catchall=ipset_mode,
+                    discord_alt=alt)
+            )
+        except Exception as e:  # noqa: BLE001
+            # P2: неожиданный сбой одного профиля не рушит весь свип
+            _ui_debug(f"tester: profile {label} EXCEPTION: {e!r}")
+            res = None
+        if _is_start_failure(res):
+            # P1-1: движок не запустился - это НЕ 0%-стратегия; в
+            # ранжирование не идёт (иначе вердикт врёт «не пробило»)
+            start_failures.append(label)
+            progress(int(6 + (idx + 1) / total * 94),
+                     f"Стратегия {label}: не запустилась")
+        else:
             if not is_alt:
                 all_results.append(res)
             progress(int(6 + (idx + 1) / total * 94),
                      f"Стратегия {label}: {res.success_rate:.0f}%")
-        else:
-            progress(int(6 + (idx + 1) / total * 94),
-                     f"Стратегия {label}: не запустилась")
         with state.lock:
             state.completed.append(label)
     if all_results:
@@ -426,12 +449,23 @@ def _test_profiles_branch(state, tester, data: dict) -> None:
         # сессии, прежде чем рекомендовать её (в прогоне её не было).
         if final.get("custom", {}).get("valid") and not tester.shutdown_event.is_set():
             progress(98, "Тестируем собранную стратегию custom...")
-            res = run_tester(
-                lambda: tester.test_profile(
-                    "custom", make_progress_cb(state),
-                    tier=_tier, result_cb=make_result_cb(state, profile="custom"),
-                    ipset_catchall=ipset_mode)
-            )
+            try:
+                res = run_tester(
+                    lambda: tester.test_profile(
+                        "custom", make_progress_cb(state),
+                        tier=_tier, result_cb=make_result_cb(state, profile="custom"),
+                        ipset_catchall=ipset_mode)
+                )
+            except Exception as e:  # noqa: BLE001
+                _ui_debug(f"tester: custom check EXCEPTION: {e!r}")
+                res = None
+            if res is not None and _is_start_failure(res):
+                # custom не стартовал: не 0%-результат, а сбой движка
+                custom["valid"] = False
+                custom["error"] = ("custom не запустился в проверочной "
+                                   "сессии (движок/WinDivert)")
+                _ui_debug("tester: custom check start failed")
+                res = None
             if res is not None:
                 all_results.append(res)
                 best = max(all_results, key=lambda r: (r.network_rate, r.net_ok_count))
@@ -464,12 +498,33 @@ def _test_profiles_branch(state, tester, data: dict) -> None:
         # (было: после basic-прогона обход пропадал молча).
         # z2_was/svc_was захвачены В НАЧАЛЕ прогона (до naked),
         # здесь они уже не читаются - winws2 к этому моменту гашен.
+        if start_failures:
+            final["start_failures"] = start_failures
         if not tester.shutdown_event.is_set():
+            # P2-4: z2_was может быть False при живой службе (winws2 умер до
+            # замера) - svc_was обязан вернуть службу в этом случае.
             final["restored"] = restore_protection_after_naked(
-                z2_was, False, state, svc_was)
+                z2_was or svc_was, False, state, svc_was)
 
         play_completion_sound()
         state.set_final(final, [serialize_result(r) for r in all_results])
+    elif start_failures and not tester.shutdown_event.is_set():
+        # P1-1: ни одного валидного прогона - честный вердикт «движок не
+        # запустился» (UI: engine_broken), а не «стратегии не пробили».
+        state.set_final({
+            "profile": "",
+            "start_failures": start_failures,
+            "recommendation": {
+                "verdict": "engine_broken",
+                "best_profile": "",
+                "message": ("⚠ Ни один профиль не запустился: winws2 не "
+                            "стартует или WinDivert занят (сбой: "
+                            + ", ".join(start_failures[:6])
+                            + "). Смотрите test_session.log; попробуйте "
+                            "«Выгрузить драйвер» на главной или перезапустите "
+                            "программу."),
+            },
+        })
     else:
         state.running = False
 
