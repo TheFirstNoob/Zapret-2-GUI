@@ -4,7 +4,7 @@ r"""Контракт статусов на проводе (аудит #10).
 
 1) значения core.status.HostStatus == замороженному wire-множеству;
 2) FAIL_STATUSES согласован с enum;
-3) JS-дрейф: статус-литералы в frontend/js/app.js, которых Python НЕ выдаёт
+3) JS-дрейф: статус-литералы в frontend/js/app/*.js, которых Python НЕ выдаёт
    (мёртвые ветки, ловим класс OK_BLOCKED/DPI_DROP).
 """
 from __future__ import annotations
@@ -40,7 +40,11 @@ def main() -> int:
         print("FAIL: FAIL_STATUSES содержит не-enum значения:",
               sorted(set(FAIL_STATUSES) - frozenset(HostStatus)))
 
-    js = (ROOT / "frontend" / "js" / "app.js").read_text(encoding="utf-8")
+    # JS разрезан на части frontend/js/app/*.js (аудит #2): читаем все части -
+    # после порезки app.js больше не существует (регресс 15da2a6, фикс здесь).
+    app_dir = ROOT / "frontend" / "js" / "app"
+    js = "\n".join(p.read_text(encoding="utf-8")
+                   for p in sorted(app_dir.glob("*.js")))
     js_used = set(re.findall(
         r"'(OK|OK_BLOCKED|BLOCKED|TIMEOUT|FAIL|ERROR|QUIC[_A-Z]*|H3_NONE"
         r"|TCP16_20|DPI_DROP|DETECTED|SYN DROP|TCP RST|TLS RST|N/A)'", js))
