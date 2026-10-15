@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import gzip
 import ipaddress
+import json
 import os
 import re
 import socket
@@ -16,6 +17,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Optional
+from urllib.parse import quote
 
 from core import timeouts
 from core.probe_h3 import probe_h3
@@ -51,6 +53,46 @@ def resolve_ips(domain: str, timeout: float = 2.0) -> list[str]:
                                           socket.SOCK_STREAM)
                        if addr[4]})
     except OSError:
+        return []
+
+
+def _is_dns_error(rc: int, stderr: str) -> bool:
+    """curl-ошибка РЕЗОЛВА (rc=6 «Could not resolve host»): резолвер не
+    отдал адрес (спуф/сбой), а не блокировка сети."""
+    return rc == 6 or "could not resolve" in (stderr or "").lower()
+
+
+def _doh_ipv4s(payload: str) -> list[str]:
+    """IPv4 из JSON-ответа dns.google (Answer[].data, type==1)."""
+    try:
+        data = json.loads(payload)
+    except (ValueError, TypeError):
+        return []
+    out = []
+    for a in data.get("Answer") or []:
+        if a.get("type") == 1:
+            ip = str(a.get("data", "")).strip()
+            if ip:
+                out.append(ip)
+    return sorted(set(out))
+
+
+def doh_resolve_ips(domain: str, timeout: float | None = None) -> list[str]:
+    """A-записи домена через DoH (dns.google). ТОЛЬКО фолбэк, когда штатный
+    резолвер не отдал адрес (кейс 12.10: www.youtube.com «мёртв» у всех
+    клиентов из-за спуфа системного DNS, под DoH - жив). Пусто при любой
+    ошибке - вызывающий продолжает штатным путём."""
+    t = timeouts.DOH if timeout is None else float(timeout)
+    url = "https://dns.google/resolve?name=%s&type=A" % quote(domain)
+    try:
+        r = subprocess.run(
+            ["curl.exe", "-4", "-s", "-m", str(int(t)),
+             "--connect-timeout", str(timeouts.CONNECT), url],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=t + timeouts.WALL_PAD, creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+        return _doh_ipv4s(r.stdout or "")
+    except (subprocess.TimeoutExpired, OSError):
         return []
 
 
@@ -104,16 +146,21 @@ def ping_test(domain: str, timeout: float) -> TestResult:
 # ── curl-тесты (как в zapret_test_final.py - проверено, работает) ──
 
 
-def curl_attempt(url: str, head: bool, timeout: float) -> tuple[Optional[int], int, float, str]:
+def curl_attempt(url: str, head: bool, timeout: float,
+                 resolve: Optional[str] = None) -> tuple[Optional[int], int, float, str]:
     """Один curl к url: (http_code | None, returncode, elapsed_ms, stderr).
 
     head=True - HEAD (-I), иначе полный GET; timeout - curl -m, а
-    --connect-timeout всегда 2с. TimeoutExpired/OSError - наружу (ловит curl_test)."""
+    --connect-timeout всегда 2с. resolve ("host:443:ip") принудительно
+    задаёт адрес в обход системного DNS (DoH-фолбэк при спуфе).
+    TimeoutExpired/OSError - наружу (ловит curl_test)."""
     t0 = time.time()
     args = ["curl.exe", "-4", "-s", "-m", str(int(timeout)),
             "--connect-timeout", str(timeouts.CONNECT), "--show-error"]
     if head:
         args.insert(2, "-I")
+    if resolve:
+        args += ["--resolve", resolve]
     args += BROWSER_HEADERS + ["-o", "NUL", "-w", "%{http_code}", url]
     r = subprocess.run(
         args, capture_output=True, text=True, encoding="oem", errors="replace",
@@ -151,6 +198,22 @@ def curl_test(domain: str, test_type: str, timeout: float, path: str = "/") -> T
         elapsed = (time.time() - start) * 1000
         if code is not None and code >= 100:
             return TestResult(domain, test_type, "OK", code, elapsed)
+        if code is not None and _is_dns_error(rc, stderr):
+            # Спуф/сбой СИСТЕМНОГО резолвера: curl rc=6 «Could not resolve
+            # host» (кейс 12.10: www.youtube.com «мёртв» у всех клиентов,
+            # под DoH-резолвом жив). Один дешёвый повтор по IP из DoH -
+            # системный DNS в нём не участвует; пометка «DoH» в детали -
+            # честный контекст отчёта (не красный статус).
+            doh_ips = doh_resolve_ips(domain)
+            if doh_ips:
+                code2, _, _, _ = curl_attempt(
+                    url, head=False, timeout=timeout,
+                    resolve=f"{domain}:443:{doh_ips[0]}")
+                elapsed = (time.time() - start) * 1000
+                if code2 is not None and code2 >= 100:
+                    return TestResult(
+                        domain, test_type, "OK", code2, elapsed,
+                        "системный DNS подменён; путь жив (DoH-резолв)")
         if code is not None:
             # GET вернул «000» - нет HTTP-ответа.
             if domain in QUIC_QUIRK_DOMAINS:
@@ -262,20 +325,35 @@ def tcp1620_test_curl(domain: str, body_file: Path, timeout: float) -> TestResul
     Классификация по size_upload, а не только по http-коду: сигнатура
     «обрыв на N КБ» (как в dpi-detector, окно 12-36 КБ)."""
     start = time.time()
-    try:
-        r = subprocess.run(
+
+    def _curl(extra: list[str]) -> subprocess.CompletedProcess:
+        return subprocess.run(
             ["curl.exe", "-4", "--no-sessionid", "--no-keepalive",
              "-s", "-m", str(min(int(timeout), timeouts.HTTP)),
              "-w", "%{http_code} %{size_upload}", "-o", "NUL",
+             *extra,
              "--data-binary", f"@{body_file}",
              f"https://{domain}/"],
             capture_output=True, text=True, encoding="oem", errors="replace", timeout=timeout + timeouts.WALL_PAD,
             creationflags=subprocess.CREATE_NO_WINDOW,
         )
-        elapsed = (time.time() - start) * 1000
+
+    def _parse(r: subprocess.CompletedProcess) -> tuple[int, int]:
         parts = r.stdout.strip().split()
         code = int(parts[0]) if parts and parts[0].isdigit() else 0
         uploaded = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
+        return code, uploaded
+
+    try:
+        r = _curl([])
+        code, uploaded = _parse(r)
+        if uploaded == 0 and _is_dns_error(r.returncode, r.stderr or ""):
+            # спуф/сбой системного DNS - повтор по DoH-IP (см. curl_test)
+            doh_ips = doh_resolve_ips(domain)
+            if doh_ips:
+                r = _curl(["--resolve", f"{domain}:443:{doh_ips[0]}"])
+                code, uploaded = _parse(r)
+        elapsed = (time.time() - start) * 1000
         if code >= 200 and code < 500:
             # Сервер ответил - загрузка 64 КБ пережила поток: обрыва нет.
             return TestResult(domain, "tcp1620", "OK", code, elapsed)

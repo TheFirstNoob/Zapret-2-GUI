@@ -631,6 +631,61 @@ def _check_dns_spoof_servers() -> Check:
                      "не удалось проверить: " + str(e))
 
 
+def _system_resolve_ips(domain: str) -> list[str]:
+    """A-адреса домена через СИСТЕМНЫЙ резолвер (пусто при ошибке)."""
+    try:
+        return sorted({a[4][0] for a in socket.getaddrinfo(
+            domain, None, socket.AF_INET, socket.SOCK_STREAM) if a[4]})
+    except OSError:
+        return []
+
+
+def _doh_resolve_ips(domain: str) -> list[str]:
+    """A-адреса через DoH dns.google (эталон; пусто при ошибке)."""
+    try:
+        from core.probe_http import curl_result
+        res = curl_result(
+            "https://dns.google/resolve?name=%s&type=A" % domain,
+            timeout=8, wall_pad=4, body_mode=True, encoding="utf-8")
+        return [a for a in _IP_RE.findall(res.body or "")
+                if not a.startswith(("127.", "10.", "192.168."))]
+    except Exception:
+        return []
+
+
+def _check_dns_spoof_system() -> Check:
+    """Подменяется ли СИСТЕМНЫЙ резолвер (дополнение к проверке публичных
+    DNS-серверов выше). Кейс 12.10: www.youtube.com не резолвится у всех
+    клиентов (спуф ТСПУ), под DoH-резолвом жив. Сигналы: система не отдаёт
+    адрес (а DoH отдаёт), отдаёт мусор (0.x/127.x), либо для не-CDN
+    канарейки rutor.info ответы не пересекаются с эталоном (метод
+    dpi-detector; для youtube не применяем - пул CDN ротируется)."""
+    issues: list[str] = []
+    baseline_ok = False
+    for dom, strict in (("rutor.info", True), ("www.youtube.com", False)):
+        sys_ips = _system_resolve_ips(dom)
+        doh_ips = _doh_resolve_ips(dom)
+        if doh_ips:
+            baseline_ok = True
+        bogus = [ip for ip in sys_ips if ip.startswith(("0.", "127."))]
+        if bogus:
+            issues.append(f"{dom}: мусорные адреса ({', '.join(bogus[:3])})")
+        elif not sys_ips and doh_ips:
+            issues.append(f"{dom}: система не резолвит, DoH знает "
+                          f"{len(doh_ips)} адр.")
+        elif strict and sys_ips and doh_ips and not (set(sys_ips) & set(doh_ips)):
+            issues.append(f"{dom}: ответы системы не совпадают с эталоном")
+    if issues:
+        return Check("dns_spoof_system", "Системный DNS (спуф)", "warn",
+                     "; ".join(issues) + " - включите DoH в браузере или "
+                     "смените DNS-сервер", tech="; ".join(issues))
+    if not baseline_ok:
+        return Check("dns_spoof_system", "Системный DNS (спуф)", "skip",
+                     "эталон DoH недоступен - проверить не удалось")
+    return Check("dns_spoof_system", "Системный DNS (спуф)", "ok",
+                 "системный резолвер отвечает согласованно с DoH")
+
+
 def run_diagnostics(root_dir: Path, cfg: AppConfig, progress_cb=None) -> dict:
     root_dir = Path(root_dir)
 
@@ -697,6 +752,9 @@ def run_diagnostics(root_dir: Path, cfg: AppConfig, progress_cb=None) -> dict:
 
     # DNS-серверы, которые подменяют ответы для заблокированных доменов
     _add(_check_dns_spoof_servers())
+
+    # Спуф СИСТЕМНОГО резолвера (кейс 12.10: youtube «мёртв» на DNS-спуфе)
+    _add(_check_dns_spoof_system())
 
     # TCP timestamps (при выключенных ts-fooling молча не работает)
     try:
