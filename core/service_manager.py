@@ -333,28 +333,17 @@ def _win32_delete_service() -> tuple[bool, str]:
 
 
 def _winws_running() -> bool:
-    try:
-        r = subprocess.run(
-            ["tasklist", "/FI", "IMAGENAME eq winws.exe"],
-            capture_output=True, text=True, encoding="oem", errors="replace", timeout=10,
-            creationflags=subprocess.CREATE_NO_WINDOW,
-        )
-    except (subprocess.TimeoutExpired, OSError):
-        return False  # подвисший tasklist не должен ронять install/remove (аудит 2026-10)
-    return "winws.exe" in r.stdout and "No tasks" not in r.stdout
+    """Zapret 1 (winws.exe) запущен? Единый core.proc (аудит #7, хвост:
+    конвертация при верификации - census §3.7 эту обёртку пропустил).
+    core.proc не бросает и парсит CSV локале-независимо."""
+    from core.proc import image_running
+    return image_running("winws.exe", timeout=10)
 
 
 def _winws2_running() -> bool:
-    """winws2.exe ещё жив? (tasklist без локале-зависимых строк: ищем имя)."""
-    try:
-        r = subprocess.run(
-            ["tasklist", "/FI", "IMAGENAME eq winws2.exe"],
-            capture_output=True, text=True, encoding="oem", errors="replace", timeout=10,
-            creationflags=subprocess.CREATE_NO_WINDOW,
-        )
-    except (subprocess.TimeoutExpired, OSError):
-        return False  # см. _winws_running
-    return "winws2.exe" in r.stdout
+    """winws2.exe ещё жив? (единый core.proc; ждём смерти после kill)."""
+    from core.proc import image_running
+    return image_running("winws2.exe", timeout=10)
 
 
 def _zapret1_conflict() -> Optional[str]:
@@ -367,14 +356,10 @@ def _zapret1_conflict() -> Optional[str]:
 
 
 def _taskkill_winws() -> bool:
-    """Остановить winws.exe (Zapret 1). True, если процесс был снят."""
-    try:
-        r = subprocess.run(
-            ["taskkill", "/F", "/IM", "winws.exe"], capture_output=True,
-            timeout=10, creationflags=subprocess.CREATE_NO_WINDOW)
-        return r.returncode == 0
-    except Exception:
-        return False
+    """Остановить winws.exe (Zapret 1). True - команда выполнена
+    (не гарантия смерти; core.proc.kill_image, таймаут внутри)."""
+    from core.proc import kill_image
+    return kill_image("winws.exe", timeout=10)
 
 
 def zapret1_cleanup() -> tuple[bool, str]:
