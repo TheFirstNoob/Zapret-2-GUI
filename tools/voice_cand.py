@@ -49,7 +49,7 @@ def cmd_start(preset: str) -> int:
         lists_dir=REPO / "lists", windivert_dir=REPO / "windivert",
         debug=False)
     exe = REPO / "bin" / "winws2.exe"
-    ok = launch_winws2(REPO, exe, args, timeout=5.0)
+    ok, _proc = launch_winws2(REPO, exe, args, timeout=5.0)
     time.sleep(1.0)
     pids = _winws2_pids()
     print(f"кандидат «{preset}»: запуск={'ok' if ok else 'FAIL'}, "

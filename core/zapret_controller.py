@@ -83,7 +83,7 @@ class ZapretController:
         from core.tcp_timestamps import enable_for_engine
         ts_ok, ts_note = enable_for_engine()
 
-        ok = launch_winws2(self.root_dir, exe_path, args, timeout=5.0)
+        ok, _proc = launch_winws2(self.root_dir, exe_path, args, timeout=5.0)
         if not ok:
             return False, "winws2.exe не удалось запустить (проверьте права администратора)"
 

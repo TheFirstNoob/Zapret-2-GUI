@@ -56,10 +56,10 @@ class Zapret2Tester:
     def _ensure_winws2_dead(self) -> None:
         tester_proc.ensure_winws2_dead(self._kill_managed)
 
-    def _kill_managed(self) -> None:
+    def _kill_managed(self) -> bool:
         proc = self._process
         self._process = None
-        tester_proc.kill_managed(proc)
+        return tester_proc.kill_managed(proc)
 
     def _any_winws_running(self) -> bool:
         return tester_proc.any_winws_running()
@@ -91,8 +91,11 @@ class Zapret2Tester:
             enable_for_engine()
         except Exception:
             pass
-        ok = launch_winws2(self.root_dir, exe_path, args, timeout=5.0)
-        self._process = None
+        ok, proc = launch_winws2(self.root_dir, exe_path, args, timeout=5.0)
+        # Управляемый экземпляр (ревью-раунд 3, P1-1): держим Popen-хэндл -
+        # остановка идёт PID-таргетингом с ожиданием выхода, а не blanket
+        # kill по имени; bat-фолбэк даёт proc=None (unmanaged).
+        self._process = proc if ok else None
         return ok
 
     def _run_domain_tests(self, domains: list[str], concurrency: int = 5, http_only: bool = False, result_cb=None, expand_www: bool = False, progress_cb=None) -> list[TestResult]:

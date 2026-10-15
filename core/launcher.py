@@ -419,20 +419,21 @@ def launch_winws2_direct(root_dir: Path, exe_path: Path, args: list[str],
 
 
 def launch_winws2(root_dir: Path, exe_path: Path, args: list[str],
-                  timeout: float = 5.0) -> bool:
+                  timeout: float = 5.0) -> tuple[bool, Optional[subprocess.Popen]]:
     """Умный запуск: прямой Popen (основной) -> bat (аварийный фолбэк).
 
-    bat остаётся для проблемных машин/отладки: если прямой запуск не дал
-    живого winws2, повторяем через `start /min` и пишем это в лог.
+    Возвращает (ok, proc): proc - УПРАВЛЯЕМЫЙ процесс прямого запуска (для
+    PID-остановки и ожидания выхода, ревью-раунд 3/P1-1); bat-фолбэк даёт
+    (ok, None) - запуск неуправляем (PID неизвестен, пишем в лог).
     """
     proc, err = launch_winws2_direct(root_dir, exe_path, args, timeout)
     if proc is not None and _wait_winws2_alive(timeout, proc):
         _applog("launch", "direct OK: winws2 жив")
-        return True
+        return True, proc
     if proc is not None and proc.poll() is None:
         # процесс жив, но tasklist его не увидел - не плодим дубль
         _applog("launch", "direct: процесс жив, tasklist без winws2 - успех")
-        return True
+        return True, proc
     if proc is not None:
         _applog("launch", f"direct FAIL: winws2 упал rc={proc.returncode}")
     elif err:
@@ -443,8 +444,8 @@ def launch_winws2(root_dir: Path, exe_path: Path, args: list[str],
     bat = root_dir / "_zapret_run.bat"
     write_run_bat(root_dir, bat, exe_path, args)
     ok = launch_winws2_bat(bat, root_dir, timeout=timeout)
-    _applog("launch", f"bat fallback: {'OK' if ok else 'FAIL'}")
-    return ok
+    _applog("launch", f"bat fallback: {'OK' if ok else 'FAIL'} (unmanaged: PID неизвестен)")
+    return ok, None
 
 
 def launch_winws2_bat(

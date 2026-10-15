@@ -9,6 +9,7 @@ from __future__ import annotations
 import subprocess
 import time
 
+from core.applog import log as _applog
 from core.tester_defs import WINDIVERT_CLEANUP_DELAY
 
 
@@ -94,17 +95,25 @@ def taskkill_safe(image_name: str) -> None:
     kill_never_hang(image_name)
 
 
-def kill_managed(proc) -> None:
-    """Погасить managed-процесс тестера (PID-таргетинг, без blanket kill)."""
+def kill_managed(proc) -> bool:
+    """Погасить управляемый процесс тестера: PID-таргетинг + ОЖИДАНИЕ выхода.
+
+    Возвращает True только при ПОДТВЕРЖДЁННОМ завершении процесса (ревью
+    старшей модели, P1-1: taskkill/TerminateProcess асинхронны)."""
     if proc is None:
-        return
+        return False
     pid = proc.pid
     # taskkill по PID надёжнее цепочки terminate/kill
     from core.proc import kill_pid
     kill_pid(pid, timeout=5)
+    try:
+        proc.wait(timeout=5)
+        return True
+    except subprocess.TimeoutExpired:
+        pass
     if not any_winws2_running():
-        return
-    # Фолбэк: terminate → kill
+        return True
+    # Фолбэк: terminate → kill (процесс не отвечает на taskkill)
     try:
         if proc.poll() is None:
             proc.terminate()
@@ -115,15 +124,17 @@ def kill_managed(proc) -> None:
             proc.wait(timeout=1)
         except (OSError, subprocess.TimeoutExpired):
             pass
+    return proc.poll() is not None
 
 
 def ensure_winws2_dead(kill_managed_fn) -> None:
-    """Гарантированно убрать winws2: managed (PID) → задержка → blanket kill
-    чужих процессов + ожидание освобождения WinDivert.
+    """Гарантированно убрать winws2: managed (PID, с подтверждением выхода) →
+    задержка на освобождение хендлов → blanket kill (крайняя мера, если
+    managed не подтвердился) → ожидание исчезновения winws2.
 
-    kill_managed_fn - колбэк владельца (тестер сам хранит ссылку на процесс)."""
-    # Сначала managed-процесс по PID (чистый PID-таргетинг)
-    kill_managed_fn()
+    kill_managed_fn - колбэк владельца (тестер хранит Popen-хэндл, P1-1)."""
+    # Сначала управляемый процесс: PID + ожидание сигнализации процесса
+    confirmed = kill_managed_fn()
 
     # Минимальная задержка на освобождение WinDivert: даже если процесс
     # уже мёртв, драйвер освобождает хендлы асинхронно.
@@ -132,7 +143,14 @@ def ensure_winws2_dead(kill_managed_fn) -> None:
     if not any_winws2_running():
         return
 
-    # Чужой winws2 ещё жив - blanket kill (крайняя мера)
+    # Живой winws2 после managed-остановки (или managed отсутствовал):
+    # blanket kill - крайняя мера, фиксируем в логе разбор.
+    if confirmed:
+        _applog("tester_proc",
+                "winws2 жив после подтверждённой смерти managed - blanket kill")
+    else:
+        _applog("tester_proc",
+                "managed-процесс не подтверждён - blanket kill winws2")
     taskkill_safe("winws2.exe")
 
     # Поллинг: ждём освобождения WinDivert вместо фиксированного sleep

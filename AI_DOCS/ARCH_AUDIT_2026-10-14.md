@@ -758,6 +758,27 @@ Severity: S1 — мешает пониманию/сопровождению си
   winws2 RUNNING → True, winws.exe → False, conflict-guard → None. Пути-
   потребители: start-конфликт (в т.ч. восстановление защиты после теста),
   install/repair/remove, zapret1_cleanup.
+- 🔁 **Ревью-раунд 3 (старшая модель, 15.10) — P1 принят и внедрён**: по итогам
+  разбора механизма запуска/остановки (описание + сверка):
+  (1) PID-ownership тестера — `launch_winws2` возвращает Popen-хэндл, тестер
+  его хранит (раньше выбрасывал: `self._process = None`), остановка идёт
+  PID+`wait(exit)` с подтверждением, blanket kill — крайняя мера с разбором в
+  applog; (2) `service_manager.stop()` ждёт SERVICE_STOPPED через
+  `QueryServiceStatusEx` (детерминированно вместо надежды на sleep 0.5; sleep
+  остался доп. страховкой); (3) pause/resume_recovery читают и восстанавливают
+  ТОЧНУЮ исходную failure-конфигурацию (`QueryServiceConfig2W`/
+  `ChangeServiceConfig2W`) с legacy-фолбэком. Верификация: T31 — live
+  read-only против реального SCM (state=RUNNING, actions restart×3/60s
+  прочитаны точно) + api_smoke + 46 security — OK.
+  Отклонено с обоснованием (факты, которых ревью не видело): service-host для
+  winws2 (движок имеет НАТИВНЫЙ service-mode: `nfq2/win.c`
+  StartServiceCtrlDispatcher/RegisterServiceCtrlHandler, `nfqws.c` вызывает
+  service_run() первым в main; служба живёт сутками, SCM recovery работает) и
+  «не выгружать драйвер на каждом шаге» (не выгружаем: kernel-драйвер остаётся
+  загруженным, между профилями ждём только закрытие хендлов).
+  В бэклог: журнал тест-сессии (crash-recovery), разделение heal/delete в
+  fix_stale, формальные статусы ENGINE_START_FAIL vs STRATEGY_FAIL, разбор
+  START_TYPE=DISABLED у службы WinDivert при RUNNING.
 - 🏁 **ФАЗА РЕФАКТОРИНГА ЗАКРЫТА (15.10)**: все пункты 1-10 выполнены
   (#8, #6, #7, #4, #10, #1, #3, #5, #9, #2 + хвосты). Дальше — фичи
   (бэклог 0.11); живой прогон тестера — за автором (служба/args проверены

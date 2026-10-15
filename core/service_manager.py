@@ -332,6 +332,69 @@ def _win32_delete_service() -> tuple[bool, str]:
         adv.CloseServiceHandle(scm)
 
 
+def _query_service_state() -> Optional[int]:
+    """Состояние службы через QueryServiceStatusEx: 1=STOPPED, 2=START_PENDING,
+    3=STOP_PENDING, 4=RUNNING; None - службы нет или не прочиталось
+    (ревью старшей модели, P1-2: подтверждённое состояние вместо sleep)."""
+    try:
+        ctypes, wt, adv = _win32_advapi()
+
+        class SERVICE_STATUS_PROCESS(ctypes.Structure):
+            _fields_ = [("dwServiceType", wt.DWORD),
+                        ("dwCurrentState", wt.DWORD),
+                        ("dwControlsAccepted", wt.DWORD),
+                        ("dwWin32ExitCode", wt.DWORD),
+                        ("dwServiceSpecificExitCode", wt.DWORD),
+                        ("dwCheckPoint", wt.DWORD),
+                        ("dwWaitHint", wt.DWORD),
+                        ("dwProcessId", wt.DWORD),
+                        ("dwServiceFlags", wt.DWORD)]
+
+        adv.QueryServiceStatusEx.restype = wt.BOOL
+        adv.QueryServiceStatusEx.argtypes = [
+            wt.HANDLE, ctypes.c_int, ctypes.c_void_p, wt.DWORD,
+            ctypes.POINTER(wt.DWORD)]
+        SC_MANAGER_CONNECT = 0x0001
+        SERVICE_QUERY_STATUS = 0x0004
+        scm = adv.OpenSCManagerW(None, None, SC_MANAGER_CONNECT)
+        if not scm:
+            return None
+        try:
+            h = adv.OpenServiceW(scm, SERVICE_NAME, SERVICE_QUERY_STATUS)
+            if not h:
+                return None
+            try:
+                buf = SERVICE_STATUS_PROCESS()
+                need = wt.DWORD()
+                ok = adv.QueryServiceStatusEx(h, 0, ctypes.byref(buf),
+                                              ctypes.sizeof(buf),
+                                              ctypes.byref(need))
+                return int(buf.dwCurrentState) if ok else None
+            finally:
+                adv.CloseServiceHandle(h)
+        finally:
+            adv.CloseServiceHandle(scm)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _wait_service_stopped(timeout: float = 5.0) -> bool:
+    """Поллинг SCM до SERVICE_STOPPED (1) или «службы нет».
+
+    Подтверждённое состояние вместо голого sleep: первый sc start сразу
+    после stop исторически давал 1053 (ревью старшей модели, P1-2)."""
+    deadline = time.time() + timeout
+    while True:
+        st = _query_service_state()
+        if st is None or st == 1:
+            return True
+        if time.time() >= deadline:
+            _svc_log(f"stop-wait: служба не дошла до STOPPED за {timeout:.1f}s "
+                     f"(state={st})")
+            return False
+        time.sleep(0.15)
+
+
 def _winws_running() -> bool:
     """Zapret 1 (winws.exe) запущен? Единый core.proc (аудит #7, хвост:
     конвертация при верификации - census §3.7 эту обёртку пропустил).
@@ -724,6 +787,9 @@ def stop():
     _svc_log("stop")
     _sc(["stop", SERVICE_NAME])
     _taskkill_winws2()
+    # P1-2: подтверждаем переход в STOPPED (закрывает гонку «sc start после
+    # stop → 1053» детерминированно, а не паузой).
+    _wait_service_stopped()
     return True, "winws2 остановлен"
 
 
@@ -731,24 +797,145 @@ def stop():
 # Тестер/сканы гасят winws2 на весь прогон. Если SCM-recovery активен, он
 # через 60с ПЕРЕЗАПУСКАЕТ службовый winws2 посреди теста → конфликт
 # WinDivert, обрыв прогона. На время управляемых остановок recovery
-# выключается и включается обратно после восстановления.
+# выключается и восстанавливается ДОСЛОВНО (ревью старшей модели, P1-3:
+# сохраняем точную исходную конфигурацию, а не свои restart/60000x3).
 _recovery_paused: bool = False
 _recovery_was_on: bool = False
+_recovery_saved: Optional[dict] = None
 _recovery_lock = threading.Lock()
 
 
+def _read_failure_actions_win32() -> Optional[dict]:
+    """Точное чтение failure-конфигурации службы (QueryServiceConfig2W).
+
+    {'reset': int, 'actions': [(SC_ACTION_TYPE, delay_ms), ...]} или None.
+    Типы SC_ACTION: 0=NONE, 1=RESTART, 2=REBOOT, 3=COMMAND (P1-3)."""
+    try:
+        ctypes, wt, adv = _win32_advapi()
+
+        class SC_ACTION(ctypes.Structure):
+            _fields_ = [("Type", wt.DWORD), ("Delay", wt.DWORD)]
+
+        class SERVICE_FAILURE_ACTIONSW(ctypes.Structure):
+            _fields_ = [("dwResetPeriod", wt.DWORD),
+                        ("lpRebootMsg", wt.LPWSTR),
+                        ("lpCommand", wt.LPWSTR),
+                        ("cActions", wt.DWORD),
+                        ("lpsaActions", ctypes.POINTER(SC_ACTION))]
+
+        adv.QueryServiceConfig2W.restype = wt.BOOL
+        adv.QueryServiceConfig2W.argtypes = [
+            wt.HANDLE, wt.DWORD, ctypes.c_void_p, wt.DWORD,
+            ctypes.POINTER(wt.DWORD)]
+        SC_MANAGER_CONNECT = 0x0001
+        SERVICE_QUERY_CONFIG = 0x0001
+        SERVICE_CONFIG_FAILURE_ACTIONS = 2
+        scm = adv.OpenSCManagerW(None, None, SC_MANAGER_CONNECT)
+        if not scm:
+            return None
+        try:
+            h = adv.OpenServiceW(scm, SERVICE_NAME, SERVICE_QUERY_CONFIG)
+            if not h:
+                return None
+            try:
+                need = wt.DWORD()
+                adv.QueryServiceConfig2W(h, SERVICE_CONFIG_FAILURE_ACTIONS,
+                                         None, 0, ctypes.byref(need))
+                if not need.value:
+                    return None
+                buf = ctypes.create_string_buffer(need.value)
+                if not adv.QueryServiceConfig2W(h, SERVICE_CONFIG_FAILURE_ACTIONS,
+                                                buf, need.value,
+                                                ctypes.byref(need)):
+                    return None
+                fa = ctypes.cast(buf,
+                                 ctypes.POINTER(SERVICE_FAILURE_ACTIONSW)).contents
+                actions = [(int(fa.lpsaActions[i].Type),
+                            int(fa.lpsaActions[i].Delay))
+                           for i in range(int(fa.cActions))]
+                return {"reset": int(fa.dwResetPeriod), "actions": actions}
+            finally:
+                adv.CloseServiceHandle(h)
+        finally:
+            adv.CloseServiceHandle(scm)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _apply_failure_actions(reset_period: int, actions: list) -> bool:
+    """Точная запись failure-конфигурации (ChangeServiceConfig2W, P1-3).
+
+    actions: [(SC_ACTION_TYPE, delay_ms), ...]; пустой список = отключить."""
+    try:
+        ctypes, wt, adv = _win32_advapi()
+
+        class SC_ACTION(ctypes.Structure):
+            _fields_ = [("Type", wt.DWORD), ("Delay", wt.DWORD)]
+
+        class SERVICE_FAILURE_ACTIONSW(ctypes.Structure):
+            _fields_ = [("dwResetPeriod", wt.DWORD),
+                        ("lpRebootMsg", wt.LPWSTR),
+                        ("lpCommand", wt.LPWSTR),
+                        ("cActions", wt.DWORD),
+                        ("lpsaActions", ctypes.POINTER(SC_ACTION))]
+
+        adv.ChangeServiceConfig2W.restype = wt.BOOL
+        adv.ChangeServiceConfig2W.argtypes = [wt.HANDLE, wt.DWORD,
+                                              ctypes.c_void_p]
+        SC_MANAGER_CONNECT = 0x0001
+        SERVICE_CHANGE_CONFIG = 0x0002
+        SERVICE_CONFIG_FAILURE_ACTIONS = 2
+        scm = adv.OpenSCManagerW(None, None, SC_MANAGER_CONNECT)
+        if not scm:
+            return False
+        try:
+            h = adv.OpenServiceW(scm, SERVICE_NAME, SERVICE_CHANGE_CONFIG)
+            if not h:
+                return False
+            try:
+                n = max(1, len(actions))
+                arr = (SC_ACTION * n)()
+                for i, (type_, delay) in enumerate(actions):
+                    arr[i].Type = int(type_)
+                    arr[i].Delay = int(delay)
+                info = SERVICE_FAILURE_ACTIONSW(
+                    int(reset_period), None, None, len(actions),
+                    ctypes.cast(arr, ctypes.POINTER(SC_ACTION)))
+                return bool(adv.ChangeServiceConfig2W(
+                    h, SERVICE_CONFIG_FAILURE_ACTIONS, ctypes.byref(info)))
+            finally:
+                adv.CloseServiceHandle(h)
+        finally:
+            adv.CloseServiceHandle(scm)
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def pause_recovery() -> None:
-    """На время тестов/починки: отключаем sc.exe restart на время worker (L4)."""
-    global _recovery_paused, _recovery_was_on
+    """На время тестов/починки: отключаем sc.exe restart на время worker (L4).
+
+    Читает ИСХОДНУЮ failure-конфигурацию (P1-3) и сохраняет её; при
+    недоступности точного чтения - legacy sc qfailure, fail-closed: не
+    прочитали - не мутируем SCM (внешнее ревью 14.10)."""
+    global _recovery_paused, _recovery_was_on, _recovery_saved
     with _recovery_lock:
         if _recovery_paused:
+            return
+        saved = _read_failure_actions_win32()
+        if saved is not None:
+            _recovery_saved = saved
+            _recovery_was_on = any(t in (1, 2, 3) for t, _d in saved["actions"])
+            if not _apply_failure_actions(0, []):
+                _svc_log("pause_recovery: не удалось отключить failure actions "
+                         "(fail-closed: пауза не выставлена)")
+                _recovery_saved = None
+                return
+            _recovery_paused = True
+            _svc_log(f"pause_recovery: actions off (saved {saved['actions']})")
             return
         try:
             code, out = _sc(["qfailure", SERVICE_NAME])
             if code != 0:
-                # Не смогли ПРОЧИТАТЬ конфиг recovery (timeout/отказ прав):
-                # НЕ мутируем SCM и не помечаем паузу - иначе безусловный
-                # сброс actions терял recovery навсегда (внешнее ревью 14.10).
                 return
             _recovery_was_on = ("restart" in (out or "").lower()
                                 or "перезапуск" in (out or "").lower())
@@ -759,13 +946,24 @@ def pause_recovery() -> None:
 
 
 def resume_recovery() -> None:
-    global _recovery_paused
+    global _recovery_paused, _recovery_saved
     with _recovery_lock:
         if not _recovery_paused:
             return
         try:
-            if _recovery_was_on:
+            saved = _recovery_saved
+            if saved is not None:
+                # P1-3: восстанавливаем РОВНО исходную конфигурацию, даже если
+                # она пустая (пользователь/другое ПО могли её менять).
+                if not _apply_failure_actions(saved["reset"], saved["actions"]):
+                    _svc_log("resume_recovery: точное восстановление не удалось "
+                             "- fallback sc failure")
+                    if _recovery_was_on:
+                        _sc(["failure", SERVICE_NAME, "reset=", "86400",
+                             "actions=", "restart/60000/restart/60000/restart/60000"])
+            elif _recovery_was_on:
                 _sc(["failure", SERVICE_NAME, "reset=", "86400",
                      "actions=", "restart/60000/restart/60000/restart/60000"])
         finally:
             _recovery_paused = False
+            _recovery_saved = None
