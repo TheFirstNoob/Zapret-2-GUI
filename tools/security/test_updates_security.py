@@ -16,7 +16,9 @@ from core import update_verify as uv  # noqa: E402
 from core import updater as up  # noqa: E402
 from core import updates as ups  # noqa: E402
 from core.config import VERSION  # noqa: E402
+from server import api_update  # noqa: E402
 from server import server as srv  # noqa: E402
+from server.app_state import STATE  # noqa: E402
 
 # RFC 8032, раздел 7.1 — эталонные векторы Ed25519.
 V1_SK = "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60"
@@ -448,10 +450,10 @@ class TestUpdateWorkerSignature(unittest.TestCase):
                            return_value="not_installed"), \
                 mock.patch("core.service_manager.is_installed",
                            return_value=False):
-            srv._run_update_worker("portable", self.tag,
-                                   {"tag": self.tag,
-                                    "latest": self.new_version})
-        return dict(srv._updater_state)
+            api_update.run_update_worker("portable", self.tag,
+                                         {"tag": self.tag,
+                                          "latest": self.new_version})
+        return dict(STATE.updater_state)
 
     def test_signed_update_applied(self):
         raw, sig = self._signed()

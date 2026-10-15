@@ -679,7 +679,7 @@ Severity: S1 — мешает пониманию/сопровождению си
   публичный `is_control`; server: убраны 2 инлайн-копии www-алиаса; JS: удалены
   мёртвые ветки OK_BLOCKED и DPI_DROP (Python их не выдаёт); новый `tools/status_contract.py`
   замораживает wire-множество и ловит JS-дрейф (класс OK_BLOCKED).
-- 🟡 **#1 (server, В РАБОТЕ)** — Inc A2 (14.10): таблицы _GET_ROUTES (22) /
+- ✅ **#1 (server, ЗАВЕРШЁН)** — Inc A2 (14.10): таблицы _GET_ROUTES (22) /
   _POST_ROUTES (40) + _dispatch вместо if/elif-цепочек. Inc B (14.10):
   server/app_state.py — единый AppContext/STATE (скаляры+кэши через STATE,
   TesterState перенесён, алиасы объектов; main.py → get_tester()).
@@ -697,9 +697,22 @@ Severity: S1 — мешает пониманию/сопровождению си
   39/56. Осталось ~15: tester(2), start/stop(2), lists CRUD(4),
   одиночки (status/app-info/version/bundled/fake-blobs/export-report/
   asn-scan/blob-probe); index/static — транспортные.
-- ⏳ осталось: #1-продолжение (AppContext + выносы) -> #3
-  (_run_tester_action) -> #5 (tester) -> #9 (QUIC/timeouts) -> #2 (app.js
-  ПОСЛЕДНИМ; склейка файлов на сервере).
+  ФИНАЛ (раунд 4, 14.10): оставшиеся 15 хендлеров вынесены — api_info
+  (version/app-info/status/profiles), api_control (start/stop), api_tester
+  (tester status/action/asn-scan), api_blobs (fake-blobs/blob-probe),
+  api_reports (export-report); CRUD списков + нормализация user-списков —
+  в api_lists; воркеры тестера (run_tester_action/asn/blob + колбэки +
+  восстановление защиты) — в server/tester_flow.py, вердикт/речек — в
+  server/recommend.py, системные запросы (ui_presets/scan_winws_exe/
+  zapret1_installed) — в app_state. **server.py 3030 → ~380 строк**:
+  ZapretHandler — только транспорт (роуты/токен/JSON/статика). Попутно:
+  починен tools/security/test_updates_security.py (воркер апдейтера уехал
+  в api_update), main.py берёт get_tester из app_state, удалён мёртвый
+  _run_with_timeout*. Верификация: T26 (22 GET + 40 POST роутов) +
+  api_smoke + 46 security-тестов — OK; служба RUNNING.
+- ⏳ осталось: #3 (дробление веток run_tester_action + custom_build) ->
+  #5 (tester) -> #9 (QUIC/timeouts) -> #2 (app.js ПОСЛЕДНИМ; склейка
+  файлов на сервере).
 
 
 ### Корректировка порядка и решения (советник, 14.10)

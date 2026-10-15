@@ -190,3 +190,49 @@ def ui_debug(msg: str) -> None:
 
     Всегда активен: ловит «выкинуло на главный блок посреди теста»."""
     debug_append("ui_debug.log", msg)
+
+
+# ── Системные запросы (переехали из server.py, Inc C) ─────────────
+
+def ui_presets() -> list[str]:
+    """Профили для GUI: exp-/test-/cand- префиксы - стенды экспериментов и
+    кандидатов, пользователь не должен видеть их в интерфейсе."""
+    presets_dir = get_root_dir() / "presets"
+    if not presets_dir.is_dir():
+        return []
+    return sorted(
+        f.stem for f in presets_dir.glob("*.txt")
+        if not f.stem.startswith(("exp-", "test-", "cand-", "_probe"))
+    )
+
+
+def scan_winws_exe() -> dict:
+    """Zapret 1 (winws.exe) на машине? running/pid (CSV-парсер core.proc)."""
+    from core.proc import image_pids
+    pids = image_pids("winws.exe", timeout=6)
+    return {"running": bool(pids), "pid": pids[0] if pids else 0}
+
+
+def zapret1_installed() -> bool:
+    """Zapret 1 есть в системе? (настроенная папка или служба zapret).
+
+    Нужно, чтобы не показывать панель «Zapret 1» тем, у кого его нет.
+    Кэшируется на сеанс: службы в рамках сеанса не появляются/исчезают.
+    """
+    if STATE.zapret1_installed_cache is not None:
+        return STATE.zapret1_installed_cache
+    installed = False
+    try:
+        cfg = get_config_manager().load()
+        installed = bool(cfg.zapret1_dir)
+    except Exception:
+        installed = False
+    if not installed:
+        try:
+            from core.utils import run_sc
+            code, _ = run_sc(["query", "zapret"])
+            installed = code == 0
+        except Exception:
+            installed = False
+    STATE.zapret1_installed_cache = installed
+    return installed
