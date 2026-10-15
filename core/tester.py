@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
 from core.launcher import build_args_from_preset, launch_winws2
 from core.status import FAIL_STATUSES
-from core import tester_probes, tester_proc, tester_scoring
+from core import tester_probes, tester_proc, tester_scoring, timeouts
 # Ре-экспорт статических определений (аудит #5): внешние модули исторически
 # импортируют их из core.tester; probes/proc/scoring берут напрямую из defs.
 from core.tester_defs import (  # noqa: F401
@@ -154,7 +154,7 @@ class Zapret2Tester:
         _logged_progress(7, f"[{profile_name}] ждём готовность WinDivert (1.5s)...")
         # launch_winws2 уже подтвердил жизнь процесса (direct, bat - фолбэк);
         # WinDivert открывает хендл за сотни мс - 1.5s хватает.
-        time.sleep(1.5)
+        time.sleep(timeouts.SETTLE_WINWS2)
 
         if not self._any_winws2_running():
             self._ensure_winws2_dead()
@@ -461,7 +461,7 @@ class Zapret2Tester:
                 if not self._run_profile(profile_name, fake_blob=key)                         or not self._any_winws2_running():
                     out.append({"blob": key, "ok": 0, "total": len(self.BLOB_PROBE_HOSTS), "rate": -1.0})
                     continue
-                time.sleep(0.8)
+                time.sleep(timeouts.SETTLE_BLOB)
                 res = self._run_domain_tests(self.BLOB_PROBE_HOSTS, concurrency=6,
                                              http_only=False, result_cb=None)
                 ok = sum(1 for r in res if r.status == "OK")

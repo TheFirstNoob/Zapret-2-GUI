@@ -12,12 +12,13 @@ import os
 import re
 import socket
 import subprocess
-import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Optional
 
+from core import timeouts
+from core.probe_h3 import probe_h3
 from core.tester_defs import (BROWSER_HEADERS, H3_WALL_DEADLINE, HOST_TEST,
                               QUIC_QUIRK_DOMAINS, TCP1620_BODY, TestResult)
 
@@ -110,83 +111,34 @@ def curl_attempt(url: str, head: bool, timeout: float) -> tuple[Optional[int], i
     --connect-timeout всегда 2с. TimeoutExpired/OSError - наружу (ловит curl_test)."""
     t0 = time.time()
     args = ["curl.exe", "-4", "-s", "-m", str(int(timeout)),
-            "--connect-timeout", "2", "--show-error"]
+            "--connect-timeout", str(timeouts.CONNECT), "--show-error"]
     if head:
         args.insert(2, "-I")
     args += BROWSER_HEADERS + ["-o", "NUL", "-w", "%{http_code}", url]
     r = subprocess.run(
         args, capture_output=True, text=True, encoding="oem", errors="replace",
-        timeout=timeout + 5, creationflags=subprocess.CREATE_NO_WINDOW,
+        timeout=timeout + timeouts.WALL_PAD, creationflags=subprocess.CREATE_NO_WINDOW,
     )
     s = r.stdout.strip()
     code = int(s) if s.isdigit() else None
     return code, r.returncode, (time.time() - t0) * 1000, (r.stderr or "")[:80]
 
 
-# Кэш наличия niquests+qh3 (опциональный бандл сборки): False - фолбэк на
-# прежнюю эвристику QUIC (см. quic_h3_probe).
-_HAS_NIQUESTS: Optional[bool] = None
-
-
 def quic_h3_probe(domain: str) -> tuple[bool, str]:
-    """Настоящая QUIC/HTTP3-проба (niquests+qh3) - контракт точности:
-    forced-H3 (disable_http1/2 + preemptive quic_cache_layer, без TCP),
-    свежая сессия (strategy-test), внешний wall-clock дедлайн (поток-сторож).
-    Возвращает (ok, detail). Без niquests - (False, "нет niquests")."""
-    global _HAS_NIQUESTS
-    if _HAS_NIQUESTS is None:
-        try:
-            import niquests  # noqa: F401
-            _HAS_NIQUESTS = True
-        except ImportError:
-            _HAS_NIQUESTS = False
-    if not _HAS_NIQUESTS:
-        return False, "нет niquests"
-    import niquests
-
-    box: dict = {}
-
-    def worker() -> None:
-        s = None
-        try:
-            s = niquests.Session(disable_http1=True, disable_http2=True)
-            # Контракт: env/системные прокси не подхватываем (ревью 13.10,
-            # P2-1) - иначе проба уходит через прокси и умирает (H3_NONE).
-            s.trust_env = False
-            s.quic_cache_layer.add_domain(domain)
-            r = s.get(f"https://{domain}/", timeout=(4, 8),
-                      allow_redirects=False)
-            box["ver"] = getattr(r, "http_version", None)
-            box["code"] = r.status_code
-        except Exception as e:  # noqa: BLE001
-            box["err"] = type(e).__name__
-        finally:
-            if s is not None:
-                try:
-                    s.close()
-                except Exception:  # noqa: BLE001
-                    pass
-
-    th = threading.Thread(target=worker, daemon=True)
-    th.start()
-    th.join(H3_WALL_DEADLINE)
-    if th.is_alive():
-        return False, "H3 висит (дедлайн)"
-    if box.get("ver") == 30:
-        return True, f"H3 {box.get('code')}"
-    if "err" in box:
-        return False, f"QUIC {box['err']}"
-    return False, "H3 не подтверждён"
+    """(ok, detail) тестерного контракта; ядро пробы вынесено в
+    core/probe_h3.probe_h3 (аудит #9), deadline тестера - свой."""
+    r = probe_h3(domain, H3_WALL_DEADLINE)
+    return r.ok, r.detail
 
 
 def curl_test(domain: str, test_type: str, timeout: float, path: str = "/") -> TestResult:
     start = time.time()
     url = f"https://{domain}{path}"
-    timeout = float(min(int(timeout), 6))
+    timeout = float(min(int(timeout), timeouts.HTTP))
     if domain in QUIC_QUIRK_DOMAINS:
         # QUIC-класс: 000 для стороннего TLS-клиента неизбежен, статус
         # всё равно QUIC - не ждём полные 6с
-        timeout = 3.0
+        timeout = float(timeouts.FAST)
     try:
         # HEAD быстрый, но не все серверы отвечают (#14: ложные 403/418) -
         # при «000» GET-фолбэк. Пер-хостовых ретраев НЕТ: флак фиксируется
@@ -313,11 +265,11 @@ def tcp1620_test_curl(domain: str, body_file: Path, timeout: float) -> TestResul
     try:
         r = subprocess.run(
             ["curl.exe", "-4", "--no-sessionid", "--no-keepalive",
-             "-s", "-m", str(min(int(timeout), 6)),
+             "-s", "-m", str(min(int(timeout), timeouts.HTTP)),
              "-w", "%{http_code} %{size_upload}", "-o", "NUL",
              "--data-binary", f"@{body_file}",
              f"https://{domain}/"],
-            capture_output=True, text=True, encoding="oem", errors="replace", timeout=timeout + 5,
+            capture_output=True, text=True, encoding="oem", errors="replace", timeout=timeout + timeouts.WALL_PAD,
             creationflags=subprocess.CREATE_NO_WINDOW,
         )
         elapsed = (time.time() - start) * 1000

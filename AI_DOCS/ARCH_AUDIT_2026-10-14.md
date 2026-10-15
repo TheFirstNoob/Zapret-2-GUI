@@ -728,7 +728,18 @@ Severity: S1 — мешает пониманию/сопровождению си
   tester_probes.safe_prefixes/resolve_ips. Верификация: T28 golden
   (net_stats/expand_with_www/safe_prefixes — эталон-против-нового, ре-экспорт,
   делегаты, proc no-op) + api_smoke + 46 security — OK.
-- 🔄 **ОСТАТОК РАЗМОРОЖЕН (решение автора, 15.10)**: добиваем #9 → #2.
+- ✅ **#9 (probe_h3 + timeouts)** — 15.10: ядро H3-пробы вынесено в
+  core/probe_h3.py (`probe_h3(domain, wall_deadline, lib_timeout=(4, 8))` →
+  H3Result; тестерная обёртка сохраняет прежние detail-строки и свой deadline
+  12.0). core/timeouts.py — именованные тайминги
+  FAST/HTTP/SLOW/WALL_PAD/CONNECT/SETTLE_WINWS2/SETTLE_BLOB: значения НЕ
+  менялись, задействованы в tester (SETTLE_*), tester_probes
+  (FAST/HTTP/WALL_PAD/CONNECT), recommend (SETTLE_BLOB); исторический разброс
+  по сайтам задокументирован таблицей в модуле. tools/quic_probe.py НЕ
+  переведён (его 15.0/(4,10)+DoH+пины — отдельный контракт; перевод только с
+  живым ре-тестом i.ytimg.com, аудит §3.2). Верификация: T29 (значения/
+  сигнатуры/провод) + api_smoke + 46 security — OK.
+- 🔄 **ОСТАТОК РАЗМОРОЖЕН (решение автора, 15.10)**: добиваем #2 (app.js).
   Обоснование: незавершённые куски структурной чистки = «блок мусора», от
   которого пойдёт последующий мусор; фазу закрываем целиком. (14.10 остаток
   был заморожен по стоп-правилу «баг/фича/риск» — решение пересмотрено.)

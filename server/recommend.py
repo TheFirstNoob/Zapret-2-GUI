@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import time
 
+from core import timeouts
+
 from core.tester import (CONTROL_DOMAINS, NAKED_BASELINE_HOSTS,
                          QUIC_QUIRK_DOMAINS, RATED_HOSTS, is_control)
 from server.app_state import get_config_manager, get_root_dir
@@ -284,7 +286,7 @@ def recheck_contested(tester, best, rec: dict, progress) -> dict:
                 if not tester._run_profile(best.profile_name, fake_blob=key) \
                         or not tester._any_winws2_running():
                     continue
-                time.sleep(0.8)
+                time.sleep(timeouts.SETTLE_BLOB)
                 for r in tester._run_domain_tests(confirmed, concurrency=6,
                                                   expand_www=False):
                     if r.status == "OK":
