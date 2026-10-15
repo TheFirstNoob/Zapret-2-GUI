@@ -248,7 +248,7 @@ def fix_stale_windivert_services(root_dir: Optional[Path] = None) -> list[str]:
             if _is_marked_for_delete(out):
                 if winws2_busy:
                     actions.append(f"{name}: помечена на удаление (winws2 запущен) - "
-                                   "остановите обход и нажмите «Починить»")
+                                   "остановите обход и нажмите «Выгрузить драйвер»")
                 elif _windivert_unload_now(name):
                     actions.append(f"{name}: очищена stop'ом без перезагрузки")
                 else:

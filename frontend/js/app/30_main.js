@@ -500,7 +500,7 @@ const MainPage = {
 
   async svcRepair() {
     this._setSvcBusy(true);
-    $('svcStatusText').textContent = 'Проверка драйвера…';
+    $('svcStatusText').textContent = 'Выгрузка драйвера…';
     try {
       const r = await apiPost('/service/repair', {});
       if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
@@ -509,9 +509,9 @@ const MainPage = {
         showToast('Драйвер всё ещё занят: ' + acts.join('; ')
                   + '. Если не отпустит - понадобится перезагрузка.', 'error');
       } else if (r.resolved === false) {
-        showToast('Починено частично: ' + acts.join('; '), 'warn');
+        showToast('Выполнено частично: ' + acts.join('; '), 'warn');
       } else if (acts.length) {
-        showToast('Исправлено без перезагрузки: ' + acts.join('; '), 'ok');
+        showToast('Выполнено без перезагрузки: ' + acts.join('; '), 'ok');
       } else {
         showToast('Драйвер в порядке - проблем не найдено', 'ok');
       }
@@ -519,7 +519,7 @@ const MainPage = {
         showToast('Замечание: ' + r.zapret1, 'warn');
       }
     } catch (e) {
-      showToast('Не удалось починить: ' + e.message, 'error');
+      showToast('Не удалось выгрузить драйвер: ' + e.message, 'error');
     }
     this._setSvcBusy(false);
     Status.refreshService();

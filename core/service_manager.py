@@ -448,7 +448,8 @@ def zapret1_cleanup() -> tuple[bool, str]:
 
 @_serialized
 def repair(root_dir: Optional[Path] = None) -> dict:
-    """Починить/выгрузить зависший WinDivert и сообщить о конфликте с Zapret 1.
+    """Выгрузка драйвера WinDivert (кнопка «Выгрузить драйвер») + heal
+    битых записей службы и сообщение о конфликте с Zapret 1.
 
     Немедленный путь (кейс автора): служба zapret2 и winws2 держат драйвер -
     останавливаем их, затем sc stop WinDivert выгружает драйвер, и отложенное
