@@ -271,8 +271,14 @@ def fix_stale_windivert_services(root_dir: Optional[Path] = None) -> list[str]:
             actions.append(f"{name}: удаление не удалось - {out.strip()[:100]}")
 
     state = windivert_service_state()
-    if state is not None and state[1] == 4 and not any(
-            a.startswith("WinDivert:") for a in actions):
+    # Start=4 (DISABLED) - ДВА разных случая: (а) ШТАТНЫЙ marked-for-deletion
+    # цикл WinDivert: их инсталлер после каждой загрузки помечает службу
+    # DeleteService (dll/windivert.c), SCM помеченной пишет Start=4 - НЕ
+    # трогаем (запись сама исчезнет при закрытии хендлов/ребуте); (б) служба
+    # реально отключена извне (DeleteFlag!=1) - включаем demand.
+    if (state is not None and state[1] == 4
+            and windivert_delete_flag("WinDivert") != 1
+            and not any(a.startswith("WinDivert:") for a in actions)):
         code, out = run_sc(["config", "WinDivert", "start=", "demand"])
         if code == 0:
             actions.append("WinDivert: включена (start= demand)")

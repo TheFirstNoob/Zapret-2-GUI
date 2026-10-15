@@ -776,9 +776,24 @@ Severity: S1 — мешает пониманию/сопровождению си
   service_run() первым в main; служба живёт сутками, SCM recovery работает) и
   «не выгружать драйвер на каждом шаге» (не выгружаем: kernel-драйвер остаётся
   загруженным, между профилями ждём только закрытие хендлов).
-  В бэклог: журнал тест-сессии (crash-recovery), разделение heal/delete в
-  fix_stale, формальные статусы ENGINE_START_FAIL vs STRATEGY_FAIL, разбор
-  START_TYPE=DISABLED у службы WinDivert при RUNNING.
+  В бэклог: журнал тест-сессии (crash-recovery), формальные статусы
+  ENGINE_START_FAIL vs STRATEGY_FAIL, (опция) отключение start type службы на
+  время pause (MS: queued restart не отменяется правкой failure actions -
+  только явный disable; у нас окно узкое, пер-профильный ensure_dead подчищает).
+- 🔍 **Интернет-исследование (15.10, по напоминанию автора) — факты из
+  первоисточников**: (1) START_TYPE=DISABLED у службы WinDivert при RUNNING —
+  ШТАТНО, не баг: инсталлер WinDivert (`dll/windivert.c`, мастер-исходники)
+  после успешного StartService ВСЕГДА делает DeleteService («marked for
+  deletion»: выгрузка при закрытии всех хендлов/ребуте), а SCM помеченной
+  службе пишет Start=4; при следующем WinDivertOpen служба пересоздаётся
+  (SERVICE_DEMAND_START) - самочинящийся цикл, после ребута ломаться нечему.
+  `fix_stale_windivert_services` уточнён: demand-heal пропускает
+  marked-службу (DeleteFlag=1) и не вмешивается в штатный цикл; T32 (live
+  no-op проверка) - OK. Удаление чужих windivert*-служб с МЁРТВЫМ ImagePath
+  оставлено в штатном heal (это битые записи, чинить их некому). (2) MS
+  ChangeServiceConfig2 (remarks): «A queued restart action cannot be canceled…
+  The service must be explicitly disabled to prevent it from restarting» -
+  тезис ревью подтверждён доками; решение по окну - в бэклоге выше.
 - 🏁 **ФАЗА РЕФАКТОРИНГА ЗАКРЫТА (15.10)**: все пункты 1-10 выполнены
   (#8, #6, #7, #4, #10, #1, #3, #5, #9, #2 + хвосты). Дальше — фичи
   (бэклог 0.11); живой прогон тестера — за автором (служба/args проверены
