@@ -313,13 +313,26 @@ def _cdn_scan_branch(state, tester, data: dict) -> None:
 
 
 def _test_branch(state, tester, data: dict) -> None:
+    # Защита пользователя (включая Zapret 1) на время теста гасится и
+    # возвращается - чистый замер и предсказуемый финал (как в naked-ветке).
+    z2_was = get_controller().status().running
+    z1_was = scan_winws_exe()["running"]
+    svc_was = svc_was_running()
+    if z1_was:
+        kill_never_hang(["winws.exe"])
     result = run_tester(lambda: tester.test_profile(
         data.get("profile", DEFAULT_PROFILE), make_progress_cb(state),
         tier=data.get("tier", "critical"), result_cb=make_result_cb(state),
         ipset_catchall=bool(get_config_manager().load().ipset_catchall),
     ))
+    final = serialize_result(result)
+    if not tester.shutdown_event.is_set():
+        note = restore_protection_after_naked(
+            z2_was or svc_was, z1_was, state, svc_was)
+        if note:
+            final["restored"] = note
     play_completion_sound()
-    state.set_final(serialize_result(result))
+    state.set_final(final)
 
 
 def _is_start_failure(res) -> bool:
@@ -376,7 +389,12 @@ def _test_profiles_branch(state, tester, data: dict) -> None:
     # ДО naked-baseline: тот гасит winws2, и чтение после свеепа
     # всегда даёт False (восстановление становилось мёртвым - H1)
     z2_was = get_controller().status().running
+    z1_was = scan_winws_exe()["running"]
     svc_was = svc_was_running()
+    if z1_was:
+        # Zapret 1 иначе искажает и «голый» тест, и все профили
+        # (ревью-раунд 3): гасим на время свипа и вернём после (как naked).
+        kill_never_hang(["winws.exe"])
 
     # Сначала naked-baseline: ловит «стратегии ничего не делают».
     naked_baseline = run_tester(lambda: tester.run_naked_baseline(
@@ -493,6 +511,12 @@ def _test_profiles_branch(state, tester, data: dict) -> None:
         final["recommendation"] = rec
         _ui_debug(f"tester: sweep done best={best.profile_name} "
                   f"rate={best.network_rate:.1f}")
+        if tester.shutdown_event.is_set():
+            # P3: отмена посреди свипа - рекомендация по подмножеству
+            # профилей; честно помечаем прогон неполным
+            final["partial"] = True
+            rec["message"] = ((rec.get("message") or "")
+                              + " ⏹ Прогон прерван - результаты неполные.")
 
         # Вернуть защиту, которая была у пользователя до теста
         # (было: после basic-прогона обход пропадал молча).
@@ -504,7 +528,7 @@ def _test_profiles_branch(state, tester, data: dict) -> None:
             # P2-4: z2_was может быть False при живой службе (winws2 умер до
             # замера) - svc_was обязан вернуть службу в этом случае.
             final["restored"] = restore_protection_after_naked(
-                z2_was or svc_was, False, state, svc_was)
+                z2_was or svc_was, z1_was, state, svc_was)
 
         play_completion_sound()
         state.set_final(final, [serialize_result(r) for r in all_results])
@@ -573,6 +597,11 @@ def _naked_branch(state, tester, data: dict) -> None:
 
 def _full_analysis_branch(state, tester, data: dict) -> None:
     profiles = data.get("profiles", [DEFAULT_PROFILE])
+    # Защита до анализа: он гасит всё, а раньше НЕ возвращал - пользователь
+    # оставался без обхода (находка ревью-раунда 3; «Расширенный тест»).
+    z2_was = get_controller().status().running
+    z1_was = scan_winws_exe()["running"]
+    svc_was = svc_was_running()
     kill_never_hang(["winws.exe", "winws2.exe"])
     time.sleep(0.5)
 
@@ -595,12 +624,21 @@ def _full_analysis_branch(state, tester, data: dict) -> None:
     final_all = run_full_analysis(tester, profiles, STATE.tester_lock, on_event=_on_event,
                                   ipset_catchall=fa_ipset)
 
+    # Возврат защиты, которая была до анализа (иначе обход оставался
+    # выключенным - находка ревью-раунда 3)
+    restore_note = ""
+    if not tester.shutdown_event.is_set():
+        restore_note = restore_protection_after_naked(
+            z2_was or svc_was, z1_was, state, svc_was)
+
     # Финальный poll: чистим промежуточные результаты -
     # оставляем только test_result (есть домен и статус)
     with state.lock:
         state.results = [r for r in state.results
                          if r.get("domain") and r.get("status")]
         state.final_result = {"type": "final", "all_results": final_all}
+        if restore_note:
+            state.final_result["restored"] = restore_note
         state.all_results = final_all
 
 
