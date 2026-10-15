@@ -15,7 +15,7 @@ from server.app_state import (STATE, get_root_dir, probe_debug as _probe_debug)
 from server import (api_blobs, api_cdn, api_config, api_contested,
                     api_control, api_diag, api_games, api_info, api_lists,
                     api_probe, api_reports, api_service, api_tester,
-                    api_update, api_zapret1)
+                    api_update, api_zapret1, session_recovery)
 
 
 CONTENT_TYPES = {
@@ -147,6 +147,9 @@ def init(root_dir: Path, token: str = "") -> None:
     STATE.controller = ZapretController(root_dir, config_manager=STATE.config_manager)
     STATE.tester = Zapret2Tester(root_dir)
     api_lists.normalize_user_lists()
+    # crash-recovery тест-сессии (logs/test_session_state.json):
+    # незавершённый прогон восстановит recovery и защиту (демон-поток)
+    session_recovery.start_startup_recovery()
 
 
 # ── HTTP-хендлер ────────────────────────────────────────────

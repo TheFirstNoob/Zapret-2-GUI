@@ -968,3 +968,41 @@ def resume_recovery() -> None:
         finally:
             _recovery_paused = False
             _recovery_saved = None
+
+
+def recovery_snapshot() -> Optional[dict]:
+    """Снимок активной паузы recovery (для журнала незавершённой сессии).
+
+    None - пауза не активна; иначе {'was_on': bool, 'saved': {reset, actions}|None}
+    (сериализуемо в JSON: actions - списки пар)."""
+    with _recovery_lock:
+        if not _recovery_paused:
+            return None
+        saved = _recovery_saved
+        return {
+            "was_on": _recovery_was_on,
+            "saved": ({"reset": saved["reset"],
+                       "actions": [list(a) for a in saved["actions"]]}
+                      if saved else None),
+        }
+
+
+def restore_recovery_from_snapshot(snapshot: Optional[dict]) -> bool:
+    """Восстановление recovery по снимку из журнала (после гибели GUI).
+
+    Точная конфигурация приоритетна; legacy-снимок (только was_on) -
+    возвращаем наши штатные restart/60000x3."""
+    if not snapshot:
+        return True
+    saved = snapshot.get("saved")
+    if saved is not None:
+        ok = _apply_failure_actions(saved.get("reset", 0),
+                                    saved.get("actions", []))
+        if ok:
+            _svc_log("restore_recovery: точная конфигурация возвращена из журнала")
+        return ok
+    if snapshot.get("was_on"):
+        code, _out = _sc(["failure", SERVICE_NAME, "reset=", "86400",
+                          "actions=", "restart/60000/restart/60000/restart/60000"])
+        return code == 0
+    return True

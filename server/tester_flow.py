@@ -14,11 +14,13 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from core.config import DEFAULT_PROFILE
-from core.service_manager import pause_recovery, resume_recovery
+from core.service_manager import (pause_recovery, recovery_snapshot,
+                                  resume_recovery,
+                                  restore_recovery_from_snapshot)
 from core.tester import (CDN_PROVIDERS, CONTROL_DOMAINS, QUIC_QUIRK_DOMAINS,
                          is_control)
 from core.test_logger import TestLogger
-from server import custom_build
+from server import custom_build, session_recovery
 from server.app_state import (STATE, TesterState, get_config_manager,
                               get_controller, get_root_dir, get_tester,
                               scan_winws_exe, ui_debug as _ui_debug, ui_presets)
@@ -326,11 +328,11 @@ def _test_branch(state, tester, data: dict) -> None:
         ipset_catchall=bool(get_config_manager().load().ipset_catchall),
     ))
     final = serialize_result(result)
-    if not tester.shutdown_event.is_set():
-        note = restore_protection_after_naked(
-            z2_was or svc_was, z1_was, state, svc_was)
-        if note:
-            final["restored"] = note
+    # Восстановление защиты и при отмене: отмена теста != «выключи обход»
+    note = restore_protection_after_naked(
+        z2_was or svc_was, z1_was, state, svc_was)
+    if note:
+        final["restored"] = note
     play_completion_sound()
     state.set_final(final)
 
@@ -524,11 +526,12 @@ def _test_profiles_branch(state, tester, data: dict) -> None:
         # здесь они уже не читаются - winws2 к этому моменту гашен.
         if start_failures:
             final["start_failures"] = start_failures
-        if not tester.shutdown_event.is_set():
-            # P2-4: z2_was может быть False при живой службе (winws2 умер до
-            # замера) - svc_was обязан вернуть службу в этом случае.
-            final["restored"] = restore_protection_after_naked(
-                z2_was or svc_was, z1_was, state, svc_was)
+        # Восстановление защиты ДЕЛАЕМ И ПРИ ОТМЕНЕ (как naked/asn): отмена
+        # теста не означает «оставь меня без обхода». P2-4: z2_was может быть
+        # False при живой службе (winws2 умер до замера) - svc_was в этом
+        # случае обязан вернуть службу.
+        final["restored"] = restore_protection_after_naked(
+            z2_was or svc_was, z1_was, state, svc_was)
 
         play_completion_sound()
         state.set_final(final, [serialize_result(r) for r in all_results])
@@ -626,10 +629,9 @@ def _full_analysis_branch(state, tester, data: dict) -> None:
 
     # Возврат защиты, которая была до анализа (иначе обход оставался
     # выключенным - находка ревью-раунда 3)
-    restore_note = ""
-    if not tester.shutdown_event.is_set():
-        restore_note = restore_protection_after_naked(
-            z2_was or svc_was, z1_was, state, svc_was)
+    # Восстановление защиты и при отмене (отмена анализа != «выключи обход»)
+    restore_note = restore_protection_after_naked(
+        z2_was or svc_was, z1_was, state, svc_was)
 
     # Финальный poll: чистим промежуточные результаты -
     # оставляем только test_result (есть домен и статус)
@@ -675,6 +677,20 @@ def run_tester_action(data: dict) -> None:
                 pause_recovery()
             except Exception as _pe:
                 _ui_debug(f"pause_recovery failed: {_pe}")
+            # crash-recovery: durable-журнал снимка ДО любых гашений
+            # (logs/test_session_state.json; при гибели GUI посреди прогона
+            # защита/recovery восстановятся на следующем старте)
+            try:
+                session_recovery.write_session_journal(
+                    get_root_dir(), action,
+                    protection={
+                        "z2": get_controller().status().running,
+                        "z1": scan_winws_exe()["running"],
+                        "svc": svc_was_running(),
+                    },
+                    recovery=recovery_snapshot())
+            except Exception as _je:
+                _ui_debug(f"session journal write failed: {_je}")
 
         # короткие синхронные проверки
         if action == "check-winws":
@@ -708,6 +724,17 @@ def run_tester_action(data: dict) -> None:
 
     except Exception as e:
         _ui_debug(f"tester worker: EXCEPTION action={action!r}: {e}")
+        # незавершённый прогон: вернуть recovery+защиту сразу (тот же путь,
+        # что при аварийном старте) - иначе обход остаётся выключенным
+        try:
+            session_recovery.recover_unfinished_session(
+                get_root_dir(),
+                restore_recovery=restore_recovery_from_snapshot,
+                restore_protection=lambda z, o, s: restore_protection_after_naked(
+                    z, o, state, s),
+                log=_ui_debug)
+        except Exception:
+            pass
         with state.lock:
             state.error = str(e)
     finally:
@@ -716,6 +743,12 @@ def run_tester_action(data: dict) -> None:
             has_final = state.final_result is not None
         _ui_debug(f"tester worker: end action={action!r} error={st_err!r} final={has_final}")
         resume_recovery()
+        try:
+            # журнал отработан (успешный прогон сам вернул защиту; исключение
+            # обработано recover выше) - файл больше не нужен
+            session_recovery.clear_session_journal(get_root_dir())
+        except Exception:
+            pass
         with state.lock:
             state.running = False
         if logger:
