@@ -932,7 +932,12 @@ etsh dns delete encryption server=.... В README пока не выносим.
   снижаются, не добавляем), плюс два клиента WinDivert-драйвера рядом с
   движком (интерференция версий), вес; pktmon работает, его дропы — лишь
   методическая погрешность. Максимум — отдельный dev-инструмент вне EXE,
-  с живым тестом. Альтернатива qh3 для QUIC-пробы — **aioquic** (BSD-3,
+  с живым тестом. **Собран 15.10: `tools/pydivert_sniff.py`** — пассивный
+  SNIFF-захват (пакеты не изымаются), счётчики OUT/IN по IP:port, домены из
+  DNS-ответов (53) + TLS SNI (TCP:443) + DNS-кэша; живой смок прошёл (поймал
+  SNI raw.githubusercontent.com -> Fastly-пин и DNS example.com; служба/движок
+  не затронуты; `.sys` из wheel'а pydivert байт-в-байт == наш bin).
+  Альтернатива qh3 для QUIC-пробы — **aioquic** (BSD-3,
   ~2k★, чистый Python, но зависит от cryptography — вес примерно тот же).
   BlockCheck (ValdikSS) — АРХИВИРОВАН 28.07.2024 («not working»), не тащим.
   Gakido — существует, но 0.2.0/sdist-only, h3=aioquic-обёртка, mkdocs в
