@@ -863,6 +863,30 @@ Severity: S1 — мешает пониманию/сопровождению си
   отсутствует, REVIEW_MAP §8). Верификация: T35 (парсер dns.google, фолбэк
   curl на мок-curl, все ветки diag-чека на мок-резолверах, живой DoH-резолв —
   8 адр. youtube) + полная батарея зелёная (T29 обновлён: WALL_PAD x3 + DOH).
+- 🔁 **Ревью-раунд 5 (внешняя модель, 18.10) — P1/P2 приняты и внедрены
+  (`946fcde`)**: (1) ipset-верификация пишет кандидатов во ВРЕМЕННЫЙ
+  `lists/ipset-probe.txt` (override в `build_args_from_preset`) — user
+  `ipset-include-user.txt` больше не трогается (класс потери данных при
+  crash/гонке); (2) restore защиты на ВСЕХ нормальных исходах «Подбора
+  стратегии» (engine_broken, отмена до первого результата) через
+  restore-once; (3) asn/blob: restore в finally + crash-журнал; (4) служба:
+  предусловия до remove()/stop(), честные коды возврата stop/remove,
+  fail-closed pause без точного чтения failure actions, TTL статуса 2 c,
+  repair ждёт выхода winws2; (5) blanket-kill winws2 фильтруется по
+  ImagePath (две копии GUI не убивают движки друг друга; winws.exe/Z1 —
+  по имени); (6) curl-пробы с `--noproxy "*"` (+probe_http), tcp1620
+  `-sS`/`--connect-timeout`, DoH-фолбэк до 2 A-записей со строгим
+  host-DNS-детектом; `resolve_ips` реально уважает timeout; (7) validate_lua
+  проверяет ЗНАЧЕНИЯ `--blob`; run-bat UTF-8+chcp для не-ASCII путей;
+  (8) session-recovery под tester_lock и не затирает свежий журнал;
+  (9) сервер: constant-time токен, лимит тела 16 МиБ, таймаут хендлера 30 c;
+  (10) апдейтер: cmd-квотинг для Program Files (x86), ping вместо timeout,
+  откат apply_portable, zip-slip через resolve/is_relative_to, опциональный
+  min_version в подписанном манифесте; (11) Ed25519: отказ неканоничного
+  (x=0,sign=1); js_bundle_check = FAIL без node. Верификация: T36 + полная
+  батарея зелёная. Ждут ЖИВОГО теста: установка в Program Files (x86),
+  прокси в окружении при пробах, две копии GUI в разных папках, локали не
+  EN/RU; поведение restore при engine_broken на занятом WinDivert.
 
 
 ### Корректировка порядка и решения (советник, 14.10)
