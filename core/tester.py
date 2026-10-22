@@ -61,6 +61,19 @@ class Zapret2Tester:
             allowed_paths={str(self.bin_dir / "winws2.exe"),
                            str(self.root_dir / "winws2.exe")})
 
+    def _foreign_engine_error(self) -> str:
+        """Ошибка, если после наших path-фильтрованных kill'ов остался
+        ЧУЖОЙ winws2 (lite/другая копия GUI): убивать его мы не вправе, но
+        и мерить с ним нельзя - два фильтра WinDivert исказят результат
+        (parity lite/GUI, 18.10)."""
+        try:
+            if tester_proc.any_winws2_running():
+                return ("другой winws2 уже запущен (lite или копия GUI из "
+                        "другой папки) - остановите его и повторите")
+        except Exception:
+            pass
+        return ""
+
     def _kill_managed(self) -> bool:
         proc = self._process
         self._process = None
@@ -232,6 +245,12 @@ class Zapret2Tester:
         # не стартует). Один битый профиль не должен валить весь свеп - его
         # ошибка возвращается, вызывающий продолжает.
         try:
+            _foreign = self._foreign_engine_error()
+            if _foreign:
+                raise _TestAbort(ProfileTestResult(
+                    profile_name=profile,
+                    results=[TestResult(profile, "process", "ERROR",
+                                        error=_foreign)]))
             profile_name, provider_hop, provider_ip, _ = self._setup_profile(
                 profile, progress_cb, _logged_progress, ipset_catchall,
                 discord_alt=discord_alt)
@@ -710,6 +729,9 @@ class Zapret2Tester:
         self.shutdown_event.clear()
         if kill_processes:
             self._ensure_winws2_dead()
+            _foreign = self._foreign_engine_error()
+            if _foreign:
+                raise RuntimeError(_foreign)
 
         def _logged_progress(pct: int, msg: str) -> None:
             if self._logger:
@@ -805,6 +827,9 @@ class Zapret2Tester:
         машине или DPI блокирует все попытки десинка. None при отмене."""
         self.shutdown_event.clear()
         self._ensure_winws2_dead()
+        _foreign = self._foreign_engine_error()
+        if _foreign:
+            raise RuntimeError(_foreign)
         if self.shutdown_event.is_set():
             return None
         progress_cb(2, "Голый тест (без защиты) - базовый уровень...")

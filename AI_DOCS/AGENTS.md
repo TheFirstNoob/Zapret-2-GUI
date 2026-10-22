@@ -426,6 +426,17 @@ Onefile-EXE триггерит облачные эвристики Defender (р�
 (winws2 + lua/blobs/lists/presets + батники, БЕЗ Python). start.bat через `%~dp0`
 (портативно), `_portable_args()` заменяет абсолютные префиксы. lite/ в .gitignore.
 test_lite.ps1 синхронизирован с GUI-тестером (CONTROL 16→7, RATED 11).
+- **18.10.2026 (parity lite↔GUI)**: lite приведён к безопасному сосуществованию:
+  start-*.bat отказывается, если winws2 уже запущен (GUI/lite/служба);
+  stop.bat и service-remove гасят ТОЛЬКО службу zapret2 и winws2 ИЗ СВОЕЙ
+  папки (name-wide taskkill убран); service-install/remove не трогают службу,
+  установленную другой папкой (sc qc + findstr по %~dp0); lite-служба теперь
+  ставит sc failure (restart×3/60с) как GUI; test.ps1 получает наборы хостов
+  из core/tester_defs.py при сборке (анти-дрейф) и падает при чужом winws2.
+  GUI-тестер в свою очередь детектит чужой winws2 (другая копия/lite) и
+  возвращает engine_broken с понятной ошибкой, а не меряет вслепую.
+  README lite: добавлены ограничения (тогглы GUI не настраиваются, общая
+  служба, ручное обновление, test.bat — упрощённый).
 
 ### §17. Portable (2026-08-27) — GUI без паковщика
 `build_portable.py` → python-3.13.14-embed-amd64 + pywebview 6.2.1 (pythonnet),

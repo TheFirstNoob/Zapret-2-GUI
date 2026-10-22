@@ -22,6 +22,7 @@ $timeoutSec = 6
 $CON = 8   # concurrency
 
 # ── host sets (same as the GUI tester) ──────────────────────────────────
+# >>> HOSTS-AUTOGEN (build_lite.py: из core/tester_defs.py; в репо — для запуска из исходников)
 $RATED = @(
     "discord.com", "gateway.discord.gg", "cdn.discordapp.com", "updates.discord.com",
     "www.youtube.com", "youtu.be", "i.ytimg.com", "redirector.googlevideo.com",
@@ -46,10 +47,28 @@ $CDN = @(
     "www.adwin.fr", "www.emca.be", "www.velivole.fr",
     "askit-app.de", "us.rudder.qntmnet.com"
 )
+# <<< HOSTS-AUTOGEN
 
 function Kill-Winws {
-    try { taskkill /F /IM winws2.exe 2>$null | Out-Null } catch { }
+    # Только служба zapret2 (общая для GUI/lite) + winws2 из ЭТОЙ папки:
+    # name-wide taskkill убивал движок другой копии (parity 18.10).
+    try { sc stop zapret2 2>$null | Out-Null } catch { }
+    try {
+        $p = $root.TrimEnd('\') + '\'
+        Get-Process winws2 -ErrorAction SilentlyContinue |
+            Where-Object { $_.Path -and $_.Path.StartsWith($p, [StringComparison]::OrdinalIgnoreCase) } |
+            Stop-Process -Force -ErrorAction SilentlyContinue
+    } catch { }
     Start-Sleep -Seconds 2
+}
+
+function Assert-NoForeignWinws {
+    $w = Get-Process winws2 -ErrorAction SilentlyContinue
+    if ($w) {
+        Write-Host "`nОбнаружен winws2, запущенный НЕ из этой папки (GUI/другая копия lite). Остановите его и повторите." -ForegroundColor Red
+        Read-Host "Enter"
+        exit 1
+    }
 }
 
 function Start-Preset([string]$name) {
@@ -119,6 +138,7 @@ try {
     # ── 1. naked baseline on CDN candidates ──
     Write-Host "`n[1/4] Шаг 1/4: проверка без защиты..." -ForegroundColor Cyan
     Kill-Winws
+    Assert-NoForeignWinws
     $nakedCdn = Test-Set $CDN
 
     # ── 2. hostlist mode (default preset) ──

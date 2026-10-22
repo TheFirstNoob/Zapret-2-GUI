@@ -11,6 +11,7 @@ PyInstaller-onefile полного GUI ловит облачные эврист�
 from __future__ import annotations
 
 import pathlib
+import re
 import shutil
 import sys
 import zipfile
@@ -35,9 +36,33 @@ Z1_CHECK_BLOCK = (
     ')\r\n'
 )
 
+# Parity 18.10: два движка winws2 (lite + GUI/service) одновременно = конфликт
+# фильтров и мусорные замеры - start-*.bat отказывается.
+W2_CHECK_BLOCK = (
+    'tasklist /FI "IMAGENAME eq winws2.exe" /NH 2>nul | findstr /I "winws2.exe" >nul\r\n'
+    'if not errorlevel 1 (\r\n'
+    '    echo ERROR: winws2 is already running ^(GUI/lite/service^). Run stop.bat first.\r\n'
+    '    pause\r\n'
+    '    exit /b 1\r\n'
+    ')\r\n'
+)
+
+# Останавливаем ТОЛЬКО winws2 из этой папки (+служба zapret2 отдельно):
+# name-wide taskkill убивал движок другой копии GUI/lite (parity 18.10).
+OWN_WINWS2_STOP = (
+    "powershell -NoProfile -ExecutionPolicy Bypass -Command \""
+    "$p='%~dp0'; Get-Process winws2 -ErrorAction SilentlyContinue | "
+    "Where-Object { $_.Path -and $_.Path.StartsWith($p, "
+    "[StringComparison]::OrdinalIgnoreCase) } | Stop-Process -Force\" "
+    ">nul 2>&1\r\n"
+)
+
 STOP_BAT = (
     "@echo off\r\n"
-    "taskkill /F /IM winws2.exe >nul 2>&1\r\n"
+    "chcp 65001 >nul\r\n"
+    "cd /d \"%~dp0\"\r\n"
+    "sc stop zapret2 >nul 2>&1\r\n"
+    + OWN_WINWS2_STOP +
     "taskkill /F /IM winws.exe >nul 2>&1\r\n"
 )
 
@@ -90,7 +115,7 @@ def _write_start_bat(name: str, args_rel: list[str]) -> None:
     (LITE / name).write_text(
         '@echo off\r\n'
         'cd /d "%~dp0"\r\n'
-        + Z1_CHECK_BLOCK +
+        + Z1_CHECK_BLOCK + W2_CHECK_BLOCK +
         f'start "zapret2" /min "%~dp0bin\\winws2.exe" @"%~dp0{conf_name}"\r\n',
         encoding="ascii",
     )
@@ -137,7 +162,7 @@ echo Started. Press any key...
 pause >nul
 goto menu
 :stop
-taskkill /F /IM winws2.exe >nul 2>&1
+call "%~dp0stop.bat"
 echo Stopped.
 pause >nul
 goto menu
@@ -160,6 +185,17 @@ def _svc_install_bat(portable_args: list[str]) -> str:
         'cd /d "%~dp0"\r\n'
         'sc query zapret >nul 2>&1 && (echo ERROR: Zapret 1 service found - remove it first. & pause & exit /b 1)\r\n'
         + Z1_CHECK_BLOCK +
+        # Служба zapret2 ОБЩАЯ с GUI: чужую (из другой папки) не трогаем -
+        # иначе lite молча перезапишет/удалит установку GUI (parity 18.10).
+        'sc query zapret2 >nul 2>&1 && (\r\n'
+        '    sc qc zapret2 | findstr /I /C:"%~dp0" >nul\r\n'
+        '    if errorlevel 1 (\r\n'
+        '        echo ERROR: service zapret2 is installed from ANOTHER folder ^(GUI/lite^).\r\n'
+        '        echo Remove it from that copy first. Nothing changed.\r\n'
+        '        pause\r\n'
+        '        exit /b 1\r\n'
+        '    )\r\n'
+        ')\r\n'
         'sc stop zapret2 >nul 2>&1\r\n'
         'sc delete zapret2 >nul 2>&1\r\n'
         '> "%~dp0service_run.conf" (\r\n'
@@ -167,6 +203,9 @@ def _svc_install_bat(portable_args: list[str]) -> str:
         ')\r\n'
         'sc create zapret2 binPath= "\\"%~dp0bin\\winws2.exe\\" @\\"%~dp0service_run.conf\\"" '
         'DisplayName= "Zapret 2 DPI Bypass" start= auto\r\n'
+        'sc description zapret2 "zapret DPI bypass (Zapret 2 lite)" >nul\r\n'
+        # Паритет с GUI: автоперезапуск при падении движка (SCM recovery).
+        'sc failure zapret2 reset= 86400 actions= restart/60000/restart/60000/restart/60000 >nul\r\n'
         'sc start zapret2\r\n'
         'echo.\r\n'
         'echo Service installed and started. To remove: service-remove.bat\r\n'
@@ -176,9 +215,20 @@ def _svc_install_bat(portable_args: list[str]) -> str:
 
 SVC_REMOVE_BAT = (
     '@echo off\r\n'
+    'chcp 65001 >nul\r\n'
+    'cd /d "%~dp0"\r\n'
+    # Удаляем только СВОЮ службу: чужую (GUI/lite из другой папки) не трогаем.
+    'sc query zapret2 >nul 2>&1 && (\r\n'
+    '    sc qc zapret2 | findstr /I /C:"%~dp0" >nul\r\n'
+    '    if errorlevel 1 (\r\n'
+    '        echo ERROR: service zapret2 belongs to ANOTHER folder - not removed.\r\n'
+    '        pause\r\n'
+    '        exit /b 1\r\n'
+    '    )\r\n'
+    ')\r\n'
     'sc stop zapret2 >nul 2>&1\r\n'
     'sc delete zapret2 >nul 2>&1\r\n'
-    'taskkill /F /IM winws2.exe >nul 2>&1\r\n'
+    + OWN_WINWS2_STOP +
     'echo Service removed.\r\n'
     'pause\r\n'
 )
@@ -224,6 +274,20 @@ README_TXT = """Zapret 2 lite - обход блокировок без GUI (Wind
 Настройка под себя: списки лежат в папке lists\\ (list-general.txt -
 что обходить, list-exclude.txt - что не трогать). Файлы можно
 редактировать обычным блокнотом, по одной записи на строку.
+
+Ограничения lite (важно):
+  - lite не повторяет GUI-тогглы: GameFilter, голос Discord, автохостлист и
+    выбор блоба в lite не настраиваются - пресет запускается с настройками
+    по умолчанию. start-ipset.bat = default с «Общим IP-обходом».
+  - Не запускайте lite одновременно с GUI/службой: если winws2 уже запущен,
+    start-*.bat откажется. stop.bat останавливает службу zapret2 и движки
+    ТОЛЬКО из этой папки.
+  - Служба zapret2 общая для GUI и lite: установка/удаление из папки, которая
+    её не ставила, откажется (защита от взаимного затирания).
+  - test.bat - упрощённая проверка связи + автофикс списков (без QUIC/H3,
+    DoH-проверки и сравнения всех пресетов; полный тестер - в GUI).
+  - Обновление lite - вручную: скачайте новый архив и распакуйте поверх,
+    сохранив свои lists\\*user*.txt и правки.
 """
 
 
@@ -289,6 +353,25 @@ def main() -> None:
         'powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0test.ps1"\r\n',
         encoding="ascii")
     ps1 = (ROOT / "test_lite.ps1").read_text(encoding="utf-8")
+    # Анти-дрейф (parity 18.10): наборы хостов в test.ps1 генерируются из
+    # core/tester_defs.py - lite-тестер не отстаёт от GUI при правках списков.
+    from core.tester_defs import CDN_HOSTS, CONTROL_HOSTS, RATED_HOSTS
+
+    def _ps_array(name: str, items: list[str]) -> str:
+        body = ",\r\n".join(f'    "{h}"' for h in items)
+        return f"${name} = @(\r\n{body}\r\n)"
+
+    hosts_block = (
+        "# >>> HOSTS-AUTOGEN (build_lite.py: из core/tester_defs.py)\r\n"
+        + _ps_array("RATED", RATED_HOSTS) + "\r\n"
+        + _ps_array("CONTROL", CONTROL_HOSTS) + "\r\n"
+        + "# CDN candidates for the hostlist-vs-ipset A/B (GUI CDN_HOSTS)\r\n"
+        + _ps_array("CDN", CDN_HOSTS) + "\r\n"
+        + "# <<< HOSTS-AUTOGEN")
+    ps1, _n = re.subn(r"# >>> HOSTS-AUTOGEN.*?# <<< HOSTS-AUTOGEN",
+                      lambda _m: hosts_block, ps1, count=1, flags=re.S)
+    if _n != 1:
+        raise SystemExit("test_lite.ps1: нет маркеров HOSTS-AUTOGEN")
     (LITE / "test.ps1").write_text(ps1, encoding="utf-8-sig")  # BOM: иначе PS 5.1 ломает кириллицу
 
     from datetime import date
