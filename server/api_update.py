@@ -18,6 +18,10 @@ from server.app_state import STATE, AppContext, get_root_dir, ui_debug
 # (значения - в STATE, аудит #1).
 UPDATE_CHECK_TTL = 6 * 3600  # авто-проверка не чаще раза в 6 часов
 
+# Ревью 18.10: check-and-set запуска - под локом (два одновременных
+# /api/update/start поднимали два воркера с одним _extract).
+_UPDATE_START_LOCK = threading.Lock()
+
 
 def _mk(dir_path: Path) -> Path:
     dir_path.mkdir(exist_ok=True)
@@ -191,21 +195,23 @@ def update_status(ctx: AppContext) -> dict:
 
 
 def update_start(ctx: AppContext) -> dict:
-    if STATE.updater_state["running"]:
-        return {"status": "error", "message": "Обновление уже выполняется"}
-    info = (STATE.update_check_cache or {}).copy()
-    if not info.get("available"):
-        return {"status": "error",
-                "message": "Обновление недоступно или версия уже актуальна"}
+    with _UPDATE_START_LOCK:
+        if STATE.updater_state["running"]:
+            return {"status": "error",
+                    "message": "Обновление уже выполняется"}
+        info = (STATE.update_check_cache or {}).copy()
+        if not info.get("available"):
+            return {"status": "error",
+                    "message": "Обновление недоступно или версия уже актуальна"}
 
-    tag = info.get("tag") or info.get("latest", "").replace(" ", "-")
-    kind = "portable" if not getattr(sys, "frozen", False) else "exe"
-    STATE.updater_state.update({"running": True, "phase": "скачивание",
-                                "percent": 5, "error": None, "result": None})
-    t = threading.Thread(target=run_update_worker,
-                         args=(kind, tag, info), daemon=True)
-    t.start()
-    return {"status": "ok", "action": "started"}
+        tag = info.get("tag") or info.get("latest", "").replace(" ", "-")
+        kind = "portable" if not getattr(sys, "frozen", False) else "exe"
+        STATE.updater_state.update({"running": True, "phase": "скачивание",
+                                    "percent": 5, "error": None, "result": None})
+        t = threading.Thread(target=run_update_worker,
+                             args=(kind, tag, info), daemon=True)
+        t.start()
+        return {"status": "ok", "action": "started"}
 
 
 def update_apply(ctx: AppContext) -> dict:

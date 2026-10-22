@@ -82,6 +82,7 @@ def recover_unfinished_session(
     if not data or data.get("state") != "TESTING":
         return None
     action = data.get("action") or "?"
+    started = data.get("started")
     prot = data.get("protection") or {}
     z2 = bool(prot.get("z2"))
     z1 = bool(prot.get("z1"))
@@ -106,6 +107,15 @@ def recover_unfinished_session(
         notes.append(f"защита: ошибка {e}")
     summary = "; ".join(notes)
     log(f"session-recovery: {summary}")
+    # Ревью 18.10: пока шло восстановление, мог стартовать НОВЫЙ тест и
+    # перезаписать журнал. Метку RECOVERED ставим только если это всё ещё
+    # наш исходный TESTING-снимок (иначе затёрли бы свежий журнал).
+    current = read_session_journal(root_dir)
+    if (not current or current.get("state") != "TESTING"
+            or current.get("started") != started):
+        log("session-recovery: журнал изменился (новый прогон?) - "
+            "метка RECOVERED не пишется")
+        return summary
     _write(root_dir, {"state": "RECOVERED",
                       "action": action,
                       "started": data.get("started"),
@@ -129,11 +139,21 @@ def start_startup_recovery() -> None:
                 return restore_protection_after_naked(
                     z2_or_svc, z1, STATE.tester_state, svc)
 
-            recover_unfinished_session(
-                get_root_dir(),
-                restore_recovery=restore_recovery_from_snapshot,
-                restore_protection=_restore_protection,
-                log=ui_debug)
+            # Ревью 18.10: не восстанавливаемся ПАРАЛЛЕЛЬНО с уже
+            # стартовавшим тестом (tester_lock); сравнение журнала в
+            # recover не даст затереть свежий снимок нового прогона.
+            if not STATE.tester_lock.acquire(blocking=False):
+                ui_debug("session-recovery: тестер занят - "
+                         "восстановление пропущено")
+                return
+            try:
+                recover_unfinished_session(
+                    get_root_dir(),
+                    restore_recovery=restore_recovery_from_snapshot,
+                    restore_protection=_restore_protection,
+                    log=ui_debug)
+            finally:
+                STATE.tester_lock.release()
         except Exception as e:  # noqa: BLE001
             try:
                 from server.app_state import ui_debug

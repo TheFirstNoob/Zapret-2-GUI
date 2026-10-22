@@ -29,7 +29,7 @@ def curl_result(url: str, *, timeout: float = 6.0, wall_pad: float = 3.0,
                 connect_timeout: Optional[float] = None) -> CurlResult:
     """curl.exe → CurlResult. Единые механические детали: -4 -s, -m, NUL/%code,
     локале-безопасная кодировка, wall-clock timeout = timeout + wall_pad."""
-    args = ["curl.exe", "-4", "-s"]
+    args = ["curl.exe", "-4", "-s", "--noproxy", "*"]
     if method == "HEAD":
         args.append("-I")   # правильно только через -I (не -X HEAD)
     elif method != "GET":

@@ -62,9 +62,21 @@ def process_exists(image_name: str) -> bool:
     return image_running(image_name, timeout=5)
 
 
-def kill_never_hang(image_name: str) -> None:
+def kill_never_hang(image_name: str, allowed_paths=None) -> None:
     """Убить процесс по имени (несколько способов) без зависаний:
-    сначала проверка существования, у каждого способа свой таймаут."""
+    сначала проверка существования, у каждого способа свой таймаут.
+
+    allowed_paths: если задан - убиваем ТОЛЬКО процессы с таким exe
+    (path-фильтр; две копии GUI не убивают движки друг друга, ревью 18.10).
+    Name-wide wmic/PowerShell-фолбэки в этом режиме не используются."""
+    if allowed_paths:
+        from core.proc import kill_image_filtered
+        for _ in range(2):
+            if not process_exists(image_name):
+                return
+            kill_image_filtered(image_name, allowed_paths, timeout=6.0)
+            time.sleep(0.2)
+        return
     if not process_exists(image_name):
         return
 
@@ -90,9 +102,9 @@ def kill_never_hang(image_name: str) -> None:
     )
 
 
-def taskkill_safe(image_name: str) -> None:
+def taskkill_safe(image_name: str, allowed_paths=None) -> None:
     """Убить процесс без зависаний: делегирует в kill_never_hang."""
-    kill_never_hang(image_name)
+    kill_never_hang(image_name, allowed_paths)
 
 
 def kill_managed(proc) -> bool:
@@ -127,7 +139,7 @@ def kill_managed(proc) -> bool:
     return proc.poll() is not None
 
 
-def ensure_winws2_dead(kill_managed_fn) -> None:
+def ensure_winws2_dead(kill_managed_fn, allowed_paths=None) -> None:
     """Гарантированно убрать winws2: managed (PID, с подтверждением выхода) →
     задержка на освобождение хендлов → blanket kill (крайняя мера, если
     managed не подтвердился) → ожидание исчезновения winws2.
@@ -151,7 +163,7 @@ def ensure_winws2_dead(kill_managed_fn) -> None:
     else:
         _applog("tester_proc",
                 "managed-процесс не подтверждён - blanket kill winws2")
-    taskkill_safe("winws2.exe")
+    taskkill_safe("winws2.exe", allowed_paths)
 
     # Поллинг: ждём освобождения WinDivert вместо фиксированного sleep
     wait_windivert_free()

@@ -46,20 +46,35 @@ def ipset_networks(root_dir: Path) -> list:
 
 
 def resolve_ips(domain: str, timeout: float = 2.0) -> list[str]:
-    """A-записи домена (для ipset-включений: winws2 --ipset принимает IP)."""
-    try:
-        return sorted({addr[4][0] for addr in
-                       socket.getaddrinfo(domain, None, socket.AF_INET,
-                                          socket.SOCK_STREAM)
-                       if addr[4]})
-    except OSError:
-        return []
+    """A-записи домена (для ipset-включений: winws2 --ipset принимает IP).
+
+    timeout реально ограничивает ожидание: socket.getaddrinfo блокирующий,
+    поэтому резолв идёт в демон-потоке (ревью 18.10 - параметр раньше
+    игнорировался, поток мог висеть на системном DNS)."""
+    import threading as _th
+    box: dict = {}
+
+    def _worker() -> None:
+        try:
+            box["ips"] = sorted({addr[4][0] for addr in
+                                 socket.getaddrinfo(domain, None,
+                                                    socket.AF_INET,
+                                                    socket.SOCK_STREAM)
+                                 if addr[4]})
+        except OSError:
+            box["ips"] = []
+
+    th = _th.Thread(target=_worker, daemon=True)
+    th.start()
+    th.join(max(0.1, float(timeout)))
+    return box.get("ips", [])
 
 
 def _is_dns_error(rc: int, stderr: str) -> bool:
-    """curl-ошибка РЕЗОЛВА (rc=6 «Could not resolve host»): резолвер не
-    отдал адрес (спуф/сбой), а не блокировка сети."""
-    return rc == 6 or "could not resolve" in (stderr or "").lower()
+    """curl-ошибка РЕЗОЛВА ХОСТА (rc=6 / «could not resolve host»): резолвер
+    не отдал адрес (спуф/сбой), а не блокировка сети. Ошибки прокси
+    (rc=5 / «could not resolve proxy») сюда НЕ попадают (ревью 18.10)."""
+    return rc == 6 or "could not resolve host" in (stderr or "").lower()
 
 
 def _doh_ipv4s(payload: str) -> list[str]:
@@ -87,7 +102,8 @@ def doh_resolve_ips(domain: str, timeout: float | None = None) -> list[str]:
     try:
         r = subprocess.run(
             ["curl.exe", "-4", "-s", "-m", str(int(t)),
-             "--connect-timeout", str(timeouts.CONNECT), url],
+             "--connect-timeout", str(timeouts.CONNECT),
+             "--noproxy", "*", url],
             capture_output=True, text=True, encoding="utf-8", errors="replace",
             timeout=t + timeouts.WALL_PAD, creationflags=subprocess.CREATE_NO_WINDOW,
         )
@@ -156,7 +172,8 @@ def curl_attempt(url: str, head: bool, timeout: float,
     TimeoutExpired/OSError - наружу (ловит curl_test)."""
     t0 = time.time()
     args = ["curl.exe", "-4", "-s", "-m", str(int(timeout)),
-            "--connect-timeout", str(timeouts.CONNECT), "--show-error"]
+            "--connect-timeout", str(timeouts.CONNECT), "--show-error",
+            "--noproxy", "*"]
     if head:
         args.insert(2, "-I")
     if resolve:
@@ -201,19 +218,20 @@ def curl_test(domain: str, test_type: str, timeout: float, path: str = "/") -> T
         if code is not None and _is_dns_error(rc, stderr):
             # Спуф/сбой СИСТЕМНОГО резолвера: curl rc=6 «Could not resolve
             # host» (кейс 12.10: www.youtube.com «мёртв» у всех клиентов,
-            # под DoH-резолвом жив). Один дешёвый повтор по IP из DoH -
-            # системный DNS в нём не участвует; пометка «DoH» в детали -
-            # честный контекст отчёта (не красный статус).
-            doh_ips = doh_resolve_ips(domain)
-            if doh_ips:
-                code2, _, _, _ = curl_attempt(
+            # под DoH-резолвом жив). Дешёвый повтор по IP из DoH -
+            # системный DNS в нём не участвует; пробуем до 2 A-записей
+            # (ревью 18.10: раньше только первый IP и терялись rc/stderr
+            # попытки). Пометка «DoH» в детали - честный контекст отчёта.
+            for doh_ip in doh_resolve_ips(domain)[:2]:
+                code2, rc2, _, stderr2 = curl_attempt(
                     url, head=False, timeout=timeout,
-                    resolve=f"{domain}:443:{doh_ips[0]}")
+                    resolve=f"{domain}:443:{doh_ip}")
                 elapsed = (time.time() - start) * 1000
                 if code2 is not None and code2 >= 100:
                     return TestResult(
                         domain, test_type, "OK", code2, elapsed,
                         "системный DNS подменён; путь жив (DoH-резолв)")
+                code, rc, stderr = code2, rc2, stderr2
         if code is not None:
             # GET вернул «000» - нет HTTP-ответа.
             if domain in QUIC_QUIRK_DOMAINS:
@@ -329,7 +347,9 @@ def tcp1620_test_curl(domain: str, body_file: Path, timeout: float) -> TestResul
     def _curl(extra: list[str]) -> subprocess.CompletedProcess:
         return subprocess.run(
             ["curl.exe", "-4", "--no-sessionid", "--no-keepalive",
-             "-s", "-m", str(min(int(timeout), timeouts.HTTP)),
+             "-sS", "-m", str(min(int(timeout), timeouts.HTTP)),
+             "--connect-timeout", str(timeouts.CONNECT),
+             "--noproxy", "*",
              "-w", "%{http_code} %{size_upload}", "-o", "NUL",
              *extra,
              "--data-binary", f"@{body_file}",

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hmac
 import json
 import threading
 from http import HTTPStatus
@@ -29,6 +30,11 @@ CONTENT_TYPES = {
     ".svg": "image/svg+xml",
     ".woff2":"font/woff2",
 }
+
+
+# Лимит тела POST: локальный сервер, но бесконечное тело - это DoS
+# собственного GUI (ревью 18.10). 16 МиБ покрывает импорт настроек.
+MAX_BODY_BYTES = 16 * 1024 * 1024
 
 
 # ── JS-бандл (аудит #2) ──────────────────────────────────────
@@ -156,6 +162,9 @@ def init(root_dir: Path, token: str = "") -> None:
 
 class ZapretHandler(BaseHTTPRequestHandler):
 
+    # Таймаут сокета: зависший клиент не держит поток вечно (ревью 18.10)
+    timeout = 30
+
     # Глушим штатный лог BaseHTTPRequestHandler
     def log_message(self, fmt, *args):
         pass
@@ -176,7 +185,9 @@ class ZapretHandler(BaseHTTPRequestHandler):
     def _check_token(self) -> bool:
         if STATE.app_token:
             token = self.headers.get("x-app-token", "")
-            if token != STATE.app_token:
+            # constant-time сравнение (ревью 18.10): токен - единственный
+            # барьер API, побайтовое сравнение давало тайминг-сигнал.
+            if not hmac.compare_digest(token, STATE.app_token):
                 self._send_json({"detail": "Forbidden"}, HTTPStatus.FORBIDDEN)
                 return False
         return True
@@ -230,10 +241,18 @@ class ZapretHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _parse_body(self) -> dict:
-        length = int(self.headers.get("Content-Length", 0))
-        if length == 0:
+    def _parse_body(self) -> Optional[dict]:
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+        except ValueError:
             return {}
+        if length <= 0:
+            return {}
+        if length > MAX_BODY_BYTES:
+            # Ревью 18.10: без лимита любой мог прислать гигантское тело.
+            self._send_json({"detail": "Payload too large"},
+                            HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
+            return None
         raw = self.rfile.read(length)
         try:
             return json.loads(raw)
@@ -301,6 +320,13 @@ class ZapretHandler(BaseHTTPRequestHandler):
         if index_path.exists():
             html = index_path.read_text(encoding="utf-8")
             token = params.get("token", [""])[0]
+            # Токен вставляется в JS-строку HTML: принимаем только формат
+            # secrets.token_hex(16) (32 hex), иначе отбрасываем -
+            # анти-инъекция (ревью 18.10). Сравнение - constant-time в
+            # _check_token.
+            if len(token) != 32 or any(c not in "0123456789abcdef"
+                                       for c in token.lower()):
+                token = ""
             html = html.replace("__APP_TOKEN__", token)
             # Кэш-buster: версия по mtime app.js / app.css - WebView2
             # кэширует статику, свежие правки не доходили (случай 2026-09-12)
@@ -355,6 +381,8 @@ class ZapretHandler(BaseHTTPRequestHandler):
             return
 
         data = self._parse_body()
+        if data is None:
+            return
         try:
             if not self._dispatch(_POST_ROUTES, path, data=data):
                 self._send_json({"error": "Not found"}, HTTPStatus.NOT_FOUND)

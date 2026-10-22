@@ -153,6 +153,12 @@ def validate_release(manifest: dict, tag: str, current_version: str,
     version = str(manifest.get("version") or "")
     if version_key(version) <= version_key(current_version):
         return "в манифесте нет версии новее текущей"
+    # Опциональный анти-даунгрейд: min_version в подписанном манифесте -
+    # минимальная ТЕКУЩАЯ версия, с которой допустим апдейт (ревью 18.10).
+    min_v = str(manifest.get("min_version") or "").strip()
+    if min_v and version_key(current_version) < version_key(min_v):
+        return (f"обновление требует версию не ниже {min_v} "
+                f"(сейчас {current_version}) - обновитесь по шагам")
     artifacts = manifest.get("artifacts")
     art = artifacts.get(kind) if isinstance(artifacts, dict) else None
     if not isinstance(art, dict):
@@ -378,7 +384,11 @@ def apply_portable(zip_path: Path, root_dir: Path,
                 if is_user_file(rel):
                     skipped_user += 1
                     continue
-                target_tmp = tmp_dir / rel
+                target_tmp = (tmp_dir / rel)
+                try:
+                    target_tmp.resolve().relative_to(tmp_dir.resolve())
+                except ValueError:
+                    raise RuntimeError(f"небезопасный путь в архиве: {rel}")
                 target_tmp.parent.mkdir(parents=True, exist_ok=True)
                 with zf.open(info) as src, open(target_tmp, "wb") as out:
                     shutil.copyfileobj(src, out)
@@ -390,12 +400,39 @@ def apply_portable(zip_path: Path, root_dir: Path,
                     raise RuntimeError(f"файл обновления повреждён: {rel}")
                 extracted.append(rel)
 
-            for rel in extracted:
-                target = root_dir / rel
-                target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(tmp_dir / rel, target)
-                updated += 1
-                cb(f"обновлено: {rel}")
+            # Копирование с ОТКАТОМ (ревью 18.10): занятый файл (антивирус,
+            # запущенный exe) раньше оставлял смешанную установку. Сохраняем
+            # оригиналы во временный backup и при сбое возвращаем их.
+            rollback_dir = tmp_dir / "__rollback__"
+            root_res = root_dir.resolve()
+            replaced: list[str] = []
+            try:
+                for rel in extracted:
+                    target = root_dir / rel
+                    try:
+                        target.resolve().relative_to(root_res)
+                    except ValueError:
+                        raise RuntimeError(
+                            f"небезопасный путь в архиве: {rel}")
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    if target.exists():
+                        bak = rollback_dir / rel
+                        bak.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copyfile(target, bak)
+                    shutil.copyfile(tmp_dir / rel, target)
+                    replaced.append(rel)
+                    updated += 1
+                    cb(f"обновлено: {rel}")
+            except Exception as e:  # noqa: BLE001
+                for rel in reversed(replaced):
+                    bak = rollback_dir / rel
+                    if bak.exists():
+                        try:
+                            shutil.copyfile(bak, root_dir / rel)
+                        except OSError:
+                            pass
+                raise RuntimeError(
+                    f"обновление не применено (откат выполнен): {e}") from e
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
     return {"updated": updated, "skipped_user": skipped_user,
@@ -455,7 +492,9 @@ def prepare_exe_update(zip_path: Path, root_dir: Path,
         "@echo off",
         "rem Self-update: replace the exe and restart. Paths are relative to"
         " this script (%%~dp0) so a non-ASCII install path cannot break cmd.",
-        "timeout /t 4 /nobreak >nul",
+        # ping вместо timeout: в DETACHED-процессе без консоли timeout
+        # завершается сразу (ревью 18.10), ping даёт реальную паузу.
+        "ping -n 5 127.0.0.1 >nul",
         f'taskkill /F /IM {exe_name} >nul 2>&1',
         "ping -n 3 127.0.0.1 >nul",
         f'move /y "%~dp0{exe_name}.new" "%~dp0{exe_name}" >nul',
@@ -500,7 +539,11 @@ def launch_update_bat(bat_path: Path) -> None:
     for name in ("DETACHED_PROCESS", "CREATE_NEW_PROCESS_GROUP", "CREATE_NO_WINDOW"):
         flags |= getattr(_sp, name, 0)
     try:
-        _sp.Popen(["cmd.exe", "/c", str(bat_path)], cwd=str(bat_path.parent),
+        # cmd /c + ВНЕШНИЙ кавычечный слой: путь с пробелами/скобками
+        # (Program Files (x86)) иначе теряет кавычки, и запускается только
+        # первый токен — "C:\Program" (ревью 18.10).
+        cmdline = f'cmd.exe /c ""{bat_path}""'
+        _sp.Popen(cmdline, cwd=str(bat_path.parent),
                   close_fds=True, creationflags=flags)
     except (OSError, _sp.SubprocessError) as e:
         _upd_log(f"update: не удалось запустить батник самообновления: {e!r}")
@@ -531,7 +574,7 @@ def prepare_app_restart_bat(root_dir: Path,
     lines = [
         "@echo off",
         "rem Self-restart: kill this app instance, start it again.",
-        "timeout /t 2 /nobreak >nul",
+        "ping -n 3 127.0.0.1 >nul",
         f"taskkill /F /PID {int(pid)} >nul 2>&1",
         "ping -n 3 127.0.0.1 >nul",
         f'start "" "{exe_cmd}" "{script_cmd}"',

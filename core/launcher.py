@@ -160,7 +160,22 @@ def validate_lua(exe_path: Path, args: list[str], cwd: Optional[Path] = None, ti
     без захвата.  Передаются только lua/blob-токены - без фильтров, поэтому
     хендл WinDivert не трогается даже при работающем другом экземпляре.
     """
-    lua_tokens = [t for t in args if t.startswith("--lua-init") or t.startswith("--blob") or t.startswith("--lua-gc")]
+    # Собираем полный набор lua/blob-токенов ВМЕСТЕ со значениями: значения
+    # у --blob/--lua-init/--lua-gc идут отдельной строкой пресета, и раньше
+    # проверка передавала только флаг - валидация blobs была fail-open
+    # (ревью 18.10).
+    lua_tokens: list[str] = []
+    i = 0
+    while i < len(args):
+        t = args[i]
+        if (t.startswith("--lua-init") or t.startswith("--blob")
+                or t.startswith("--lua-gc")):
+            lua_tokens.append(t)
+            if ("=" not in t and i + 1 < len(args)
+                    and not args[i + 1].startswith("--")):
+                lua_tokens.append(args[i + 1])
+                i += 1
+        i += 1
     if not lua_tokens:
         return True, ""
     conf = _write_temp_conf(lua_tokens + ["--intercept=0"])
@@ -203,6 +218,7 @@ def build_args_from_preset(
     ipset_catchall: bool = False,
     fake_blob: str = "",
     discord_alt: bool = False,
+    ipset_include_file: Optional[Path] = None,
 ) -> list[str]:
     """Читает .txt пресет и возвращает токены командной строки.
 
@@ -235,7 +251,13 @@ def build_args_from_preset(
     # всегда сильнее include (ipset.c проверяет ips_exclude первым) - без
     # этой связки редактор «IP-сети - исключения» писал в файл, который
     # winws2 никогда не получал.
-    ipset_inc_file = lists_dir / "ipset-include-user.txt"
+    if ipset_include_file is None:
+        ipset_inc_file = lists_dir / "ipset-include-user.txt"
+    else:
+        # Верификация ipset-кандидатов: пробные IP - во ВРЕМЕННОМ файле,
+        # пользовательский ipset-include-user.txt не трогаем (ревью 18.10:
+        # crash/гонка могли оставить пробные IP или затереть правку юзера).
+        ipset_inc_file = Path(ipset_include_file)
     ipset_inc_path = str(ipset_inc_file) if list_health.read_entries(ipset_inc_file) else ""
     ipset_excl_file = lists_dir / "ipset-exclude-user.txt"
     ipset_excl_path = str(ipset_excl_file) if list_health.read_entries(ipset_excl_file) else ""
@@ -274,12 +296,16 @@ def write_run_bat(
     short_exe = short_path(exe_path)
     short_root = short_path(root_dir)
     short_conf = short_path(conf)
-    bat_path.write_text(
-        f'@echo off\r\ncd /d "{short_root}"\r\n'
-        f'start "zapret2" /min "{short_exe}" @"{short_conf}"',
-        encoding="ascii",
-        errors="replace",
-    )
+    body = (f'cd /d "{short_root}"\r\n'
+            f'start "zapret2" /min "{short_exe}" @"{short_conf}"\r\n')
+    # ASCII-bat: если 8.3-короткие пути получились не-ASCII (8.3 выключен +
+    # кириллица в пути), ascii+replace раньше молча ломал путь. Фолбэк -
+    # UTF-8 без BOM + chcp 65001 (правило .bat), иначе оставляем ASCII.
+    if body.isascii():
+        bat_path.write_text("@echo off\r\n" + body, encoding="ascii")
+    else:
+        bat_path.write_text("@echo off\r\nchcp 65001 >nul\r\n" + body,
+                            encoding="utf-8")
 
 
 def _arg_path_token(t: str) -> str:

@@ -54,7 +54,12 @@ class Zapret2Tester:
         return self._ipset_net_cache
 
     def _ensure_winws2_dead(self) -> None:
-        tester_proc.ensure_winws2_dead(self._kill_managed)
+        # Path-фильтр (ревью 18.10): blanket kill не должен трогать движок
+        # второй копии GUI, установленной в другой каталог.
+        tester_proc.ensure_winws2_dead(
+            self._kill_managed,
+            allowed_paths={str(self.bin_dir / "winws2.exe"),
+                           str(self.root_dir / "winws2.exe")})
 
     def _kill_managed(self) -> bool:
         proc = self._process
@@ -68,7 +73,8 @@ class Zapret2Tester:
         return tester_proc.any_winws2_running()
 
     def _run_profile(self, profile_name: str, ipset_catchall: bool = False,
-                     fake_blob: str = "", discord_alt: bool = False) -> bool:
+                     fake_blob: str = "", discord_alt: bool = False,
+                     ipset_include_file: Optional[Path] = None) -> bool:
         exe_path = self.bin_dir / "winws2.exe"
         if not exe_path.exists():
             exe_path = self.root_dir / "winws2.exe"
@@ -83,7 +89,8 @@ class Zapret2Tester:
 
         args = build_args_from_preset(self.root_dir, self.lua_dir, self.blobs_dir, preset,
                                       ipset_catchall=ipset_catchall, fake_blob=fake_blob,
-                                      discord_alt=discord_alt)
+                                      discord_alt=discord_alt,
+                                      ipset_include_file=ipset_include_file)
         # ts-fooling-стратегии требуют включённых timestamps в ОС: без этого
         # тест ложно валится, если служба ни разу не запускалась (кэш внутри).
         try:
@@ -121,7 +128,7 @@ class Zapret2Tester:
         (одинаковая батарея). Имя параметра - историческое (аудит 2026-10)."""
         return list(TEST_HOSTS)
 
-    def _setup_profile(self, profile: str, progress_cb, _logged_progress, ipset_catchall: bool = False, discord_alt: bool = False) -> tuple[str, str, str, float]:
+    def _setup_profile(self, profile: str, progress_cb, _logged_progress, ipset_catchall: bool = False, discord_alt: bool = False, ipset_include_file: Optional[Path] = None) -> tuple[str, str, str, float]:
         """Запустить winws2 для пресета, измерить RTT, пробить хоп ТСПУ.
         Возвращает (profile_name, provider_hop, provider_ip, timeout);
         при сбое запуска - raise _TestAbort с результатом-ошибкой."""
@@ -137,7 +144,8 @@ class Zapret2Tester:
 
         _logged_progress(5, f"[{profile_name}] запуск winws2...")
         if not self._run_profile(profile_name, ipset_catchall,
-                                 discord_alt=discord_alt):
+                                 discord_alt=discord_alt,
+                                 ipset_include_file=ipset_include_file):
             # диагностика «у друга не запускается»: точные пути в лог сессии
             if self._logger:
                 from core.launcher import _read_stderr_sink
@@ -647,24 +655,26 @@ class Zapret2Tester:
                     pass
 
     def _verify_with_ipset(self, domains: list[str], result_cb) -> dict[str, str]:
-        """Верификация в ipset-режиме: резолв кандидатов в IP → временный
-        ipset-include-user → прогон default+ipset. Возвращает вердикт для
-        КАЖДОГО домена (fix/hard), пусто = проверка не состоялась."""
+        """Верификация в ipset-режиме: резолв кандидатов в IP → ВРЕМЕННЫЙ
+        ipset-probe → прогон default+ipset. Возвращает вердикт для
+        КАЖДОГО домена (fix/hard), пусто = проверка не состоялась.
+
+        Ревью 18.10: пользовательский ipset-include-user.txt НЕ трогаем
+        (раньше писали пробные IP в него и восстанавливали из памяти:
+        crash/kill оставлял мусор, а параллельная правка юзера могла быть
+        молча откатана finally)."""
         result: dict[str, str] = {}
-        inc_path = self.root_dir / "lists" / "ipset-include-user.txt"
-        saved = (inc_path.read_text(encoding="utf-8", errors="replace")
-                 if inc_path.exists() else None)
+        probe_inc = self.root_dir / "lists" / "ipset-probe.txt"
         all_ips: set[str] = set()
         for d in domains:
             all_ips.update(tester_probes.resolve_ips(d))
         if not all_ips:
             return result
         try:
-            # атомарная запись (M5) + публичный лок: смерть/гонка с GUI
-            # затирала ipset-include-user.txt пробными IP (аудит 2026-10)
             from core import list_health as _lh
-            _lh.atomic_write_locked(inc_path, "\n".join(sorted(all_ips)) + "\n")
-            if not self._run_profile("default", ipset_catchall=True):
+            _lh.atomic_write_locked(probe_inc, "\n".join(sorted(all_ips)) + "\n")
+            if not self._run_profile("default", ipset_catchall=True,
+                                     ipset_include_file=probe_inc):
                 return result
             if not self._any_winws2_running():
                 return result
@@ -681,14 +691,10 @@ class Zapret2Tester:
             return result
         finally:
             self._ensure_winws2_dead()
-            if saved is None:
-                try:
-                    inc_path.unlink()
-                except OSError:
-                    pass
-            else:
-                from core import list_health as _lh
-                _lh.atomic_write_locked(inc_path, saved)
+            try:
+                probe_inc.unlink()
+            except OSError:
+                pass
 
     def _test_baseline(
         self,

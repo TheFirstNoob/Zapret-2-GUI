@@ -215,10 +215,14 @@ def _wait_for_file(path: Path, timeout: float = 3.0,
 
 
 def _read_pktmon_txt(txt: Path) -> str:
-    """pktmon etl2txt пишет UTF-16 (иногда UTF-8) - читаем оба варианта."""
+    """pktmon etl2txt пишет UTF-16 (обычно с BOM, иногда без) либо UTF-8."""
     raw = txt.read_bytes()
     if raw[:2] in (b"\xff\xfe", b"\xfe\xff"):
         return raw.decode("utf-16", errors="replace")
+    # UTF-16 БЕЗ BOM: utf-8-декод не падает, но текст получается с NUL'ами -
+    # парсер молча видел 0 пакетов (ревью 18.10).
+    if raw.count(b"\x00") > len(raw) // 4:
+        return raw.decode("utf-16-le", errors="replace")
     try:
         return raw.decode("utf-8")
     except UnicodeDecodeError:
@@ -337,6 +341,12 @@ def _finish_pktmon(handle: dict) -> dict:
     ports = handle["ports"]
     utils.run_quiet(["pktmon", "stop"])
     complete, why = _etl2txt(etl, txt)
+    if complete:
+        try:
+            if txt.stat().st_size == 0:
+                complete, why = False, "etl2txt создал пустой txt"
+        except OSError:
+            complete, why = False, "txt не читается"
     utils.run_quiet(["pktmon", "filter", "remove"])
     try:
         if not complete:

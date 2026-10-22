@@ -5,7 +5,7 @@
 с актуальными аргументами), а не голым процессом winws2."""
 from __future__ import annotations
 
-from core.proc import kill_image
+from core.proc import kill_image, kill_image_filtered
 from core.service_manager import (is_installed as svc_installed,
                                   start as svc_start, stop as svc_stop)
 from server import api_service
@@ -48,6 +48,14 @@ def start_zapret(ctx: AppContext, data: dict) -> dict:
     return {"status": "ok" if ok else "error", "message": msg}
 
 
+def _my_winws2_paths() -> set[str]:
+    """Пути winws2 ТОЛЬКО этой установки (ревью 18.10: не гасим движок
+    второй копии GUI в другом каталоге)."""
+    from server.app_state import get_root_dir
+    root = get_root_dir()
+    return {str(root / "bin" / "winws2.exe"), str(root / "winws2.exe")}
+
+
 def stop_zapret(ctx: AppContext) -> dict:
     busy = checkers_busy()
     if busy:
@@ -61,12 +69,12 @@ def stop_zapret(ctx: AppContext) -> dict:
             return {"status": "error",
                     "message": f"Не удалось остановить службу: {msg_s}"}
         get_controller().stop()
-        for image in ("winws2.exe", "winws.exe"):
-            kill_image(image, timeout=6)
+        kill_image("winws.exe", timeout=6)
+        kill_image_filtered("winws2.exe", _my_winws2_paths(), timeout=6)
         return {"status": "ok",
                 "message": "Обход остановлен (служба zapret2 "
                            "остановлена до следующего запуска)"}
     get_controller().stop()
-    for image in ("winws2.exe", "winws.exe"):
-        kill_image(image, timeout=6)
+    kill_image("winws.exe", timeout=6)
+    kill_image_filtered("winws2.exe", _my_winws2_paths(), timeout=6)
     return {"status": "ok", "message": "Все процессы zapret остановлены"}

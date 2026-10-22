@@ -133,9 +133,17 @@ def check_vpn() -> dict:
 
 
 def kill_never_hang(image_names: list[str]) -> None:
-    from core.proc import kill_image
+    from core.proc import kill_image, kill_image_filtered
+    # winws2 - только ЭТОЙ установки (ревью 18.10); winws.exe (Zapret 1) -
+    # по имени, это внешний продукт и его гасим целиком.
+    root = get_root_dir()
+    allowed = {str(root / "bin" / "winws2.exe"),
+               str(root / "winws2.exe")}
     for name in image_names:
-        kill_image(name, timeout=6)
+        if name.lower() == "winws2.exe":
+            kill_image_filtered(name, allowed, timeout=6)
+        else:
+            kill_image(name, timeout=6)
 
 
 def svc_was_running() -> bool:
@@ -200,13 +208,31 @@ def run_asn_scan() -> None:
 
     Обязателен чистый путь: под десинком замер показывает смесь «ТСПУ + наш
     обман» - SYN DROP могли вызывать мы сами. Защита останавливается на
-    время скана и восстанавливается (сервис-осведомлённо)."""
+    время скана и восстанавливается (сервис-осведомлённо) в ЛЮБОМ исходе,
+    плюс durable-журнал на случай гибели GUI (ревью 18.10)."""
     state = STATE.tester_state
     tester = get_tester()
     svc_was = svc_was_running()
     z2_was = tester.is_running()
     z1_was = tester._any_winws_running()
     pause_recovery()  # SCM-перезапуск службового winws2 посреди скана (H3)
+    try:
+        session_recovery.write_session_journal(
+            get_root_dir(), "asn_scan",
+            protection={"z2": z2_was, "z1": z1_was, "svc": svc_was},
+            recovery=recovery_snapshot())
+    except Exception as _je:
+        _ui_debug(f"asn_scan journal write failed: {_je}")
+    _restored = False
+
+    def _restore() -> str:
+        nonlocal _restored
+        if _restored:
+            return ""
+        _restored = True
+        return restore_protection_after_naked(
+            z2_was or svc_was, z1_was, state, svc_was)
+
     try:
         with state.lock:
             state.reset()
@@ -215,9 +241,7 @@ def run_asn_scan() -> None:
             state.set_progress(2, "Останавливаем обход (замер чистого пути к ТСПУ)...")
             kill_never_hang(["winws.exe", "winws2.exe"])
         results = run_tester(lambda: tester.asn_scan(make_progress_cb(state)))
-        note = ""
-        if z2_was or z1_was or svc_was:
-            note = restore_protection_after_naked(z2_was, z1_was, state, svc_was)
+        note = _restore()
         with state.lock:
             state.final_result = {"type": "asn_scan", "probes": results, "restored": note}
             state.running = False
@@ -225,7 +249,12 @@ def run_asn_scan() -> None:
         with state.lock:
             state.error = str(e)
     finally:
+        _restore()
         resume_recovery()
+        try:
+            session_recovery.clear_session_journal(get_root_dir())
+        except Exception:
+            pass
         with state.lock:
             state.running = False
 
@@ -233,32 +262,49 @@ def run_asn_scan() -> None:
 def run_blob_probe(data: dict) -> None:
     """Перебор TLS-фейк-блобов на короткой батарее. Защита на время прогона
     перезапускается по одному разу на блоб - восстановление
-    сервис-осведомлённое."""
+    сервис-осведомлённое, в ЛЮБОМ исходе + durable-журнал (ревью 18.10)."""
     state = STATE.tester_state
     tester = get_tester()
+    svc_was = svc_was_running()
+    z2_was = tester.is_running()
+    z1_was = tester._any_winws_running()
     pause_recovery()  # SCM-перезапуск службового winws2 рушит перебор (H3)
+    try:
+        session_recovery.write_session_journal(
+            get_root_dir(), "blob_probe",
+            protection={"z2": z2_was, "z1": z1_was, "svc": svc_was},
+            recovery=recovery_snapshot())
+    except Exception as _je:
+        _ui_debug(f"blob_probe journal write failed: {_je}")
+    _restored = False
+
+    def _restore() -> str:
+        nonlocal _restored
+        if _restored:
+            return ""
+        _restored = True
+        return restore_protection_after_naked(
+            z2_was or svc_was, False, state, svc_was)
+
     try:
         with state.lock:
             state.reset()
             state.action_type = "blob_probe"
         cfg = get_config_manager().load()
-        from core.service_manager import is_installed as svc_installed, status as svc_status
-        svc_was = svc_installed() and svc_status() == "running"
-        z2_was = tester.is_running()
         blobs_dir = get_root_dir() / "blobs"
         keys = sorted(f.stem.removeprefix("tls_clienthello_")
                       for f in blobs_dir.glob("tls_clienthello_*.bin")
                       if not f.stem.removeprefix("tls_clienthello_").endswith("_kyber"))
         if not keys:
+            # ничего не гасили и не запускали - restore не нужен
+            _restored = True
             with state.lock:
                 state.error = "в blobs/ нет tls_clienthello_*.bin"
             return
         results = run_tester(lambda: tester.probe_blobs(
             make_progress_cb(state), keys,
             profile_name=cfg.last_profile or DEFAULT_PROFILE))
-        note = ""
-        if z2_was or svc_was:
-            note = restore_protection_after_naked(True, False, state, svc_was)
+        note = _restore()
         with state.lock:
             state.final_result = {"type": "blob_probe", "results": results,
                                   "restored": note}
@@ -268,7 +314,12 @@ def run_blob_probe(data: dict) -> None:
         with state.lock:
             state.error = str(e)
     finally:
+        _restore()
         resume_recovery()
+        try:
+            session_recovery.clear_session_journal(get_root_dir())
+        except Exception:
+            pass
         with state.lock:
             state.running = False
 
@@ -393,6 +444,20 @@ def _test_profiles_branch(state, tester, data: dict) -> None:
     z2_was = get_controller().status().running
     z1_was = scan_winws_exe()["running"]
     svc_was = svc_was_running()
+    _restored = False
+
+    def _restore_once() -> str:
+        """Возврат защиты ровно один раз - на ЛЮБОМ нормальном исходе ветки,
+        включая engine_broken и отмену до первого результата (ревью 18.10:
+        раньше restore жил только внутри if all_results - при сбое старта
+        обход оставался выключенным)."""
+        nonlocal _restored
+        if _restored:
+            return ""
+        _restored = True
+        return restore_protection_after_naked(
+            z2_was or svc_was, z1_was, state, svc_was)
+
     if z1_was:
         # Zapret 1 иначе искажает и «голый» тест, и все профили
         # (ревью-раунд 3): гасим на время свипа и вернём после (как naked).
@@ -526,21 +591,22 @@ def _test_profiles_branch(state, tester, data: dict) -> None:
         # здесь они уже не читаются - winws2 к этому моменту гашен.
         if start_failures:
             final["start_failures"] = start_failures
-        # Восстановление защиты ДЕЛАЕМ И ПРИ ОТМЕНЕ (как naked/asn): отмена
-        # теста не означает «оставь меня без обхода». P2-4: z2_was может быть
-        # False при живой службе (winws2 умер до замера) - svc_was в этом
-        # случае обязан вернуть службу.
-        final["restored"] = restore_protection_after_naked(
-            z2_was or svc_was, z1_was, state, svc_was)
+        # Восстановление защиты - единой точкой, и при отмене (отмена
+        # теста != «выключи обход»). P2-4: z2_was может быть False при
+        # живой службе (winws2 умер до замера) - svc_was обязан вернуть
+        # службу.
+        final["restored"] = _restore_once()
 
         play_completion_sound()
         state.set_final(final, [serialize_result(r) for r in all_results])
     elif start_failures and not tester.shutdown_event.is_set():
         # P1-1: ни одного валидного прогона - честный вердикт «движок не
         # запустился» (UI: engine_broken), а не «стратегии не пробили».
+        # Защиту возвращаем и в этом исходе (ревью 18.10).
         state.set_final({
             "profile": "",
             "start_failures": start_failures,
+            "restored": _restore_once(),
             "recommendation": {
                 "verdict": "engine_broken",
                 "best_profile": "",
@@ -553,6 +619,9 @@ def _test_profiles_branch(state, tester, data: dict) -> None:
             },
         })
     else:
+        # Отмена до первого результата (или пустой набор профилей):
+        # защита всё равно возвращается.
+        _restore_once()
         state.running = False
 
 
@@ -662,11 +731,14 @@ def run_tester_action(data: dict) -> None:
         # reset() в потоке - первый poll (350мс) видел «Тест отменён» (M2)
         state.cancelled = False
 
-    tester = get_tester()
+    tester = None
     logger = None
     _ui_debug(f"tester worker: start action={action!r} data={dict(data)}")
 
     try:
+        # get_tester() тоже внутри try: исключение до try раньше могло
+        # оставить state.running=True навсегда (ревью 18.10).
+        tester = get_tester()
         # Длительные фазы гасят winws2 - SCM-recovery на это время выключается
         # (иначе перезапускает службовый winws2 посреди прогона: конфликт
         # WinDivert, обрыв теста - баг 2026-09-12). ВНУТРИ try: зависший
@@ -751,6 +823,6 @@ def run_tester_action(data: dict) -> None:
             pass
         with state.lock:
             state.running = False
-        if logger:
+        if logger and tester is not None:
             logger.close()
             tester.set_logger(None)

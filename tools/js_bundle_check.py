@@ -61,7 +61,10 @@ def main() -> int:
               (r.stderr or "")[:200])
         ok = ok and good
     else:
-        print("SKIP node --check (node не найден)")
+        # Ревью 18.10: молчаливый SKIP давал зелёный прогон без проверки
+        # синтаксиса. Для чек-скрипта это FAIL.
+        print("FAIL: node не найден (проверка синтаксиса обязательна)")
+        ok = False
 
     print("ИТОГ:", "OK" if ok else "FAIL")
     return 0 if ok else 1

@@ -80,7 +80,12 @@ def _decode_point(raw: bytes):
     if y >= _P:
         raise ValueError("non-canonical point")
     x = _recover_x(y)
-    if (x & 1) != (raw[31] >> 7):
+    sign = raw[31] >> 7
+    if x == 0 and sign:
+        # RFC 8032 §5.1.3: кодировка y=1, x=0 с выставленным sign-битом
+        # неканонична и должна отвергаться (ревью 18.10).
+        raise ValueError("non-canonical point (x=0, sign=1)")
+    if (x & 1) != sign:
         x = _P - x
     p = (x % _P, y)
     if (-p[0] * p[0] + p[1] * p[1] - 1 - _D * p[0] * p[0] * p[1] * p[1]) % _P:

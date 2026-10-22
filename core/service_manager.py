@@ -37,7 +37,7 @@ def _serialized(fn):
 # Короткий TTL-кэш состояния службы: фронтенд поллит /api/service/status
 # каждые ~9с, а sc query - подпроцесс. Сбрасывается на любой мутирующей
 # операции (install/remove/start/stop/reconfigure).
-_STATUS_TTL = 10.0
+_STATUS_TTL = 2.0
 _status_cache_at = 0.0
 _status_cache_value: Optional[str] = None
 _installed_cache_at = 0.0
@@ -58,9 +58,13 @@ def _svc_log(msg: str) -> None:
 
 
 def _taskkill_winws2():
-    """Аудит #7: единый kill_image (раньше таймаут taskkill не обрабатывался)."""
-    from core.proc import kill_image
-    kill_image("winws2.exe", timeout=10)
+    """Единый kill winws2, но ТОЛЬКО этой установки (ревью 18.10:
+    name-wide kill убивал движок второй копии GUI в другой папке)."""
+    from core.proc import kill_image_filtered
+    root = app_root()
+    kill_image_filtered("winws2.exe",
+                        {str(root / "bin" / "winws2.exe"),
+                         str(root / "winws2.exe")}, timeout=10)
 
 
 def is_installed() -> bool:
@@ -473,6 +477,12 @@ def repair(root_dir: Optional[Path] = None) -> dict:
             actions.append("служба zapret2 остановлена")
         if _winws2_running() and _taskkill_winws2():
             actions.append("winws2.exe остановлен (драйвер освобождён)")
+            # Ждём фактического выхода процесса: sc stop WinDivert при живом
+            # хендле оставляет драйвер загруженным (ревью 18.10).
+            for _ in range(20):
+                if not _winws2_running():
+                    break
+                time.sleep(0.25)
         actions += fix_stale_windivert_services(root_dir)
         if _winws_running():
             actions.append("Zapret 1 (winws.exe) запущен - драйвер не трогаю")
@@ -513,18 +523,8 @@ def install(root_dir: Optional[Path] = None, args: Optional[list[str]] = None,
     _invalidate_service_cache()
     _svc_log(f"install: args={len(args or [])} cleanup_zapret1={cleanup_zapret1} "
              f"root={root_dir}")
-    remove()
-    time.sleep(0.5)
     if root_dir is None:
         root_dir = app_root()
-    # Драйвер лечим ПОСЛЕ остановки winws2 (кейс 2026-09-13): править или
-    # удалять службу драйвера при живых хендлах нельзя - она получит
-    # «marked for deletion» (1072) и починится только перезагрузкой.
-    try:
-        from core.utils import fix_stale_windivert_services
-        fix_stale_windivert_services(root_dir)
-    except Exception:
-        pass
     exe = Path(root_dir) / "bin" / "winws2.exe"
     if not exe.exists():
         exe = Path(root_dir) / "winws2.exe"
@@ -534,6 +534,9 @@ def install(root_dir: Optional[Path] = None, args: Optional[list[str]] = None,
         return False, f"winws2.exe вне каталога программы: {exe}"
     if args is None:
         args = []
+    # ПРЕДУСЛОВИЯ ПРОВЕРЯЕМ ДО remove() (ревью 18.10: раньше рабочая служба
+    # удалялась, и только потом обнаруживалась ошибка exe/guard/conf -
+    # пользователь оставался без обхода).
     # winws2.exe - бинарник службы НАПРЯМУЮ, аргументы - в logs/service_run.conf
     # (binPath короткий: "exe" @"conf"; cmd-обёртку ловит Defender, а длинные
     # binPath исторически искажались SCM Win10).
@@ -542,6 +545,16 @@ def install(root_dir: Optional[Path] = None, args: Optional[list[str]] = None,
         conf = write_run_conf(root_dir, args, name="service_run.conf")
     except OSError as e:
         return False, f"не записался service_run.conf: {e}"
+    remove()
+    time.sleep(0.5)
+    # Драйвер лечим ПОСЛЕ остановки winws2 (кейс 2026-09-13): править или
+    # удалять службу драйвера при живых хендлах нельзя - она получит
+    # «marked for deletion» (1072) и починится только перезагрузкой.
+    try:
+        from core.utils import fix_stale_windivert_services
+        fix_stale_windivert_services(root_dir)
+    except Exception:
+        pass
     cmdline = _service_cmdline(exe, conf)
     native = _service_binpath(exe, conf)
     _svc_log(f"install: exe={exe} args={len(args)} conf={conf}")
@@ -731,9 +744,15 @@ def remove():
         _svc_log(f"remove: sc delete rc={code} out={out.strip()[:160]!r} - повтор")
         time.sleep(0.5)
     code, out = _sc(["query", SERVICE_NAME])
-    if code != 0 or "1060" in out:
+    if "1060" in out:
         _svc_log("remove OK (службы нет)")
         return True, "Служба zapret2 удалена"
+    if code != 0:
+        # Ревью 18.10: НЕ выдаём успех, если sc query вообще не выполнился
+        # (rc=-1/пустой out): раньше `code != 0` трактовался как «службы нет».
+        _svc_log(f"remove FAIL: sc query rc={code} out={out.strip()[:160]!r}")
+        return False, ("не удалось подтвердить удаление службы "
+                       f"(sc query rc={code}) - проверьте вручную")
     _svc_log(f"remove FAIL: служба осталась (query rc={code})")
     return False, ("Служба zapret2 не удалилась: отмечена для удаления "
                    "(winws2 не отпустил хендл) - повторите удаление или "
@@ -748,9 +767,15 @@ def start(args: Optional[list[str]] = None):
     _invalidate_service_cache()
     from core.tcp_timestamps import enable_for_engine
     enable_for_engine()
-    ps, pmsg = path_status()
-    if ps == "mismatch":
-        _svc_log(f"start WARN: binPath ведёт на другую копию: {pmsg}")
+    start_ps, start_msg = path_status()
+    if start_ps == "mismatch":
+        _svc_log(f"start WARN: binPath ведёт на другую копию: {start_msg}")
+    # ПРЕДУСЛОВИЯ ДО stop() (ревью 18.10): кривой exe/guard/conf не должен
+    # оставлять пользователя без уже работающей службы.
+    if args:
+        ok_r, msg_r = reconfigure(args)
+        if not ok_r:
+            return False, msg_r
     stop()
     # Даём SCM время закрыть состояние (иначе первый sc start может дать 1053).
     time.sleep(0.5)
@@ -761,11 +786,7 @@ def start(args: Optional[list[str]] = None):
         fix_stale_windivert_services(app_root())
     except Exception:
         pass
-    if args:
-        ok_r, msg_r = reconfigure(args)
-        if not ok_r:
-            return False, msg_r
-    else:
+    if not args:
         # 0.11: старт без новых аргументов - заодно мигрируем legacy-службу
         try:
             ok_m, msg_m = migrate_if_needed()
@@ -786,11 +807,17 @@ def stop():
     # для вручную запущенного winws2.
     _invalidate_service_cache()
     _svc_log("stop")
-    _sc(["stop", SERVICE_NAME])
+    code, out = _sc(["stop", SERVICE_NAME])
+    # 1062 = служба не запущена (норма), 1056 = уже остановлена
+    if code != 0 and "1062" not in out and "1056" not in out:
+        _svc_log(f"stop: sc stop rc={code} out={out.strip()[:160]!r}")
     _taskkill_winws2()
     # P1-2: подтверждаем переход в STOPPED (закрывает гонку «sc start после
-    # stop → 1053» детерминированно, а не паузой).
-    _wait_service_stopped()
+    # stop → 1053» детерминированно, а не паузой). Ревью 18.10: результат
+    # ожидания больше не отбрасывается.
+    if not _wait_service_stopped():
+        return False, ("служба не дошла до STOPPED за таймаут "
+                       "(STOP_PENDING?) - проверьте состояние службы")
     return True, "winws2 остановлен"
 
 
@@ -934,16 +961,11 @@ def pause_recovery() -> None:
             _recovery_paused = True
             _svc_log(f"pause_recovery: actions off (saved {saved['actions']})")
             return
-        try:
-            code, out = _sc(["qfailure", SERVICE_NAME])
-            if code != 0:
-                return
-            _recovery_was_on = ("restart" in (out or "").lower()
-                                or "перезапуск" in (out or "").lower())
-            _sc(["failure", SERVICE_NAME, "reset=", "0", "actions=", ""])
-            _recovery_paused = True
-        except Exception:
-            pass
+        # fail-closed (ревью 18.10): без точного чтения SCM НЕ мутируем.
+        # Legacy-путь по подстрокам restart/перезапуск ломался на не-EN/RU
+        # локалях: resume мог ОСТАВИТЬ failure actions выключенными.
+        _svc_log("pause_recovery: точное чтение failure actions недоступно "
+                 "- пауза пропущена (fail-closed)")
 
 
 def resume_recovery() -> None:
