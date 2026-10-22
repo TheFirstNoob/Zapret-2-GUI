@@ -437,6 +437,14 @@ test_lite.ps1 синхронизирован с GUI-тестером (CONTROL 16
   возвращает engine_broken с понятной ошибкой, а не меряет вслепую.
   README lite: добавлены ограничения (тогглы GUI не настраиваются, общая
   служба, ручное обновление, test.bat — упрощённый).
+- **18.10.2026 (lite-сервис)**: добавлены `fix-driver.bat` — аналог GUI
+  «Выгрузить драйвер»: останавливает обход, проверяет ImagePath службы
+  WinDivert и чинит его на `%~dp0bin\WinDivert64.sys` (`sc config ... start=
+  demand`), застрявший драйвер выгружает (`sc stop WinDivert`); при занятом
+  драйвере честно просит перезагрузку. И `update.bat`/`update.ps1` — проверка
+  VERSION (GitHub raw → jsDelivr → api.github.com, числовое сравнение) с
+  уведомлением и ссылками; автообновления у lite нет (обновление вручную,
+  поверх, с сохранением user-списков). Меню service.bat: пункты 5/6.
 
 ### §17. Portable (2026-08-27) — GUI без паковщика
 `build_portable.py` → python-3.13.14-embed-amd64 + pywebview 6.2.1 (pythonnet),

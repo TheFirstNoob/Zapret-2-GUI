@@ -133,14 +133,18 @@ echo   1. Select strategy and start
 echo   2. Stop
 echo   3. Install service (autostart, default preset)
 echo   4. Remove service
-echo   5. Exit
+echo   5. Fix WinDivert driver (if bypass fails to start)
+echo   6. Check for updates
+echo   7. Exit
 echo.
-set /p c=Choose [1-5]:
+set /p c=Choose [1-7]:
 if "%c%"=="1" goto pick
 if "%c%"=="2" goto stop
 if "%c%"=="3" call "%~dp0service-install.bat"
 if "%c%"=="4" call "%~dp0service-remove.bat"
-if "%c%"=="5" exit /b
+if "%c%"=="5" call "%~dp0fix-driver.bat"
+if "%c%"=="6" call "%~dp0update.bat"
+if "%c%"=="7" exit /b
 goto menu
 :pick
 cls
@@ -233,6 +237,42 @@ SVC_REMOVE_BAT = (
     'pause\r\n'
 )
 
+# Аналог GUI «Выгрузить драйвер»/repair: битый ImagePath чиним на НАШ
+# WinDivert64.sys, застрявший драйвер выгружаем (parity lite↔GUI, 18.10).
+FIX_DRIVER_BAT = (
+    "@echo off\r\n"
+    "chcp 65001 >nul\r\n"
+    "cd /d \"%~dp0\"\r\n"
+    "echo [1/3] Stopping Zapret 2 (service + this copy)...\r\n"
+    "sc stop zapret2 >nul 2>&1\r\n"
+    + OWN_WINWS2_STOP +
+    "echo [2/3] Checking WinDivert driver service...\r\n"
+    "sc query WinDivert >nul 2>&1\r\n"
+    "if errorlevel 1 (\r\n"
+    "    echo   WinDivert service not found - it will be created automatically on next start.\r\n"
+    "    goto done\r\n"
+    ")\r\n"
+    "sc qc WinDivert | findstr /I /C:\"%~dp0bin\\WinDivert64.sys\" >nul\r\n"
+    "if errorlevel 1 (\r\n"
+    "    echo   ImagePath is broken or points to another folder - repairing...\r\n"
+    "    sc config WinDivert binPath= \"\\??\\%~dp0bin\\WinDivert64.sys\" start= demand\r\n"
+    ") else (\r\n"
+    "    echo   ImagePath OK.\r\n"
+    ")\r\n"
+    "sc query WinDivert | findstr /I \"RUNNING\" >nul\r\n"
+    "if not errorlevel 1 (\r\n"
+    "    sc stop WinDivert >nul 2>&1\r\n"
+    "    if errorlevel 1 (\r\n"
+    "        echo   Driver is busy - it will unload after handles close or reboot.\r\n"
+    "    ) else (\r\n"
+    "        echo   Driver unloaded.\r\n"
+    "    )\r\n"
+    ")\r\n"
+    ":done\r\n"
+    "echo [3/3] Done. Start protection again: start-default.bat or service.bat (item 3).\r\n"
+    "pause\r\n"
+)
+
 README_TXT = """Zapret 2 lite - обход блокировок без GUI (Windows)
 
 Это простая версия Zapret 2: без установки Python и без графического окна.
@@ -270,6 +310,16 @@ README_TXT = """Zapret 2 lite - обход блокировок без GUI (Wind
   test.bat            проверка связи и автофикс списков
   stop.bat            остановить обход
   service.bat         меню службы (автозапуск)
+  fix-driver.bat      починить драйвер WinDivert (обход не запускается/выбивает)
+  update.bat          проверить обновления (только уведомление)
+
+Если обход не запускается вообще:
+  запустите fix-driver.bat: он останавливает обход, починит путь службы
+  WinDivert на файл из этой папки и выгрузит застрявший драйвер. Если он
+  напишет, что драйвер занят - перезагрузите ПК и запустите обход заново.
+
+Проверка обновлений: update.bat (сравнивает VERSION с GitHub, даёт ссылку).
+Автообновления в lite нет - обновляйтесь вручную, сохраняя свои списки.
 
 Настройка под себя: списки лежат в папке lists\\ (list-general.txt -
 что обходить, list-exclude.txt - что не трогать). Файлы можно
@@ -345,6 +395,16 @@ def main() -> None:
     (LITE / "service.bat").write_text(SERVICE_MENU_BAT, encoding="ascii")
     (LITE / "service-install.bat").write_text(_svc_install_bat(portable), encoding="ascii")
     (LITE / "service-remove.bat").write_text(SVC_REMOVE_BAT, encoding="ascii")
+    (LITE / "fix-driver.bat").write_text(FIX_DRIVER_BAT, encoding="ascii")
+    # Проверка обновлений: только уведомление (автообновления в lite нет).
+    (LITE / "update.bat").write_text(
+        '@echo off\r\n'
+        'chcp 65001 >nul\r\n'
+        'powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0update.ps1"\r\n',
+        encoding="ascii")
+    (LITE / "update.ps1").write_text(
+        (ROOT / "update_lite.ps1").read_text(encoding="utf-8"),
+        encoding="utf-8-sig")  # BOM: PS 5.1 читает кириллицу только так
 
     # тестер: test.bat (безопасен при двойном клике) + test.ps1 (PS 5.1)
     (LITE / "test.bat").write_text(
