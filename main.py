@@ -87,29 +87,24 @@ def _strip_portable_motw() -> None:
 
 
 def _warn_if_bad_path(exe_dir: Path) -> bool:
-    """True, если путь установки безопасен для winws2.
+    """True, если путь установки приемлем (больше НЕ блокируем запуск).
 
-    ASCII-путь (с пробелами) безопасен - лаунчеры его квотируют. Не-ASCII
-    работает только при наличии короткого имени 8.3 (bat-лаунчеры пишутся
-    в ASCII через короткие пути). Предупреждаем лишь о реальном провале:
-    не-ASCII путь без короткой формы.
-    """
+    ASCII-путь (с пробелами) безопасен - лаунчеры квотируют. Не-ASCII:
+    основной запуск идёт через @conf (длинные пути; Cygwin раскрывает @file
+    до main), а bat-фолбэк при отсутствии 8.3 пишется UTF-8+chcp - поэтому
+    не пугаем MessageBox'ом, только пишем в лог (ревью 18.10)."""
     s = str(exe_dir)
     if all(ord(c) < 128 for c in s):
         return True
     if str(short_path(exe_dir)) != s:
-        return True  # короткая форма есть - лаунчер справится
-
-    title = "Zapret2 \u2014 \u041f\u0440\u0435\u0434\u0443\u043f\u0440\u0435\u0436\u0434\u0435\u043d\u0438\u0435"
-    msg = (
-        "\u041f\u0440\u043e\u0433\u0440\u0430\u043c\u043c\u0430 \u0440\u0430\u0441\u043f\u0430\u043a\u043e\u0432\u0430\u043d\u0430 \u0432 \u043f\u0430\u043f\u043a\u0443 \u0441 \u043a\u0438\u0440\u0438\u043b\u043b\u0438\u0446\u0435\u0439 \u0438 \u0431\u0435\u0437 \u043a\u043e\u0440\u043e\u0442\u043a\u0438\u0445 \u0438\u043c\u0451\u043d (8.3):\n\n"
-        f"{exe_dir}\n\n"
-        "\u0417\u0430\u043f\u0443\u0441\u043a winws2 \u0431\u0443\u0434\u0435\u0442 \u0441\u043b\u043e\u043c\u0430\u043d.\n"
-        "\u041f\u0435\u0440\u0435\u043c\u0435\u0441\u0442\u0438\u0442\u0435 Zapret2GUI.exe \u0432 \u043f\u0430\u043f\u043a\u0443 \u0431\u0435\u0437 \u043a\u0438\u0440\u0438\u043b\u043b\u0438\u0446\u044b,\n"
-        "\u043d\u0430\u043f\u0440\u0438\u043c\u0435\u0440: C:\\Zapret2GUI\\"
-    )
-    ctypes.windll.user32.MessageBoxW(0, msg, title, 0x30)
-    return False
+        return True  # 8.3-имена есть (нужны только bat-фолбэку)
+    try:
+        from core.applog import log as _applog
+        _applog("launch", f"WARN: не-ASCII путь без 8.3: {exe_dir} - "
+                          "основной запуск через @conf; bat-фолбэк UTF-8+chcp")
+    except Exception:
+        pass
+    return True
 
 
 def _copy_data_dir(src_dir: Path, dst_dir: Path, top: str) -> None:

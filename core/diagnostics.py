@@ -90,14 +90,17 @@ def _check_path(root_dir: Path) -> Check:
     if all(ord(c) < 128 for c in s):
         return Check("path", "Путь установки", "ok", s)
     if str(short_path(root_dir)) != s:
-        return Check("path", "Путь установки", "warn",
-                     f"{s} - в пути кириллица; программа работает через короткие имена. "
-                     "Если появятся проблемы, перенесите в C:\\Zapret2GUI\\",
-                     tech="8.3 short path fallback active")
-    return Check("path", "Путь установки", "fail",
-                 f"{s} - в пути кириллица, а короткие имена недоступны: winws2 не запустится. "
-                 "Перенесите программу в папку без кириллицы.",
-                 tech="no 8.3 names available")
+        return Check("path", "Путь установки", "ok",
+                     f"{s} - кириллица в пути; основной запуск через @conf "
+                     "(длинные пути) работает, 8.3-имена доступны для "
+                     "bat-фолбэка",
+                     tech="non-ASCII path, 8.3 available")
+    return Check("path", "Путь установки", "warn",
+                 f"{s} - кириллица, 8.3-имена недоступны: основной запуск "
+                 "идёт через @conf и обычно работает, bat-фолбэк "
+                 "переключится на UTF-8+chcp; при проблемах перенесите "
+                 "в C:\\Zapret2GUI\\",
+                 tech="non-ASCII path, no 8.3 names (bat fallback -> UTF-8)")
 
 
 def _check_windivert_files(root_dir: Path) -> Check:
