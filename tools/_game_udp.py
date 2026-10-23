@@ -1,4 +1,4 @@
-"""Варианты UDP-обхода для Wardogs (порт 4192): udplen / fake.
+"""Варианты UDP-обхода для Wardogs (порты 4129/4192-4194 по регионам): udplen / fake.
 
 Запуск: python tools/_game_udp.py <вариант>
   udplen_hex   - udplen +5, паттерн 0xDEADBEEF (рецепт Discord Voice)
