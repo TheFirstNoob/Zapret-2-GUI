@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import re
 import threading
+import time
 from pathlib import Path
 
 # include-домены: bundled (наши) + пользовательский
@@ -238,15 +239,25 @@ def _atomic_write(path: Path, text: str) -> None:
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f"{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
-    try:
-        tmp.write_text(text, encoding="utf-8")
-        os.replace(tmp, path)
-    except OSError:
+    last = None
+    # Ретраи: файл, читаемый живым winws2/AV/индексатором, иногда занят на
+    # мгновение - os.replace падает с OSError. Раньше это давало 500 из
+    # сервисных API (переустановка службы). Ревью 23.10.
+    for attempt in range(4):
         try:
-            tmp.unlink(missing_ok=True)
-        except OSError:
-            pass
-        raise
+            tmp.write_text(text, encoding="utf-8")
+            os.replace(tmp, path)
+            return
+        except OSError as e:
+            last = e
+            try:
+                tmp.unlink(missing_ok=True)
+            except OSError:
+                pass
+            if attempt < 3:
+                time.sleep(0.15 * (attempt + 1))
+    if last is not None:
+        raise last
 
 
 def atomic_write_text(path: Path, text: str) -> None:

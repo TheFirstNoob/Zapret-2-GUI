@@ -286,8 +286,17 @@ def transform_game_udp_pool(tokens: list[str], ctx: ArgsCtx) -> list[str]:
             seg = ["--new", f"--filter-udp={ports}"]
             if not wide:
                 cidrs = [c for r in rules for c in r["cidrs"]]
-                pool = games_store.write_cidr_pool_file(
-                    ctx.root_dir, f"d{cutoff}r{repeats}", cidrs)
+                key = f"d{cutoff}r{repeats}"
+                try:
+                    pool = games_store.write_cidr_pool_file(
+                        ctx.root_dir, key, cidrs)
+                except OSError as e:
+                    # Не роняем установку службы 500-й: пропускаем группу,
+                    # пишем причину в applog (ревью 23.10).
+                    _applog("games", f"UDP-пул: не удалось записать pool "
+                                     f"{key}: {e} - группа пропущена "
+                                     f"(порты {ports})")
+                    continue
                 seg.append(f"--ipset={pool}")
             seg += ["--out-range", f"-d{cutoff}",
                     "--lua-desync=fake:blob=quic_google:"

@@ -420,6 +420,7 @@ const MainPage = {
   },
 
   async _svcAction(fn, busyText, okText, errText) {
+    if (this._svcBusy) return;
     this._setSvcBusy(true);
     $('svcStatusText').textContent = busyText;
     Activity.set('main', busyText);
@@ -438,6 +439,7 @@ const MainPage = {
   },
 
   async svcInstall() {
+    if (this._svcBusy) return;
     if (!await this._configReady('установка службы')) return;
     const t = this._collectToggles();
     const payload = {

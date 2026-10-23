@@ -15,7 +15,18 @@ from core.service_manager import (SERVICE_NAME, install as svc_install,
                                   repair as svc_repair, start as svc_start,
                                   status as svc_status, stop as svc_stop)
 from server.app_state import (AppContext, checkers_busy, get_config_manager,
-                              get_controller, get_root_dir)
+                              get_controller, get_root_dir, ui_debug)
+
+
+def _svc_fail(action: str, e: Exception) -> dict:
+    """Единый ответ на неожиданное исключение сервисного действия.
+
+    Раньше такие ошибки (например, OSError записи pool-файла/временного
+    conf) уходили наружу как HTTP 500. Ревью 23.10: возвращаем читаемую
+    ошибку в JSON, детали - в ui_debug."""
+    ui_debug(f"service {action}: {type(e).__name__}: {e}")
+    return {"status": "error",
+            "message": f"Ошибка службы ({action}): {type(e).__name__}: {e}"}
 
 
 def prepare_service_args(data: dict) -> tuple[Optional[list[str]], str]:
@@ -68,12 +79,18 @@ def service_install(ctx: AppContext, data: dict) -> dict:
     busy = checkers_busy()
     if busy:
         return {"status": "error", "message": busy}
-    args, err = prepare_service_args(data)
+    try:
+        args, err = prepare_service_args(data)
+    except Exception as e:  # noqa: BLE001
+        return _svc_fail("подготовка установки", e)
     if err:
         return {"status": "error", "message": f"Установка отменена - {err}"}
     cleanup = bool(data.get("cleanup_zapret1")) if isinstance(data, dict) else False
-    ok, msg = svc_install(root_dir=get_root_dir(), args=args,
-                          cleanup_zapret1=cleanup)
+    try:
+        ok, msg = svc_install(root_dir=get_root_dir(), args=args,
+                              cleanup_zapret1=cleanup)
+    except Exception as e:  # noqa: BLE001
+        return _svc_fail("установка", e)
     if ok:
         # статус на главной показывал «стратегия «?»» - служба запускается
         # вне controller, и тот не знал профиль
@@ -90,7 +107,10 @@ def service_remove(ctx: AppContext) -> dict:
     busy = checkers_busy()
     if busy:
         return {"status": "error", "message": busy}
-    ok, msg = svc_remove()
+    try:
+        ok, msg = svc_remove()
+    except Exception as e:  # noqa: BLE001
+        return _svc_fail("удаление", e)
     return {"status": "ok" if ok else "error", "message": msg}
 
 
@@ -111,10 +131,16 @@ def service_start(ctx: AppContext) -> dict:
         return {"status": "error", "message": busy}
     # Обновляем параметры службы текущими аргументами: устаревший conf молча
     # запустит старую стратегию.
-    args, err = prepare_service_args({})
+    try:
+        args, err = prepare_service_args({})
+    except Exception as e:  # noqa: BLE001
+        return _svc_fail("подготовка запуска", e)
     if err:
         return {"status": "error", "message": f"Служба не запущена - {err}"}
-    ok, msg = svc_start(args)
+    try:
+        ok, msg = svc_start(args)
+    except Exception as e:  # noqa: BLE001
+        return _svc_fail("запуск", e)
     if ok:
         try:
             get_controller().current_strategy = get_config_manager().load().last_profile
@@ -127,7 +153,10 @@ def service_stop(ctx: AppContext) -> dict:
     busy = checkers_busy()
     if busy:
         return {"status": "error", "message": busy}
-    ok, msg = svc_stop()
+    try:
+        ok, msg = svc_stop()
+    except Exception as e:  # noqa: BLE001
+        return _svc_fail("остановка", e)
     if ok:
         try:
             get_controller().current_strategy = None

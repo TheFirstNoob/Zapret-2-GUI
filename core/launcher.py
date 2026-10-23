@@ -115,7 +115,10 @@ def validate_args(exe_path: Path, args: list[str], cwd: Optional[Path] = None, t
     или (False, первая проблемная строка вывода).  WinDivert не грузится -
     состояние драйвера не затрагивается.
     """
-    conf = _write_temp_conf(list(args) + ["--dry-run"])
+    try:
+        conf = _write_temp_conf(list(args) + ["--dry-run"])
+    except OSError as e:
+        return False, f"не удалось создать временный conf: {e}"
     try:
         r = subprocess.run(
             _winws2_raw_cmdline(exe_path, conf, "--dry-run"),
@@ -178,7 +181,10 @@ def validate_lua(exe_path: Path, args: list[str], cwd: Optional[Path] = None, ti
         i += 1
     if not lua_tokens:
         return True, ""
-    conf = _write_temp_conf(lua_tokens + ["--intercept=0"])
+    try:
+        conf = _write_temp_conf(lua_tokens + ["--intercept=0"])
+    except OSError as e:
+        return False, f"не удалось создать временный conf: {e}"
     try:
         r = subprocess.run(
             _winws2_raw_cmdline(exe_path, conf, "--intercept=0"),
