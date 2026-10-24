@@ -16,7 +16,7 @@ from server.app_state import (AppContext, checkers_busy, get_config_manager,
 def zapret1_strategies(ctx: AppContext) -> dict:
     cfg = get_config_manager().load()
     dir_path = cfg.zapret1_dir
-    if not dir_path or not Path(dir_path).is_dir():
+    if not isinstance(dir_path, str) or not dir_path or not Path(dir_path).is_dir():
         return {"status": "ok", "strategies": []}
     bats = []
     for f in sorted(Path(dir_path).glob("*.bat")):
@@ -28,7 +28,7 @@ def zapret1_strategies(ctx: AppContext) -> dict:
 
 
 def zapret1_save_dir(ctx: AppContext, data: dict) -> dict:
-    path = data.get("path", "").strip()
+    path = str(data.get("path") or "").strip()
     if not path or not Path(path).is_dir():
         return {"status": "error",
                 "message": "Укажите существующую папку Zapret 1"}
@@ -43,7 +43,7 @@ def zapret1_start(ctx: AppContext, data: dict) -> dict:
     busy = checkers_busy()
     if busy:
         return {"status": "error", "message": busy}
-    strategy = data.get("strategy", "").strip()
+    strategy = str(data.get("strategy") or "").strip()
     if not strategy:
         return {"status": "error", "message": "Стратегия не указана"}
     # имя файла стратегии строится из клиентского значения (L2): без этой

@@ -96,7 +96,10 @@ def save_config(ctx: AppContext, data: dict) -> dict:
 def settings_export(ctx: AppContext) -> dict:
     """Экспорт настроек: config + *-user.txt + юзерские пресеты → один zip."""
     from core.updater import export_settings_zip
-    path = export_settings_zip(get_root_dir())
+    try:
+        path = export_settings_zip(get_root_dir())
+    except (OSError, RuntimeError, ValueError) as e:
+        return {"status": "error", "message": f"Не удалось создать экспорт: {e}"}
     if not path:
         return {"status": "error", "message": "Не удалось создать файл экспорта"}
     return {"status": "ok", "file": str(path), "name": path.name}

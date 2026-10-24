@@ -55,5 +55,8 @@ def probe_status(ctx: AppContext) -> dict:
 
 def probe_report(ctx: AppContext) -> dict:
     probe = get_process_probe()
-    path = probe.save_report()
+    try:
+        path = probe.save_report()
+    except (OSError, RuntimeError) as e:
+        return {"status": "error", "message": f"Не удалось сохранить отчёт: {e}"}
     return {"status": "ok", "report": probe.report_text(), "path": str(path)}

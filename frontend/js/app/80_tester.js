@@ -1114,6 +1114,9 @@ const TesterPage = {
       this._setProbeState('Перехват пакетов', 'live');
       this._probePollTimer = setInterval(() => this.pollProbe(), 2000);
       this.pollProbe();
+    } catch (e) {
+      showToast('Анализ не запустился: ' + (e.message || e), 'error');
+      btn.disabled = false;
     } finally {
       this._probeStarting = false;
     }
@@ -1125,10 +1128,22 @@ const TesterPage = {
       r = await apiGet('/process-probe/status');
     } catch (e) {
       this._stopProbePolling();
+      if (this._probeTimer) { clearInterval(this._probeTimer); this._probeTimer = null; }
+      const start = $('probeStartBtn');
+      if (start) { start.disabled = false; start.hidden = false; }
+      $('probeStopBtn').hidden = true;
+      this._setProbeState('Ошибка анализа', 'err');
+      showToast('Анализ: ' + (e.message || e), 'error');
       return;
     }
     if (r.status !== 'ok') {
       this._stopProbePolling();
+      if (this._probeTimer) { clearInterval(this._probeTimer); this._probeTimer = null; }
+      const start = $('probeStartBtn');
+      if (start) { start.disabled = false; start.hidden = false; }
+      $('probeStopBtn').hidden = true;
+      this._setProbeState('Ошибка анализа', 'err');
+      showToast('Анализ: ' + (r.message || 'ошибка статуса'), 'error');
       return;
     }
     const st = r.state || {};
@@ -1171,22 +1186,32 @@ const TesterPage = {
     const bar = $('probeLiveBar');
     if (bar) bar.hidden = true;  // живая плашка исчезает сразу
     if (this._probeTimer) { clearInterval(this._probeTimer); this._probeTimer = null; }
-    await apiPost('/process-probe/stop', {});
-    // Поллинг не гасим: pollProbe дождётся финальной фазы («завершено»),
-    // скроет строку фазы и отрисует итог (баг: статус зависал после «Стоп»).
-    this.pollProbe();
-    if (stop) stop.disabled = false;
+    try {
+      await apiPost('/process-probe/stop', {});
+      // Поллинг не гасим: pollProbe дождётся финальной фазы («завершено»),
+      // скроет строку фазы и отрисует итог (баг: статус зависал после «Стоп»).
+      this.pollProbe();
+    } catch (e) {
+      showToast('Остановка анализа: ' + (e.message || e), 'error');
+      this._setProbeState('Ошибка остановки', 'err');
+    } finally {
+      if (stop) stop.disabled = false;
+    }
   },
 
   async saveProbeReport() {
-    const r = await apiPost('/process-probe/report', {});
-    if (r.status === 'ok' && r.report) {
-      const el = $('probeResults');
-      el.hidden = false;
-      el.innerHTML = '<pre class="probe-report">' + escapeHtml(r.report) + '</pre>';
-      showToast('Отчёт сохранён: ' + r.path, 'ok');
-    } else {
-      showToast('Не удалось сохранить отчёт', 'error');
+    try {
+      const r = await apiPost('/process-probe/report', {});
+      if (r.status === 'ok' && r.report) {
+        const el = $('probeResults');
+        el.hidden = false;
+        el.innerHTML = '<pre class="probe-report">' + escapeHtml(r.report) + '</pre>';
+        showToast('Отчёт сохранён: ' + r.path, 'ok');
+      } else {
+        showToast('Не удалось сохранить отчёт', 'error');
+      }
+    } catch (e) {
+      showToast('Не удалось сохранить отчёт: ' + (e.message || e), 'error');
     }
   },
 
