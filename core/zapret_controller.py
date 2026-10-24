@@ -118,12 +118,27 @@ class ZapretController:
         now = time.time()
         if not force and self._cached_pid is not None and (now - self._cached_pid_at) < 1.0:
             return self._cached_pid
-        from core.proc import image_pids
-        pids = image_pids("winws2.exe", timeout=5)
-        if pids:
-            self._cached_pid = pids[0]
-            self._cached_pid_at = now
-            return self._cached_pid
+        from core.proc import image_pids, process_image_path
+        allowed = set()
+        for candidate in (self.bin_dir / "winws2.exe",
+                          self.root_dir / "winws2.exe"):
+            try:
+                allowed.add(str(candidate.resolve()).lower())
+            except OSError:
+                pass
+        # path-фильтр: иначе controller временной/второй копии видел и убивал
+        # winws2 службы из другой папки (тест с temp root гасил живой сервис).
+        for pid in image_pids("winws2.exe", timeout=5):
+            path = process_image_path(pid)
+            if not path:
+                continue
+            try:
+                if str(Path(path).resolve()).lower() in allowed:
+                    self._cached_pid = pid
+                    self._cached_pid_at = now
+                    return pid
+            except OSError:
+                continue
         self._cached_pid = None
         self._cached_pid_at = now
         return None

@@ -13,6 +13,7 @@ import os
 import re
 import socket
 import subprocess
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -45,29 +46,58 @@ def ipset_networks(root_dir: Path) -> list:
     return nets
 
 
+_RESOLVE_LOCK = threading.Lock()
+_RESOLVE_CACHE: dict[str, tuple[float, list[str]]] = {}
+_RESOLVE_INFLIGHT: dict[str, float] = {}
+_RESOLVE_OK_TTL = 300.0
+_RESOLVE_FAIL_TTL = 30.0
+_RESOLVE_INFLIGHT_TTL = 60.0
+_RESOLVE_MAX_INFLIGHT = 16
+
+
 def resolve_ips(domain: str, timeout: float = 2.0) -> list[str]:
     """A-записи домена (для ipset-включений: winws2 --ipset принимает IP).
 
     timeout реально ограничивает ожидание: socket.getaddrinfo блокирующий,
-    поэтому резолв идёт в демон-потоке (ревью 18.10 - параметр раньше
-    игнорировался, поток мог висеть на системном DNS)."""
-    import threading as _th
+    поэтому резолв идёт в демон-потоке. Кэш и in-flight guard не дают серии
+    одинаковых/зависших запросов плодить безлимитные daemon-потоки.
+    """
+    key = (domain or "").strip().lower().rstrip(".")
+    if not key:
+        return []
+    now = time.monotonic()
+    with _RESOLVE_LOCK:
+        cached = _RESOLVE_CACHE.get(key)
+        if cached:
+            ttl = _RESOLVE_OK_TTL if cached[1] else _RESOLVE_FAIL_TTL
+            if now - cached[0] < ttl:
+                return list(cached[1])
+        started = _RESOLVE_INFLIGHT.get(key)
+        if started is not None and now - started < _RESOLVE_INFLIGHT_TTL:
+            return []
+        if len(_RESOLVE_INFLIGHT) >= _RESOLVE_MAX_INFLIGHT:
+            return []
+        _RESOLVE_INFLIGHT[key] = now
     box: dict = {}
 
     def _worker() -> None:
         try:
             box["ips"] = sorted({addr[4][0] for addr in
-                                 socket.getaddrinfo(domain, None,
+                                 socket.getaddrinfo(key, None,
                                                     socket.AF_INET,
                                                     socket.SOCK_STREAM)
                                  if addr[4]})
         except OSError:
             box["ips"] = []
+        ips = list(box.get("ips") or [])
+        with _RESOLVE_LOCK:
+            _RESOLVE_CACHE[key] = (time.monotonic(), ips)
+            _RESOLVE_INFLIGHT.pop(key, None)
 
-    th = _th.Thread(target=_worker, daemon=True)
+    th = threading.Thread(target=_worker, daemon=True)
     th.start()
     th.join(max(0.1, float(timeout)))
-    return box.get("ips", [])
+    return list(box.get("ips", []))
 
 
 def _is_dns_error(rc: int, stderr: str) -> bool:

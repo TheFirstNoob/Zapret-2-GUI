@@ -5,6 +5,7 @@ import os
 import secrets
 import shutil
 import socket
+import subprocess
 import sys
 import tempfile
 import threading
@@ -378,6 +379,118 @@ def _acquire_single_instance() -> bool:
 
 _SINGLE_INSTANCE_MUTEX = None
 
+_WEBVIEW2_CLIENT = "{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+
+
+def _webview2_runtime_version() -> str:
+    """Версия Evergreen/Fixed WebView2 или пустая строка.
+
+    pywebview при отсутствии Runtime уходит в MSHTML/IE и даёт белый экран,
+    поэтому проверяем установку до импорта webview. Registry - основной
+    признак; env/Program Files - Fixed Version Runtime.
+    """
+    try:
+        import winreg
+        paths = (
+            (winreg.HKEY_LOCAL_MACHINE,
+             rf"SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{_WEBVIEW2_CLIENT}"),
+            (winreg.HKEY_LOCAL_MACHINE,
+             rf"SOFTWARE\Microsoft\EdgeUpdate\Clients\{_WEBVIEW2_CLIENT}"),
+            (winreg.HKEY_CURRENT_USER,
+             rf"Software\Microsoft\EdgeUpdate\Clients\{_WEBVIEW2_CLIENT}"),
+        )
+        for hive, sub in paths:
+            try:
+                with winreg.OpenKey(hive, sub) as key:
+                    pv, _ = winreg.QueryValueEx(key, "pv")
+                    if pv and str(pv) not in ("0.0.0.0", "0.0.0"):
+                        return str(pv)
+            except OSError:
+                continue
+    except Exception:  # noqa: BLE001 - preflight не должен ронять запуск
+        pass
+    runtime_dir = os.environ.get("WEBVIEW2_BROWSER_EXECUTABLE_FOLDER", "")
+    if runtime_dir and Path(runtime_dir).is_dir():
+        return "env"
+    for base in (os.environ.get("ProgramFiles(x86)"),
+                 os.environ.get("ProgramFiles")):
+        if base and (Path(base) / "Microsoft" / "EdgeWebView" /
+                     "Application").is_dir():
+            return "dir"
+    return ""
+
+
+def _find_modern_browser() -> Path | None:
+    """Edge/Chrome для запасного режима; IE и старый Edge не подходят."""
+    names = ("msedge.exe", "chrome.exe")
+    roots = (os.environ.get("ProgramFiles(x86)"),
+             os.environ.get("ProgramFiles"),
+             os.environ.get("LOCALAPPDATA"))
+    candidates: list[Path] = []
+    for root in roots:
+        if not root:
+            continue
+        candidates += [
+            Path(root) / "Microsoft" / "Edge" / "Application" / "msedge.exe",
+            Path(root) / "Google" / "Chrome" / "Application" / "chrome.exe",
+        ]
+    for name in names:
+        found = shutil.which(name)
+        if found:
+            candidates.append(Path(found))
+    for path in candidates:
+        try:
+            if path.is_file():
+                return path
+        except OSError:
+            continue
+    return None
+
+
+def _browser_mode_requested() -> bool:
+    return ("--browser" in sys.argv[1:]
+            or os.environ.get("ZAPRET2_BROWSER", "").strip().lower()
+            in ("1", "true", "yes", "on"))
+
+
+def _show_webview2_missing() -> None:
+    ctypes.windll.user32.MessageBoxW(
+        0,
+        "WebView2 Runtime не найден, а современный Edge/Chrome не обнаружен.\n\n"
+        "Установите Evergreen WebView2 Runtime:\n"
+        "https://go.microsoft.com/fwlink/p/?LinkId=2124703\n\n"
+        "Либо установите Edge/Chrome и запустите программу с параметром "
+        "--browser.",
+        "Zapret2 - нужен WebView2 или браузер", 0x30)
+
+
+def _browser_fallback(url: str, on_closing) -> None:
+    """Открыть UI в отдельном окне Edge/Chrome (app mode).
+
+    Браузер запускается с отдельным временным профилем: не мешает обычному
+    профилю и его расширениям. Процесс браузера держит сервер живым; после
+    закрытия окна вызывается on_closing.
+    """
+    exe = _find_modern_browser()
+    if exe is None:
+        _show_webview2_missing()
+        on_closing()
+        return
+    profile = Path(tempfile.mkdtemp(prefix="zapret2_browser_"))
+    try:
+        proc = subprocess.Popen(
+            [str(exe), f"--app={url}", f"--user-data-dir={profile}",
+             "--no-first-run", "--no-default-browser-check", "--disable-sync"],
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        proc.wait()
+    except OSError as e:
+        _applog("webview", f"browser fallback failed: {e!r}")
+        _show_webview2_missing()
+    finally:
+        shutil.rmtree(profile, ignore_errors=True)
+    on_closing()
+
 
 def main_gui() -> None:
     if not is_admin():
@@ -400,16 +513,18 @@ def main_gui() -> None:
     _cleanup_stale_mei()
     _strip_portable_motw()
 
-    try:
-        import webview
-    except Exception:
-        ctypes.windll.user32.MessageBoxW(
-            0,
-            "Не удалось загрузить интерфейс (webview).\n\n"
-            "Убедитесь, что установлен WebView2 Runtime:\n"
-            "https://developer.microsoft.com/microsoft-edge/webview2/",
-            "Zapret2 - ошибка", 0x30)
+    use_browser = _browser_mode_requested()
+    browser_available = _find_modern_browser() is not None
+    if use_browser and not browser_available:
+        _show_webview2_missing()
         return
+    if not use_browser and not _webview2_runtime_version():
+        if browser_available:
+            use_browser = True
+            _applog("webview", "WebView2 Runtime не найден - browser fallback")
+        else:
+            _show_webview2_missing()
+            return
 
     from server.server import init, create_server, stop_server
 
@@ -464,22 +579,45 @@ def main_gui() -> None:
         except Exception:
             pass
 
-    window = webview.create_window(
-        "Zapret2 Manager",
-        f"{base_url}/?token={app_token}",
-        width=1280, height=840, min_size=(900, 600),
-    )
+    if use_browser:
+        _browser_fallback(f"{base_url}/?token={app_token}", on_closing)
+        print("[zapret2] Goodbye.")
+        return
+
     try:
+        import webview
+    except Exception as e:
+        _applog("webview", f"import failed: {e!r}")
+        if browser_available:
+            _browser_fallback(f"{base_url}/?token={app_token}", on_closing)
+        else:
+            _show_webview2_missing()
+            on_closing()
+        print("[zapret2] Goodbye.")
+        return
+
+    try:
+        window = webview.create_window(
+            "Zapret2 Manager",
+            f"{base_url}/?token={app_token}",
+            width=1280, height=840, min_size=(900, 600),
+        )
         window.events.closing += on_closing
-        webview.start()
-    except Exception:
-        # у pythonw нет консоли - молча падать нельзя.
-        ctypes.windll.user32.MessageBoxW(
-            0,
-            "Ошибка запуска интерфейса (WebView2).\n\n"
-            "Убедитесь, что установлен WebView2 Runtime:"
-            " https://developer.microsoft.com/microsoft-edge/webview2/",
-            "Zapret2 - ошибка", 0x30)
+        webview.start(gui="edgechromium")
+    except Exception as e:
+        # у pythonw нет консоли - молча падать нельзя. Если Edge/Chrome есть,
+        # уходим в браузерный режим вместо белого окна/MSHTML.
+        _applog("webview", f"start failed: {e!r}")
+        if browser_available:
+            _browser_fallback(f"{base_url}/?token={app_token}", on_closing)
+        else:
+            ctypes.windll.user32.MessageBoxW(
+                0,
+                "Ошибка запуска интерфейса (WebView2).\n\n"
+                "Установите WebView2 Runtime:"
+                " https://go.microsoft.com/fwlink/p/?LinkId=2124703",
+                "Zapret2 - ошибка", 0x30)
+            on_closing()
     print("[zapret2] Goodbye.")
 
 
