@@ -20,6 +20,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from core.launcher import build_args_from_preset  # noqa: E402
+from core.updater import RELEASE_PRESETS  # noqa: E402
 from core.utils import short_path  # noqa: E402
 
 GOLDEN = pathlib.Path(__file__).resolve().parent / "args_golden.json"
@@ -47,7 +48,7 @@ def _matrix() -> list[tuple[str, dict]]:
     cases: list[tuple[str, dict]] = [
         (f"preset:{p.stem}", {"preset": p})
         for p in sorted((ROOT / "presets").glob("*.txt"))
-        if p.stem != "custom"
+        if p.stem in RELEASE_PRESETS
     ]
     cases += [
         ("debug", {"preset": d, "debug": True}),
