@@ -31,7 +31,12 @@ def _serialized(fn):
     @functools.wraps(fn)
     def wrapper(*args, **kwargs):
         with _op_lock:
-            return fn(*args, **kwargs)
+            try:
+                return fn(*args, **kwargs)
+            finally:
+                # После завершения мутации кэш SCM не должен показывать
+                # старое состояние ещё 2 секунды.
+                _invalidate_service_cache()
     return wrapper
 
 # Короткий TTL-кэш состояния службы: фронтенд поллит /api/service/status
