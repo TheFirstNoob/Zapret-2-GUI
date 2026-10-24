@@ -21,8 +21,9 @@
   `multisplit-pure`, `multisplit-seqovl`, `tcpmd5-fake`). Тестовые
   `exp-*`/`cand-*` удалены. В рабочем дереве есть **untracked** тестовый
   `presets/flaky.txt` (не релиз, не применять без теста).
-- **Движок:** `bin/winws2.exe` = zapret2 v1.0.5. Апгрейд на 1.0.6
-  предварительно проверен, но **отложен**; без команды не менять.
+- **Движок:** `bin/winws2.exe` = zapret2 **v1.0.6** (обновлён 2026-10-24;
+  stock-lua lib/antidpi/auto обновлены, `zapret-custom.lua` сохранён).
+  T37/T43/T44 dry-run зелёные; служба в зеркале перезапущена.
 - **Тесты:** отдельного `tests/` в репо нет. Батарея:
   `compileall`, `tools/api_smoke.py`, `tools/security/test_updates_security.py`
   (46), `tools/args_golden.py compare`, `tools/js_bundle_check.py`,
