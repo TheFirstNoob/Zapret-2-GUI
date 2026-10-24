@@ -3,8 +3,14 @@
 Соглашение: (ctx: AppContext, ...) -> dict; исключения - только ApiError."""
 from __future__ import annotations
 
+import threading
+from dataclasses import replace
+from zipfile import BadZipFile
+
 from core.config import VERSION
 from server.app_state import AppContext, get_config_manager, get_root_dir
+
+_CONFIG_LOCK = threading.Lock()
 
 
 def get_config(ctx: AppContext) -> dict:
@@ -32,36 +38,59 @@ def get_config(ctx: AppContext) -> dict:
 
 
 def save_config(ctx: AppContext, data: dict) -> dict:
-    cfg = get_config_manager().load()
-    if "last_profile" in data: cfg.last_profile = data["last_profile"]
-    if "zapret1_dir" in data: cfg.zapret1_dir = data["zapret1_dir"]
-    if "game_filter_mode" in data: cfg.game_filter_mode = data["game_filter_mode"]
-    if "discord_voice" in data: cfg.discord_voice = bool(data["discord_voice"])
-    if "discord_voice_mode" in data:
-        mode = str(data["discord_voice_mode"]).lower()
-        if mode in ("off", "fake", "udplen"):
-            cfg.discord_voice_mode = mode
-            cfg.discord_voice = mode != "off"  # совместимость со старыми сборками
-    if "winws2_debug" in data: cfg.winws2_debug = bool(data["winws2_debug"])
-    if "fake_blob" in data:
-        fb = str(data["fake_blob"]).strip()
-        if fb:
-            blobs_dir = get_root_dir() / "blobs"
-            alt = blobs_dir / f"tls_clienthello_{fb}.bin"
-            if not alt.exists() and fb.startswith("blob_"):
-                # цифро-ключи селект отдаёт как "blob_<key>" - проверяем
-                # и алиас, иначе выбор молча не сохранялся (аудит 2026-10)
-                alt = blobs_dir / f"tls_clienthello_{fb[5:]}.bin"
-            if not alt.exists():
-                return {"status": "error", "message": f"неизвестный блоб: {fb}"}
-        cfg.fake_blob = fb
-    if "autohostlist" in data: cfg.autohostlist = bool(data["autohostlist"])
-    if "ipset_catchall" in data: cfg.ipset_catchall = bool(data["ipset_catchall"])
-    if "discord_alt" in data: cfg.discord_alt = bool(data["discord_alt"])
-    if "tour_done" in data: cfg.tour_done = bool(data["tour_done"])
-    if "notice_done" in data: cfg.notice_done = bool(data["notice_done"])
-    ok = get_config_manager().save(cfg)
-    return {"status": "ok" if ok else "error"}
+    if not isinstance(data, dict):
+        return {"status": "error", "message": "JSON body должен быть объектом"}
+    with _CONFIG_LOCK:
+        cfg = get_config_manager().load()
+        # Копия: ошибка валидации/записи не должна оставлять shared cache
+        # изменённым в памяти (аудит 24.10).
+        new_cfg = replace(cfg)
+        if "last_profile" in data:
+            if not isinstance(data["last_profile"], str):
+                return {"status": "error", "message": "last_profile должен быть строкой"}
+            new_cfg.last_profile = data["last_profile"]
+        if "zapret1_dir" in data:
+            if not isinstance(data["zapret1_dir"], str):
+                return {"status": "error", "message": "zapret1_dir должен быть строкой"}
+            new_cfg.zapret1_dir = data["zapret1_dir"]
+        if "game_filter_mode" in data:
+            mode = str(data["game_filter_mode"]).lower()
+            if mode not in ("off", "udp", "tcp", "both"):
+                return {"status": "error", "message": "Неизвестный GameFilter"}
+            new_cfg.game_filter_mode = mode
+        if "discord_voice" in data:
+            new_cfg.discord_voice = bool(data["discord_voice"])
+        if "discord_voice_mode" in data:
+            mode = str(data["discord_voice_mode"]).lower()
+            if mode not in ("off", "fake", "udplen"):
+                return {"status": "error", "message": "Неизвестный режим Discord Voice"}
+            new_cfg.discord_voice_mode = mode
+            new_cfg.discord_voice = mode != "off"
+        if "winws2_debug" in data:
+            new_cfg.winws2_debug = bool(data["winws2_debug"])
+        if "fake_blob" in data:
+            fb = str(data["fake_blob"]).strip()
+            if fb:
+                blobs_dir = get_root_dir() / "blobs"
+                alt = blobs_dir / f"tls_clienthello_{fb}.bin"
+                if not alt.exists() and fb.startswith("blob_"):
+                    alt = blobs_dir / f"tls_clienthello_{fb[5:]}.bin"
+                if not alt.exists():
+                    return {"status": "error", "message": f"неизвестный блоб: {fb}"}
+            new_cfg.fake_blob = fb
+        if "autohostlist" in data:
+            new_cfg.autohostlist = bool(data["autohostlist"])
+        if "ipset_catchall" in data:
+            new_cfg.ipset_catchall = bool(data["ipset_catchall"])
+        if "discord_alt" in data:
+            new_cfg.discord_alt = bool(data["discord_alt"])
+        if "tour_done" in data:
+            new_cfg.tour_done = bool(data["tour_done"])
+        if "notice_done" in data:
+            new_cfg.notice_done = bool(data["notice_done"])
+        ok = get_config_manager().save(new_cfg)
+        return {"status": "ok"} if ok else {"status": "error",
+                                           "message": "Не удалось сохранить конфиг"}
 
 
 def settings_export(ctx: AppContext) -> dict:
@@ -83,8 +112,17 @@ def settings_import(ctx: AppContext, data: dict) -> dict:
     if not zip_data:
         return {"status": "error", "message": "Пустой файл"}
     from core.updater import import_settings_zip, read_settings_meta
-    meta = read_settings_meta(zip_data)
-    imported, skipped = import_settings_zip(zip_data, get_root_dir())
+    try:
+        meta = read_settings_meta(zip_data)
+        imported, skipped = import_settings_zip(zip_data, get_root_dir())
+    except (BadZipFile, OSError, RuntimeError, ValueError) as e:
+        return {"status": "error", "message": f"Не удалось импортировать настройки: {e}"}
+    # Импортированный config не должен остаться закэшированным старым.
+    try:
+        cm = get_config_manager()
+        cm._config = None  # noqa: SLF001 - намеренная инвалидация кэша
+    except Exception:
+        pass
     note = ""
     ver = str(meta.get("version") or "")
     if ver and ver != VERSION:

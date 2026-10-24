@@ -545,7 +545,11 @@ def install(root_dir: Optional[Path] = None, args: Optional[list[str]] = None,
         conf = write_run_conf(root_dir, args, name="service_run.conf")
     except OSError as e:
         return False, f"не записался service_run.conf: {e}"
-    remove()
+    ok_r, msg_r = remove()
+    if not ok_r:
+        # Не перезаписываем/не теряем рабочую службу, если старую не удалось
+        # убрать (1072/чужой движок/SCM). Аудит 24.10.
+        return False, f"не удалось удалить старую службу: {msg_r}"
     time.sleep(0.5)
     # Драйвер лечим ПОСЛЕ остановки winws2 (кейс 2026-09-13): править или
     # удалять службу драйвера при живых хендлах нельзя - она получит

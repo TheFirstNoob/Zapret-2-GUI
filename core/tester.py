@@ -233,7 +233,6 @@ class Zapret2Tester:
         ipset_catchall: bool = False,
         discord_alt: bool = False,
     ) -> ProfileTestResult:
-        self.shutdown_event.clear()
         self._ensure_winws2_dead()
 
         def _logged_progress(pct: int, msg: str) -> None:
@@ -324,7 +323,6 @@ class Zapret2Tester:
         ПОКРЫТИЕ (все IP в ipset-all → covered; иначе fix с резолвнутыми IP для
         ipset-include-user). При naked_done=True вызывающий обязан восстановить
         защиту (флаги z2_was/z1_was)."""
-        self.shutdown_event.clear()
         result = CdnScanResult(ipset_mode=ipset_mode)
         try:
             if not self._any_winws2_running():
@@ -479,7 +477,6 @@ class Zapret2Tester:
         """Перебор TLS-фейк-блобов: для каждого - перезапуск защиты с
         подменённым блобом и короткая батарея. Возвращает [{blob, ok, total,
         rate}]. Защиту не восстанавливает - задача вызывающего."""
-        self.shutdown_event.clear()
         out: list[dict] = []
         try:
             self._ensure_winws2_dead()
@@ -519,7 +516,6 @@ class Zapret2Tester:
         DPI режет по IP, а не по белому SNI."""
         from concurrent.futures import ThreadPoolExecutor, as_completed
         import subprocess
-        self.shutdown_event.clear()
         # Конкурентность 8 - компромисс: у dpi-detector 30-50 и комьюнити
         # спокойно это терпит; 4 было перестраховкой от «пачки SYN в один ASN».
         concurrency = 8
@@ -726,7 +722,6 @@ class Zapret2Tester:
         # _setup_profile масштабирует self.timeout по RTT - сбрасываем, чтобы
         # базовые прогоны не использовали устаревший таймаут прошлого пресета.
         self.timeout = self._original_timeout
-        self.shutdown_event.clear()
         if kill_processes:
             self._ensure_winws2_dead()
             _foreign = self._foreign_engine_error()
@@ -825,7 +820,6 @@ class Zapret2Tester:
         Гоняется перед свепом профилей, чтобы финальная рекомендация поймала
         случай «все стратегии == naked» - winws2 не меняет трафик на этой
         машине или DPI блокирует все попытки десинка. None при отмене."""
-        self.shutdown_event.clear()
         self._ensure_winws2_dead()
         _foreign = self._foreign_engine_error()
         if _foreign:

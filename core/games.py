@@ -150,6 +150,7 @@ def load_games(root: Path) -> dict:
             # utf-8-sig: BOM не должен ронять разбор (кейс 2026-09-14).
             data = json.loads(path.read_text(encoding="utf-8-sig"))
             if isinstance(data, dict) and isinstance(data.get("games"), list):
+                _sanitize_games(data)
                 _backfill_process(data)
                 _ensure_builtin_games(data)
                 return data
@@ -190,6 +191,53 @@ def _quarantine_games(path: Path, reason: str) -> bool:
         return False
 
 
+def _sanitize_games(data: dict) -> None:
+    """Не даёт одному битому элементу уронить чтение/старт.
+
+    JSON может быть валидным, но с null/строкой вместо игры, domains или
+    udp. Такие элементы отбрасываем, остальные сохраняем.
+    """
+    games = data.get("games")
+    if not isinstance(games, list):
+        data["games"] = []
+        return
+    clean: list[dict] = []
+    for game in games:
+        if not isinstance(game, dict):
+            continue
+        for key in ("domains", "udp"):
+            items = game.get(key)
+            if items is None:
+                game[key] = []
+            elif not isinstance(items, list):
+                game[key] = []
+            else:
+                game[key] = [x for x in items if isinstance(x, dict)]
+        clean.append(game)
+    data["games"] = clean
+
+
+def validate_games(data: dict) -> tuple[bool, str]:
+    """Структурная проверка перед записью games.json.
+
+    Семантику (порты/CIDR/лимиты) проверяют clean_custom_*; здесь важно не
+    пустить в файл null/строки, которые потом валят enabled_*.
+    """
+    if not isinstance(data, dict) or not isinstance(data.get("games"), list):
+        return False, "games должен быть объектом со списком games"
+    for game in data["games"]:
+        if not isinstance(game, dict):
+            return False, "элемент games должен быть объектом"
+        for key in ("domains", "udp"):
+            items = game.get(key)
+            if items is None:
+                continue
+            if not isinstance(items, list) or any(
+                    not isinstance(x, dict) for x in items):
+                return False, f"{key} должен быть списком объектов"
+    return True, ""
+
+
 def _backfill_process(data: dict) -> None:
     """Дополняет записи старых games.json полем process из дефолтов."""
     try:
@@ -224,6 +272,9 @@ def _ensure_builtin_games(data: dict) -> None:
 
 def save_games(root: Path, data: dict) -> bool:
     """Атомарная запись games.json (уникальное temp-имя - аудит 2026-10)."""
+    ok, _err = validate_games(data)
+    if not ok:
+        return False
     path = _games_path(root)
     try:
         atomic_write_text(path, json.dumps(data, indent=2, ensure_ascii=False))
@@ -236,9 +287,14 @@ def enabled_domains(data: dict) -> list[str]:
     """Домены включённых игр (on=true), без дублей - рефкаунт через union."""
     out: list[str] = []
     for game in data.get("games", []):
-        if not game.get("enabled"):
+        if not isinstance(game, dict) or not game.get("enabled"):
             continue
-        for item in game.get("domains", []):
+        domains = game.get("domains")
+        if not isinstance(domains, list):
+            continue
+        for item in domains:
+            if not isinstance(item, dict):
+                continue
             dom = str(item.get("domain") or "").strip().lower()
             if dom and item.get("on") and dom not in out:
                 out.append(dom)
@@ -254,10 +310,13 @@ def enabled_udp_rules(data: dict) -> list[dict]:
     import ipaddress
     out: list[dict] = []
     for game in data.get("games", []):
-        if not game.get("enabled"):
+        if not isinstance(game, dict) or not game.get("enabled"):
             continue
-        for rule in game.get("udp", []):
-            if not rule.get("on"):
+        udp_rules = game.get("udp")
+        if not isinstance(udp_rules, list):
+            continue
+        for rule in udp_rules:
+            if not isinstance(rule, dict) or not rule.get("on"):
                 continue
             ports = str(rule.get("ports") or "").strip()
             raw_cidrs = rule.get("cidrs") or []

@@ -119,7 +119,7 @@ _POST_ROUTES: dict[str, tuple] = {
     "/api/lists/add-domain": (api_lists.lists_add_domain, ("@ctx", "@data")),
     "/api/service/install": (api_service.service_install, ("@ctx", "@data")),
     "/api/service/remove": (api_service.service_remove, ("@ctx",)),
-    "/api/service/start": (api_service.service_start, ("@ctx",)),
+    "/api/service/start": (api_service.service_start, ("@ctx", "@data")),
     "/api/service/stop": (api_service.service_stop, ("@ctx",)),
     "/api/service/repair": (api_service.service_repair, ("@ctx",)),
     "/api/diagnose/action": (api_diag.diagnose_action, ("@ctx", "@data")),
@@ -185,9 +185,16 @@ class ZapretHandler(BaseHTTPRequestHandler):
     def _check_token(self) -> bool:
         if STATE.app_token:
             token = self.headers.get("x-app-token", "")
-            # constant-time сравнение (ревью 18.10): токен - единственный
-            # барьер API, побайтовое сравнение давало тайминг-сигнал.
-            if not hmac.compare_digest(token, STATE.app_token):
+            # Header приходит как latin-1 строка. Сравниваем байты: иначе
+            # не-ASCII значение даёт TypeError в compare_digest и запрос
+            # обрывается без ответа (аудит 24.10).
+            try:
+                got = token.encode("latin-1", "ignore")
+                want = STATE.app_token.encode("ascii", "ignore")
+                if not hmac.compare_digest(got, want):
+                    self._send_json({"detail": "Forbidden"}, HTTPStatus.FORBIDDEN)
+                    return False
+            except (UnicodeError, TypeError):
                 self._send_json({"detail": "Forbidden"}, HTTPStatus.FORBIDDEN)
                 return False
         return True
@@ -255,9 +262,15 @@ class ZapretHandler(BaseHTTPRequestHandler):
             return None
         raw = self.rfile.read(length)
         try:
-            return json.loads(raw)
+            obj = json.loads(raw)
         except (json.JSONDecodeError, UnicodeDecodeError):
             return {}
+        if not isinstance(obj, dict):
+            self._send_json({"status": "error",
+                             "message": "JSON body должен быть объектом"},
+                            HTTPStatus.BAD_REQUEST)
+            return None
+        return obj
 
     # ── GET ──
 
@@ -327,6 +340,13 @@ class ZapretHandler(BaseHTTPRequestHandler):
             if len(token) != 32 or any(c not in "0123456789abcdef"
                                        for c in token.lower()):
                 token = ""
+            else:
+                token = token.lower()
+                # Не подставляем в страницу произвольный/чужой 32-hex токен:
+                # иначе UI получает 403 на каждом /api и выглядит «пустым».
+                if STATE.app_token and not hmac.compare_digest(
+                        token, STATE.app_token):
+                    token = ""
             html = html.replace("__APP_TOKEN__", token)
             # Кэш-buster: версия по mtime app.js / app.css - WebView2
             # кэширует статику, свежие правки не доходили (случай 2026-09-12)
@@ -380,7 +400,12 @@ class ZapretHandler(BaseHTTPRequestHandler):
         if not self._check_token():
             return
 
-        data = self._parse_body()
+        try:
+            data = self._parse_body()
+        except (OSError, TimeoutError) as e:
+            self._send_json({"status": "error", "message": f"Ошибка чтения тела: {e}"},
+                            HTTPStatus.BAD_REQUEST)
+            return
         if data is None:
             return
         try:

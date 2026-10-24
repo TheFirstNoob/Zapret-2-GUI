@@ -11,11 +11,25 @@ from core.config import DEFAULT_PROFILE
 from core.launcher import build_args_from_preset, validate_args
 from core.service_manager import (SERVICE_NAME, install as svc_install,
                                   is_installed as svc_installed,
+                                  path_status as svc_path_status,
                                   remove as svc_remove,
                                   repair as svc_repair, start as svc_start,
                                   status as svc_status, stop as svc_stop)
 from server.app_state import (AppContext, checkers_busy, get_config_manager,
                               get_controller, get_root_dir, ui_debug)
+
+
+def _ownership_error() -> str:
+    """Не даём этой копии GUI/lite трогать службу, установленную другой."""
+    try:
+        state, detail = svc_path_status()
+    except Exception as e:  # noqa: BLE001
+        return f"Не удалось проверить владельца службы: {e}"
+    if state == "mismatch":
+        return ("Служба zapret2 установлена из другой папки: "
+                f"{detail}. Не трогаю её: удалите/переустановите службу "
+                "из той копии программы.")
+    return ""
 
 
 def _svc_fail(action: str, e: Exception) -> dict:
@@ -67,18 +81,26 @@ def prepare_service_args(data: dict) -> tuple[Optional[list[str]], str]:
 
 
 def service_status(ctx: AppContext) -> dict:
-    return {
-        "status": "ok",
-        "service": SERVICE_NAME,
-        "installed": svc_installed(),
-        "running": svc_status() == "running",
-    }
+    try:
+        return {
+            "status": "ok",
+            "service": SERVICE_NAME,
+            "installed": svc_installed(),
+            "running": svc_status() == "running",
+        }
+    except Exception as e:  # noqa: BLE001
+        return {"status": "error", "service": SERVICE_NAME,
+                "installed": False, "running": False,
+                "message": f"Не удалось прочитать состояние службы: {e}"}
 
 
 def service_install(ctx: AppContext, data: dict) -> dict:
     busy = checkers_busy()
     if busy:
         return {"status": "error", "message": busy}
+    owner = _ownership_error()
+    if owner:
+        return {"status": "error", "message": owner}
     try:
         args, err = prepare_service_args(data)
     except Exception as e:  # noqa: BLE001
@@ -107,6 +129,9 @@ def service_remove(ctx: AppContext) -> dict:
     busy = checkers_busy()
     if busy:
         return {"status": "error", "message": busy}
+    owner = _ownership_error()
+    if owner:
+        return {"status": "error", "message": owner}
     try:
         ok, msg = svc_remove()
     except Exception as e:  # noqa: BLE001
@@ -118,6 +143,9 @@ def service_repair(ctx: AppContext) -> dict:
     busy = checkers_busy()
     if busy:
         return {"status": "error", "message": busy}
+    owner = _ownership_error()
+    if owner:
+        return {"status": "error", "message": owner}
     try:
         result = svc_repair(root_dir=get_root_dir())
     except Exception as e:  # noqa: BLE001
@@ -125,14 +153,18 @@ def service_repair(ctx: AppContext) -> dict:
     return {"status": "ok", **result}
 
 
-def service_start(ctx: AppContext) -> dict:
+def service_start(ctx: AppContext, data: dict | None = None) -> dict:
     busy = checkers_busy()
     if busy:
         return {"status": "error", "message": busy}
+    owner = _ownership_error()
+    if owner:
+        return {"status": "error", "message": owner}
     # Обновляем параметры службы текущими аргументами: устаревший conf молча
-    # запустит старую стратегию.
+    # запустит старую стратегию. data передаёт те же profile/toggles, что
+    # install (иначе второй вызов откатывал выбор к старому config).
     try:
-        args, err = prepare_service_args({})
+        args, err = prepare_service_args(data if isinstance(data, dict) else {})
     except Exception as e:  # noqa: BLE001
         return _svc_fail("подготовка запуска", e)
     if err:
@@ -153,6 +185,9 @@ def service_stop(ctx: AppContext) -> dict:
     busy = checkers_busy()
     if busy:
         return {"status": "error", "message": busy}
+    owner = _ownership_error()
+    if owner:
+        return {"status": "error", "message": owner}
     try:
         ok, msg = svc_stop()
     except Exception as e:  # noqa: BLE001

@@ -57,7 +57,12 @@ def get_list(ctx: AppContext, filename: str) -> dict:
     if path.exists():
         # utf-8-sig: не тащим BOM (Notepad) в текстовое поле - иначе он
         # станет частью первой строки и сломает матчинг домена/подсети.
-        content = path.read_text(encoding="utf-8-sig")
+        # errors=replace: ANSI/битый файл не должен давать HTTP 500 и
+        # оставлять вкладку списков пустой.
+        try:
+            content = path.read_text(encoding="utf-8-sig", errors="replace")
+        except OSError as e:
+            return {"status": "error", "message": f"Не удалось прочитать список: {e}"}
     return {"status": "ok", "content": content}
 
 
@@ -65,10 +70,14 @@ def save_list(ctx: AppContext, data: dict, filename: str) -> dict:
     # Пустой/битый POST НЕ должен стирать пользовательский список: требуем
     # явный ключ content (внешнее ревью 14.10 - класс "потери данных").
     # content:"" допустим - это осознанная очистка списка пользователем.
-    if "content" not in data:
+    if not isinstance(data, dict) or "content" not in data:
         raise ApiError(400, {"status": "error",
                              "message": "Нет поля content - список не изменён"})
-    content = _clean_list_text(data.get("content", "")).strip()
+    raw_content = data.get("content", "")
+    if not isinstance(raw_content, str):
+        raise ApiError(400, {"status": "error",
+                             "message": "content должен быть строкой"})
+    content = _clean_list_text(raw_content).strip()
     try:
         # Атомарно и под локом (core.list_health.save_user_list): запись
         # на месте при обрыве процесса обрезала бы список до нуля, а живой

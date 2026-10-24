@@ -97,6 +97,7 @@ class AppContext:
         # объектные состояния (никто не переприсваивает - ссылки стабильны)
         self.tester_lock = threading.Lock()
         self.diag_lock = threading.Lock()
+        self.process_probe_lock = threading.Lock()
         self.tester_state = TesterState()
         self.diag_state = {"running": False, "progress": "", "report": None,
                            "error": None, "started": 0.0}
@@ -140,23 +141,27 @@ def get_tester() -> Zapret2Tester:
 
 def get_process_probe():
     """Singleton process-probe (анализ сетевой активности игры/приложения)."""
-    if STATE.process_probe is None:
-        from core.process_probe import ProcessProbe
-        STATE.process_probe = ProcessProbe()
-    return STATE.process_probe
+    with STATE.process_probe_lock:
+        if STATE.process_probe is None:
+            from core.process_probe import ProcessProbe
+            STATE.process_probe = ProcessProbe()
+        return STATE.process_probe
 
 
 def checkers_busy() -> Optional[str]:
     """Сообщение о занятости проверки, или None, если всё свободно.
 
-    Тестер (стратегии/CDN/ASN/blob) и диагностика взаимоисключающие; запуск/
-    остановка обхода и службы во время проверки тоже запрещены."""
+    Тестер (стратегии/CDN/ASN/blob), диагностика и обновление
+    взаимоисключающие; запуск/остановка обхода и службы во время проверки
+    тоже запрещены."""
     with STATE.tester_state.lock:
         if STATE.tester_state.running:
             return "Тестер занят - завершите текущую проверку"
     with STATE.diag_lock:
         if STATE.diag_state.get("running"):
             return "Диагностика выполняется - дождитесь завершения"
+    if STATE.updater_state.get("running"):
+        return "Обновление выполняется - дождитесь завершения"
     return None
 
 

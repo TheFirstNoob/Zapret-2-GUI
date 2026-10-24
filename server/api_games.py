@@ -19,9 +19,16 @@ def games_save(ctx: AppContext, data: dict) -> dict:
     payload = data.get("games") if isinstance(data, dict) else None
     if not isinstance(payload, dict) or not isinstance(payload.get("games"), list):
         return {"status": "error", "message": "некорректные данные"}
+    valid, err = games_store.validate_games(payload)
+    if not valid:
+        return {"status": "error", "message": err}
     if not games_store.save_games(get_root_dir(), payload):
         return {"status": "error", "message": "не удалось сохранить"}
-    games_store.sync_include_list(get_root_dir(), data=payload)
+    try:
+        games_store.sync_include_list(get_root_dir(), data=payload)
+    except OSError as e:
+        return {"status": "error",
+                "message": f"Игры сохранены, но combined-список не обновился: {e}"}
     return {
         "status": "ok",
         "message": "Сохранено. Домены применятся к новым подключениям; "
@@ -41,9 +48,16 @@ def games_custom(ctx: AppContext, data: dict) -> dict:
         ok, msg, cur = games_store.upsert_custom_game(cur, game)
     if not ok:
         return {"status": "error", "message": msg}
+    valid, err = games_store.validate_games(cur)
+    if not valid:
+        return {"status": "error", "message": err}
     if not games_store.save_games(get_root_dir(), cur):
         return {"status": "error", "message": "не удалось сохранить"}
-    games_store.sync_include_list(get_root_dir(), data=cur)
+    try:
+        games_store.sync_include_list(get_root_dir(), data=cur)
+    except OSError as e:
+        return {"status": "error",
+                "message": f"Игры сохранены, но combined-список не обновился: {e}"}
     return {"status": "ok", "games": cur,
             "message": "Сохранено. Домены применятся к новым подключениям; "
                        "UDP-фикс - после перезапуска обхода"}

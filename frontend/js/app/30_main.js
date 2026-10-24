@@ -468,7 +468,7 @@ const MainPage = {
         const note = (r.message || '').trim();
         const bad = /не запустилась|не настроен/i.test(note);
         if (note) showToast(note, bad ? 'warn' : 'ok');
-        const started = await apiPost('/service/start', {});
+        const started = await apiPost('/service/start', payload);
         if (started.status !== 'ok') return started;
         return r;
       },
@@ -811,9 +811,11 @@ const MainPage = {
           r.status === 'ok' ? 'ok' : 'error');
       }
     } catch (e) { showToast('Ошибка: ' + e.message, 'error'); }
-    this._z1Busy = false;
-    $('btnZ1Toggle').disabled = false;
-    Status.refresh();
+    finally {
+      this._z1Busy = false;
+      $('btnZ1Toggle').disabled = false;
+      Status.refresh();
+    }
   },
 
   async stopZ1() { await this.toggleZ1(); },

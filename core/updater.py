@@ -17,7 +17,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
+import tempfile
 import urllib.request
 import zipfile
 from datetime import datetime
@@ -311,10 +313,22 @@ def import_settings_zip(zip_data: bytes, root_dir: Path) -> tuple[int, int]:
             target = root_dir / rel
             try:
                 target.parent.mkdir(parents=True, exist_ok=True)
-                with zf.open(info) as src, open(target, "wb") as out:
-                    shutil.copyfileobj(src, out)
+                # Атомарно: обрыв/лок/диск не должны оставить user-файл
+                # обрезанным (аудит 24.10).
+                fd, tmp_name = tempfile.mkstemp(
+                    prefix=f".{target.name}.import.", dir=str(target.parent))
+                try:
+                    with zf.open(info) as src, os.fdopen(fd, "wb") as out:
+                        shutil.copyfileobj(src, out)
+                    os.replace(tmp_name, target)
+                except Exception:
+                    try:
+                        os.unlink(tmp_name)
+                    except OSError:
+                        pass
+                    raise
                 imported += 1
-            except OSError:
+            except (OSError, RuntimeError):
                 skipped += 1
     return imported, skipped
 
@@ -419,8 +433,10 @@ def apply_portable(zip_path: Path, root_dir: Path,
                         bak = rollback_dir / rel
                         bak.parent.mkdir(parents=True, exist_ok=True)
                         shutil.copyfile(target, bak)
-                    shutil.copyfile(tmp_dir / rel, target)
+                    # Фиксируем ДО copy: если copy упадёт после open("wb"),
+                    # rollback обязан восстановить/удалить этот файл.
                     replaced.append(rel)
+                    shutil.copyfile(tmp_dir / rel, target)
                     updated += 1
                     cb(f"обновлено: {rel}")
             except Exception as e:  # noqa: BLE001
@@ -429,6 +445,12 @@ def apply_portable(zip_path: Path, root_dir: Path,
                     if bak.exists():
                         try:
                             shutil.copyfile(bak, root_dir / rel)
+                        except OSError:
+                            pass
+                    else:
+                        # Файла не было до обновления - убираем недописанный.
+                        try:
+                            (root_dir / rel).unlink(missing_ok=True)
                         except OSError:
                             pass
                 raise RuntimeError(
@@ -501,6 +523,10 @@ def prepare_exe_update(zip_path: Path, root_dir: Path,
         "if errorlevel 1 (",
         f'  >>"%~dp0logs\\update_self.log" echo %DATE% %TIME% move FAILED',
         f'  >>"%~dp0logs\\update_self.log" echo %DATE% %TIME% kept: "%~dp0{exe_name}.new"',
+        # Не оставляем пользователя без приложения: даже при неудачном move
+        # запускаем старый exe. Сам update.bat удалится ниже.
+        f'  start "" "%~dp0{exe_name}"',
+        "  del \"%~f0\"",
         "  exit /b 1",
         ")",
     ]

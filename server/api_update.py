@@ -12,7 +12,8 @@ import time
 from pathlib import Path
 
 from core.config import VERSION
-from server.app_state import STATE, AppContext, get_root_dir, ui_debug
+from server.app_state import (STATE, AppContext, checkers_busy, get_root_dir,
+                              ui_debug)
 
 # Кэш проверки обновлений: одна проверка за сессию приложения
 # (значения - в STATE, аудит #1).
@@ -21,6 +22,7 @@ UPDATE_CHECK_TTL = 6 * 3600  # авто-проверка не чаще раза 
 # Ревью 18.10: check-and-set запуска - под локом (два одновременных
 # /api/update/start поднимали два воркера с одним _extract).
 _UPDATE_START_LOCK = threading.Lock()
+_UPDATE_APPLY_LOCK = threading.Lock()
 
 
 def _mk(dir_path: Path) -> Path:
@@ -101,6 +103,9 @@ def run_update_worker(kind: str, tag: str, info: dict) -> None:
             # bin/winws2.exe на диске - копирование в занятый файл падало бы),
             # после применения поднимаем обратно тем же binPath.
             svc_was = False
+            ctrl_was = False
+            ctrl = None
+            ctrl_cfg = None
             try:
                 from core.service_manager import start as _svc_start
                 from core.service_manager import status as _svc_status
@@ -108,6 +113,17 @@ def run_update_worker(kind: str, tag: str, info: dict) -> None:
                 svc_was = _svc_status() == "running"
             except Exception:
                 _svc_stop = _svc_start = None
+            if not svc_was:
+                # Portable/dev: обход может быть запущен напрямую controller'ом.
+                # Его тоже надо остановить, иначе apply наткнётся на занятый
+                # bin/winws2.exe (аудит 24.10).
+                try:
+                    from server.app_state import get_controller, get_config_manager
+                    ctrl = get_controller()
+                    ctrl_was = ctrl.status().running
+                    ctrl_cfg = get_config_manager().load()
+                except Exception as e:  # noqa: BLE001
+                    ui_debug(f"update: controller probe failed: {e}")
             if svc_was and _svc_stop:
                 prog(58, "Остановка обхода…")
                 try:
@@ -115,10 +131,16 @@ def run_update_worker(kind: str, tag: str, info: dict) -> None:
                 except Exception as e:  # noqa: BLE001
                     ui_debug(f"update: stop service failed: {e}")
                 time.sleep(1.0)
+            elif ctrl_was and ctrl:
+                prog(58, "Остановка обхода…")
+                try:
+                    ctrl.stop()
+                except Exception as e:  # noqa: BLE001
+                    ui_debug(f"update: stop controller failed: {e}")
+                time.sleep(1.0)
             prog(70, "Применение обновления…")
-            # try/finally: служба, остановленная ДО apply, обязана подняться и
-            # при исключении в apply (внешнее ревью 14.10: иначе пользователь
-            # остаётся без обхода).
+            # try/finally: служба/controller, остановленные ДО apply, обязаны
+            # подняться и при исключении в apply.
             applied = None
             try:
                 applied = apply_portable(
@@ -131,6 +153,22 @@ def run_update_worker(kind: str, tag: str, info: dict) -> None:
                         _svc_start()
                     except Exception as e:  # noqa: BLE001
                         ui_debug(f"update: start service failed: {e}")
+                elif ctrl_was and ctrl and ctrl_cfg:
+                    prog(92, "Запуск обхода…")
+                    try:
+                        ctrl.start(
+                            ctrl_cfg.last_profile,
+                            game_filter_mode=ctrl_cfg.game_filter_mode,
+                            discord_voice=ctrl_cfg.discord_voice,
+                            discord_voice_mode=ctrl_cfg.discord_voice_mode,
+                            fake_blob=ctrl_cfg.fake_blob,
+                            winws2_debug=ctrl_cfg.winws2_debug,
+                            autohostlist=ctrl_cfg.autohostlist,
+                            ipset_catchall=ctrl_cfg.ipset_catchall,
+                            discord_alt=ctrl_cfg.discord_alt,
+                        )
+                    except Exception as e:  # noqa: BLE001
+                        ui_debug(f"update: start controller failed: {e}")
             result.update(applied=applied["updated"],
                           skipped_user=applied["skipped_user"],
                           backup=applied["backup"])
@@ -196,6 +234,9 @@ def update_status(ctx: AppContext) -> dict:
 
 def update_start(ctx: AppContext) -> dict:
     with _UPDATE_START_LOCK:
+        busy = checkers_busy()
+        if busy:
+            return {"status": "error", "message": busy}
         if STATE.updater_state["running"]:
             return {"status": "error",
                     "message": "Обновление уже выполняется"}
@@ -221,22 +262,27 @@ def update_apply(ctx: AppContext) -> dict:
     он переживает наш процесс и закрывает его сам. Вызывается один раз
     после того, как пользователь увидел результат проверки подписи."""
     from core.updater import launch_update_bat
-    if STATE.updater_state["running"]:
-        return {"status": "error", "message": "Обновление ещё выполняется"}
-    res = STATE.updater_state.get("result") or {}
-    cand = str(res.get("update_bat") or res.get("restart_bat") or "")
-    bat_name = Path(cand).name
-    if bat_name not in ("_update_self.bat", "_restart_app.bat"):
-        return {"status": "error", "message":
-                "Замена программы не подготовлена - запустите обновление заново"}
-    bat = get_root_dir() / bat_name
-    if not bat.exists():
-        return {"status": "error", "message":
-                "Файл обновления не найден, запустите обновление заново"}
-    try:
-        launch_update_bat(bat)
-    except RuntimeError as e:
-        return {"status": "error", "message": str(e)}
-    ui_debug("update: self-update bat launched")
-    return {"status": "ok", "message":
-            "Программа сейчас закроется и запустится заново"}
+    with _UPDATE_APPLY_LOCK:
+        if STATE.updater_state["running"]:
+            return {"status": "error", "message": "Обновление ещё выполняется"}
+        res = STATE.updater_state.get("result") or {}
+        if res.get("applied_launch"):
+            return {"status": "error", "message": "Замена уже запущена"}
+        cand = str(res.get("update_bat") or res.get("restart_bat") or "")
+        bat_name = Path(cand).name
+        if bat_name not in ("_update_self.bat", "_restart_app.bat"):
+            return {"status": "error", "message":
+                    "Замена программы не подготовлена - запустите обновление заново"}
+        bat = get_root_dir() / bat_name
+        if not bat.exists():
+            return {"status": "error", "message":
+                    "Файл обновления не найден, запустите обновление заново"}
+        try:
+            launch_update_bat(bat)
+        except RuntimeError as e:
+            return {"status": "error", "message": str(e)}
+        # Убираем результат, чтобы второй apply не запустил bat повторно.
+        STATE.updater_state["result"] = {**res, "applied_launch": True}
+        ui_debug("update: self-update bat launched")
+        return {"status": "ok", "message":
+                "Программа сейчас закроется и запустится заново"}

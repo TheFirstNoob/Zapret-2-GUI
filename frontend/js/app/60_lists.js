@@ -170,7 +170,8 @@ const ListsPage = {
       showToast(r.message, 'ok');
       const res = document.querySelector(`[data-ct-result="${id}"]`);
       if (res) res.textContent = '';
-      await this.load('domInc');
+      // Не перезагружаем редактор поверх несохранённого текста.
+      if (!this._dirtyCheck('domInc')) await this.load('domInc');
     } catch (e) {
       showToast('Спорные домены: ' + (e.message || e), 'error');
       cb.checked = !enabled;
@@ -437,12 +438,15 @@ const ListsPage = {
     }
     const e = this.editors[key];
     const el = $(key + 'Result');
+    const sent = $(key + 'Textarea').value;
     el.textContent = 'Сохранение…';
     try {
-      const r = await apiPost(e.api, { content: $(key + 'Textarea').value });
+      const r = await apiPost(e.api, { content: sent });
       if (r.status === 'ok') {
         el.textContent = 'сохранено';
-        this.saved[key] = $(key + 'Textarea').value;
+        // Фиксируем именно ОТПРАВЛЕННОЕ значение: если пользователь печатал
+        // во время запроса, его новые символы остаются dirty и не теряются.
+        this.saved[key] = sent;
         // winws2 перечитывает списки на лету (mtime) - правка вступает в
         // силу для НОВЫХ подключений, перезапуск обхода не нужен.
         let msg = 'Список сохранён - применится к новым подключениям';

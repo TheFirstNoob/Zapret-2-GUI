@@ -724,12 +724,13 @@ def run_tester_action(data: dict) -> None:
             state.running = False
         return
     with state.lock:
+        cancelled_before = state.cancelled
         state.running = True
         state.reset()
+        # cancel мог прийти между API-стартом и входом в worker; не теряем
+        # его (аудит 24.10).
+        state.cancelled = cancelled_before
         state.action_type = action
-        # гонка cancel→start: cancelled остаётся True от прошлого прогона до
-        # reset() в потоке - первый poll (350мс) видел «Тест отменён» (M2)
-        state.cancelled = False
 
     tester = None
     logger = None

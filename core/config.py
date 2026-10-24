@@ -43,13 +43,17 @@ class ConfigManager:
         known = {}
         if self.config_path.exists():
             try:
-                data = json.loads(self.config_path.read_text(encoding="utf-8"))
+                # utf-8-sig: BOM из «Блокнота» не должен сбрасывать конфиг.
+                data = json.loads(self.config_path.read_text(encoding="utf-8-sig"))
+                if not isinstance(data, dict):
+                    raise ValueError("config root is not an object")
                 # Отбрасываем ключи вне AppConfig (старые/чужие поля),
                 # иначе TypeError валит загрузку и теряется last_profile.
                 known = {k: v for k, v in data.items()
                          if k in AppConfig.__dataclass_fields__}
                 self._config = AppConfig(**known)
-            except (OSError, json.JSONDecodeError, TypeError):
+            except (OSError, ValueError, TypeError, AttributeError):
+                self._quarantine_bad_config()
                 self._config = AppConfig(root_dir=str(self.root_dir))
         else:
             self._config = AppConfig(root_dir=str(self.root_dir))
@@ -57,6 +61,14 @@ class ConfigManager:
         if "discord_voice_mode" not in known and self._config.discord_voice:
             self._config.discord_voice_mode = "fake"
         return self._config
+
+    def _quarantine_bad_config(self) -> None:
+        """Не терять исходник, если config валиден как JSON, но не объект."""
+        bad = self.config_path.with_suffix(self.config_path.suffix + ".bad")
+        try:
+            self.config_path.replace(bad)
+        except OSError:
+            pass
 
     def save(self, config: AppConfig) -> bool:
         try:

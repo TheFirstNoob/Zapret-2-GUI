@@ -17,21 +17,27 @@ def tester_status(ctx: AppContext) -> dict:
 
 
 def tester_action(ctx: AppContext, data: dict) -> dict:
-    action = data.get("action", "")
+    action = data.get("action", "") if isinstance(data, dict) else ""
     if action == "cancel":
-        get_tester().signal_shutdown()
         with STATE.tester_state.lock:
+            get_tester().signal_shutdown()
             STATE.tester_state.cancelled = True
         return {"status": "ok", "action": "cancelled"}
     busy = checkers_busy()
     if busy:
         raise ApiError(409, {"status": "error", "message": busy})
-    # Решение «занят/свободен» принимаем атомарно под локом: отметка
-    # running=True здесь же закрывает окно для второго параллельного POST.
+    # Решение «занят/свободен» и сброс cancel/event - атомарно под локом:
+    # cancel после этой секции уже не будет потерян worker'ом.
+    try:
+        tester = get_tester()
+    except Exception as e:  # noqa: BLE001
+        raise ApiError(503, {"status": "error", "message": str(e)})
     with STATE.tester_state.lock:
         if STATE.tester_state.running:
             raise ApiError(409, {"status": "error",
                                  "message": "Тестер уже занят - дождитесь завершения"})
+        tester.shutdown_event.clear()
+        STATE.tester_state.cancelled = False
         STATE.tester_state.running = True
     t = threading.Thread(target=tester_flow.run_tester_action, args=(data,), daemon=True)
     t.start()
@@ -42,9 +48,15 @@ def asn_scan(ctx: AppContext, data: dict) -> dict:
     busy = checkers_busy()
     if busy:
         raise ApiError(409, {"status": "error", "message": busy})
+    try:
+        tester = get_tester()
+    except Exception as e:  # noqa: BLE001
+        raise ApiError(503, {"status": "error", "message": str(e)})
     with STATE.tester_state.lock:
         if STATE.tester_state.running:
             raise ApiError(409, {"status": "error", "message": "Тестер занят"})
+        tester.shutdown_event.clear()
+        STATE.tester_state.cancelled = False
         STATE.tester_state.running = True
     t = threading.Thread(target=tester_flow.run_asn_scan, daemon=True)
     t.start()

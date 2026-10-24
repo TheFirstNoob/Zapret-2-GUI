@@ -227,7 +227,15 @@ if (start) start.addEventListener('click', () => TesterPage.startProbe());
     if (bar) { bar.hidden = false; if (fill) fill.style.width = '0%'; }
     if (phase) phase.hidden = false;
     try {
-      await apiPost('/update/start', {});
+      const started = await apiPost('/update/start', {});
+      if (started.status !== 'ok') {
+        hideProgress();
+        showToast('Обновление не запустилось: ' + (started.message || 'ошибка'),
+          'error');
+        btn.disabled = false;
+        btn.textContent = 'Обновить сейчас';
+        return;
+      }
       const pollId = setInterval(async () => {
         try {
           const st = await apiGet('/update/status');

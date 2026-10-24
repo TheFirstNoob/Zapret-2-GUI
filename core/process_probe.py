@@ -13,6 +13,7 @@ import re
 import subprocess
 import threading
 import time
+from copy import deepcopy
 from pathlib import Path
 from typing import Optional
 
@@ -627,7 +628,9 @@ class ProcessProbe:
 
     def get_status(self) -> dict:
         with self._lock:
-            return dict(self._state)
+            # Глубокая копия: worker меняет history in-place; shallow dict
+            # мог дать RuntimeError в json.dumps при /api/process-probe/status.
+            return deepcopy(self._state)
 
     def report_text(self) -> str:
         s = self.get_status()
