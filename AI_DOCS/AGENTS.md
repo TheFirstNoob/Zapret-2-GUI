@@ -25,19 +25,19 @@
 - **Тесты:** отдельного `tests/` в репо нет. Батарея:
   `compileall`, `tools/api_smoke.py`, `tools/security/test_updates_security.py`
   (46), `tools/args_golden.py compare`, `tools/js_bundle_check.py`,
-  `tools/status_contract.py`, локальные T36/T39/T40/T41/T43/T45. Перед сдачей —
-  минимум compile + api_smoke + args_golden + security.
+  `tools/status_contract.py`, локальные T36/T39/T40/T41/T43/T45/T46/T47.
+  Перед сдачей — минимум compile + api_smoke + args_golden + security.
 - **Hardening 2026-10-24:** JSON-body/типы полей, quarantine config/games,
   безопасный report-path, atomic import настроек, service ownership и
   remove-check, operation-lock tester/diag/service/update, updater deadline/
-  rollback, cancel тестера/ASN, bounded games-check, probe/frontend recovery.
+  rollback, cancel тестера/ASN, bounded games-check, probe/frontend recovery,
+  единый list-lock + sync combined, rollback service conf/binPath, bounded
+  ProcessProbe.stop, non-UTF-8 списки, polling и `truncated` в проверке игр.
 - **Открытые задачи:** WebView2 fallback (`PLAN_WEBVIEW2_FALLBACK.md`),
-  тест `flaky`, live-прогон после рефактора, WebView2 white-screen UX.
-  Остаточные P2/P3 аудита: list/games sync locks, rollback старого
-  service-conf, устойчивость polling диагностики/обновления, показ
-  `truncated` в проверке игр. CDN/ASN refresh — запаркован; ipset-база
-  остаётся наша; чувствительные сетевые кейсы — только в локальном
-  `%TEMP%\opencode`, не в git.
+  тест `flaky`, live-прогон после рефактора, WebView2 white-screen UX,
+  утечка daemon-потоков `resolve_ips` при DNS-hang; release-артефакты 0.10
+  не пересобирались. CDN/ASN refresh — запаркован; ipset-база остаётся наша;
+  чувствительные сетевые кейсы — только в локальном `%TEMP%\opencode`, не в git.
 
 ## 1. Железные правила
 
