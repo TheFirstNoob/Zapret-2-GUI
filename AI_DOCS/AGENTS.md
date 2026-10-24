@@ -25,19 +25,21 @@
 - **Тесты:** отдельного `tests/` в репо нет. Батарея:
   `compileall`, `tools/api_smoke.py`, `tools/security/test_updates_security.py`
   (46), `tools/args_golden.py compare`, `tools/js_bundle_check.py`,
-  `tools/status_contract.py`, локальные T36/T39/T40/T41/T43/T45/T46/T47.
+  `tools/status_contract.py`, локальные T36/T39/T40/T41/T43/T45/T46/T47/T48/T49.
   Перед сдачей — минимум compile + api_smoke + args_golden + security.
 - **Hardening 2026-10-24:** JSON-body/типы полей, quarantine config/games,
   безопасный report-path, atomic import настроек, service ownership и
   remove-check, operation-lock tester/diag/service/update, updater deadline/
   rollback, cancel тестера/ASN, bounded games-check, probe/frontend recovery,
   единый list-lock + sync combined, rollback service conf/binPath, bounded
-  ProcessProbe.stop, non-UTF-8 списки, polling и `truncated` в проверке игр.
-- **Открытые задачи:** WebView2 fallback (`PLAN_WEBVIEW2_FALLBACK.md`),
-  тест `flaky`, live-прогон после рефактора, WebView2 white-screen UX,
-  утечка daemon-потоков `resolve_ips` при DNS-hang; release-артефакты 0.10
-  не пересобирались. CDN/ASN refresh — запаркован; ipset-база остаётся наша;
-  чувствительные сетевые кейсы — только в локальном `%TEMP%\opencode`, не в git.
+  ProcessProbe.stop, non-UTF-8 списки, polling и `truncated` в проверке игр,
+  WebView2 preflight + browser fallback, кэш/in-flight guard `resolve_ips`,
+  path-фильтр ZapretController (temp/вторая копия не убивает чужой winws2).
+- **Открытые задачи:** тест `flaky`, live-прогон после рефактора, проверка
+  WebView2 fallback на чистом Win10 без Runtime, browser fallback UX/токен
+  в URL, release-артефакты 0.10 не пересобирались. CDN/ASN refresh —
+  запаркован; ipset-база остаётся наша; чувствительные сетевые кейсы —
+  только в локальном `%TEMP%\opencode`, не в git.
 
 ## 1. Железные правила
 

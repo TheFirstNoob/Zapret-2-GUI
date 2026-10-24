@@ -56,7 +56,7 @@ GUI-обёртка для **Zapret 2** (winws2 / lua-desync) - обход фил
 
 **Если что-то не работает** - откройте **"Проверка системы"** (диагностика: права, путь, расположение, служба, тип блокировки DNS/IP/SNI) или **"Подбор стратегии"** (тест всех стратегий с рекомендацией и топ-3).
 
-**Требования:** Windows 10/11 x64, права администратора, WebView2 Runtime (в Windows 11 обычно уже есть; в Windows 10/portable может потребоваться установка — при белом экране поставьте Evergreen WebView2 Runtime).
+**Требования:** Windows 10/11 x64, права администратора, WebView2 Runtime (в Windows 11 обычно уже есть; в Windows 10/portable может потребоваться установка). Если Runtime нет, GUI автоматически откроется в Edge/Chrome (app-режим); принудительно: `Zapret2GUI.exe --browser` или `python main.py --browser`.
 
 ## 🎁 Какую версию скачать
 
@@ -340,6 +340,7 @@ git clone https://github.com/TheFirstNoob/Zapret-2-GUI.git
 cd Zapret-2-GUI
 pip install -r requirements.txt :: зависимости (pywebview, niquests[http3])
 python main.py                  :: запуск из исходников
+python main.py --browser        :: запасной режим в Edge/Chrome
 python build.py                 :: классический EXE  -> dist\Zapret2GUI.exe
 python build_portable.py        :: portable (без сборщика) -> Windows build\Zapret2GUI-portable.zip
 python build_lite.py            :: lite на .bat     -> Windows build\Zapret2GUI-lite.zip
@@ -351,7 +352,7 @@ python build_lite.py            :: lite на .bat     -> Windows build\Zapret2GU
 - **Загрузки/Документы/архив/рабочий стол** - программа предупредит: данные во временной папке теряются, файлы из браузера проверяются агрессивнее, папки могут синхронизироваться. Держите программу в отдельной папке (`C:\Zapret2GUI\`)
 - **Killer NIC** - конфликтует с WinDivert. Отключите Bandwidth Control
 - **Яндекс.Браузер** принудительно подменяет DNS - тестируйте в Firefox/Chrome
-- **Белый экран при запуске** - обычно нет/сломан WebView2 Runtime; pywebview уходит в MSHTML. Установите Evergreen WebView2 Runtime: https://go.microsoft.com/fwlink/p/?LinkId=2124703. Запасной браузерный режим — в плане (пока не реализован).
+- **Белый экран при запуске** - обычно нет/сломан WebView2 Runtime; теперь preflight не пускает в MSHTML: при наличии Edge/Chrome GUI откроется в браузерном app-режиме, иначе будет сообщение со ссылкой на Evergreen WebView2 Runtime: https://go.microsoft.com/fwlink/p/?LinkId=2124703. Принудительный браузерный режим: `Zapret2GUI.exe --browser` / `python main.py --browser`.
 - **Одновременно два обхода** - нельзя, они мешают друг другу (оба перехватывают пакеты через WinDivert). Примеры: Zapret 2 GUI + Zapret 1, Zapret + GoodbyeDPI, две копии этой программы.
 
 ## 📁 Структура проекта
