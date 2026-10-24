@@ -79,18 +79,37 @@ def games_check(ctx: AppContext, data: dict) -> dict:
     def _probe(host: str) -> dict:
         t0 = time.time()
         from core.probe_http import curl_code
-        n = curl_code(f"https://{host}/", timeout=8, wall_pad=4)
+        n = curl_code(f"https://{host}/", timeout=4, wall_pad=2)
         code = str(n) if n else "000"
         return {"domain": host, "code": code,
                 "ok": code not in ("000", "000000"),
                 "elapsed": round(time.time() - t0, 2)}
 
-    # Параллельно: последовательные curl'ы (до 12 с на домен) не укладывались
-    # в клиентский таймаут 30 с уже на 4-5 доменах (аудит 2026-10)
-    from concurrent.futures import ThreadPoolExecutor
-    with ThreadPoolExecutor(max_workers=5) as ex:
-        results = list(ex.map(_probe, hosts))
-    return {"status": "ok", "results": results}
+    # Параллельно, но с общим дедлайном: клиент ждёт ответ не дольше 30 с.
+    # Незапущенные пробы отменяем; частичный результат помечаем truncated.
+    from concurrent.futures import (ThreadPoolExecutor, TimeoutError as
+                                    FutureTimeout, as_completed)
+    pool = ThreadPoolExecutor(max_workers=10)
+    futures = {pool.submit(_probe, h): h for h in hosts}
+    results: list[dict] = []
+    try:
+        for fut in as_completed(futures, timeout=25):
+            host = futures[fut]
+            try:
+                results.append(fut.result())
+            except Exception as e:  # noqa: BLE001
+                results.append({"domain": host, "code": "000", "ok": False,
+                                "elapsed": 0, "error": str(e)[:80]})
+    except FutureTimeout:
+        pass
+    finally:
+        for fut in futures:
+            fut.cancel()
+        pool.shutdown(wait=False, cancel_futures=True)
+    order = {h: i for i, h in enumerate(hosts)}
+    results.sort(key=lambda x: order.get(x["domain"], 999))
+    return {"status": "ok", "results": results,
+            "truncated": len(results) < len(hosts)}
 
 
 def games_add_domain(ctx: AppContext, data: dict) -> dict:
