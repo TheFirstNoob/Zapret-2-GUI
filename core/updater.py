@@ -300,10 +300,15 @@ def import_settings_zip(zip_data: bytes, root_dir: Path) -> tuple[int, int]:
     import io
     imported = 0
     skipped = 0
+    total_size = 0
     with zipfile.ZipFile(io.BytesIO(zip_data)) as zf:
         for info in zf.infolist():
             if info.is_dir():
                 continue
+            # Не даём маленькому zip'у распаковаться в гигабайты.
+            total_size += max(0, int(info.file_size))
+            if info.file_size > 8 * 1024 * 1024 or total_size > 32 * 1024 * 1024:
+                raise RuntimeError("архив настроек слишком большой")
             rel = info.filename.replace("/", "\\")
             # защита от path traversal внутри чужого zip
             if rel.startswith(("/", "\\")) or ".." in rel:
