@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import functools
+import os
 import re
 import subprocess
 import threading
@@ -512,6 +513,50 @@ def repair(root_dir: Optional[Path] = None) -> dict:
     }
 
 
+def _backup_install_conf(root_dir: Path) -> tuple[Path, Optional[bytes], bool]:
+    path = Path(root_dir) / "logs" / "service_run.conf"
+    try:
+        return path, path.read_bytes() if path.exists() else None, True
+    except OSError as e:
+        _svc_log(f"install: conf backup failed: {e!r}")
+        return path, None, False
+
+
+def _restore_install_conf(path: Path, data: Optional[bytes]) -> tuple[bool, str]:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if data is None:
+            path.unlink(missing_ok=True)
+        else:
+            tmp = path.with_name(path.name + ".rollback.tmp")
+            tmp.write_bytes(data)
+            os.replace(tmp, path)
+        return True, ""
+    except OSError as e:
+        _svc_log(f"install: conf restore failed: {e!r}")
+        return False, str(e)
+
+
+def _recreate_old_service(binpath: str, was_running: bool) -> tuple[bool, str]:
+    if not binpath:
+        return False, "старый binPath не прочитан"
+    ok, det = _win32_create_service(binpath)
+    if not ok:
+        _svc_log(f"install rollback: Win32 create failed: {det} - sc fallback")
+        code, out = _sc_run_bat([
+            f'sc create {SERVICE_NAME} binPath= {binpath} '
+            f'DisplayName= "Zapret 2 DPI Bypass" start= auto',
+        ])
+        if code != 0:
+            return False, f"sc create: {out.strip()}"
+    _sc(["description", SERVICE_NAME, "zapret DPI bypass (Zapret 2)"])
+    if was_running:
+        code, out = _sc(["start", SERVICE_NAME])
+        if code != 0:
+            return False, f"sc start: {out.strip()}"
+    return True, ""
+
+
 @_serialized
 def install(root_dir: Optional[Path] = None, args: Optional[list[str]] = None,
             cleanup_zapret1: bool = False) -> tuple[bool, str]:
@@ -539,6 +584,43 @@ def install(root_dir: Optional[Path] = None, args: Optional[list[str]] = None,
         return False, f"winws2.exe вне каталога программы: {exe}"
     if args is None:
         args = []
+    old_installed = is_installed()
+    old_was_running = old_installed and status() == "running"
+    old_native = _read_stored_binpath() if old_installed else ""
+    conf_path, conf_backup, conf_read_ok = _backup_install_conf(Path(root_dir))
+    if not conf_read_ok:
+        return False, ("не удалось прочитать старый logs/service_run.conf - "
+                       "установка отменена, чтобы не потерять рабочие аргументы")
+    old_removed = False
+    created = False
+
+    def rollback(reason: str) -> tuple[bool, str]:
+        details: list[str] = []
+        if created and (old_removed or not old_installed) and is_installed():
+            ok, msg = remove()
+            if not ok:
+                details.append(f"новая служба не удалена: {msg}")
+        ok, msg = _restore_install_conf(conf_path, conf_backup)
+        if not ok:
+            details.append(f"service_run.conf не восстановлен: {msg}")
+        if old_installed and old_removed:
+            ok, msg = _recreate_old_service(old_native, old_was_running)
+            if ok:
+                details.append("старая служба восстановлена")
+            else:
+                details.append(f"старую службу не удалось восстановить: {msg}")
+        elif old_installed:
+            if not is_installed():
+                ok, msg = _recreate_old_service(old_native, old_was_running)
+                details.append("старая служба восстановлена" if ok
+                               else f"старую службу не удалось восстановить: {msg}")
+            else:
+                details.append("служба оставлена как была")
+        else:
+            details.append("изменения отменены")
+        suffix = "; ".join(details)
+        _svc_log(f"install rollback: {reason}; {suffix}")
+        return False, f"{reason}; {suffix}"
     # ПРЕДУСЛОВИЯ ПРОВЕРЯЕМ ДО remove() (ревью 18.10: раньше рабочая служба
     # удалялась, и только потом обнаруживалась ошибка exe/guard/conf -
     # пользователь оставался без обхода).
@@ -554,7 +636,8 @@ def install(root_dir: Optional[Path] = None, args: Optional[list[str]] = None,
     if not ok_r:
         # Не перезаписываем/не теряем рабочую службу, если старую не удалось
         # убрать (1072/чужой движок/SCM). Аудит 24.10.
-        return False, f"не удалось удалить старую службу: {msg_r}"
+        return rollback(f"не удалось удалить старую службу: {msg_r}")
+    old_removed = True
     time.sleep(0.5)
     # Драйвер лечим ПОСЛЕ остановки winws2 (кейс 2026-09-13): править или
     # удалять службу драйвера при живых хендлах нельзя - она получит
@@ -579,7 +662,8 @@ def install(root_dir: Optional[Path] = None, args: Optional[list[str]] = None,
         if code != 0:
             _svc_log(f"install FAIL: sc create rc={code} "
                      f"out={out.strip()[:200]!r}")
-            return False, f"sc create failed: {out.strip()}"
+            return rollback(f"sc create failed: {out.strip()}")
+    created = True
     _sc(["description", SERVICE_NAME, "zapret DPI bypass (Zapret 2)"])
     # Verify BEFORE start: old/broken SCM может молча исказить binPath
     # (аргументы по пробелам рвутся, кириллические пути не читаются) -
@@ -587,8 +671,7 @@ def install(root_dir: Optional[Path] = None, args: Optional[list[str]] = None,
     okv, msgv = _verify_binpath(exe, conf)
     if not okv:
         _svc_log(f"install FAIL: verify binPath: {msgv}")
-        remove()
-        return False, f"Установка отменена (кривой binPath): {msgv}"
+        return rollback(f"Установка отменена (кривой binPath): {msgv}")
     # SCM recovery: если winws2 умрёт (случай 2026-09-12: три падения за утро,
     # обход пропадал до ручного перезапуска) - перезапустить службу через 60 с.
     # Результат проверяем: молчаливая потеря автоперезапуска - это ровно тот
@@ -606,6 +689,8 @@ def install(root_dir: Optional[Path] = None, args: Optional[list[str]] = None,
     ok_s, msg_s = start(args)
     if not ok_s:
         reason = str(msg_s or "").strip() or "причина неизвестна, смотрите лог службы"
+        if old_installed:
+            return rollback(f"новая служба не запустилась ({reason})")
         _svc_log(f"install WARN: установлена, но не запустилась: {reason}")
         return True, ("Служба установлена, но не запустилась (" + reason
                       + "). Обхода сейчас нет - нажмите «Запустить службу» "

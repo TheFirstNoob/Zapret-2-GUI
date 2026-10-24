@@ -11,6 +11,7 @@ import os
 import re
 import threading
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 # include-домены: bundled (наши) + пользовательский
@@ -35,7 +36,17 @@ _DOMAIN_RE = re.compile(r"^[a-z0-9]([a-z0-9._-]*[a-z0-9])?$")
 # (например cdn/apply-all и клик по домену) делали read-modify-write
 # одного и того же файла и теряли правку. Лок только на уровне модуля:
 # движок (winws2) перечитывает файлы сам, гонок с ним тут нет.
-_LIST_LOCK = threading.Lock()
+_LIST_LOCK = threading.RLock()
+
+
+@contextmanager
+def list_lock():
+    """Общий lock list-файлов: read-modify-write + sync combined-файла.
+
+    RLock нужен, потому что API/синк могут держать транзакцию и вызывать
+    save_user_list/add_domain/sync_include_list внутри неё."""
+    with _LIST_LOCK:
+        yield
 
 
 def _entry(line: str) -> str:
@@ -149,6 +160,11 @@ def check_health(root: Path) -> dict:
 def dedupe(root: Path) -> dict:
     """Чистит редактируемые файлы: дубли внутри файла + записи, уже входящие
     в bundled-списки (для user-включений/исключений). Комментарии сохраняются."""
+    with _LIST_LOCK:
+        return _dedupe_unlocked(root)
+
+
+def _dedupe_unlocked(root: Path) -> dict:
     files = _files(root)
     bundled_inc = set()
     for n in DOMAIN_INCLUDE_BUNDLED:
@@ -312,6 +328,11 @@ def add_domain(root: Path, domain: str, mode: str = "include") -> dict:
 
     result: added | already | moved | blocked | invalid.
     """
+    with _LIST_LOCK:
+        return _add_domain_locked(root, domain, mode)
+
+
+def _add_domain_locked(root: Path, domain: str, mode: str) -> dict:
     d = (domain or "").strip().lower().rstrip(".")
     if not d or len(d) > 253 or ".." in d or not _DOMAIN_RE.match(d):
         return {"result": "invalid", "message": "Некорректный домен"}
@@ -354,4 +375,5 @@ def remove_domain(root: Path, domain: str, mode: str = "include") -> bool:
     if not d:
         return False
     fname = DOMAIN_INCLUDE_USER if mode == "include" else DOMAIN_EXCLUDE_USER
-    return _remove_entry(root / "lists" / fname, d)
+    with _LIST_LOCK:
+        return _remove_entry(root / "lists" / fname, d)

@@ -38,18 +38,27 @@ def contested_toggle(ctx: AppContext, data: dict) -> dict:
         return {"status": "error", "message": "Неизвестный домен"}
     # Единый слой list_health: дедуп, переносы из исключений, конфликты
     enable = bool(data.get("enabled"))
-    if enable:
-        r = list_health.add_domain(get_root_dir(), item["domain"], "include")
-        if r.get("result") in ("invalid", "blocked"):
-            return {"status": "error", "message": r.get("message", "ошибка")}
-        prefix = {"already": "Уже в обходе",
-                  "moved": "Перенесён из Исключений"}.get(
-                      r.get("result"), "Добавлено в Включения")
-    else:
-        removed = list_health.remove_domain(get_root_dir(),
-                                            item["domain"], "include")
-        prefix = ("Убрано из Включений" if removed
-                  else "Домен и так не был включён")
+    from core import games as games_store
+    try:
+        with list_health.list_lock():
+            if enable:
+                r = list_health.add_domain(get_root_dir(), item["domain"], "include")
+                if r.get("result") in ("invalid", "blocked"):
+                    return {"status": "error", "message": r.get("message", "ошибка")}
+                prefix = {"already": "Уже в обходе",
+                          "moved": "Перенесён из Исключений"}.get(
+                              r.get("result"), "Добавлено в Включения")
+            else:
+                removed = list_health.remove_domain(get_root_dir(),
+                                                    item["domain"], "include")
+                prefix = ("Убрано из Включений" if removed
+                          else "Домен и так не был включён")
+            # args читают combined-файл; без синка тумблер менял только
+            # list-include-user.txt, а живой обход оставался старым.
+            games_store.sync_include_list(get_root_dir())
+    except Exception as e:  # noqa: BLE001
+        return {"status": "error", "partial": True,
+                "message": f"Домен изменён, но combined-список не обновился: {e}"}
     return {"status": "ok",
             "message": prefix + " - применится к новым подключениям "
                                 "(перезапуск не нужен)"}

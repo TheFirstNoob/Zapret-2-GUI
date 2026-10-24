@@ -236,9 +236,11 @@ if (start) start.addEventListener('click', () => TesterPage.startProbe());
         btn.textContent = 'Обновить сейчас';
         return;
       }
+      let pollFails = 0;
       const pollId = setInterval(async () => {
         try {
           const st = await apiGet('/update/status');
+          pollFails = 0;
           if (fill) fill.style.width = (st.percent || 0) + '%';
           if (phase) phase.textContent = st.phase || '';
           btn.textContent = `${st.phase || '…'} ${st.percent ? st.percent + '%' : ''}`.trim();
@@ -290,8 +292,13 @@ if (start) start.addEventListener('click', () => TesterPage.startProbe());
             setTimeout(() => { location.reload(); }, 1500);
           }
         } catch (e) {
+          // Один сбой статуса не должен обрывать поллинг: сервер может
+          // продолжать скачивание/применение. Терпим 5 подряд (~5 с).
+          pollFails += 1;
+          if (pollFails < 5) return;
           clearInterval(pollId);
           hideProgress();
+          showToast('Связь с программой потеряна - обновление могло продолжиться', 'warn');
           btn.disabled = false;
           btn.textContent = 'Повторить';
         }

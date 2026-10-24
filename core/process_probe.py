@@ -623,7 +623,14 @@ class ProcessProbe:
                 self._state["phase"] = "остановка..."
         thread = self._thread
         if thread and thread.is_alive():
-            thread.join(timeout=20)
+            # pktmon сам может зависнуть до 30 с; не держим HTTP-запрос 20 с.
+            # Если поток ещё жив, UI увидит «остановка...» и продолжит poll,
+            # а worker завершится в фоне.
+            thread.join(timeout=5)
+            if thread.is_alive():
+                with self._lock:
+                    if self._state:
+                        self._state["phase"] = "остановка..."
         return self.get_status()
 
     def get_status(self) -> dict:

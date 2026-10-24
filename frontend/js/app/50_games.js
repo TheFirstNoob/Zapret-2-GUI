@@ -186,9 +186,16 @@ const GamesPage = {
       (r.results || []).forEach(x => { map[x.domain] = x; });
       this._checks[key] = map;
       const bad = (r.results || []).filter(x => !x.ok);
+      const checked = r.checked != null ? r.checked : (r.results || []).length;
+      const total = r.total != null ? r.total : checked;
       if (!r.results || !r.results.length) {
         Activity.done('Нечего проверять');
         showToast('Нет включённых доменов', 'warn');
+      } else if (r.truncated) {
+        Activity.fail(`Проверено ${checked} из ${total}`);
+        showToast(`Проверено ${checked} из ${total}: часть доменов не успела за 25 с`
+          + (bad.length ? '; не открываются: ' + bad.map(x => x.domain).join(', ') : ''),
+          'warn');
       } else if (bad.length) {
         Activity.fail(`Не открываются: ${bad.length}`);
         showToast('Не открываются: ' + bad.map(x => x.domain).join(', '), 'warn');

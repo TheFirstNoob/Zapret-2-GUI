@@ -33,13 +33,24 @@ const DiagnosticsPage = {
       const started = await apiPost('/diagnose/action', {});
       if (started.status !== 'ok') throw new Error(started.message || 'ошибка');
       let report = null;
+      let pollFails = 0;
       // Страховка от вечного цикла: диагностика на бэкенде не живёт дольше
       // трёх минут - если статус не пришёл, считаем backend зависшим.
       const deadline = Date.now() + 3 * 60 * 1000;
       while (report === null) {
         await new Promise(res => setTimeout(res, 300));
         if (Date.now() > deadline) throw new Error('backend не отвечает');
-        const st = await apiGet('/diagnose/status');
+        let st;
+        try {
+          st = await apiGet('/diagnose/status');
+          pollFails = 0;
+        } catch (e) {
+          // Единичный сбой HTTP не означает, что диагностика остановилась:
+          // сервер продолжает проверку, поэтому коротко терпим и опрашиваем.
+          pollFails += 1;
+          if (pollFails < 5) continue;
+          throw e;
+        }
         if (st.error) throw new Error(st.error);
         const cur = $('diagCurrent');
         if (cur && st.progress) cur.textContent = st.progress;

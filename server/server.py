@@ -221,7 +221,11 @@ class ZapretHandler(BaseHTTPRequestHandler):
         if not path.is_file():
             self._send_json({"error": "Not found"}, HTTPStatus.NOT_FOUND)
             return
-        body = path.read_bytes()
+        try:
+            body = path.read_bytes()
+        except OSError:
+            self._send_json({"error": "Not found"}, HTTPStatus.NOT_FOUND)
+            return
         ext = path.suffix.lower()
         ctype = CONTENT_TYPES.get(ext, "application/octet-stream")
         self.send_response(HTTPStatus.OK)
@@ -331,7 +335,12 @@ class ZapretHandler(BaseHTTPRequestHandler):
         frontend = get_root_dir() / "frontend"
         index_path = frontend / "index.html"
         if index_path.exists():
-            html = index_path.read_text(encoding="utf-8")
+            try:
+                html = index_path.read_text(encoding="utf-8")
+            except OSError:
+                self._send_json({"error": "index.html unavailable"},
+                                HTTPStatus.NOT_FOUND)
+                return
             token = params.get("token", [""])[0]
             # Токен вставляется в JS-строку HTML: принимаем только формат
             # secrets.token_hex(16) (32 hex), иначе отбрасываем -

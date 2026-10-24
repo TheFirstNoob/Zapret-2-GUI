@@ -23,9 +23,13 @@ def lists_dedupe(ctx: AppContext) -> dict:
         return {"status": "error", "message": busy}
     try:
         from core import list_health
-        result = list_health.dedupe(get_root_dir())
+        with list_health.list_lock():
+            result = list_health.dedupe(get_root_dir())
+            from core import games as games_store
+            games_store.sync_include_list(get_root_dir())
     except Exception as e:  # noqa: BLE001
-        return {"status": "error", "message": str(e)}
+        return {"status": "error", "partial": True,
+                "message": f"Списки очищены не полностью: {e}"}
     return {"status": "ok", **result}
 
 
@@ -34,20 +38,23 @@ def lists_add_domain(ctx: AppContext, data: dict) -> dict:
     if busy:
         return {"status": "error", "message": busy}
     mode = "exclude" if data.get("mode") == "exclude" else "include"
+    result: dict = {}
     try:
         from core import list_health
-        result = list_health.add_domain(
-            get_root_dir(), str(data.get("domain") or ""), mode)
+        with list_health.list_lock():
+            result = list_health.add_domain(
+                get_root_dir(), str(data.get("domain") or ""), mode)
+            ok = result.get("result") in ("added", "moved", "already")
+            if ok:
+                # combined-файл (user+games) - то, на что ссылаются args.
+                # Нужен и для mode=exclude: add_domain мог убрать домен из
+                # include-user. Держим тот же lock до обновления.
+                from core import games as games_store
+                games_store.sync_include_list(get_root_dir())
     except Exception as e:  # noqa: BLE001
-        return {"status": "error", "message": str(e)}
-    ok = result.get("result") in ("added", "moved", "already")
-    if ok and mode == "include":
-        # combined-файл (user+games) - то, на что ссылаются args
-        try:
-            from core import games as games_store
-            games_store.sync_include_list(get_root_dir())
-        except Exception:
-            pass
+        partial = result.get("result") in ("added", "moved", "already")
+        return {"status": "error", "partial": partial,
+                "message": f"Список изменён не полностью: {e}", **result}
     return {"status": "ok" if ok else "error", **result}
 
 
@@ -78,6 +85,7 @@ def save_list(ctx: AppContext, data: dict, filename: str) -> dict:
         raise ApiError(400, {"status": "error",
                              "message": "content должен быть строкой"})
     content = _clean_list_text(raw_content).strip()
+    saved = False
     try:
         # Атомарно и под локом (core.list_health.save_user_list): запись
         # на месте при обрыве процесса обрезала бы список до нуля, а живой
@@ -85,18 +93,20 @@ def save_list(ctx: AppContext, data: dict, filename: str) -> dict:
         # из маршрутов выше и всегда из USER_LIST_FILES; проверка внутри
         # save_user_list закрыта от записи системных списков.
         from core import list_health
-        list_health.save_user_list(get_root_dir(), filename, content)
-        # args ссылаются на combined-файл (user+games) - обновляем его,
-        # чтобы правка списка применялась к новым подключениям на лету
-        if filename == "list-include-user.txt":
-            try:
+        with list_health.list_lock():
+            list_health.save_user_list(get_root_dir(), filename, content)
+            saved = True
+            # args ссылаются на combined-файл (user+games) - обновляем его
+            # под тем же lock, чтобы параллельная правка домена не оставила
+            # stale list-include-all.txt.
+            if filename == "list-include-user.txt":
                 from core import games as games_store
                 games_store.sync_include_list(get_root_dir())
-            except Exception:
-                pass
         return {"status": "ok", "message": "Список сохранён"}
-    except OSError as e:
-        return {"status": "error", "message": str(e)}
+    except Exception as e:  # noqa: BLE001
+        return {"status": "error", "partial": saved,
+                "message": (f"Список сохранён, но combined-файл не обновился: {e}"
+                            if saved else f"Не удалось сохранить список: {e}")}
 
 
 def bundled_domains(ctx: AppContext) -> dict:

@@ -109,6 +109,7 @@ def games_check(ctx: AppContext, data: dict) -> dict:
     order = {h: i for i, h in enumerate(hosts)}
     results.sort(key=lambda x: order.get(x["domain"], 999))
     return {"status": "ok", "results": results,
+            "checked": len(results), "total": len(hosts),
             "truncated": len(results) < len(hosts)}
 
 

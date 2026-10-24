@@ -15,7 +15,7 @@ import re
 from pathlib import Path
 
 from core.applog import log as _applog
-from core.list_health import atomic_write_text
+from core.list_health import atomic_write_text, list_lock
 
 GAMES_FILE = "games.json"
 DOMAIN_LIST = "list-games.txt"      # внутри lists/
@@ -500,7 +500,7 @@ def _read_domain_lines(path: Path) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
     try:
-        text = Path(path).read_text(encoding="utf-8-sig")
+        text = Path(path).read_text(encoding="utf-8-sig", errors="replace")
     except OSError:
         return out
     for line in text.splitlines():
@@ -521,6 +521,12 @@ def sync_include_list(root: Path, user_file: Path | None = None,
     list-include-user.txt остаётся юзерским, list-games.txt - генерируемым).
     None - если юзерского файла нет И игр нет: инжектить нечего.
     """
+    with list_lock():
+        return _sync_include_list_unlocked(root, user_file, data)
+
+
+def _sync_include_list_unlocked(root: Path, user_file: Path | None,
+                                data: dict | None) -> Path | None:
     root = Path(root)
     lists = root / "lists"
     if user_file is None:
