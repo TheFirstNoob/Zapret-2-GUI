@@ -59,8 +59,7 @@ GUI-оболочка: main.py (pywebview/Local HTTP, UAC, single-instance)
 
 - Истина: `Documents\GitHub\Zapret-2-GUI` (`origin`).
 - Зеркало: `Desktop\Zapret 2 GUI\zapret2_gui` (живые user-данные; синк).
-- Доки: `AI_DOCS/AGENTS.md` (главное), `AI_DOCS/README.md` (индекс),
-  `AI_DOCS/archive/` (история, не инструкции).
+- Доки: `AI_DOCS/AGENTS.md` (главное), `AI_DOCS/README.md` (индекс).
 
 ## Правила (кратко)
 

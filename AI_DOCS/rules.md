@@ -1,8 +1,7 @@
 # Zapret 2 GUI — правила и опыт
 
 > Обновлено 2026-10-24. Актуальная версия — Pre-Release 0.10 + коммиты после
-> релиза. Главная памятка — `AGENTS.md`; методика — `STRATEGY_GUIDE.md`;
-> исторические испытания — `archive/STRATEGY_TRIALS.md`.
+> релиза. Главная памятка — `AGENTS.md`; методика — `STRATEGY_GUIDE.md`.
 
 ## 0. `default.txt`
 
