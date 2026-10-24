@@ -610,15 +610,20 @@ class Zapret2Tester:
 
         out: list[dict] = []
         total = len(probes)
-        with ThreadPoolExecutor(max_workers=concurrency) as pool:
-            futures = {pool.submit(probe_one, p): i for i, p in enumerate(probes)}
-            done = 0
+        pool = ThreadPoolExecutor(max_workers=concurrency)
+        futures = {pool.submit(probe_one, p): i for i, p in enumerate(probes)}
+        done = 0
+        try:
             for fut in as_completed(futures):
                 if self.shutdown_event.is_set():
                     break
                 out.append(fut.result())
                 done += 1
                 progress_cb(int(done * 95 / total), f"ASN-пробы {done}/{total}...")
+        finally:
+            # При отмене не ждём все 110 curl'ов; отменяем ещё не начатые.
+            pool.shutdown(wait=not self.shutdown_event.is_set(),
+                          cancel_futures=self.shutdown_event.is_set())
         try:
             body_file.unlink()
         except OSError:

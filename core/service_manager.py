@@ -815,10 +815,26 @@ def stop():
     # 1062 = служба не запущена (норма), 1056 = уже остановлена
     if code != 0 and "1062" not in out and "1056" not in out:
         _svc_log(f"stop: sc stop rc={code} out={out.strip()[:160]!r}")
-    _taskkill_winws2()
-    # P1-2: подтверждаем переход в STOPPED (закрывает гонку «sc start после
-    # stop → 1053» детерминированно, а не паузой). Ревью 18.10: результат
-    # ожидания больше не отбрасывается.
+    # Сначала дать SCM штатно остановить службу; taskkill до STOPPED мог
+    # выглядеть как падение и запускать recovery через 60 с. Если штатно не
+    # вышло - гасим процесс, временно сняв recovery.
+    if _wait_service_stopped():
+        _taskkill_winws2()
+        return True, "winws2 остановлен"
+    paused = False
+    try:
+        pause_recovery()
+        paused = True
+    except Exception as e:  # noqa: BLE001
+        _svc_log(f"stop: pause_recovery failed: {e!r}")
+    try:
+        _taskkill_winws2()
+    finally:
+        if paused:
+            try:
+                resume_recovery()
+            except Exception as e:  # noqa: BLE001
+                _svc_log(f"stop: resume_recovery failed: {e!r}")
     if not _wait_service_stopped():
         return False, ("служба не дошла до STOPPED за таймаут "
                        "(STOP_PENDING?) - проверьте состояние службы")

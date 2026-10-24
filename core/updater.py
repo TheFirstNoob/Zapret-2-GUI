@@ -20,6 +20,7 @@ import json
 import os
 import shutil
 import tempfile
+import time
 import urllib.request
 import zipfile
 from datetime import datetime
@@ -28,6 +29,7 @@ from typing import Optional
 
 _REPO = "TheFirstNoob/Zapret-2-GUI"
 _UA = {"User-Agent": "Zapret2GUI"}
+MAX_UPDATE_BYTES = 512 * 1024 * 1024  # заведомо больше релиза, но не «бесконечно»
 
 RELEASE_PRESETS = (
     "default", "default-alt", "auto", "tcpmd5-fake", "fake-only",
@@ -178,12 +180,21 @@ def validate_release(manifest: dict, tag: str, current_version: str,
 
 def _download(url: str, dest: Path, timeout: int = 300) -> None:
     req = urllib.request.Request(url, headers=_UA)
+    deadline = time.monotonic() + max(1, int(timeout))
+    total = 0
     with urllib.request.urlopen(req, timeout=timeout) as r, \
             open(dest, "wb") as f:
         while True:
+            # Socket timeout сбрасывается каждым read; общий wall-clock
+            # дедлайн не даёт «капающему» CDN держать update вечно.
+            if time.monotonic() > deadline:
+                raise TimeoutError(f"загрузка превысила {timeout} с")
             chunk = r.read(1 << 16)
             if not chunk:
                 break
+            total += len(chunk)
+            if total > MAX_UPDATE_BYTES:
+                raise RuntimeError("слишком большой файл обновления")
             f.write(chunk)
 
 
