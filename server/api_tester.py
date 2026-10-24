@@ -9,7 +9,8 @@ import threading
 
 from server import tester_flow
 from server.api_common import ApiError
-from server.app_state import STATE, AppContext, checkers_busy, get_tester
+from server.app_state import (STATE, AppContext, begin_operation,
+                              checkers_busy, end_operation, get_tester)
 
 
 def tester_status(ctx: AppContext) -> dict:
@@ -26,21 +27,31 @@ def tester_action(ctx: AppContext, data: dict) -> dict:
     busy = checkers_busy()
     if busy:
         raise ApiError(409, {"status": "error", "message": busy})
+    busy = begin_operation("tester")
+    if busy:
+        raise ApiError(409, {"status": "error", "message": busy})
     # Решение «занят/свободен» и сброс cancel/event - атомарно под локом:
     # cancel после этой секции уже не будет потерян worker'ом.
     try:
         tester = get_tester()
     except Exception as e:  # noqa: BLE001
+        end_operation("tester")
         raise ApiError(503, {"status": "error", "message": str(e)})
     with STATE.tester_state.lock:
         if STATE.tester_state.running:
+            end_operation("tester")
             raise ApiError(409, {"status": "error",
                                  "message": "Тестер уже занят - дождитесь завершения"})
         tester.shutdown_event.clear()
         STATE.tester_state.cancelled = False
         STATE.tester_state.running = True
     t = threading.Thread(target=tester_flow.run_tester_action, args=(data,), daemon=True)
-    t.start()
+    try:
+        t.start()
+    except Exception:
+        STATE.tester_state.running = False
+        end_operation("tester")
+        raise
     return {"status": "ok", "action": "started"}
 
 
@@ -48,16 +59,26 @@ def asn_scan(ctx: AppContext, data: dict) -> dict:
     busy = checkers_busy()
     if busy:
         raise ApiError(409, {"status": "error", "message": busy})
+    busy = begin_operation("tester")
+    if busy:
+        raise ApiError(409, {"status": "error", "message": busy})
     try:
         tester = get_tester()
     except Exception as e:  # noqa: BLE001
+        end_operation("tester")
         raise ApiError(503, {"status": "error", "message": str(e)})
     with STATE.tester_state.lock:
         if STATE.tester_state.running:
+            end_operation("tester")
             raise ApiError(409, {"status": "error", "message": "Тестер занят"})
         tester.shutdown_event.clear()
         STATE.tester_state.cancelled = False
         STATE.tester_state.running = True
     t = threading.Thread(target=tester_flow.run_asn_scan, daemon=True)
-    t.start()
+    try:
+        t.start()
+    except Exception:
+        STATE.tester_state.running = False
+        end_operation("tester")
+        raise
     return {"status": "ok"}

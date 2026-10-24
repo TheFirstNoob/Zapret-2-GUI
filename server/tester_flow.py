@@ -21,9 +21,10 @@ from core.tester import (CDN_PROVIDERS, CONTROL_DOMAINS, QUIC_QUIRK_DOMAINS,
                          is_control)
 from core.test_logger import TestLogger
 from server import custom_build, session_recovery
-from server.app_state import (STATE, TesterState, get_config_manager,
-                              get_controller, get_root_dir, get_tester,
-                              scan_winws_exe, ui_debug as _ui_debug, ui_presets)
+from server.app_state import (STATE, TesterState, end_operation,
+                              get_config_manager, get_controller, get_root_dir,
+                              get_tester, scan_winws_exe, ui_debug as _ui_debug,
+                              ui_presets)
 from server.recommend import build_recommendation, recheck_contested
 
 
@@ -257,6 +258,7 @@ def run_asn_scan() -> None:
             pass
         with state.lock:
             state.running = False
+        end_operation("tester")
 
 
 def run_blob_probe(data: dict) -> None:
@@ -722,6 +724,7 @@ def run_tester_action(data: dict) -> None:
         with state.lock:
             state.error = f"Неизвестное действие тестера: {action!r}"
             state.running = False
+        end_operation("tester")
         return
     with state.lock:
         cancelled_before = state.cancelled
@@ -827,3 +830,4 @@ def run_tester_action(data: dict) -> None:
         if logger and tester is not None:
             logger.close()
             tester.set_logger(None)
+        end_operation("tester")

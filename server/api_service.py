@@ -16,7 +16,8 @@ from core.service_manager import (SERVICE_NAME, install as svc_install,
                                   repair as svc_repair, start as svc_start,
                                   status as svc_status, stop as svc_stop)
 from server.app_state import (AppContext, checkers_busy, get_config_manager,
-                              get_controller, get_root_dir, ui_debug)
+                              get_controller, get_root_dir, operation_guard,
+                              ui_debug)
 
 
 def _ownership_error() -> str:
@@ -94,6 +95,7 @@ def service_status(ctx: AppContext) -> dict:
                 "message": f"Не удалось прочитать состояние службы: {e}"}
 
 
+@operation_guard("service")
 def service_install(ctx: AppContext, data: dict) -> dict:
     busy = checkers_busy()
     if busy:
@@ -125,6 +127,7 @@ def service_install(ctx: AppContext, data: dict) -> dict:
     return {"status": "ok" if ok else "error", "message": msg}
 
 
+@operation_guard("service")
 def service_remove(ctx: AppContext) -> dict:
     busy = checkers_busy()
     if busy:
@@ -139,6 +142,7 @@ def service_remove(ctx: AppContext) -> dict:
     return {"status": "ok" if ok else "error", "message": msg}
 
 
+@operation_guard("service")
 def service_repair(ctx: AppContext) -> dict:
     busy = checkers_busy()
     if busy:
@@ -153,6 +157,7 @@ def service_repair(ctx: AppContext) -> dict:
     return {"status": "ok", **result}
 
 
+@operation_guard("service")
 def service_start(ctx: AppContext, data: dict | None = None) -> dict:
     busy = checkers_busy()
     if busy:
@@ -181,6 +186,7 @@ def service_start(ctx: AppContext, data: dict | None = None) -> dict:
     return {"status": "ok" if ok else "error", "message": msg}
 
 
+@operation_guard("service")
 def service_stop(ctx: AppContext) -> dict:
     busy = checkers_busy()
     if busy:

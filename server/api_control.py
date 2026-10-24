@@ -10,9 +10,10 @@ from core.service_manager import (is_installed as svc_installed,
                                   start as svc_start, stop as svc_stop)
 from server import api_service
 from server.app_state import (AppContext, checkers_busy, get_config_manager,
-                              get_controller, scan_winws_exe)
+                              get_controller, operation_guard, scan_winws_exe)
 
 
+@operation_guard("bypass")
 def start_zapret(ctx: AppContext, data: dict) -> dict:
     busy = checkers_busy()
     if busy:
@@ -71,6 +72,7 @@ def _my_winws2_paths() -> set[str]:
     return {str(root / "bin" / "winws2.exe"), str(root / "winws2.exe")}
 
 
+@operation_guard("bypass")
 def stop_zapret(ctx: AppContext) -> dict:
     busy = checkers_busy()
     if busy:

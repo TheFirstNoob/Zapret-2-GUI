@@ -10,7 +10,7 @@ from pathlib import Path
 from core.proc import kill_image
 from server.api_common import ApiError
 from server.app_state import (AppContext, checkers_busy, get_config_manager,
-                              get_controller)
+                              get_controller, operation_guard)
 
 
 def zapret1_strategies(ctx: AppContext) -> dict:
@@ -38,6 +38,7 @@ def zapret1_save_dir(ctx: AppContext, data: dict) -> dict:
     return {"status": "ok", "message": "Путь сохранён"}
 
 
+@operation_guard("zapret1")
 def zapret1_start(ctx: AppContext, data: dict) -> dict:
     busy = checkers_busy()
     if busy:
@@ -73,6 +74,7 @@ def zapret1_start(ctx: AppContext, data: dict) -> dict:
         return {"status": "error", "message": str(e)}
 
 
+@operation_guard("zapret1")
 def zapret1_stop(ctx: AppContext) -> dict:
     busy = checkers_busy()
     if busy:

@@ -9,6 +9,7 @@ updater-словари, локи) - стабильные ссылки, server.py
 """
 from __future__ import annotations
 
+import functools
 import threading
 from pathlib import Path
 from typing import Optional
@@ -98,6 +99,12 @@ class AppContext:
         self.tester_lock = threading.Lock()
         self.diag_lock = threading.Lock()
         self.process_probe_lock = threading.Lock()
+        # Один mutating-оператор за раз: tester/diag/service/update не должны
+        # одновременно гасить/поднимать winws2. Долгие воркеры держат lock
+        # до своего finally (аудит 24.10).
+        self.operation_lock = threading.Lock()
+        self.operation_meta_lock = threading.Lock()
+        self.operation_name = ""
         self.tester_state = TesterState()
         self.diag_state = {"running": False, "progress": "", "report": None,
                            "error": None, "started": 0.0}
@@ -111,6 +118,42 @@ class AppContext:
 
 
 STATE = AppContext()
+
+
+def begin_operation(name: str) -> Optional[str]:
+    """Занять глобальный mutating-slot. None — успешно, иначе сообщение."""
+    with STATE.operation_meta_lock:
+        if not STATE.operation_lock.acquire(blocking=False):
+            owner = STATE.operation_name or "другая операция"
+            return f"Уже выполняется: {owner}. Дождитесь завершения."
+        STATE.operation_name = name
+    return None
+
+
+def end_operation(name: str) -> None:
+    with STATE.operation_meta_lock:
+        if STATE.operation_name == name:
+            STATE.operation_name = ""
+    try:
+        STATE.operation_lock.release()
+    except RuntimeError:
+        pass
+
+
+def operation_guard(name: str):
+    """Декоратор для синхронных mutating-хендлеров."""
+    def deco(fn):
+        @functools.wraps(fn)
+        def wrapper(ctx, *args, **kwargs):
+            busy = begin_operation(name)
+            if busy:
+                return {"status": "error", "message": busy}
+            try:
+                return fn(ctx, *args, **kwargs)
+            finally:
+                end_operation(name)
+        return wrapper
+    return deco
 
 
 # ── Фабрики доступа (переехали из server.py, Inc B/C) ──────────────

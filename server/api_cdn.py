@@ -13,7 +13,7 @@ from core.tester_probes import resolve_ips, safe_prefixes
 from server import api_service
 from server.api_common import ApiError
 from server.app_state import (AppContext, checkers_busy, get_config_manager,
-                              get_controller, get_root_dir)
+                              get_controller, get_root_dir, operation_guard)
 
 
 def _resolve_many(domains: list[str], concurrency: int = 8) -> set[str]:
@@ -128,6 +128,7 @@ def _plan_cdn_action(domain: str, action: str, ips: list[str],
     return True, "", [(fname, values)]
 
 
+@operation_guard("cdn")
 def cdn_recommendation(ctx: AppContext, data: dict) -> dict:
     """Полу-автономное применение вердикта CDN-скана без наложений.
 
@@ -205,6 +206,7 @@ def _restart_after_edit(cfg, data: dict) -> tuple[bool, str]:
     )
 
 
+@operation_guard("cdn")
 def cdn_apply_all(ctx: AppContext, data: dict) -> dict:
     """«Применить всё по матрице»: батч вердиктов CDN-скана за один перезапуск.
 

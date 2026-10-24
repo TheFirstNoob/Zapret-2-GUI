@@ -12,8 +12,9 @@ import time
 from pathlib import Path
 
 from core.config import VERSION
-from server.app_state import (STATE, AppContext, checkers_busy, get_root_dir,
-                              ui_debug)
+from server.app_state import (STATE, AppContext, begin_operation,
+                              checkers_busy, end_operation, get_root_dir,
+                              operation_guard, ui_debug)
 
 # Кэш проверки обновлений: одна проверка за сессию приложения
 # (значения - в STATE, аудит #1).
@@ -215,6 +216,7 @@ def run_update_worker(kind: str, tag: str, info: dict) -> None:
         updater_state["error"] = str(e)[:200]
     finally:
         updater_state["running"] = False
+        end_operation("update")
 
 
 def update_check(ctx: AppContext, params: dict) -> dict:
@@ -240,8 +242,12 @@ def update_start(ctx: AppContext) -> dict:
         if STATE.updater_state["running"]:
             return {"status": "error",
                     "message": "Обновление уже выполняется"}
+        busy = begin_operation("update")
+        if busy:
+            return {"status": "error", "message": busy}
         info = (STATE.update_check_cache or {}).copy()
         if not info.get("available"):
+            end_operation("update")
             return {"status": "error",
                     "message": "Обновление недоступно или версия уже актуальна"}
 
@@ -251,10 +257,16 @@ def update_start(ctx: AppContext) -> dict:
                                     "percent": 5, "error": None, "result": None})
         t = threading.Thread(target=run_update_worker,
                              args=(kind, tag, info), daemon=True)
-        t.start()
+        try:
+            t.start()
+        except Exception:
+            STATE.updater_state["running"] = False
+            end_operation("update")
+            raise
         return {"status": "ok", "action": "started"}
 
 
+@operation_guard("update-apply")
 def update_apply(ctx: AppContext) -> dict:
     """Запуск замены EXE (шаг 2 самообновления).
 

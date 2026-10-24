@@ -3,7 +3,8 @@
 Соглашение: (ctx: AppContext, ...) -> dict; исключения - только ApiError."""
 from __future__ import annotations
 
-from server.app_state import (STATE, AppContext, checkers_busy,
+from server.app_state import (STATE, AppContext, begin_operation,
+                              checkers_busy, end_operation,
                               get_config_manager, get_root_dir)
 
 
@@ -16,9 +17,13 @@ def diagnose_action(ctx: AppContext, data: dict) -> dict:
     busy = checkers_busy()
     if busy:
         return {"status": "error", "message": busy}
+    busy = begin_operation("diagnostics")
+    if busy:
+        return {"status": "error", "message": busy}
     # Атомарная отметка «занято» - закрывает окно для параллельного POST.
     with STATE.diag_lock:
         if STATE.diag_state.get("running"):
+            end_operation("diagnostics")
             return {"status": "error", "message": "Проверка уже выполняется"}
         STATE.diag_state.update({"running": True, "progress": "", "report": None,
                                  "error": None, "started": _time.time()})
@@ -41,8 +46,16 @@ def diagnose_action(ctx: AppContext, data: dict) -> dict:
         finally:
             with STATE.diag_lock:
                 STATE.diag_state["running"] = False
+            end_operation("diagnostics")
 
-    _th.Thread(target=_worker, daemon=True).start()
+    try:
+        _th.Thread(target=_worker, daemon=True).start()
+    except Exception:
+        with STATE.diag_lock:
+            STATE.diag_state["running"] = False
+            STATE.diag_state["error"] = "Не удалось запустить диагностику"
+        end_operation("diagnostics")
+        return {"status": "error", "message": "Не удалось запустить диагностику"}
     return {"status": "ok"}
 
 
