@@ -52,8 +52,10 @@ GUI-оболочка: main.py (pywebview/Local HTTP, UAC, single-instance)
 - **Служба:** Win32 API создания/конфигурации, чтение ImagePath из реестра,
   recovery `sc failure`; перед удалением — остановить обход.
 - **Обновления:** Ed25519 fail-closed, sha256, manifest, откат portable.
-- **WebView2:** GUI-зависимость; белый экран при отсутствии Runtime —
-  план fallback в `PLAN_WEBVIEW2_FALLBACK.md`.
+- **WebView2:** GUI-зависимость; preflight проверяет Runtime, при отсутствии
+  открывает Edge/Chrome app-режим; детали — `PLAN_WEBVIEW2_FALLBACK.md`.
+- **Параметры/данные/история:** `ENGINEERING_NOTES.md`; raw archive —
+  `0bd6626^:AI_DOCS/archive/`.
 
 ## Репозитории и документация
 

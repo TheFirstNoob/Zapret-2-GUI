@@ -4,7 +4,8 @@
 > (тег `3fd25f0`) + коммиты после релиза. Индекс документации — `AI_DOCS/README.md`.
 >
 > Здесь только текущие правила и факты. Закрытые/исторические документы
-> удалены при чистке 2026-10-24.
+> удалены при чистке 2026-10-24; их выжимка — `ENGINEERING_NOTES.md`, полные
+> оригиналы — в git-истории (`0bd6626^:AI_DOCS/archive/`).
 
 ## 0. Текущее состояние
 
@@ -140,14 +141,21 @@ main.py (UAC, pywebview/WebView2, single-instance)
   текущим контрактам.
 - Сборки: `build.py` (EXE), `build_portable.py`, `build_lite.py`
   (`lite/` генерируется, в git не хранить).
-- WebView2 — только GUI-оболочка; fallback-план — `PLAN_WEBVIEW2_FALLBACK.md`.
+- WebView2 — только GUI-оболочка; preflight + browser fallback в `main.py`,
+  остаточные проверки — `PLAN_WEBVIEW2_FALLBACK.md`.
+- Параметры движка, источники данных и история экспериментов —
+  `ENGINEERING_NOTES.md` (raw archive — в git-истории `0bd6626^`).
 
 ## 3. Документация
 
 - `README.md` — пользовательский мануал.
 - `AI_DOCS/PROJECT_MAP.md` — карта кода.
+- `AI_DOCS/ENGINEERING_NOTES.md` — параметры, источники, история решений.
 - `AI_DOCS/RELEASE_CHECKLIST.md` — выпуск.
 - `AI_DOCS/STRATEGY_GUIDE.md` — методика/параметры.
 - `AI_DOCS/STRATEGY_ROADMAP.md` — стратегические решения/бэклог.
 - `AI_DOCS/ARG_FILE_RESEARCH_2026-10-14.md` — @conf (механизм внедрён).
 - `AI_DOCS/PLAN_WEBVIEW2_FALLBACK.md` — fallback WebView2.
+- При чистке доков важные параметры/источники/решения переносить в
+  `ENGINEERING_NOTES.md`; raw-оригиналы остаются в git-истории, но секреты/
+  регион/IP туда заново не добавлять.

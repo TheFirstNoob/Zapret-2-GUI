@@ -28,7 +28,8 @@
   repeats=12/реальный блоб.
 - **Discord media/stream** — открытый кейс: z1 держит, z2 default/auto не
   подтверждены; чистый multisplit — кандидат, не «готовое исправление».
-- **WebView2** — план fallback в `PLAN_WEBVIEW2_FALLBACK.md` (не стратегия).
+- **WebView2** — preflight + auto/`--browser` fallback; остаточные проверки
+  в `PLAN_WEBVIEW2_FALLBACK.md` (не стратегия).
 
 ## 2. Что можно проверять дальше
 
