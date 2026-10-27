@@ -6,10 +6,9 @@ r"""quic_probe.py — настоящая QUIC/HTTP3-проба (niquests+qh3) п
   - УСПЕХ только при фактическом http_version == 30 (иначе NOT-H3/ошибка);
   - свежее соединение на каждую пробу (правило strategy-test);
   - внешний wall-clock дедлайн (поток-сторож), не доверяем таймаутам либы;
-  - воркер-пины (193.233.112.68/.67) пропускаем: QUIC у воркера нет (SSLError);
   - DNS-спуф (NameResolutionError) -> фолбэк через cloudflare DoH + patch.
 
-Запуск (нужен venv с niquests[http3], напр. %TEMP%\opencode\h3env):
+Запуск (нужен venv с niquests[http3]):
     <venv>\Scripts\python.exe tools/quic_probe.py [--repeat N] [host|url ...]
   --repeat N — несколько прогонов подряд (пауза 1с): детект флапа QUIC-пути.
 """
@@ -39,7 +38,6 @@ DEFAULT = [
     "https://www.cloudflare.com/",
 ]
 VER = {11: "HTTP/1.1", 20: "HTTP/2", 30: "HTTP/3"}
-WORKER_IPS = {"193.233.112.68", "193.233.112.67"}
 WALL_DEADLINE = 15.0
 FLAGS = subprocess.CREATE_NO_WINDOW
 
@@ -48,14 +46,6 @@ def urlspec(arg: str) -> str:
     if "://" in arg:
         return arg
     return f"https://{arg}" if "/" in arg else f"https://{arg}/"
-
-
-def resolved_ips(host: str) -> set[str]:
-    try:
-        return {ai[4][0] for ai in socket.getaddrinfo(
-            host, 443, socket.AF_INET, socket.SOCK_STREAM)}
-    except Exception:  # noqa: BLE001
-        return set()
 
 
 def doh_ip(host: str) -> str | None:
@@ -94,10 +84,6 @@ def probe(url: str) -> str:
     """Одна проба. Печатает детали, возвращает короткий вердикт."""
     host = url.split("//", 1)[1].split("/", 1)[0]
     print(f"\n{url}")
-    ips = resolved_ips(host)
-    if ips & WORKER_IPS:
-        print("  SKIP: воркер-пин — QUIC у воркера нет")
-        return "SKIP"
 
     box: dict = {}
 

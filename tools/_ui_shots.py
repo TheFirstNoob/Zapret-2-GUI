@@ -3,6 +3,7 @@
 Запуск: python tools/_ui_shots.py [страницы...]
 Пишет PNG в %TEMP%\\z2shots\\. Сервер поднимается на корне зеркала.
 """
+import os
 import shutil
 import subprocess
 import sys
@@ -11,8 +12,8 @@ import threading
 import time
 from pathlib import Path
 
-REPO = Path(r"C:\Users\TheFirstNoob\Documents\GitHub\Zapret-2-GUI")
-MIR = Path(r"C:\Users\TheFirstNoob\Desktop\Zapret 2 GUI\zapret2_gui")
+REPO = Path(__file__).resolve().parents[1]
+MIR = Path(os.environ.get("ZAPRET2_MIRROR", str(REPO)))
 EDGE = Path(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe")
 OUT = Path(tempfile.gettempdir()) / "z2shots"
 sys.path.insert(0, str(REPO))

@@ -15,8 +15,8 @@ from server.recommend import BLOB_PRIORITY, BLOB_STOPLIST
 def fake_blobs(ctx: AppContext) -> dict:
     """Ключи доступных TLS-фейк-блобов (blobs/tls_clienthello_<key>.bin).
 
-    Порядок - РУЧНОЙ приоритет BLOB_PRIORITY (живучесть на Т2, батарея
-    блобов 2026-09-11); остальные после по алфавиту. Огромные (>700:
+    Порядок - РУЧНОЙ приоритет BLOB_PRIORITY (живучесть на тестовой сети,
+    батарея блобов); остальные после по алфавиту. Огромные (>700:
     снижают долю google-фейков) - помечаются. Имена с цифры в начале -
     через префикс (баг winws2, AGENTS правило 2)."""
     blobs_dir = get_root_dir() / "blobs"
