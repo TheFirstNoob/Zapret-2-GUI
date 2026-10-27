@@ -539,6 +539,60 @@
             </div>
           </div>
 
+          <div class="panel dns-panel" id="dnsPanel">
+            <div class="card-head">
+              <div class="head-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+              </div>
+              <div class="head-text">
+                <div class="head-title">DNS-профили</div>
+                <div class="head-desc">Быстрая смена системного DNS: Основной и Резервный. Не меняется автоматически.</div>
+              </div>
+              <div class="head-right">
+                <button class="btn btn-primary" id="dnsApplyBtn">Применить</button>
+              </div>
+            </div>
+            <div class="dns-current" id="dnsCurrent">Проверяю текущий DNS…</div>
+            <div class="dns-controls">
+              <label class="field-label" for="dnsProfile">Профиль</label>
+              <select class="input input-sm" id="dnsProfile">
+                <option value="main">Основной</option>
+                <option value="reserve">Резервный</option>
+              </select>
+              <button class="btn btn-sm" id="dnsResetBtn">Вернуть системный DNS</button>
+              <span class="dns-active" id="dnsActive"></span>
+            </div>
+            <div class="dns-grid">
+              <div class="dns-profile">
+                <div class="dns-profile-head">
+                  <b>Основной</b>
+                  <select class="input input-sm dns-provider" id="dnsMainProvider" aria-label="Шаблон основного DNS">
+                    <option value="custom">Свой</option>
+                    <option value="google">Google</option>
+                    <option value="cloudflare">Cloudflare</option>
+                    <option value="quad9">Quad9</option>
+                  </select>
+                </div>
+                <input class="input" id="dnsMainPrimary" autocomplete="off" spellcheck="false" aria-label="Основной DNS 1" placeholder="Основной DNS">
+                <input class="input" id="dnsMainSecondary" autocomplete="off" spellcheck="false" aria-label="Основной DNS 2" placeholder="Резервный DNS (необязательно)">
+              </div>
+              <div class="dns-profile">
+                <div class="dns-profile-head">
+                  <b>Резервный</b>
+                  <select class="input input-sm dns-provider" id="dnsReserveProvider" aria-label="Шаблон резервного DNS">
+                    <option value="custom">Свой</option>
+                    <option value="google">Google</option>
+                    <option value="cloudflare">Cloudflare</option>
+                    <option value="quad9">Quad9</option>
+                  </select>
+                </div>
+                <input class="input" id="dnsReservePrimary" autocomplete="off" spellcheck="false" aria-label="Резервный DNS 1" placeholder="Основной DNS">
+                <input class="input" id="dnsReserveSecondary" autocomplete="off" spellcheck="false" aria-label="Резервный DNS 2" placeholder="Резервный DNS (необязательно)">
+              </div>
+            </div>
+            <div class="dns-hint">DNS-серверы можно смешивать: например, 1.1.1.1 + 8.8.8.8. Это системный DNS; DNS over HTTPS в браузере настраивается отдельно.</div>
+          </div>
+
           <div class="panel diag-tips">
             <div class="diag-tips-title">Если что-то не работает</div>
             <div class="diag-tip"><b>YouTube открывается, а видео не идёт</b><span>смените DNS-провайдера (DoH) в настройках браузера: Quad9 → Cloudflare → выключить</span></div>
@@ -829,10 +883,6 @@
                   <span>Имя игры *</span>
                   <input class="input" id="gcName" maxlength="60" placeholder="Например: My MMO">
                 </label>
-                <label class="custom-field">
-                  <span>Процесс (необязательно)</span>
-                  <input class="input" id="gcProcess" maxlength="80" placeholder="game.exe">
-                </label>
                 <label class="custom-field custom-wide">
                   <span>Домены (по одному в строке, необязательно)</span>
                   <textarea class="input" id="gcDomains" rows="3" placeholder="auth.example.com&#10;lobby.example.com"></textarea>
@@ -846,7 +896,7 @@
                   <textarea class="input" id="gcCidrs" rows="2" placeholder="1.2.0.0/16"></textarea>
                 </label>
               </div>
-              <div class="meta">Без подсетей UDP-правило «широкое» - трогает весь трафик на этом порту. UDP-фикс вступит после перезапуска обхода.</div>
+              <div class="meta">Процесс здесь не настраивается: Zapret фильтрует по портам и доменам. Для анализа сетевых соединений используйте отдельную вкладку «Анализ приложения». Без подсетей UDP-правило «широкое» - трогает весь трафик на этом порту. UDP-фикс вступит после перезапуска обхода.</div>
               <div class="game-actions">
                 <button class="btn btn-sm btn-go" id="gcSave">Сохранить</button>
                 <button class="btn btn-sm" id="gcCancel">Отмена</button>

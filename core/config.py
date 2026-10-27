@@ -24,6 +24,12 @@ class AppConfig:
     discord_alt: bool = False          # альт-режим Discord (nodrop) для капризных сетей
     tour_done: bool = False
     notice_done: bool = False
+    # Два DNS-профиля для быстрой смены (Diagnostics → DNS).
+    # Каждый профиль — primary + secondary; провайдеры можно смешивать.
+    dns_main_primary: str = "8.8.8.8"
+    dns_main_secondary: str = "8.8.4.4"
+    dns_reserve_primary: str = "1.1.1.1"
+    dns_reserve_secondary: str = "1.0.0.1"
 
 
 DEFAULT_PROFILE = "default"

@@ -9,6 +9,7 @@ const DiagnosticsPage = {
       $('diagRunBtn').addEventListener('click', () => this.run());
       $('diagCopyBtn').addEventListener('click', () => this.copyReport());
     }
+    if (typeof DnsPanel !== 'undefined') DnsPanel.onShow();
   },
 
   async run() {
@@ -123,6 +124,140 @@ const DiagnosticsPage = {
       try { document.execCommand('copy'); showToast('Отчёт скопирован', 'ok'); }
       catch (e2) { showToast('Не удалось скопировать', 'warn'); }
       document.body.removeChild(ta);
+    }
+  },
+};
+const DNS_PROVIDER_PRESETS = {
+  google: { primary: '8.8.8.8', secondary: '8.8.4.4' },
+  cloudflare: { primary: '1.1.1.1', secondary: '1.0.0.1' },
+  quad9: { primary: '9.9.9.9', secondary: '149.112.112.112' },
+};
+
+const DnsPanel = {
+  _bound: false,
+  _busy: false,
+
+  onShow() {
+    if (!this._bound) {
+      this._bound = true;
+      $('dnsApplyBtn').addEventListener('click', () => this.apply());
+      $('dnsResetBtn').addEventListener('click', () => this.reset());
+      $('dnsMainProvider').addEventListener('change', e => this._fillProvider('main', e.target.value));
+      $('dnsReserveProvider').addEventListener('change', e => this._fillProvider('reserve', e.target.value));
+      for (const id of ['dnsMainPrimary', 'dnsMainSecondary', 'dnsReservePrimary', 'dnsReserveSecondary']) {
+        $(id).addEventListener('input', () => this._syncProviderSelects());
+      }
+    }
+    this.load();
+  },
+
+  async load() {
+    try {
+      const r = await apiGet('/dns/status');
+      if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
+      this._render(r);
+    } catch (e) {
+      $('dnsCurrent').textContent = 'Не удалось прочитать DNS: ' + String(e.message || e);
+      $('dnsActive').textContent = '';
+    }
+  },
+
+  _render(r) {
+    const st = r.state || {};
+    const cur = (st.servers || []).join(', ');
+    if (st.ok) {
+      const adapter = st.adapter ? st.adapter + ': ' : '';
+      $('dnsCurrent').textContent = adapter + (cur || 'авто / DHCP') +
+        (st.dhcp ? ' (DHCP)' : ' (вручную)');
+    } else {
+      $('dnsCurrent').textContent = 'DNS не прочитан: ' + (st.error || 'нет активного адаптера');
+    }
+    const active = r.active || 'unknown';
+    const labels = { main: 'текущий: Основной', reserve: 'текущий: Резервный',
+                     custom: 'текущий DNS не совпадает с профилями', system: 'текущий: системный',
+                     unknown: '' };
+    $('dnsActive').textContent = labels[active] || '';
+    const profiles = r.profiles || {};
+    this._setProfile('main', profiles.main);
+    this._setProfile('reserve', profiles.reserve);
+    if (active === 'main' || active === 'reserve') $('dnsProfile').value = active;
+    this._syncProviderSelects();
+  },
+
+  _setProfile(key, p) {
+    if (!p) return;
+    const cap = key === 'main' ? 'Main' : 'Reserve';
+    $('dns' + cap + 'Primary').value = p.primary || '';
+    $('dns' + cap + 'Secondary').value = p.secondary || '';
+  },
+
+  _fillProvider(key, provider) {
+    const p = DNS_PROVIDER_PRESETS[provider];
+    if (!p) return;
+    const cap = key === 'main' ? 'Main' : 'Reserve';
+    $('dns' + cap + 'Primary').value = p.primary;
+    $('dns' + cap + 'Secondary').value = p.secondary;
+  },
+
+  _syncProviderSelects() {
+    for (const [key, cap] of [['main', 'Main'], ['reserve', 'Reserve']]) {
+      const p = $('dns' + cap + 'Primary').value.trim().toLowerCase();
+      const s = $('dns' + cap + 'Secondary').value.trim().toLowerCase();
+      let match = 'custom';
+      for (const [name, preset] of Object.entries(DNS_PROVIDER_PRESETS)) {
+        if (p === preset.primary && s === preset.secondary) match = name;
+      }
+      $('dns' + cap + 'Provider').value = match;
+    }
+  },
+
+  _profiles() {
+    return {
+      main: { primary: $('dnsMainPrimary').value.trim(), secondary: $('dnsMainSecondary').value.trim() },
+      reserve: { primary: $('dnsReservePrimary').value.trim(), secondary: $('dnsReserveSecondary').value.trim() },
+    };
+  },
+
+  async apply() {
+    if (this._busy) return;
+    this._busy = true;
+    const btn = $('dnsApplyBtn');
+    btn.disabled = true;
+    btn.textContent = 'Применяю…';
+    try {
+      const r = await apiPost('/dns/apply', {
+        profile: $('dnsProfile').value,
+        profiles: this._profiles(),
+      });
+      if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
+      showToast('DNS применён', 'ok');
+      this._render(r);
+    } catch (e) {
+      showToast('DNS не изменён: ' + String(e.message || e), 'error');
+    } finally {
+      this._busy = false;
+      btn.disabled = false;
+      btn.textContent = 'Применить';
+    }
+  },
+
+  async reset() {
+    if (this._busy) return;
+    this._busy = true;
+    const btn = $('dnsResetBtn');
+    btn.disabled = true;
+    btn.textContent = 'Возвращаю…';
+    try {
+      const r = await apiPost('/dns/reset', {});
+      if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
+      showToast('DNS возвращён к исходному', 'ok');
+      this._render(r);
+    } catch (e) {
+      showToast('Не удалось вернуть DNS: ' + String(e.message || e), 'error');
+    } finally {
+      this._busy = false;
+      btn.disabled = false;
+      btn.textContent = 'Вернуть системный DNS';
     }
   },
 };

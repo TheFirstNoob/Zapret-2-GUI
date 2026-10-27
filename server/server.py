@@ -14,9 +14,9 @@ from core.zapret_controller import ZapretController
 from core.tester import Zapret2Tester
 from server.app_state import (STATE, get_root_dir, probe_debug as _probe_debug)
 from server import (api_blobs, api_cdn, api_config, api_contested,
-                    api_control, api_diag, api_games, api_info, api_lists,
-                    api_probe, api_reports, api_service, api_tester,
-                    api_update, api_zapret1, session_recovery)
+                    api_control, api_diag, api_dns, api_games, api_info,
+                    api_lists, api_probe, api_reports, api_service,
+                    api_tester, api_update, api_zapret1, session_recovery)
 
 
 CONTENT_TYPES = {
@@ -99,6 +99,7 @@ _GET_ROUTES: dict[str, tuple] = {
     "/api/update/status": (api_update.update_status, ("@ctx",)),
     "/api/process-probe/status": (api_probe.probe_status, ("@ctx",)),
     "/api/games": (api_games.games_get, ("@ctx",)),
+    "/api/dns/status": (api_dns.dns_status, ("@ctx",)),
 }
 
 _POST_ROUTES: dict[str, tuple] = {
@@ -143,6 +144,9 @@ _POST_ROUTES: dict[str, tuple] = {
     "/api/games/add-domain": (api_games.games_add_domain, ("@ctx", "@data")),
     "/api/games/custom": (api_games.games_custom, ("@ctx", "@data")),
     "/api/frontend-log": (api_probe.probe_debug_log, ("@ctx", "@data")),
+    "/api/dns/apply": (api_dns.dns_apply, ("@ctx", "@data")),
+    "/api/dns/reset": (api_dns.dns_reset, ("@ctx",)),
+    "/api/dns/config": (api_dns.dns_save, ("@ctx", "@data")),
 }
 
 

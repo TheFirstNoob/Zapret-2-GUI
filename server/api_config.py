@@ -27,6 +27,10 @@ def get_config(ctx: AppContext) -> dict:
         "autohostlist": cfg.autohostlist,
         "ipset_catchall": cfg.ipset_catchall,
         "discord_alt": cfg.discord_alt,
+        "dns_main_primary": cfg.dns_main_primary,
+        "dns_main_secondary": cfg.dns_main_secondary,
+        "dns_reserve_primary": cfg.dns_reserve_primary,
+        "dns_reserve_secondary": cfg.dns_reserve_secondary,
         # fake_blob обязателен в ответе: фронт читает его при старте
         # (app.js loadConfig) и без него селект блока сбрасывается на
         # «Пресет (Google)», а следующий save/restart затирал бы настройку

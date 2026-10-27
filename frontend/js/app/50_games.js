@@ -217,9 +217,9 @@ const GamesPage = {
     const title = $('gamesCustomTitle');
     if (gi === null || gi === undefined) {
       this._editId = null;
+      this._editProcess = '';
       if (title) title.textContent = 'Своя игра';
       $('gcName').value = '';
-      $('gcProcess').value = '';
       $('gcDomains').value = '';
       $('gcPorts').value = '';
       $('gcCidrs').value = '';
@@ -227,9 +227,9 @@ const GamesPage = {
       const g = (this._data.games || [])[gi];
       if (!g || !g.custom) return;
       this._editId = g.id;
+      this._editProcess = g.process || '';
       if (title) title.textContent = 'Своя игра: ' + (g.name || g.id);
       $('gcName').value = g.name || '';
-      $('gcProcess').value = g.process || '';
       $('gcDomains').value = (g.domains || []).map(d => d.domain).join('\n');
       const u = (g.udp || [])[0] || {};
       $('gcPorts').value = u.ports || '';
@@ -254,7 +254,7 @@ const GamesPage = {
         game: {
           id: this._editId || '',
           name: ($('gcName').value || '').trim(),
-          process: ($('gcProcess').value || '').trim(),
+          process: this._editProcess || '',
           domains_text: $('gcDomains').value || '',
           ports: ($('gcPorts').value || '').trim(),
           cidrs_text: $('gcCidrs').value || '',
