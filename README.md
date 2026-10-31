@@ -13,6 +13,11 @@ GUI-обёртка для **Zapret 2** (winws2 / lua-desync) - обход фил
 >
 > На GitHub есть и другие инструменты с похожей задачей - какой выбирать, решаете только вы. Я делаю проект для себя и своих ребят, кто меня знает. Скачивайте там, где вам спокойнее.
 
+> [!WARNING]
+> **AI service accounts - risk notice.** Following the recent IPO-related tightening, ChatGPT and Claude may suspend accounts registered in Russia, including paid accounts, without a refund. This can happen even when a VPN, proxy, or DNS workaround is used; a VPN is not a guarantee against account or payment checks. Do not rely on a paid AI subscription for anything critical, and keep backups of your data.
+>
+> **По-русски:** на фоне ужесточения после IPO аккаунты ChatGPT и Claude могут блокироваться в РФ, в том числе платные, без возврата денег. VPN, прокси и обход DNS не гарантируют сохранность аккаунта: проверки региона и оплаты могут сработать и с ними. Не держите на платных AI-аккаунтах ничего критичного и сохраняйте резервные копии.
+
 ## 📖 Содержание
 
 - [🚀 Быстрый старт](#-быстрый-старт)
