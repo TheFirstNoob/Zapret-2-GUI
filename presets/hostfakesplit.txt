@@ -50,7 +50,7 @@ tls
 --payload
 tls_client_hello
 --lua-desync=fake:blob=google_tls:tcp_ts=-1000:repeats=7
---lua-desync=multisplit:pos=1:seqovl=681:seqovl_pattern=google_tls
+--lua-desync=multisplit:pos=1,midsld:seqovl=681:seqovl_pattern=google_tls
 --new
 
 --comment=Google TCP

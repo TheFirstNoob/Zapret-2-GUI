@@ -49,7 +49,7 @@ tls
 -d10
 --payload
 tls_client_hello
---lua-desync=multisplit:pos=1:seqovl=681:seqovl_pattern=google_tls:repeats=7
+--lua-desync=multisplit:pos=1,midsld:seqovl=681:seqovl_pattern=google_tls:repeats=7
 --new
 
 --comment=Google TCP

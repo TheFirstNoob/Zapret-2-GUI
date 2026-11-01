@@ -36,7 +36,7 @@ tls
 --payload
 tls_client_hello
 --lua-desync=fake:blob=google_tls:tcp_ts=-1000:repeats=8
---lua-desync=multisplit:pos=1:seqovl=681:seqovl_pattern=google_tls
+--lua-desync=multisplit:pos=1,midsld:seqovl=681:seqovl_pattern=google_tls
 --new
 
 --comment=Discord TCP tls
@@ -50,7 +50,7 @@ tls
 --payload
 tls_client_hello
 --lua-desync=fake:blob=google_tls:tcp_ts=-1000:repeats=8
---lua-desync=multisplit:pos=1:seqovl=681:seqovl_pattern=google_tls
+--lua-desync=multisplit:pos=1,midsld:seqovl=681:seqovl_pattern=google_tls
 --new
 
 --comment=Google TCP tls
@@ -64,7 +64,7 @@ tls
 --payload
 tls_client_hello
 --lua-desync=fake:blob=google_tls:tcp_ts=-1000:repeats=6
---lua-desync=multisplit:pos=1:seqovl=681:seqovl_pattern=google_tls
+--lua-desync=multisplit:pos=1,midsld:seqovl=681:seqovl_pattern=google_tls
 --new
 
 --comment=General TCP
@@ -79,7 +79,7 @@ tls,http
 --payload
 tls_client_hello,http_req
 --lua-desync=fake:blob=google_tls:tcp_ts=-1000:repeats=8
---lua-desync=multisplit:pos=1:seqovl=681:seqovl_pattern=google_tls
+--lua-desync=multisplit:pos=1,midsld:seqovl=681:seqovl_pattern=google_tls
 --new
 
 --comment=QUIC Google

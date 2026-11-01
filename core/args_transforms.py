@@ -192,8 +192,11 @@ def transform_gamefilter_segments(tokens: list[str], ctx: ArgsCtx) -> list[str]:
     """GameFilter: захват высоких портов + catch-all профили."""
     tokens = list(tokens)
     if ctx.game_filter_mode in ("udp", "both"):
-        # Raw-части не покрывают HIGH_PORTS → явный --wf-udp-out
-        tokens.insert(0, f"--wf-udp-out={HIGH_PORTS}")
+        # Не вставляем второй --wf-udp-out: по контракту winws2 он
+        # перезаписывает предыдущий и срезает UDP 443/QUIC. %GameFilter%
+        # уже добавляет HIGH_PORTS в глобальный флаг; здесь только
+        # дополняем существующий список для пресетов без плейсхолдера.
+        _append_wf_udp_ports(tokens, HIGH_PORTS)
     if ctx.game_filter_mode in ("tcp", "both"):
         tokens.append("--new")
         tokens.append(f"--filter-tcp={HIGH_PORTS}")

@@ -14,7 +14,9 @@ from __future__ import annotations
 import argparse
 import json
 import pathlib
+import shutil
 import sys
+import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -26,14 +28,17 @@ from core.utils import short_path  # noqa: E402
 GOLDEN = pathlib.Path(__file__).resolve().parent / "args_golden.json"
 
 
-def _norm(tokens: list[str]) -> list[str]:
-    root = str(ROOT)
+def _norm(tokens: list[str], temp_root: str = "") -> list[str]:
+    bases = [str(ROOT)]
+    if temp_root:
+        bases.insert(0, temp_root)
     short = str(short_path(ROOT))
+    if short != str(ROOT):
+        bases.append(short)
     out = []
     for t in tokens:
-        t = t.replace(root, "<ROOT>")
-        if short != root:
-            t = t.replace(short, "<ROOT>")
+        for base in bases:
+            t = t.replace(base, "<ROOT>")
         out.append(t)
     return out
 
@@ -68,19 +73,35 @@ def _matrix() -> list[tuple[str, dict]]:
     return cases
 
 
-def _build(case: dict) -> list[str]:
+def _build(case: dict) -> tuple[list[str], str]:
+    """Собрать аргументы в изолированном временном root.
+
+    Пользовательские games.json / list-games / list-include-all не должны
+    влиять на golden: live-копия с включёнными играми иначе давала ложные
+    19 расхождений. Базовые списки копируются, генерируемые — обнуляются.
+    """
     kw = dict(case)
     preset = kw.pop("preset")
-    return build_args_from_preset(ROOT, ROOT / "lua", ROOT / "blobs", preset,
-                                  lists_dir=ROOT / "lists",
-                                  windivert_dir=ROOT / "windivert", **kw)
+    with tempfile.TemporaryDirectory(prefix="z2_golden_") as td:
+        root = pathlib.Path(td)
+        shutil.copytree(ROOT / "lists", root / "lists")
+        for name in ("list-games.txt", "list-include-all.txt"):
+            (root / "lists" / name).write_text("", encoding="utf-8")
+        (root / "games.json").write_text('{"games": []}', encoding="utf-8")
+        toks = build_args_from_preset(
+            root, ROOT / "lua", ROOT / "blobs", preset,
+            lists_dir=root / "lists",
+            windivert_dir=ROOT / "windivert", **kw)
+        normalized = _norm(toks, str(root))
+        return normalized, str(root)
 
 
 def _all(normalize: bool) -> dict[str, list[str]]:
     out = {}
     for label, case in _matrix():
-        toks = _build(case)
-        out[label] = _norm(toks) if normalize else toks
+        toks, _temp = _build(case)
+        out[label] = toks if normalize else _norm(
+            [t.replace("<ROOT>", str(ROOT)) for t in toks])
     return out
 
 
