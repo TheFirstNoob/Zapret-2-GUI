@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pytest
+      - name: Compile Python
+        run: python -m compileall -q core server tools
+      - name: Unit and security tests
+        run: python -m pytest tests tools/security -q
+      - name: API smoke
+        run: python tools/api_smoke.py
+      - name: Golden arguments (hermetic)
+        run: python tools/args_golden.py compare
+      - name: JS bundle syntax
+        run: python tools/js_bundle_check.py
+      - name: Status contract
+        run: python tools/status_contract.py

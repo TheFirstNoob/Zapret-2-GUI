@@ -65,12 +65,13 @@ def _svc_log(msg: str) -> None:
 
 def _taskkill_winws2():
     """Единый kill winws2, но ТОЛЬКО этой установки (ревью 18.10:
-    name-wide kill убивал движок второй копии GUI в другой папке)."""
+    name-wide kill убивал движок второй копии GUI в другой папке).
+    Возвращает список реально завершённых PID (пустой - ничего не убито)."""
     from core.proc import kill_image_filtered
     root = app_root()
-    kill_image_filtered("winws2.exe",
-                        {str(root / "bin" / "winws2.exe"),
-                         str(root / "winws2.exe")}, timeout=10)
+    return kill_image_filtered("winws2.exe",
+                               {str(root / "bin" / "winws2.exe"),
+                                str(root / "winws2.exe")}, timeout=10)
 
 
 def is_installed() -> bool:
@@ -405,6 +406,29 @@ def _wait_service_stopped(timeout: float = 5.0) -> bool:
         time.sleep(0.15)
 
 
+def _wait_service_running(timeout: float = 10.0) -> tuple[bool, Optional[int]]:
+    """Поллинг SCM до SERVICE_RUNNING (4).
+
+    sc start возвращает управление до фактической готовности winws2;
+    успешный exit code сам по себе не означает, что служба запущена.
+    Возвращает (running, последнее_состояние)."""
+    deadline = time.time() + timeout
+    last = None
+    while True:
+        st = _query_service_state()
+        last = st
+        if st == 4:
+            return True, st
+        if st in (1, None):
+            # STOPPED/служба исчезла: ждать RUNNING уже бессмысленно.
+            return False, st
+        if time.time() >= deadline:
+            _svc_log(f"start-wait: служба не дошла до RUNNING за {timeout:.1f}s "
+                     f"(state={st})")
+            return False, st
+        time.sleep(0.15)
+
+
 def _winws_running() -> bool:
     """Zapret 1 (winws.exe) запущен? Единый core.proc (аудит #7, хвост:
     конвертация при верификации - census §3.7 эту обёртку пропустил).
@@ -426,34 +450,6 @@ def _zapret1_conflict() -> Optional[str]:
     if _winws_running():
         return "Zapret 1 (winws.exe) запущен. Остановите его перед запуском Zapret 2."
     return None
-
-
-def _taskkill_winws() -> bool:
-    """Остановить winws.exe (Zapret 1). True - команда выполнена
-    (не гарантия смерти; core.proc.kill_image, таймаут внутри)."""
-    from core.proc import kill_image
-    return kill_image("winws.exe", timeout=10)
-
-
-def zapret1_cleanup() -> tuple[bool, str]:
-    """Остановить и удалить службу Zapret 1 (zapret) + winws.exe - как
-    «Remove Services» в service.bat Flowseal-бандла. Вызывается только после
-    ЯВНОГО подтверждения пользователя во фронтенде."""
-    actions: list[str] = []
-    code, _out = _sc(["query", "zapret"])
-    if code == 0:
-        _sc(["stop", "zapret"])
-        code, out = _sc(["delete", "zapret"])
-        if code != 0:
-            if "1072" in out or "отмечен" in out.lower():
-                return False, "Служба zapret помечена на удаление - нужна перезагрузка"
-            return False, f"Не удалось удалить службу zapret: {out.strip()[:120]}"
-        actions.append("служба zapret удалена")
-    if _winws_running() and _taskkill_winws():
-        actions.append("winws.exe остановлен")
-    if not actions:
-        return True, "Zapret 1 не обнаружен"
-    return True, ", ".join(actions)
 
 
 @_serialized
@@ -558,21 +554,12 @@ def _recreate_old_service(binpath: str, was_running: bool) -> tuple[bool, str]:
 
 
 @_serialized
-def install(root_dir: Optional[Path] = None, args: Optional[list[str]] = None,
-            cleanup_zapret1: bool = False) -> tuple[bool, str]:
+def install(root_dir: Optional[Path] = None, args: Optional[list[str]] = None) -> tuple[bool, str]:
     conflict = _zapret1_conflict()
     if conflict:
-        if not cleanup_zapret1:
-            return False, conflict
-        ok_c, msg_c = zapret1_cleanup()
-        if not ok_c:
-            return False, msg_c
-        conflict = _zapret1_conflict()
-        if conflict:
-            return False, conflict
+        return False, conflict
     _invalidate_service_cache()
-    _svc_log(f"install: args={len(args or [])} cleanup_zapret1={cleanup_zapret1} "
-             f"root={root_dir}")
+    _svc_log(f"install: args={len(args or [])} root={root_dir}")
     if root_dir is None:
         root_dir = app_root()
     exe = Path(root_dir) / "bin" / "winws2.exe"
@@ -813,6 +800,11 @@ def migrate_if_needed() -> tuple[bool, str]:
 @_serialized
 def remove():
     _invalidate_service_cache()
+    remove_ps, remove_msg = path_status()
+    if remove_ps in ("mismatch", "unknown"):
+        _svc_log(f"remove REFUSED: {remove_ps}: {remove_msg}")
+        return False, ("Не удалось подтвердить, что служба zapret2 принадлежит "
+                       f"этой копии: {remove_msg or remove_ps}. Удалять её нельзя.")
     _svc_log("remove: stop+taskkill")
     _sc(["stop", SERVICE_NAME])
     _taskkill_winws2()
@@ -862,8 +854,10 @@ def start(args: Optional[list[str]] = None):
     from core.tcp_timestamps import enable_for_engine
     enable_for_engine()
     start_ps, start_msg = path_status()
-    if start_ps == "mismatch":
-        _svc_log(f"start WARN: binPath ведёт на другую копию: {start_msg}")
+    if start_ps in ("mismatch", "unknown"):
+        _svc_log(f"start REFUSED: {start_ps}: {start_msg}")
+        return False, ("Не удалось подтвердить, что служба zapret2 принадлежит "
+                       f"этой копии: {start_msg or start_ps}. Не запускаю её.")
     # ПРЕДУСЛОВИЯ ДО stop() (ревью 18.10): кривой exe/guard/conf не должен
     # оставлять пользователя без уже работающей службы.
     if args:
@@ -891,7 +885,17 @@ def start(args: Optional[list[str]] = None):
     code, out = _sc(["start", SERVICE_NAME])
     _svc_log(f"start: sc start rc={code} out={out.strip()[:200]!r}")
     if code != 0:
+        # 1056 = уже запущена; это не ошибка, если SCM подтверждает RUNNING.
+        if "1056" in out:
+            ok_run, state = _wait_service_running(timeout=3.0)
+            if ok_run:
+                return True, "winws2 уже запущен"
         return False, f"sc start failed: {out.strip()}"
+    ok_run, state = _wait_service_running()
+    if not ok_run:
+        _invalidate_service_cache()
+        return False, (f"sc start принят, но служба не перешла в RUNNING "
+                       f"(state={state}); проверьте winws2 и драйвер")
     return True, "winws2 запущен"
 
 
@@ -900,6 +904,11 @@ def stop():
     # Сначала - корректный sc stop (SCM состояние), taskkill как страховка
     # для вручную запущенного winws2.
     _invalidate_service_cache()
+    stop_ps, stop_msg = path_status()
+    if stop_ps in ("mismatch", "unknown"):
+        _svc_log(f"stop REFUSED: {stop_ps}: {stop_msg}")
+        return False, ("Не удалось подтвердить, что служба zapret2 принадлежит "
+                       f"этой копии: {stop_msg or stop_ps}. Не останавливаю её.")
     _svc_log("stop")
     code, out = _sc(["stop", SERVICE_NAME])
     # 1062 = служба не запущена (норма), 1056 = уже остановлена
@@ -1049,6 +1058,19 @@ def _apply_failure_actions(reset_period: int, actions: list) -> bool:
         return False
 
 
+def _recovery_owned() -> tuple[bool, str]:
+    """Проверка владельца перед изменением failure actions службы."""
+    try:
+        state, detail = path_status()
+    except Exception as e:  # noqa: BLE001
+        return False, f"path_status: {e}"
+    if state == "none":
+        return False, "служба не установлена"
+    if state in ("mismatch", "unknown"):
+        return False, detail or state
+    return True, ""
+
+
 def pause_recovery() -> None:
     """На время тестов/починки: отключаем sc.exe restart на время worker (L4).
 
@@ -1058,6 +1080,10 @@ def pause_recovery() -> None:
     global _recovery_paused, _recovery_was_on, _recovery_saved
     with _recovery_lock:
         if _recovery_paused:
+            return
+        owned, why = _recovery_owned()
+        if not owned:
+            _svc_log(f"pause_recovery: пропущено ({why})")
             return
         saved = _read_failure_actions_win32()
         if saved is not None:
@@ -1082,6 +1108,12 @@ def resume_recovery() -> None:
     global _recovery_paused, _recovery_saved
     with _recovery_lock:
         if not _recovery_paused:
+            return
+        owned, why = _recovery_owned()
+        if not owned:
+            _svc_log(f"resume_recovery: пропущено ({why})")
+            _recovery_paused = False
+            _recovery_saved = None
             return
         try:
             saved = _recovery_saved
@@ -1126,6 +1158,10 @@ def restore_recovery_from_snapshot(snapshot: Optional[dict]) -> bool:
     возвращаем наши штатные restart/60000x3."""
     if not snapshot:
         return True
+    owned, why = _recovery_owned()
+    if not owned:
+        _svc_log(f"restore_recovery: пропущено ({why})")
+        return False
     saved = snapshot.get("saved")
     if saved is not None:
         ok = _apply_failure_actions(saved.get("reset", 0),

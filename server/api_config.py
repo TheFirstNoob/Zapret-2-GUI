@@ -18,8 +18,6 @@ def get_config(ctx: AppContext) -> dict:
     return {"status": "ok", "config": {
         "root_dir": cfg.root_dir,
         "last_profile": cfg.last_profile,
-        "zapret1_dir": cfg.zapret1_dir,
-        "zapret1_last_strategy": cfg.zapret1_last_strategy,
         "game_filter_mode": cfg.game_filter_mode,
         "discord_voice": cfg.discord_voice,
         "discord_voice_mode": cfg.discord_voice_mode,
@@ -34,7 +32,7 @@ def get_config(ctx: AppContext) -> dict:
         # fake_blob обязателен в ответе: фронт читает его при старте
         # (app.js loadConfig) и без него селект блока сбрасывается на
         # «Пресет (Google)», а следующий save/restart затирал бы настройку
-        # (REVIEW_VERDICT.md §2.3).
+        # (исторический аудит §2.3).
         "fake_blob": cfg.fake_blob,
         "tour_done": cfg.tour_done,
         "notice_done": cfg.notice_done,
@@ -53,10 +51,6 @@ def save_config(ctx: AppContext, data: dict) -> dict:
             if not isinstance(data["last_profile"], str):
                 return {"status": "error", "message": "last_profile должен быть строкой"}
             new_cfg.last_profile = data["last_profile"]
-        if "zapret1_dir" in data:
-            if not isinstance(data["zapret1_dir"], str):
-                return {"status": "error", "message": "zapret1_dir должен быть строкой"}
-            new_cfg.zapret1_dir = data["zapret1_dir"]
         if "game_filter_mode" in data:
             mode = str(data["game_filter_mode"]).lower()
             if mode not in ("off", "udp", "tcp", "both"):

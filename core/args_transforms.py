@@ -269,7 +269,7 @@ def transform_game_udp_pool(tokens: list[str], ctx: ArgsCtx) -> list[str]:
             # относительный резолвится движком от cwd, а служба стартует
             # winws2 с cwd=%SystemRoot%\System32 → «cannot access file
             # 'blobs/quic_initial_www_google_com.bin'» и обход не поднимается
-            # вообще (REVIEW_VERDICT.md §2.5).
+            # вообще (исторический аудит §2.5).
             quic_blob = ctx.blobs_dir / "quic_initial_www_google_com.bin"
             if quic_blob.exists():
                 tokens += ["--blob", f"quic_google:@{quic_blob}"]

@@ -7,6 +7,7 @@ const Status = {
   svc: null,           // /api/service/status ответ
   _statusBusy: false,  // запрос /status ещё в полёте
   _svcBusy: false,
+  _offline: false,     // последний /status не ответил; не показываем старый «работает»
   _visHooked: false,
 
   start() {
@@ -48,14 +49,17 @@ const Status = {
     try {
       const data = await apiGet('/status');
       this.last = data;
+      this._offline = false;
       this.render();
     } catch (e) {
-      // Статус неизвестен - НЕ затираем прошлый ответ: иначе одна ошибка
-      // мигает «нет связи» поверх рабочего состояния.
-      if (!this.last) {
-        $('protDot').className = 'dot dot-unknown';
-        $('protText').textContent = 'нет связи…';
-      }
+      // Нельзя оставлять последний «Обход работает» при потере связи:
+      // пользователь должен видеть, что состояние неизвестно.
+      this._offline = true;
+      $('protDot').className = 'dot dot-unknown';
+      $('protText').textContent = 'Нет связи с программой';
+      $('protSub').textContent = 'статус обхода неизвестен';
+      const chip = $('protChip');
+      if (chip) chip.className = 'prot-chip state-unknown';
     } finally {
       this._statusBusy = false;
     }
@@ -77,6 +81,7 @@ const Status = {
   render() {
     const d = this.last;
     if (!d) return;
+    if (this._offline) return;
     const z2 = d.zapret || {}, z1 = d.zapret1 || {}, svc = this.svc;
     const dot = $('protDot'), txt = $('protText'), sub = $('protSub');
 

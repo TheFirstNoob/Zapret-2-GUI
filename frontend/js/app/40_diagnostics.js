@@ -9,7 +9,6 @@ const DiagnosticsPage = {
       $('diagRunBtn').addEventListener('click', () => this.run());
       $('diagCopyBtn').addEventListener('click', () => this.copyReport());
     }
-    if (typeof DnsPanel !== 'undefined') DnsPanel.onShow();
   },
 
   async run() {
@@ -131,11 +130,13 @@ const DNS_PROVIDER_PRESETS = {
   google: { primary: '8.8.8.8', secondary: '8.8.4.4' },
   cloudflare: { primary: '1.1.1.1', secondary: '1.0.0.1' },
   quad9: { primary: '9.9.9.9', secondary: '149.112.112.112' },
+  comss: { primary: '212.109.221.20', secondary: '212.109.195.93' },
 };
 
 const DnsPanel = {
   _bound: false,
   _busy: false,
+  _canReset: false,
 
   onShow() {
     if (!this._bound) {
@@ -159,6 +160,8 @@ const DnsPanel = {
     } catch (e) {
       $('dnsCurrent').textContent = 'Не удалось прочитать DNS: ' + String(e.message || e);
       $('dnsActive').textContent = '';
+      const resetBtn = $('dnsResetBtn');
+      if (resetBtn) resetBtn.disabled = true;
     }
   },
 
@@ -181,6 +184,14 @@ const DnsPanel = {
     this._setProfile('main', profiles.main);
     this._setProfile('reserve', profiles.reserve);
     if (active === 'main' || active === 'reserve') $('dnsProfile').value = active;
+    const resetBtn = $('dnsResetBtn');
+    this._canReset = !!r.can_reset;
+    if (resetBtn) {
+      resetBtn.disabled = !this._canReset;
+      resetBtn.title = this._canReset
+        ? 'Вернуть DNS, сохранённый перед первым применением профиля'
+        : 'Нет сохранённого исходного DNS: сначала примените профиль';
+    }
     this._syncProviderSelects();
   },
 
@@ -256,7 +267,7 @@ const DnsPanel = {
       showToast('Не удалось вернуть DNS: ' + String(e.message || e), 'error');
     } finally {
       this._busy = false;
-      btn.disabled = false;
+      btn.disabled = !this._canReset;
       btn.textContent = 'Вернуть системный DNS';
     }
   },

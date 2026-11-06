@@ -70,7 +70,7 @@ const GamesPage = {
       };
       return `
       <div class="game-item${open ? ' open' : ''}">
-        <div class="game-row" data-g-expand="${gi}">
+        <div class="game-row" data-g-expand="${gi}" tabindex="0" role="button" aria-expanded="${open}" aria-label="${escapeHtml(g.name || g.id)}: показать настройки">
           <div class="game-left">
             <svg class="game-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
             <span class="game-title">${escapeHtml(g.name || g.id)}</span>
@@ -80,7 +80,7 @@ const GamesPage = {
             </div>
           </div>
           <label class="switch" title="Включить игру" data-g-noexp="1">
-            <input type="checkbox" data-g-on="${gi}" ${g.enabled ? 'checked' : ''}>
+            <input type="checkbox" data-g-on="${gi}" aria-label="Включить игру ${escapeHtml(g.name || g.id)}" ${g.enabled ? 'checked' : ''}>
             <span class="switch-track"><span class="switch-knob"></span></span>
           </label>
         </div>
@@ -124,14 +124,22 @@ const GamesPage = {
         </div>
       </div>`;
     }).join('');
-    body.querySelectorAll('[data-g-expand]').forEach(row =>
-      row.addEventListener('click', (ev) => {
+    body.querySelectorAll('[data-g-expand]').forEach(row => {
+      const toggle = (ev) => {
         if (ev.target.closest('[data-g-noexp]')) return;
         const gi = +row.dataset.gExpand;
         const key = games[gi].id || gi;
         this._open[key] = !this._open[key];
         this.render();
-      }));
+      };
+      row.addEventListener('click', toggle);
+      row.addEventListener('keydown', (ev) => {
+        if (ev.key !== 'Enter' && ev.key !== ' ') return;
+        if (ev.target.closest('[data-g-noexp]')) return;
+        ev.preventDefault();
+        toggle(ev);
+      });
+    });
     body.querySelectorAll('[data-g-on]').forEach(cb =>
       cb.addEventListener('change', () => {
         games[+cb.dataset.gOn].enabled = cb.checked;
@@ -293,6 +301,11 @@ const GamesPage = {
   },
 
   async reinstallService() {
+    const svc = Status.svc;
+    if (!svc || !svc.installed) {
+      showToast('Служба не установлена - сначала используйте «Установить службу» на Главной', 'warn');
+      return;
+    }
     const ok = await Confirm.ask({
       title: 'Переустановить службу?',
       text: 'Это нужно, чтобы UDP-фикс игр вступил в силу. Обход на пару секунд прервётся.',

@@ -245,13 +245,10 @@ def curl_test(domain: str, test_type: str, timeout: float, path: str = "/") -> T
         elapsed = (time.time() - start) * 1000
         if code is not None and code >= 100:
             return TestResult(domain, test_type, "OK", code, elapsed)
-        if code is not None and _is_dns_error(rc, stderr):
-            # Спуф/сбой СИСТЕМНОГО резолвера: curl rc=6 «Could not resolve
-            # host» (кейс 12.10: www.youtube.com «мёртв» у всех клиентов,
-            # под DoH-резолвом жив). Дешёвый повтор по IP из DoH -
-            # системный DNS в нём не участвует; пробуем до 2 A-записей
-            # (ревью 18.10: раньше только первый IP и терялись rc/stderr
-            # попытки). Пометка «DoH» в детали - честный контекст отчёта.
+        if _is_dns_error(rc, stderr):
+            # code is None при rc=6: старый код проверял code is not None
+            # и поэтому DoH-фолбэк не запускался. Это давало ERROR/BLOCKED
+            # для www.youtube.com при рабочем браузере с DoH.
             for doh_ip in doh_resolve_ips(domain)[:2]:
                 code2, rc2, _, stderr2 = curl_attempt(
                     url, head=False, timeout=timeout,
@@ -285,6 +282,19 @@ def curl_test(domain: str, test_type: str, timeout: float, path: str = "/") -> T
                 return TestResult(domain, test_type, "H3_NONE", code,
                                   elapsed, f"H3 не подтверждён: {detail}")
             return TestResult(domain, test_type, "BLOCKED", code, elapsed)
+        # code=None: для QUIC-домена всё ещё можно проверить H3, даже если
+        # системный DNS/curl не дали TCP-путь.
+        if domain in QUIC_QUIRK_DOMAINS:
+            h3_ok, detail = quic_h3_probe(domain)
+            elapsed = (time.time() - start) * 1000
+            if h3_ok:
+                return TestResult(domain, test_type, "QUIC", None,
+                                  elapsed, f"H3 подтверждён ({detail})")
+            if detail.startswith("нет niquests"):
+                return TestResult(domain, test_type, "QUIC", None,
+                                  elapsed, detail)
+            return TestResult(domain, test_type, "H3_NONE", None,
+                              elapsed, f"H3 не подтверждён: {detail}")
         if test_type == "tls:443" and rc == 0:
             return TestResult(domain, test_type, "OK", time_ms=elapsed)
         err = stderr or f"rc={rc}"

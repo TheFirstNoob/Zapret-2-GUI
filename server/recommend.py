@@ -164,7 +164,7 @@ def build_recommendation(all_results, naked, sanity: dict) -> dict:
         # разошёлся с ним на storage.googleapis.com (RATED-хост), из-за
         # чего он попадал в «спорные», речекался голым и получал ложное
         # «заблокирован» + до трёх лишних переборов блобов
-        # (REVIEW_VERDICT.md §2.2). Единственный источник истины -
+        # (исторический аудит §2.2). Единственный источник истины -
         # QUIC_QUIRK_DOMAINS; фронт держит свой QUIRK_HOSTS для таблицы.
         "quirk_skip": sorted(QUIC_QUIRK_DOMAINS),
         "key_hosts": key_hosts,
@@ -236,7 +236,7 @@ def recheck_contested(tester, best, rec: dict, progress) -> dict:
     конце прогона: ожившие - «временно недоступен», стабильные 000 -
     «заблокирован». Этап 2 (2026-09-11): перепроверка с альтернативными
     блобами (рекомендованный список, ≤3) - блоб влияет на живучесть у разных
-    провайдеров (STRATEGY_TRIALS) - «пробит с блобом X».
+    провайдеров (батарея тестов) - «пробит с блобом X».
     """
     best_failed = {r.domain for r in best.results
                    if r.test_type != "ping" and r.status != "OK"}

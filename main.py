@@ -188,7 +188,7 @@ def _heal_missing_data(exe_dir: Path, src: Path) -> None:
     # ТОЛЬКО SYSTEM-файлы: user-контракт (lists/*-user.txt, lists/games/,
     # presets/custom.txt, не-релизные пресеты, games.json, конфиг, логи) heal
     # не трогает никогда. Если он попадёт сюда - пользовательские правки будут
-    # откатываться на каждом запуске (решение автора, REVIEW_VERDICT.md §2.8).
+    # откатываться на каждом запуске (решение автора, исторический аудит §2.8).
     key_files = [
         "bin/winws2.exe", "bin/cygwin1.dll", "bin/WinDivert.dll",
         "bin/WinDivert64.sys",

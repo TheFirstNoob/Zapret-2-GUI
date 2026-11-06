@@ -1,10 +1,8 @@
 const TesterPage = {
   state: {
-    extendedTest: false, collectLogs: false,
+    collectLogs: false,
     vpnActive: false,
-    currentResults: null, nakedResults: null, phase2Results: null,
-    fullAnalysisResults: null,
-    collectFormData: null, collectBatFile: null,
+    nakedResults: null, phase2Results: null,
     testStartTime: 0, elapsedInterval: null,
     rows: null, currentKey: null, knownResults: 0,
   },
@@ -30,7 +28,6 @@ const TesterPage = {
 
   _label(key) {
     if (key === '__naked__') return 'Без защиты (базовый уровень)';
-    if (key === '__current__') return 'Zapret 1 (текущий)';
     return key;
   },
 
@@ -358,13 +355,6 @@ const TesterPage = {
           if (state.all_results && !fr.all_results) fr.all_results = state.all_results;
           if (fr.restored) showToast(fr.restored, /Не удалось|не восстановлен/.test(fr.restored) ? 'warn' : 'ok');
           if (resultType && fr.type === resultType) { if (onResult) onResult(fr); }
-          else if (fr.type === 'current_result') { this.state.currentResults = fr; this.runFullPipelinePhase1(); }
-          else if (fr.type === 'need_zapret1') {
-            this.clearElapsedTimer();
-            $('testRun').hidden = true;
-            Modal.open('needZapret1Overlay');
-            $('needZapret1Status').textContent = '';
-          }
           else if (fr.type === 'check_result') { if (onResult) onResult(fr); }
           else if (fr.type === 'final') {
             this.state.fullAnalysisResults = fr.all_results || [];
@@ -396,8 +386,8 @@ const TesterPage = {
   // ── запуск ──
 
   startTest() {
-    frontendLog('btn: Начать подбор (extended=' + $('extendedCheck').checked + ')');
-    this.state.advancedTest = $('extendedCheck').checked;
+    frontendLog('btn: Начать подбор');
+    this.state.advancedTest = false;
     this.state.collectLogs = $('logCheck').checked;
     this.resetAllState();
     this.runVpnCheck();
@@ -405,8 +395,7 @@ const TesterPage = {
 
   resetAllState() {
     Object.assign(this.state, {
-      currentResults: null, nakedResults: null, phase2Results: null,
-      fullAnalysisResults: null, collectFormData: null, collectBatFile: null,
+      nakedResults: null, phase2Results: null,
     });
     $('testLog').innerHTML = '';
     $('testSummary').hidden = true;
@@ -443,13 +432,10 @@ const TesterPage = {
     $('btnStartTest').disabled = true;
     // Скелетон: строки известных участников видны сразу («в очереди»),
     // таблица не выглядит замершей до первых результатов.
-    const planned = this.state.advancedTest
-      ? ['__current__', '__naked__', ...PROFILES]
-      : ['__naked__', ...PROFILES];
+    const planned = ['__naked__', ...PROFILES];
     planned.forEach(p => this._rowFor(p));
     this.startElapsedTimer();
-    if (this.state.advancedTest) this.runFullPipelinePhase0();
-    else this.runBasicPhase2();
+    this.runBasicPhase2();
   },
 
   _setProgress(pct) {
@@ -475,70 +461,6 @@ const TesterPage = {
         },
         onError: () => { $('testCurrentPhase').textContent = 'Ошибка теста'; this.clearElapsedTimer(); },
       });
-  },
-
-  runFullPipelinePhase0() {
-    $('testCurrentPhase').textContent = 'Фаза 1 из 4: текущий Zapret 1';
-    this._startTesterAction({ action: 'current' }, {
-      progressConfig: { startPercent: 0, scalePercent: 0.08 },
-      onError: () => { $('testCurrentPhase').textContent = 'Ошибка (Zapret 1)'; this.clearElapsedTimer(); },
-    });
-  },
-
-  runFullPipelinePhase1() {
-    $('testCurrentPhase').textContent = 'Фаза 2 из 4: базовый уровень без защиты';
-    this._startTesterAction({ action: 'naked' }, {
-      resultType: 'naked_result',
-      progressConfig: { startPercent: 8, scalePercent: 0.07 },
-      onResult: (d) => {
-        this.state.nakedResults = d;
-        const row = this.state.rows.get('__naked__');
-        if (row) {
-          const rate = d.network_rate || 0;
-          row.rateCell.innerHTML = `<span class="${rateClass(rate)}">${rate.toFixed(0)}%</span>`;
-          row.hostsCell.textContent = (d.net_ok_count != null ? d.net_ok_count : 0) + '/' + (d.net_total != null ? d.net_total : 0);
-        }
-        this._finishRow('__naked__');
-        this.runFullPipelinePhase2();
-      },
-      onError: () => { $('testCurrentPhase').textContent = 'Ошибка (naked)'; this.clearElapsedTimer(); },
-    });
-  },
-
-  runFullPipelinePhase2() {
-    $('testCurrentPhase').textContent = 'Фаза 3 из 4: стратегии Zapret 2';
-    this._startTesterAction(
-      { action: 'test_profiles', profiles: PROFILES,
-        alt_params: !!($('altParamsCheck') && $('altParamsCheck').checked) },
-      {
-        resultType: 'result',
-        progressConfig: { startPercent: 15, scalePercent: 0.1 },
-        onResult: (d) => {
-          this.state.phase2Results = d;
-          this._fillTable(d.all_results || []);
-          this.runFullPipelinePhase3();
-        },
-        onError: () => { $('testCurrentPhase').textContent = 'Ошибка теста'; this.clearElapsedTimer(); },
-      });
-  },
-
-  runFullPipelinePhase3() {
-    if (!PROFILES.length) {
-      $('testCurrentPhase').textContent = 'Нет профилей для анализа';
-      this.clearElapsedTimer();
-      this.finalizePipeline('full');
-      return;
-    }
-    $('testCurrentPhase').textContent = 'Фаза 4 из 4: полный анализ комбинаций';
-    this._startTesterAction({ action: 'full_analysis', profiles: PROFILES }, {
-      progressConfig: { startPercent: 25, scalePercent: 0.35 },
-      onError: () => { $('testCurrentPhase').textContent = 'Ошибка анализа'; this.clearElapsedTimer(); },
-    });
-  },
-
-  _finishAdvancedPhase4() {
-    this._setProgress(95);
-    this.finalizePipeline('full');
   },
 
   // ── заполнение таблицы финальными числами ──
@@ -645,15 +567,13 @@ const TesterPage = {
         </div>`;
       }
     } else {
-      const cur = this.state.currentResults;
-      const naked = this.state.nakedResults;
+        const naked = this.state.nakedResults;
       const fa = this.state.fullAnalysisResults || [];
       const rateOf = r => (r.network_rate != null ? r.network_rate : (r.success_rate || 0));
       const best = fa.length ? fa.reduce((a, b) => rateOf(a) > rateOf(b) ? a : b) : null;
       html += `<div class="detail-section">
         <span class="detail-head">Сравнение</span>
         <table class="check-table"><tbody>
-          <tr><td class="check-name">Zapret 1 (текущий)</td><td class="mono">${cur ? rateOf(cur).toFixed(0) + '%' : '-'}</td></tr>
           <tr><td class="check-name">Без защиты</td><td class="mono">${naked ? rateOf(naked).toFixed(0) + '%' : '-'}</td></tr>
           <tr><td class="check-name">Zapret 2, лучшая${best ? ' («' + escapeHtml(best.profile || '') + (best.blob ? ' + ' + escapeHtml(best.blob) : '') + '»)' : ''}</td>
               <td class="mono ${best ? rateClass(rateOf(best)) : ''}">${best ? rateOf(best).toFixed(0) + '%' : '-'}</td></tr>
@@ -762,38 +682,9 @@ const TesterPage = {
       $('testRun').hidden = false;
       this.runPipeline();
     });
-    $('needZ1CancelBtn').addEventListener('click', () => {
-      Modal.close('needZapret1Overlay');
-      this.resetToIntro();
-    });
-    $('checkZapret1Btn').addEventListener('click', () => {
-      $('needZapret1Status').textContent = 'Проверка…';
-      $('checkZapret1Btn').disabled = true;
-      this._startTesterAction({ action: 'check-winws' }, {
-        onResult: (d) => {
-          $('checkZapret1Btn').disabled = false;
-          if (d.running) {
-            Modal.close('needZapret1Overlay');
-            $('testRun').hidden = false;
-            this.runFullPipelinePhase0();
-          } else {
-            $('needZapret1Status').textContent = 'winws.exe всё ещё не найден - запустите батник Zapret 1.';
-          }
-        },
-        onError: () => {
-          $('checkZapret1Btn').disabled = false;
-          $('needZapret1Status').textContent = 'Ошибка связи';
-        },
-      });
-    });
     $('collectClose').addEventListener('click', () => this.closeCollectForm());
     $('collectCancelBtn').addEventListener('click', () => this.closeCollectForm());
     $('collectSubmitBtn').addEventListener('click', () => this.saveReport());
-    $('collectBatZone').addEventListener('click', () => $('collectBatInput').click());
-    $('collectBatInput').addEventListener('change', (e) => this.handleCollectBat(e));
-    const dz = $('collectBatZone');
-    dz.addEventListener('dragover', e => e.preventDefault());
-    dz.addEventListener('drop', (e) => { e.preventDefault(); this.handleCollectDrop(e); });
 
     // Escape и клик по фону закрывают модалки (как «Отмена»).
     const closeModal = (id, onCancel) => {
@@ -803,13 +694,11 @@ const TesterPage = {
       });
     };
     closeModal('vpnOverlay', () => $('vpnCancelBtn').click());
-    closeModal('needZapret1Overlay', () => $('needZ1CancelBtn').click());
     closeModal('collectFormOverlay', () => this.closeCollectForm());
     document.addEventListener('keydown', (e) => {
       if (e.key !== 'Escape') return;
       if ($('collectFormOverlay').classList.contains('open')) this.closeCollectForm();
       else if ($('vpnOverlay').classList.contains('open')) $('vpnCancelBtn').click();
-      else if ($('needZapret1Overlay').classList.contains('open')) $('needZ1CancelBtn').click();
     });
   },
 
@@ -839,25 +728,13 @@ const TesterPage = {
   showCollectForm() {
     $('collectCity').value = '';
     $('collectIsp').value = '';
-    $('collectBatLabel').textContent = 'Файл стратегии Zapret 1 (.bat) - по желанию';
-    $('collectBatZone').classList.remove('filed');
     $('collectConsent').checked = false;
     $('collectSubmitBtn').disabled = false;
     $('collectSubmitBtn').textContent = 'Сохранить отчёт';
-    this.state.collectBatFile = null;
     Modal.open('collectFormOverlay');
   },
 
   closeCollectForm() { Modal.close('collectFormOverlay'); },
-
-  handleCollectBat(e) { this._setCollectFile(e.target.files[0]); },
-  handleCollectDrop(e) { this._setCollectFile(e.dataTransfer.files[0]); },
-  _setCollectFile(f) {
-    if (!f) return;
-    this.state.collectBatFile = f;
-    $('collectBatLabel').textContent = '✓ ' + f.name;
-    $('collectBatZone').classList.add('filed');
-  },
 
   async saveReport() {
     const consent = $('collectConsent').checked;
@@ -865,7 +742,6 @@ const TesterPage = {
     $('collectSubmitBtn').disabled = true;
     $('collectSubmitBtn').textContent = 'Сохранение…';
 
-    const cur = this.state.currentResults;
     const naked = this.state.nakedResults;
     const phase2 = this.state.phase2Results;
     const slim = r => r ? {
@@ -878,24 +754,14 @@ const TesterPage = {
       city: $('collectCity').value.trim(),
       isp: $('collectIsp').value.trim(),
       vpn_active: this.state.vpnActive || false,
-      zapret1_strategy: '',
-      zapret1_cmdline: (cur && cur.zapret1_cmdline) || '',
-      phase0_results: cur ? slim(cur) : { skipped: true },
       phase1_results: naked ? slim(naked) : null,
       phase2_results: phase2 ? Object.assign(slim(phase2) || {}, { all_results: phase2.all_results || [] }) : null,
-      mode: this.state.advancedTest ? 'full' : 'basic',
+      mode: 'basic',
     };
-    if (this.state.collectBatFile) {
-      try {
-        body.zapret1_strategy = await this.fileToBase64(this.state.collectBatFile);
-        body.zapret1_filename = this.state.collectBatFile.name;
-      } catch (e) { /* ignore */ }
-    }
 
     try {
       const r = await apiPost('/export-report', body);
       if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
-      try { await apiPost('/stop', {}); } catch (e) { /* ignore */ }
       this.closeCollectForm();
       const fileName = (r.file || '').split('\\').pop() || 'report.zip';
       $('testSummary').insertAdjacentHTML('beforeend',

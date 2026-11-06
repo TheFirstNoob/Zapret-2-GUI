@@ -4,7 +4,7 @@
 UDP connected (Get-NetUDPEndpoint), UDP-захват через pktmon (pkt-size 64 -
 только заголовки, без раздувания логов), DNS-маппинг (Get-DnsClientCache).
 Агрегация уникальных IP:port + state + частота. Вердикт по паттернам
-(STRATEGY_TRIALS 2026-09-11: SynSent = возможный IP-блок, десинк бессилен).
+(батарея тестов 2026-09-11: SynSent = возможный IP-блок, десинк бессилен).
 """
 from __future__ import annotations
 
@@ -52,14 +52,18 @@ def _non_empty(ra: str) -> bool:
 
 
 def list_processes() -> list[dict]:
-    """Процессы с активными сетевыми соединениями: [{name, pid}]."""
+    """Процессы с активными сетевыми соединениями: [{name, pid}].
+
+    UDP-сокеты показываем по OwningProcess без фильтра RemoteAddress:
+    Get-NetUDPEndpoint не отдаёт удалённый адрес/порт (UDP connectionless),
+    и раньше UDP-only приложения вообще выпадали из анализа.
+    """
     script = (
         "$c = Get-NetTCPConnection -ErrorAction SilentlyContinue | "
         "Where-Object { $_.RemoteAddress -and $_.RemoteAddress -ne '0.0.0.0' "
         "-and $_.RemoteAddress -ne '::' } | ForEach-Object { $_.OwningProcess }; "
         "$u = Get-NetUDPEndpoint -ErrorAction SilentlyContinue | "
-        "Where-Object { $_.RemoteAddress -and $_.RemoteAddress -ne '0.0.0.0' "
-        "-and $_.RemoteAddress -ne '::' } | ForEach-Object { $_.OwningProcess }; "
+        "ForEach-Object { $_.OwningProcess }; "
         "$pids = @($c + $u) | Sort-Object -Unique; "
         "if (-not $pids) { '[]'; exit }; "
         "Get-Process -Id $pids -ErrorAction SilentlyContinue | "
@@ -72,7 +76,14 @@ def list_processes() -> list[dict]:
         pid = item.get("Id")
         title = str(item.get("MainWindowTitle") or "").strip()
         if name and pid is not None:
-            out.append({"name": name, "pid": int(pid), "title": title})
+            try:
+                pid = int(pid)
+            except (TypeError, ValueError):
+                continue
+            if pid <= 0 or name.lower() in (
+                    "idle", "system", "registry", "secure system"):
+                continue
+            out.append({"name": name, "pid": pid, "title": title})
     # дедуп по (name,pid)
     seen = set()
     uniq = []
@@ -107,20 +118,27 @@ def _tcp_snapshot(pids: list[int]) -> dict:
 
 
 def _udp_snapshot(pids: list[int]) -> dict:
+    """Локальные UDP-endpoint'ы процесса.
+
+    Get-NetUDPEndpoint не содержит RemoteAddress/RemotePort; удалённую
+    сторону для UDP даёт только pktmon (см. _run_pktmon). Использовать
+    несуществующие поля раньше означало пустой UDP-снимок.
+    """
     ps = ",".join(str(p) for p in pids)
     script = (
         f"$pids = @({ps}); "
         "Get-NetUDPEndpoint -ErrorAction SilentlyContinue | "
         "Where-Object { $pids -contains $_.OwningProcess } | "
-        "Select-Object RemoteAddress,RemotePort | "
+        "Select-Object LocalAddress,LocalPort | "
         "ConvertTo-Json -Compress"
     )
     udp: dict[str, int] = {}
     for item in _ps_json(script):
-        ra = str(item.get("RemoteAddress") or "")
-        if not _non_empty(ra):
+        la = str(item.get("LocalAddress") or "")
+        lp = item.get("LocalPort")
+        if not la and not lp:
             continue
-        key = f"{ra}:{item.get('RemotePort')}"
+        key = f"{la}:{lp}"
         udp[key] = udp.get(key, 0) + 1
     return udp
 
@@ -509,7 +527,7 @@ class ProcessProbe:
         # упасть (нечисловой элемент в JSON, ps недоступен). Раньше он стоял
         # ДО try, и такой сбой убивал поток молча: UI навсегда показывал
         # «ожидание процесса», finally (сброс pktmon) не выполнялся
-        # (REVIEW_VERDICT.md 2.8).
+        # (исторический аудит 2.8).
         try:
             self._run_inner(spec, duration, wait_sec)
         except Exception as e:  # noqa: BLE001

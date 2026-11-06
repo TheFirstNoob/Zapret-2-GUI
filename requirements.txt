@@ -1,3 +1,17 @@
-pywebview>=5.0.0
-niquests[http3]>=3.21.2  # QUIC/HTTP3-проба тестера (в рантайме опционально)
+pywebview==6.2.1
+niquests[http3]==3.21.2
+# Transitive pins for reproducible portable/exe builds.
+pythonnet==3.2.1
+clr-loader==0.3.1
+urllib3-future==2.25.904
+qh3==2.1.0
+jh2==5.0.15
+wassima==2.1.5
+h11==0.16.0
+charset-normalizer==3.5.2
+cffi==2.1.1
+pycparser==3.12
+bottle==0.13.4
+proxy-tools==0.1.0
+typing-extensions==4.16.0
 # For building the exe: pip install pyinstaller

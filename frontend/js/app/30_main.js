@@ -22,6 +22,7 @@ const MainPage = {
     // следующем открытии, а не один раз на сессию. Пока _configLoaded
     // не взведён, запись настроек заблокирована (_configReady).
     if (!this._configLoaded && !this._configBusy) this.loadConfig();
+    if (typeof DnsPanel !== 'undefined') DnsPanel.onShow();
     if (Status.last) this.renderStatus(Status.last);
   },
 
@@ -33,7 +34,6 @@ const MainPage = {
       // переключать вкладку: небольшая задержка - пока страница активируется.
       setTimeout(() => DiagnosticsPage.run(), 150);
     });
-    $('btnStopZ1Now').addEventListener('click', () => this.stopZ1());
     $('btnApplyToggles').addEventListener('click', () => this.restartZapret());
     $('btnRevertToggles').addEventListener('click', () => this._revertToggles());
     $('btnSvcRepair').addEventListener('click', () => this.svcRepair());
@@ -41,8 +41,6 @@ const MainPage = {
     $('btnSvcStart').addEventListener('click', () => this.svcStart());
     $('btnSvcStop').addEventListener('click', () => this.svcStop());
     $('btnSvcRemove').addEventListener('click', () => this.svcRemove());
-    $('btnZ1SaveDir').addEventListener('click', () => this.saveZ1Dir());
-    $('btnZ1Toggle').addEventListener('click', () => this.toggleZ1());
     $('updateBannerClose').addEventListener('click', () => { $('updateBanner').hidden = true; });
     $('updateNowBtn').addEventListener('click', () => App._onUpdateBtn());
 
@@ -92,14 +90,11 @@ const MainPage = {
         fbSel.value = this._pendingFakeBlob;
       }
       $('toggleWinws2Debug').checked = !!c.winws2_debug;
-      $('z1DirPath').value = c.zapret1_dir || '';
       if (c.last_profile) {
         this._savedProfile = c.last_profile;
         const sel = $('strategySelect');
         if ([...sel.options].some(o => o.value === c.last_profile)) sel.value = c.last_profile;
       }
-      if (c.zapret1_last_strategy) this._z1SavedStrategy = c.zapret1_last_strategy;
-      if (c.zapret1_dir) this.scanZ1Strategies();
       this._configLoaded = true;
       // Обход уже был запущен до загрузки конфига - снимок тогглов делаем
       // только теперь, когда DOM показывает сохранённые значения.
@@ -111,7 +106,7 @@ const MainPage = {
       // Раньше ошибка молча проглатывалась: DOM оставался в значениях по
       // умолчанию, и следующий же saveToggles / applyStrategy отправлял
       // бэкенду именно их - молча затирая сохранённые настройки
-      // (REVIEW_VERDICT.md §4, кандидат 3). Теперь сообщаем пользователю
+      // (исторический аудит, кандидат 3). Теперь сообщаем пользователю
       // и держим запись закрытой до успешной загрузки (_configReady).
       frontendLog('GET /config failed: ' + (e && e.message));
       if (!this._configLoadWarned) {
@@ -128,7 +123,7 @@ const MainPage = {
   // на форме - значения по умолчанию из разметки. Сбой GET /config раньше
   // проглатывался, и следующий saveToggles/applyStrategy отправлял бэкенду
   // именно дефолты, молча затирая настройки пользователя
-  // (REVIEW_VERDICT.md §4, кандидат 3). Поэтому перед любой записью
+  // (исторический аудит, кандидат 3). Поэтому перед любой записью
   // убеждаемся, что конфиг загружен: если нет - пробуем догрузить сейчас
   // (например, страницу сначала открыли не с «Главной»), и только потом
   // отказываем.
@@ -285,13 +280,6 @@ const MainPage = {
     if (conflict) z2p.classList.add('is-err');
     else if (z2.running) z2p.classList.add('is-ok');
     else if (z1.running) z2p.classList.add('is-warn');
-    const z1p = $('z1Panel');
-    z1p.classList.remove('is-ok', 'is-warn', 'is-err');
-    if (z1.running && z2.running) z1p.classList.add('is-err');
-    else if (z1.running) z1p.classList.add('is-warn');
-    // Панель Zapret 1 - только тем, у кого он реально есть (папка настроена,
-    // служба найдена или он запущен): у остальных это мёртвый блок
-    z1p.hidden = !(z1.installed || z1.running);
     if (z2.running) {
       badge.className = 'dot ' + (conflict ? 'dot-warn' : 'dot-ok');
       text.className = 'state-text ' + (conflict ? 'st-warn' : 'st-ok');
@@ -317,7 +305,7 @@ const MainPage = {
         fb.textContent = 'Обход работает' + (z2.strategy ? ' («' + z2.strategy + '»)' : '') +
           ' - проверьте, открываются ли нужные сайты.';
       } else if (z1.running) {
-        fb.textContent = 'Работает запасной Zapret 1 - Zapret 2 остановлен.';
+        fb.textContent = 'Zapret 1 запущен — остановите его вручную, чтобы запустить Zapret 2.';
       } else {
         fb.textContent = 'Обход выключен: заблокированные сайты не откроются, пока не нажмёте «Запустить».';
       }
@@ -362,21 +350,7 @@ const MainPage = {
     }
 
     $('conflictBanner').hidden = !(z2.running && z1.running);
-    $('togglesOverlay').hidden = !z1.running;
-
-    // Zapret 1 - единый стиль статуса с Zapret 2 (слова и цвет текста)
-    const zs = $('z1State');
-    const z1Text = zs.querySelector('.state-text');
-    const z1Conflict = z1.running && z2.running;
-    zs.querySelector('.dot').className = 'dot ' + (z1Conflict ? 'dot-warn' : z1.running ? 'dot-ok' : 'dot-off');
-    z1Text.className = 'state-text ' + (z1Conflict ? 'st-warn' : z1.running ? 'st-ok' : 'st-mute');
-    z1Text.textContent = z1.running ? 'Работает' : 'Выключен';
-    // Запасной инструмент - нейтральная кнопка: синий primary только у Zapret 2.
-    const z1btn = $('btnZ1Toggle');
-    z1btn.textContent = z1.running ? 'Остановить' : 'Запустить';
-    z1btn.classList.toggle('btn-stop', z1.running);
-    z1btn.classList.remove('btn-primary');
-    z1btn.disabled = App.testActive;
+    // Zapret 1 больше не управляется из GUI: только детект конфликта.
 
     // перезапуск по изменённым тогглам - только когда что-то изменено и запущено
     this._updateApplyHint();
@@ -450,17 +424,7 @@ const MainPage = {
     };
     this._svcAction(
       async () => {
-        let r = await apiPost('/service/install', payload);
-        if (r.status !== 'ok' && /Zapret 1/.test(r.message || '')) {
-          const go = await Confirm.ask({
-            title: 'Обнаружен Zapret 1',
-            text: 'Остановить и удалить его? Это то же действие, что «Remove Services» в service.bat Zapret 1: служба zapret будет остановлена и удалена, процесс winws.exe будет остановлен. После этого установка продолжится автоматически.',
-            ok: 'Удалить Zapret 1 и продолжить',
-            danger: true,
-          });
-          if (!go) return r;
-          r = await apiPost('/service/install', { ...payload, cleanup_zapret1: true });
-        }
+        const r = await apiPost('/service/install', payload);
         if (r.status !== 'ok') return r;
         // Текст установки приходит с бэкенда: он честно говорит, если
         // служба создалась, но не запустилась (обхода нет) или не настроен
@@ -487,9 +451,12 @@ const MainPage = {
   },
 
   async svcRemove() {
+    const running = !!(Status.svc && Status.svc.running);
     const ok = await Confirm.ask({
       title: 'Удалить службу Zapret 2?',
-      text: 'Автозапуск обхода после перезагрузки отключится (сам обход это не затронет).',
+      text: running
+        ? 'Служба сейчас запущена: она будет остановлена, и обход временно прервётся. Автозапуск после перезагрузки отключится.'
+        : 'Автозапуск обхода после перезагрузки отключится. Запущенный вручную обход это не затронет.',
       ok: 'Удалить службу',
       danger: true,
     });
@@ -550,6 +517,14 @@ const MainPage = {
   _updateVoiceHint() {
     const el = $('voiceModeHint');
     if (el) el.textContent = this._VOICE_HINTS[$('toggleDiscordVoice').value] || '';
+  },
+
+  async _postConfigOrThrow(payload) {
+    const r = await apiPost('/config', payload);
+    if (!r || r.status !== 'ok') {
+      throw new Error((r && r.message) || 'сервер не сохранил настройки');
+    }
+    return r;
   },
 
   async saveToggles() {
@@ -670,7 +645,7 @@ const MainPage = {
     if (!await this._configReady('запуск')) return;
     this._setBusy(true);
     try {
-      await apiPost('/config', Object.assign({ last_profile: sel.value }, this._collectToggles()));
+      await this._postConfigOrThrow(Object.assign({ last_profile: sel.value }, this._collectToggles()));
       const r = await apiPost('/start', { profile: sel.value });
       if (r.status === 'ok') {
         this._runningToggles = this._collectToggles();
@@ -703,7 +678,7 @@ const MainPage = {
     const btn = $('btnApplyToggles');
     btn.disabled = true;
     try {
-      await apiPost('/config', this._collectToggles());
+      await this._postConfigOrThrow(this._collectToggles());
       await apiPost('/stop', {});
       await new Promise(r => setTimeout(r, 1200));
       const r = await apiPost('/start', { profile: strategy });
@@ -730,7 +705,7 @@ const MainPage = {
     try {
       const sel = $('strategySelect');
       if (sel && Array.from(sel.options).some(o => o.value === profile)) sel.value = profile;
-      await apiPost('/config', Object.assign({ last_profile: profile }, this._collectToggles()));
+      await this._postConfigOrThrow(Object.assign({ last_profile: profile }, this._collectToggles()));
       const r = await apiPost('/start', { profile });
       if (r.status === 'ok') {
         this._runningToggles = this._collectToggles();
@@ -755,68 +730,5 @@ const MainPage = {
     });
   },
 
-  // ── Zapret 1 ──
 
-  async saveZ1Dir() {
-    const dir = $('z1DirPath').value.trim();
-    if (!dir) { showToast('Укажите папку Zapret 1', 'warn'); return; }
-    try {
-      const r = await apiPost('/zapret1/save-dir', { path: dir });
-      if (r.status === 'ok') { showToast('Путь сохранён', 'ok'); this.scanZ1Strategies(); }
-      else showToast(r.message || 'Ошибка', 'error');
-    } catch (e) { showToast('Ошибка: ' + e.message, 'error'); }
-  },
-
-  async scanZ1Strategies() {
-    const sel = $('z1StrategySelect');
-    sel.disabled = true;
-    sel.innerHTML = '<option>сканирование…</option>';
-    try {
-      const r = await apiGet('/zapret1/strategies');
-      const strs = r.strategies || [];
-      sel.innerHTML = '';
-      if (!strs.length) {
-        sel.innerHTML = '<option value="">- в папке нет .bat -</option>';
-        return;
-      }
-      sel.disabled = false;
-      for (const s of strs) {
-        const o = document.createElement('option');
-        o.value = s.name; o.textContent = s.name + '.bat';
-        sel.appendChild(o);
-      }
-      if (this._z1SavedStrategy && strs.some(s => s.name === this._z1SavedStrategy)) {
-        sel.value = this._z1SavedStrategy;
-      }
-    } catch (e) {
-      sel.innerHTML = '<option value="">- ошибка сканирования -</option>';
-    }
-  },
-
-  async toggleZ1() {
-    if (this._z1Busy) return;
-    this._z1Busy = true;
-    $('btnZ1Toggle').disabled = true;
-    const running = Status.last && Status.last.zapret1 && Status.last.zapret1.running;
-    try {
-      if (running) {
-        const r = await apiPost('/zapret1/stop', {});
-        showToast(r.status === 'ok' ? 'Zapret 1 остановлен' : ('Ошибка: ' + r.message),
-          r.status === 'ok' ? 'ok' : 'error');
-      } else {
-        const strategy = $('z1StrategySelect').value;
-        if (!strategy) { showToast('Выберите стратегию Zapret 1', 'warn'); return; }
-        const r = await apiPost('/zapret1/start', { strategy });
-        showToast(r.status === 'ok' ? ('Zapret 1 запущен: ' + strategy) : ('Ошибка: ' + (r.message || '')),
-          r.status === 'ok' ? 'ok' : 'error');
-      }
-    } catch (e) { showToast('Ошибка: ' + e.message, 'error'); }
-    finally {
-      this._z1Busy = false;
-      $('btnZ1Toggle').disabled = false;
-      Status.refresh();
-    }
-  },
-
-  async stopZ1() { await this.toggleZ1(); },
 };

@@ -12,12 +12,13 @@ from server.app_state import (AppContext, operation_guard, get_config_manager)
 from server.api_config import _CONFIG_LOCK
 
 
-def _cfg_payload(cfg, state: dict) -> dict:
+def _cfg_payload(cfg, state: dict, root_dir) -> dict:
     return {
         "status": "ok",
         "state": state,
         "active": dns_manager.active_profile(cfg, state) if state.get("ok") else "unknown",
         "profiles": dns_manager.profiles_payload(cfg),
+        "can_reset": dns_manager.has_backup(root_dir),
     }
 
 
@@ -55,7 +56,7 @@ def dns_status(ctx: AppContext) -> dict:
         state = dns_manager.current_status()
     except Exception as e:  # noqa: BLE001
         state = {"ok": False, "error": str(e), "servers": []}
-    return _cfg_payload(cfg, state)
+    return _cfg_payload(cfg, state, ctx.root_dir)
 
 
 @operation_guard("dns")
@@ -71,7 +72,7 @@ def dns_apply(ctx: AppContext, data: dict) -> dict:
             _save_profiles(fields)
         cfg = get_config_manager().load()
         state = dns_manager.apply_profile(ctx.root_dir, cfg, profile)
-        return _cfg_payload(cfg, state)
+        return _cfg_payload(cfg, state, ctx.root_dir)
     except dns_manager.DnsError as e:
         return {"status": "error", "message": str(e)}
     except Exception as e:  # noqa: BLE001
@@ -83,7 +84,7 @@ def dns_reset(ctx: AppContext) -> dict:
     cfg = get_config_manager().load()
     try:
         state = dns_manager.reset(ctx.root_dir)
-        return _cfg_payload(cfg, state)
+        return _cfg_payload(cfg, state, ctx.root_dir)
     except dns_manager.DnsError as e:
         return {"status": "error", "message": str(e)}
     except Exception as e:  # noqa: BLE001
@@ -99,7 +100,7 @@ def dns_save(ctx: AppContext, data: dict) -> dict:
             return {"status": "error", "message": "Нет профилей DNS"}
         _save_profiles(fields)
         cfg = get_config_manager().load()
-        return _cfg_payload(cfg, dns_manager.current_status())
+        return _cfg_payload(cfg, dns_manager.current_status(), ctx.root_dir)
     except dns_manager.DnsError as e:
         return {"status": "error", "message": str(e)}
     except Exception as e:  # noqa: BLE001

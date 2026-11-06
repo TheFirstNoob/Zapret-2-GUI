@@ -31,6 +31,7 @@ class TesterState:
         self.all_results: Optional[list[dict]] = None
         self.error: Optional[str] = None
         self.cancelled = False
+        self.restore_failed = False
         self.action_type: Optional[str] = None
         self.logger: Optional[TestLogger] = None
         # ярлыки завершённых стратегий: UI закрывает их строки при каждом
@@ -45,6 +46,7 @@ class TesterState:
         self.all_results = None
         self.error = None
         self.cancelled = False
+        self.restore_failed = False
         self.action_type = None
         self.logger = None
         self.completed = []

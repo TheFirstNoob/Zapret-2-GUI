@@ -6,7 +6,7 @@
 отсутствуют...») не содержат пар кавычек и отсеиваются естественно.
 
 Контракт: функции НЕ бросают исключений; чтение при сбое отдаёт пусто,
-убийство - bool (команда выполнена; не гарантия смерти процесса).
+убийство - bool успешного exit code taskkill (не гарантия мгновенной смерти).
 """
 from __future__ import annotations
 
@@ -63,21 +63,23 @@ def running_images(*, timeout: float = 10.0) -> list[str]:
 
 
 def kill_pid(pid: int, *, timeout: float = 5.0) -> bool:
-    """taskkill /F /PID; True - команда выполнена (не гарантия смерти)."""
+    """taskkill /F /PID; True только при успешном exit code taskkill."""
     try:
-        subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True,
-                       timeout=timeout, creationflags=subprocess.CREATE_NO_WINDOW)
-        return True
+        r = subprocess.run(["taskkill", "/F", "/PID", str(pid)],
+                           capture_output=True, timeout=timeout,
+                           creationflags=subprocess.CREATE_NO_WINDOW)
+        return r.returncode == 0
     except Exception:  # noqa: BLE001
         return False
 
 
 def kill_image(image_name: str, *, timeout: float = 6.0) -> bool:
-    """taskkill /F /IM; True - команда выполнена (не гарантия смерти)."""
+    """taskkill /F /IM; True только при успешном exit code taskkill."""
     try:
-        subprocess.run(["taskkill", "/F", "/IM", image_name], capture_output=True,
-                       timeout=timeout, creationflags=subprocess.CREATE_NO_WINDOW)
-        return True
+        r = subprocess.run(["taskkill", "/F", "/IM", image_name],
+                           capture_output=True, timeout=timeout,
+                           creationflags=subprocess.CREATE_NO_WINDOW)
+        return r.returncode == 0
     except Exception:  # noqa: BLE001
         return False
 
@@ -110,8 +112,10 @@ def kill_image_filtered(image_name: str, allowed_paths: Iterable[str],
     Возвращает список убитых PID."""
     allowed = {str(Path(p).resolve()).lower() for p in allowed_paths if p}
     if not allowed:
+        before = image_pids(image_name, timeout=timeout)
         kill_image(image_name, timeout=timeout)
-        return image_pids(image_name, timeout=timeout)
+        after = set(image_pids(image_name, timeout=timeout))
+        return [pid for pid in before if pid not in after]
     killed: list[int] = []
     for pid in image_pids(image_name, timeout=timeout):
         path = process_image_path(pid)

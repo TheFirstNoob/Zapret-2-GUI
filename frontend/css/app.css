@@ -106,6 +106,9 @@ a { color: var(--accent); }
   background: var(--panel);
   border-right: 1px solid var(--line);
   padding: 12px 0 10px;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 .brand { display: flex; gap: 9px; align-items: center; padding: 0 14px 14px; }
 .brand-logo {
@@ -469,7 +472,6 @@ select.input:disabled { opacity: .55; }
 /* ── main: параметры запуска (строки-карточки) ── */
 
 .param-rows { margin-top: 8px; }
-.toggles-overlay + .param-rows { margin-top: 0; }
 .param-row {
   display: grid;
   grid-template-columns: 1fr 160px;
@@ -481,19 +483,36 @@ select.input:disabled { opacity: .55; }
 .param-row + .param-row { border-top: 1px solid var(--divider); }
 .param-row + .param-row { border-top: 1px solid var(--divider); }
 .param-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.param-title { font-size: 13px; font-weight: 600; }
+.param-title {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  font-size: 13px; font-weight: 600;
+}
 .param-tag {
   font-family: var(--mono); font-size: 11px;
   color: var(--faint);
   background: rgba(255,255,255,.05);
   border: 1px solid rgba(255,255,255,.08);
   padding: 1px 6px; border-radius: 4px;
-  margin-left: 6px; vertical-align: 1px;
+  vertical-align: 1px;
 }
+.param-help {
+  width: 15px; height: 15px; padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--faint);
+  font: 700 10px/1 var(--mono);
+  cursor: help;
+  display: inline-grid; place-items: center;
+  flex: 0 0 auto;
+}
+.param-help:hover { border-color: var(--accent); color: var(--accent); }
+.param-help:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .param-desc { font-size: 12px; color: var(--dim); }
 .param-hint {
   font-size: 11.5px; color: var(--faint); font-style: italic;
 }
+.param-hint-warn { color: var(--warn); font-style: normal; }
 .param-hint a { color: var(--accent); }
 .param-ctl { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
 .param-ctl > select.input { width: 100%; }
@@ -562,7 +581,6 @@ select.input:disabled { opacity: .55; }
 }
 /* верхняя полоса первой секции - прижата к скруглённым углам карточки */
 #z2Panel > .card-head:first-child,
-#z1Panel > .card-head:first-child,
 #diagPanel > .card-head:first-child,
 #testerSetup > .card-head:first-child,
 #contestedPanel > .card-head:first-child,
@@ -582,41 +600,11 @@ select.input:disabled { opacity: .55; }
 #togglesPanel { border-top: 1px solid var(--divider);
   border-top-left-radius: 0; border-top-right-radius: 0; }
 /* секции карточки: чуть больше воздуха, чем у обычных панелей */
-#z2Panel, #svcPanel, #togglesPanel, #diagPanel, #contestedPanel, #z1Panel, #testerSetup,
+#z2Panel, #svcPanel, #togglesPanel, #diagPanel, #contestedPanel, #testerSetup,
 #probePanel, #cdnPanel, #asnPanel { padding: 12px 16px; }
 
 /* Zapret 2: акцентная группа (Обход DPI + Параметры) */
 .panel-accent { border-color: var(--accent-line); }
-
-/* Zapret 1: запасной - нейтральная карточка без акцента */
-.panel-fallback { border-color: var(--line); }
-
-/* Zapret 1: строки «метка | поле | кнопка» (3 колонки, кнопки ровные) */
-.grid-field {
-  display: grid;
-  grid-template-columns: 140px 1fr 130px;
-  align-items: center;
-  gap: 16px;
-  padding: 8px 0;
-}
-.grid-field + .grid-field { border-top: 1px solid var(--divider); }
-.grid-label { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-.grid-title { font-size: 12.5px; font-weight: 600; }
-.grid-tag { font-size: 10.5px; color: var(--faint); font-family: var(--mono); }
-#z1Panel .grid-field .btn { width: 100%; }
-#z1DirPath { font-size: 12px; }
-
-/* предупреждение: запущен Zapret 1 - настройки не применяются */
-.toggles-overlay {
-  background: var(--warn-bg);
-  border: 1px solid var(--warn-line);
-  border-radius: 5px;
-  padding: 8px 10px;
-  font-size: 12px;
-  color: var(--warn);
-  margin-bottom: 8px;
-}
-.toggles-overlay[hidden] { display: none; }
 
 /* ── tester / tables ── */
 

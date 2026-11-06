@@ -141,7 +141,7 @@ def load_games(root: Path) -> dict:
     обрыв при выключении) НЕ перезаписывается на месте: он откладывается в
     games.json.bad, а games.json создаётся заново чистым. Раньше дефолты
     писались поверх, и все пользовательские игры с галочками исчезали молча и
-    безвозвратно (REVIEW_VERDICT.md §2.6). Теперь оригинал лежит рядом —
+    безвозвратно (исторический аудит §2.6). Теперь оригинал лежит рядом —
     вернуть его можно вручную, ничего не теряется.
     """
     path = _games_path(root)
@@ -235,6 +235,12 @@ def validate_games(data: dict) -> tuple[bool, str]:
             if not isinstance(items, list) or any(
                     not isinstance(x, dict) for x in items):
                 return False, f"{key} должен быть списком объектов"
+        for rule in game.get("udp") or []:
+            ports, err = _valid_udp_rule_values(rule)
+            if err:
+                return False, err
+            if rule.get("on") and not ports:
+                return False, "У включённого UDP-правила нет портов"
     return True, ""
 
 
@@ -301,13 +307,71 @@ def enabled_domains(data: dict) -> list[str]:
     return out
 
 
+def _normalize_udp_ports(text: object, max_parts: int = 64) -> str:
+    """Строгий UDP-порт-лист: только N или N-M, 1..65535, без аргументов.
+
+    Значение из games.json уходит прямо в --filter-udp и --wf-udp-out;
+    перенос строки/пробел/``--new`` здесь недопустимы.
+    """
+    parts: list[str] = []
+    for raw in str(text or "").split(","):
+        p = raw.strip()
+        if not p:
+            continue
+        m = _PORT_RE.fullmatch(p)
+        if not m:
+            return ""
+        a = int(m.group(1))
+        b = int(m.group(2)) if m.group(2) else a
+        if not (1 <= a <= b <= 65535):
+            return ""
+        tok = str(a) if a == b else f"{a}-{b}"
+        if tok not in parts:
+            parts.append(tok)
+        if len(parts) > max_parts:
+            return ""
+    return ",".join(parts)
+
+
+def _valid_udp_rule_values(rule: dict) -> tuple[str, str]:
+    """(ports, error) для сохранения правила; пустой ports допустим."""
+    ports_raw = rule.get("ports")
+    if ports_raw in (None, ""):
+        ports = ""
+    else:
+        ports = _normalize_udp_ports(ports_raw)
+        if not ports:
+            return "", f"Некорректные UDP-порты: {ports_raw!r}"
+    for field, low, high in (("repeats", 1, 64), ("cutoff", 0, 128)):
+        raw = rule.get(field)
+        if raw in (None, ""):
+            continue
+        try:
+            value = int(raw)
+        except (TypeError, ValueError):
+            return "", f"{field} должен быть целым числом"
+        if value < low or value > high:
+            return "", f"{field} вне диапазона {low}..{high}"
+    cidrs = rule.get("cidrs")
+    if cidrs not in (None, ""):
+        if isinstance(cidrs, str):
+            cidrs = [c for c in re.split(r"[\s,;]+", cidrs) if c]
+        if not isinstance(cidrs, list):
+            return "", "cidrs должен быть списком"
+        for c in cidrs:
+            try:
+                ipaddress.ip_network(str(c).strip(), strict=False)
+            except ValueError:
+                return "", f"Некорректная сеть: {c}"
+    return ports, ""
+
+
 def enabled_udp_rules(data: dict) -> list[dict]:
     """Активные UDP-правила включённых игр (с валидацией портов/CIDR).
 
     games.json - пользовательский файл: мусор от ручной правки (repeats
     строкой, cidrs строкой) не должен ронять старт обхода ValueError'ом
     (аудит 2026-10: /api/start падал с 500 на int('abc'))."""
-    import ipaddress
     out: list[dict] = []
     for game in data.get("games", []):
         if not isinstance(game, dict) or not game.get("enabled"):
@@ -318,7 +382,11 @@ def enabled_udp_rules(data: dict) -> list[dict]:
         for rule in udp_rules:
             if not isinstance(rule, dict) or not rule.get("on"):
                 continue
-            ports = str(rule.get("ports") or "").strip()
+            ports = _normalize_udp_ports(rule.get("ports"))
+            if not ports:
+                _applog("games", f"UDP-правило {game.get('id')!r} пропущено: "
+                                  f"некорректные порты")
+                continue
             raw_cidrs = rule.get("cidrs") or []
             if isinstance(raw_cidrs, str):
                 # ручная правка строкой: "10.0.0.0/24, 10.0.1.0/24"
@@ -340,9 +408,13 @@ def enabled_udp_rules(data: dict) -> list[dict]:
                 repeats = int(rule.get("repeats") or DEFAULT_REPEATS)
             except (TypeError, ValueError):
                 repeats = DEFAULT_REPEATS
+            if not (1 <= repeats <= 64):
+                repeats = DEFAULT_REPEATS
             try:
                 cutoff = int(rule.get("cutoff") or DEFAULT_CUTOFF)
             except (TypeError, ValueError):
+                cutoff = DEFAULT_CUTOFF
+            if not (0 <= cutoff <= 128):
                 cutoff = DEFAULT_CUTOFF
             out.append({
                 "id": str(game.get("id") or "game"),

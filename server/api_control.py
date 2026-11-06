@@ -5,7 +5,7 @@
 с актуальными аргументами), а не голым процессом winws2."""
 from __future__ import annotations
 
-from core.proc import kill_image, kill_image_filtered
+from core.proc import kill_image_filtered
 from core.service_manager import (is_installed as svc_installed,
                                   start as svc_start, stop as svc_stop)
 from server import api_service
@@ -93,13 +93,11 @@ def stop_zapret(ctx: AppContext) -> dict:
                 return {"status": "error",
                         "message": f"Не удалось остановить службу: {msg_s}"}
             get_controller().stop()
-            kill_image("winws.exe", timeout=6)
             kill_image_filtered("winws2.exe", _my_winws2_paths(), timeout=6)
             return {"status": "ok",
                     "message": "Обход остановлен (служба zapret2 "
                                "остановлена до следующего запуска)"}
         get_controller().stop()
-        kill_image("winws.exe", timeout=6)
         kill_image_filtered("winws2.exe", _my_winws2_paths(), timeout=6)
         return {"status": "ok", "message": "Все процессы zapret остановлены"}
     except Exception as e:  # noqa: BLE001

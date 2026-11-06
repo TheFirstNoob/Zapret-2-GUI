@@ -16,7 +16,7 @@ from server.app_state import (STATE, get_root_dir, probe_debug as _probe_debug)
 from server import (api_blobs, api_cdn, api_config, api_contested,
                     api_control, api_diag, api_dns, api_games, api_info,
                     api_lists, api_probe, api_reports, api_service,
-                    api_tester, api_update, api_zapret1, session_recovery)
+                    api_tester, api_update, session_recovery)
 
 
 CONTENT_TYPES = {
@@ -86,14 +86,13 @@ _GET_ROUTES: dict[str, tuple] = {
     "/api/fake-blobs": (api_blobs.fake_blobs, ("@ctx",)),
     # USER-файл: lists/ipset-exclude.txt — СИСТЕМНЫЙ список (приватные
     # диапазоны), его не редактируем из GUI (решение автора,
-    # REVIEW_VERDICT.md §2.9). Движок учитывает ipset-exclude-user.txt
+    # исторический аудит §2.9). Движок учитывает ipset-exclude-user.txt
     # вторым --ipset-exclude (core/launcher.py).
     "/api/ipset-exclude-list": (api_lists.get_list, ("@ctx", "ipset-exclude-user.txt")),
     "/api/ipset-include-list": (api_lists.get_list, ("@ctx", "ipset-include-user.txt")),
     "/api/lists/health": (api_lists.lists_health, ("@ctx",)),
     "/api/contested/status": (api_contested.contested_status, ("@ctx",)),
     "/api/service/status": (api_service.service_status, ("@ctx",)),
-    "/api/zapret1/strategies": (api_zapret1.zapret1_strategies, ("@ctx",)),
     "/api/tester/status": (api_tester.tester_status, ("@ctx",)),
     "/api/update-check": (api_update.update_check, ("@ctx", "@params")),
     "/api/update/status": (api_update.update_status, ("@ctx",)),
@@ -104,9 +103,6 @@ _GET_ROUTES: dict[str, tuple] = {
 
 _POST_ROUTES: dict[str, tuple] = {
     "/api/config": (api_config.save_config, ("@ctx", "@data")),
-    "/api/zapret1/save-dir": (api_zapret1.zapret1_save_dir, ("@ctx", "@data")),
-    "/api/zapret1/start": (api_zapret1.zapret1_start, ("@ctx", "@data")),
-    "/api/zapret1/stop": (api_zapret1.zapret1_stop, ("@ctx",)),
     "/api/start": (api_control.start_zapret, ("@ctx", "@data")),
     "/api/stop": (api_control.stop_zapret, ("@ctx",)),
     "/api/exclude-list": (api_lists.save_list, ("@ctx", "@data", "list-exclude-user.txt")),

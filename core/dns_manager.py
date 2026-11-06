@@ -49,8 +49,22 @@ try {
           Where-Object { $_ })
   $wmi = Get-CimInstance Win32_NetworkAdapterConfiguration `
          -Filter "InterfaceIndex=$idx" -ErrorAction SilentlyContinue
+  # DNSServerSearchOrder заполнен и для DHCP (Windows отдаёт выданные
+  # серверы), поэтому по нему нельзя отличить DHCP от ручного DNS.
+  # Надёжный признак статического DNS — NameServer в ветке интерфейса
+  # Tcpip\Parameters\Interfaces; DhcpNameServer остаётся у DHCP.
+  $reg = Get-ItemProperty `
+         ("HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\" +
+          [string]$ad.InterfaceGuid) -ErrorAction SilentlyContinue
+  $static_dns = if ($reg) { [string]$reg.NameServer } else { "" }
+  $dhcp_dns = if ($reg) { [string]$reg.DhcpNameServer } else { "" }
   $dhcp = $true
-  if ($wmi -and $wmi.DNSServerSearchOrder -and @($wmi.DNSServerSearchOrder).Count -gt 0) {
+  if ($reg) {
+    $dhcp = -not ($static_dns -and $static_dns.Trim())
+  } elseif ($wmi -and $wmi.DNSServerSearchOrder -and
+            @($wmi.DNSServerSearchOrder).Count -gt 0) {
+    # Реестр недоступен: не считаем текущий DNS DHCP, чтобы reset случайно
+    # не затёр ручные настройки. Лучше оставить статический backup.
     $dhcp = $false
   }
   [pscustomobject]@{
@@ -61,6 +75,8 @@ try {
     v4 = @($v4)
     v6 = @($v6)
     dhcp = [bool]$dhcp
+    static_dns = $static_dns
+    dhcp_dns = $dhcp_dns
   } | ConvertTo-Json -Compress -Depth 4
 } catch {
   [pscustomobject]@{ok=$false; error=[string]$_.Exception.Message} |
@@ -211,6 +227,11 @@ def _drop_backup(root_dir: Path) -> None:
         _backup_path(root_dir).unlink(missing_ok=True)
     except OSError:
         pass
+
+
+def has_backup(root_dir: Path) -> bool:
+    """Есть ли сохранённый исходный DNS для безопасного reset."""
+    return _read_backup(Path(root_dir)) is not None
 
 
 def current_status() -> dict:

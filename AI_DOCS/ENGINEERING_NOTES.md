@@ -11,13 +11,13 @@
 >
 > Внимание: в старых документах есть региональные/провайдерские/публичные
 > IP и пользовательские кейсы. В git их заново не добавлять; чувствительные
-> детали — только локально (`%TEMP%\opencode`).
+> детали — только локально, вне репозитория.
 
 ## 1. Источники и как обновлять
 
 | Что | Источник | Как использовать |
 |---|---|---|
-| Движок winws2 | `github.com/bol-van/zapret2`; win-bundle `github.com/bol-van/zapret-win-bundle` | `bin/winws2.exe` **1.0.6**; обновлять движок и stock-lua вместе, `zapret-custom.lua` сохранять |
+| Движок winws2 | `github.com/bol-van/zapret2`; win-bundle `github.com/bol-van/zapret-win-bundle` | `bin/winws2.exe` **1.0.7**; обновлять движок и stock-lua вместе, `zapret-custom.lua` сохранять |
 | WinDivert | `github.com/basil00/WinDivert` | `windivert/` + `bin/WinDivert*.dll/sys`; не чинить удалением при живом драйвере |
 | Lua | `lua/zapret-lib.lua`, `zapret-antidpi.lua`, `zapret-auto.lua` — vendor; `zapret-custom.lua` — наш | vendor не рефакторить; обновлять только синхронизацией с upstream tag |
 | IPset-база | V3nilla `github.com/V3nilla/IPSets-For-Bypass-in-Russia`; jsDelivr `https://cdn.jsdelivr.net/gh/V3nilla/IPSets-For-Bypass-in-Russia@main/` | наша база `lists/ipset-all.txt.gz` (26441 CIDR на 2026-10-24); **не вливать целиком**, только coverage-diff + CDN A/B |
@@ -202,8 +202,8 @@ unknown-UDP **обязателен `:payload=all`**, иначе правило �
 | `multisplit-seqovl` | multisplit + seqovl |
 | `tcpmd5-fake` | fake + tcp_md5; кандидат для сетей с фингерпринтом |
 
-- `presets/flaky.txt` — untracked тестовый пресет (4190-4195, ACTIVE_GAME_UDP,
-  repeats=12, `-d4`), не релиз.
+- `presets/flaky.txt` — тестовый пресет (4190-4195, ACTIVE_GAME_UDP,
+  repeats=12, `-d4`); в рабочем дереве отсутствует, не релиз, не возвращать.
 - `blobs/ACTIVE_DISCORD_UDP.bin`, `ACTIVE_GAME_UDP.bin`, `stun2.bin` —
   записанные payload'ы для `payload=all` (voice/игры); `quic_google` —
   штатный QUIC-блоб. Новые TLS-блобы — `tools/make_blob.py`, размер и
@@ -264,12 +264,13 @@ unknown-UDP **обязателен `:payload=all`**, иначе правило �
   перезапуска служба оставалась с мёртвым путём.
 - Отпечаток update-PUBKEY: `50DCECF29451`; приватный ключ — офлайн, вне
   репо. Обновление: подпись → validate_release → sha256 → apply/rollback.
-- Конфиг `AppConfig`: `root_dir`, `last_profile`, `zapret1_dir`,
-  `zapret1_last_strategy`, `game_filter_mode`, `discord_voice`,
+- Конфиг `AppConfig`: `root_dir`, `last_profile` (`zapret1_*` — deprecated,
+  не используются GUI), `game_filter_mode`, `discord_voice`,
   `discord_voice_mode`, `winws2_debug`, `autohostlist`, `ipset_catchall`,
-  `discord_alt`, `fake_blob`, `tour_done`, `notice_done`. Сохранять только
-  присланные ключи, валидировать типы, не мутировать shared cache до
-  успешной записи.
+  `discord_alt`, `fake_blob`, `tour_done`, `notice_done`,
+  `dns_main_primary`, `dns_main_secondary`, `dns_reserve_primary`,
+  `dns_reserve_secondary`. Сохранять только присланные ключи, валидировать
+  типы, не мутировать shared cache до успешной записи.
 - Встроенные игры: Wardogs (UDP 4192-4194; домены авторизации/лобби),
   Valorant (домены; UDP-правило пока нет), Fortnite (домены; UDP-правило
   пока нет), WARP stabilizer (по умолчанию off; fake на старте UDP-коннектов
@@ -305,7 +306,7 @@ Historical; перед новым выводом проверять текущи
 - **Discord uploads**: идут на GCS-домен, TCP-fallback нет; домен должен быть
   в списке. **Discord media/stream**: fake может ломать; чистый multisplit
   (auto strategy=3) — кандидат, но z2 default/auto не подтверждены как
-  стабильные; z1 Alt1/Alt2 держат на проблемной сети.
+  стабильные; историческое сравнение с Zapret 1 больше не поддерживается.
 - **Voice 50000+**: входящие окнами режет внешний путь; fake/udplen/badsum
   клиентски не лечат. Рабочее — другой регион/CF-эндпоинт, WARP, переезд
   сервера. Не пинить голосовые hosts: номера ротируются. Мониторинг:
@@ -387,7 +388,7 @@ python tools\check_arg_file.py --quoting
 
 Восстановить один файл для чтения/копии:
 ```powershell
-git -C C:\Users\TheFirstNoob\Documents\GitHub\Zapret-2-GUI `
+git -C <repo> `
   show 0bd6626^:tools/_game_udp.py
 ```
 Запускать старые скрипты только после просмотра: в них могут быть hardcoded
@@ -396,32 +397,11 @@ git -C C:\Users\TheFirstNoob\Documents\GitHub\Zapret-2-GUI `
 `ipset_merge_staged.py`; для реестра — `_rkn_relevant.py [--resolve]` /
 `_rulist_diff.py`.
 
-## 7. Архив: что где лежало
+## 7. Архив
 
-| Файл | Что содержит |
-|---|---|
-| `archive/AGENTS.md` | старый полный снапшот правил/хронологии; много уже в AGENTS |
-| `archive/ARCH_AUDIT_2026-10-14.md` | архитектурный аудит, anti-list, порядок рефактора |
-| `archive/ASN_SCAN_NOTES.md` | методология ASN-скана, dpi-detector, SNI-пробы |
-| `archive/EXTERNAL_NOTES.md` | tspu-docs/b4, механики ТСПУ и RST/TTL |
-| `archive/HANDOFF_2026-10-05.md` | старые коммиты, проверки, not-bugs, рабочие пути |
-| `archive/IPSETS_V3NILLA.md` | источник ipset, диффы, правила staged-слияния |
-| `archive/ISP_NOTES.md` | старые ISP-наблюдения и каталог пресетов (есть чувствительное) |
-| `archive/PLAN_0.9.md` | закрытые задачи 0.9, реестр РКН, Telegram, решения |
-| `archive/REVIEW_MAP.md` | карта для ревьюера, горячие зоны |
-| `archive/REVIEW_REPORT_2026-10-13.md` | внешний отчёт P1-P3, niquests-сборка |
-| `archive/REVIEW_VERDICT.md` | «не баги», подтверждённые баги, кандидаты |
-| `archive/STRATEGY_TRIALS.md` | батареи, пороги repeats, блобы, CDN/ipset, WARP |
-| `archive/TESTER_AUDIT.md` | старый аудит тестера 0.1 (историческое) |
-| `archive/VOICE_FLAP_FINLAND_2026-10.md` | полное расследование голоса/стрима |
-| `archive/WARP_NOTES_2026-10.md` | паттерн WARP, мониторинг, пересечения |
-
-Команда чтения:
-```powershell
-git -C C:\Users\TheFirstNoob\Documents\GitHub\Zapret-2-GUI `
-  show 0bd6626^:AI_DOCS/archive/STRATEGY_TRIALS.md
-```
-В них есть чувствительные детали; не копировать в новые коммиты.
+Исторические ревью, планы 0.9, handoff и research-заметки удалены при чистке
+2026-10-24. Они остаются только в git-истории (`0bd6626^`); в публичные
+документы чувствительные детали и локальные имена файлов не переносить.
 
 ## 8. Что не трогать
 
@@ -455,14 +435,14 @@ python tools/args_golden.py compare
 python tools/js_bundle_check.py
 python tools/status_contract.py
 ```
-Локально дополнительно: T36/T39/T40/T41/T43/T45/T46/T47/T48/T49 в
-`%TEMP%\opencode` (не входят в репо).
+Локально дополнительно: T36/T39/T40/T41/T43/T45/T46/T47/T48/T49 —
+во временной песочнице (не входят в репо).
 
 Сборка/релиз — `AI_DOCS/RELEASE_CHECKLIST.md`: `build.py` (PyInstaller spec,
 фильтры корневых дублей cygwin/WinDivert), `build_portable.py` (Python
 3.13.14 embeddable, `._pth`, pythonnet/pywebview), `build_lite.py` (батники,
 без Python). `requirements.txt` должен включать `niquests[http3]`; без него
 spec падает fail-loud. `VERSION` в корне и `core/config.py` держать
-синхронно; 0.10 immutable, следующие ассеты — только pretty-имена.
+синхронно; 0.10 immutable, ассеты 0.11 — только pretty-имена.
 Исторически spec уменьшил exe до ~13.7 МБ / zip ~13.5 МБ за счёт удаления
 корневых дублей cygwin/WinDivert и лишних pythonnet-файлов.

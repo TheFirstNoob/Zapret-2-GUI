@@ -67,6 +67,35 @@ SOFTWARE.
 - Лицензия кода: GPL-3.0. Код не копировался — использованы идеи и
   публичные материалы (tspu-docs) для диагностики.
 
+## Python и GUI-зависимости
+
+Поставляются в portable/exe-сборках (версии могут отличаться в зависимости
+от момента сборки; актуальные версии фиксируются в `requirements.txt`):
+
+| Компонент | Назначение | Лицензия | Источник |
+|---|---|---|---|
+| Python 3.13 | runtime portable-сборки | PSF-2.0 | https://www.python.org/ |
+| pywebview | GUI-окно WebView2 | BSD-3-Clause | https://github.com/r0x0r/pywebview |
+| pythonnet | мост .NET/WebView2 | MIT | https://github.com/pythonnet/pythonnet |
+| clr-loader | загрузка CLR | MIT | https://github.com/pythonnet/clr-loader |
+| niquests | HTTP/H3-проба | Apache-2.0 | https://github.com/jawah/niquests |
+| urllib3-future | HTTP-транспорт niquests | MIT | https://github.com/jawah/urllib3.future |
+| qh3 | QUIC/HTTP3 | MIT | https://github.com/jawah/qh3 |
+| jh2 | HTTP/2 | MIT | https://github.com/jawah/jh2 |
+| wassima | системные сертификаты | MIT | https://github.com/jawah/wassima |
+| h11 | HTTP/1.1 | MIT | https://github.com/python-hyper/h11 |
+| charset-normalizer | кодировки HTTP | MIT | https://github.com/jawah/charset_normalizer |
+| bottle | HTTP-сервер pywebview | MIT | https://github.com/bottlepy/bottle |
+| proxy_tools | прокси-утилиты pywebview | MIT | https://github.com/jtushman/proxy_tools |
+| typing_extensions | typing backport | PSF-2.0 | https://github.com/python/typing_extensions |
+| cffi | CFFI | MIT | https://github.com/python-cffi/cffi |
+| pycparser | парсер C | BSD-3-Clause | https://github.com/eliben/pycparser |
+| OpenSSL | TLS/криптография runtime | Apache-2.0 | https://www.openssl.org/ |
+
+Полные тексты лицензий доступны в upstream-репозиториях и в метаданных
+установленных пакетов. PyInstaller используется только как инструмент сборки;
+его собственный код в пользовательский архив не включается.
+
 ## Прочее
 
 - Списки доменов и прочие данные — собственные или собранные из открытых

@@ -86,7 +86,7 @@ GREASE/padding на обход не влияют (в пределах наших
 ## Файлы
 
 ```
-bin/winws2.exe                          v1.0.6
+bin/winws2.exe                          v1.0.7
 lua/zapret-lib.lua, zapret-antidpi.lua  база/desync
 blobs/*.bin                            фейки
 lists/list-general.txt                 общий список

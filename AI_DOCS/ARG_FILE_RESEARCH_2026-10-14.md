@@ -40,7 +40,7 @@
 - `$file` на Windows НЕ работает (Cygwin раскрывает только `@`; `$` уходит в
   битый wordexp-путь zapret). Использовать только `@`.
 
-## 2. Эмпирика (ключевая; песочницы %TEMP%\opencode\argfile*, C:\Users\Public\argfile_test)
+## 2. Эмпирика (ключевая; локальные временные песочницы)
 
 | Тест | Что | Результат |
 |---|---|---|
@@ -196,18 +196,13 @@
 
 ## 7. Артефакты и ссылки
 
-- Код-источники: `%TEMP%\opencode\cyg_dcrt0.cc` (Cygwin dcrt0.cc master — insert_file
+- Код-источники: локальный клон Cygwin `dcrt0.cc` (insert_file
   стр. 87-146, build_argv 294-366, MAX_AT_FILE_LEVEL 40); `up_nfqws_v105.c` /
   `up_nfqws_master.c` (upstream **идентичны** и идентичны zip-сорцам);
   `zapret2-v1.0.5\` (распакованный релиз; наш bin/winws2.exe = релизный бинарь,
   sha256 A2535593...).
-- Тест-скрипты: `argfile_test5.py`, `argfile_test6.py`, `argfile_test7.py`,
-  `argfile_test7g.py`, `argfile_test8.py`, `argfile_test9_service.py`,
-  `argfile_test10.py`, `t11b_stage1.py`, `t12_mirror_dry.py`, `cygwin_probe.py`;
-  отчёты `argfile_results5/6/7/7g.txt`, `cygwin_probe_results.txt`,
-  `t8_unicode_dbg_cmd.txt`, `t9_service_poc.txt`, `t10_a2b_probe2diag.txt`,
-  `t11b_stage1.txt`, `t12_mirror_dry.txt`; песочницы `%TEMP%\opencode\argfile\`,
-  `C:\Users\Public\argfile_test\` (+ `arg file\`).
+- Тест-скрипты и отчёты — локальные dev-материалы; в публичный репозиторий
+  не добавляются. Песочницы — временные каталоги.
 - Внешнее ревью (НЕ коммитим, решение 14.10): зеркало
   `AI_DOCS\ARCH_REVIEW_2026-10-14.md` — 3 «срочных» (2 починены в `053af51`,
   CDN-service-ветка — нет).

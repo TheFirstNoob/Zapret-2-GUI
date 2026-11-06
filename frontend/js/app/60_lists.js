@@ -4,6 +4,7 @@ const ListsPage = {
   _badLines: {},   // key -> массив номеров ошибочных строк (для гутера)
   _bundled: null,   // Set доменов из bundled-включений (для проверки приоритетов)
   _activeList: 'domInc',
+  _loadFailed: {},  // key -> true: загрузка не удалась, сохранять нельзя
 
   showList(key) {
     if (!this.editors[key]) return;
@@ -316,13 +317,20 @@ const ListsPage = {
 
   async load(key) {
     const e = this.editors[key];
+    this._loadFailed[key] = false;
     try {
       const r = await apiGet(e.api);
       $(key + 'Textarea').value = r.content || '';
       this.saved[key] = $(key + 'Textarea').value;
       this.validate(key);
     } catch (err) {
-      $(key + 'Valid').innerHTML = '<span class="bad">не удалось загрузить список</span>';
+      // Не оставляем доступной кнопку «Сохранить»: поле могло быть пустым
+      // после неудачной загрузки, и сохранение затерло бы рабочий файл.
+      this._loadFailed[key] = true;
+      this._dirtyCheck(key);
+      $(key + 'Valid').innerHTML = '<span class="bad">не удалось загрузить список - сохранение заблокировано</span>';
+      const btn = document.querySelector(`[data-save="${key}"]`);
+      if (btn) btn.disabled = true;
     }
   },
 
@@ -339,6 +347,11 @@ const ListsPage = {
   },
 
   validate(key) {
+    if (this._loadFailed[key]) {
+      const blocked = document.querySelector(`[data-save="${key}"]`);
+      if (blocked) blocked.disabled = true;
+      return false;
+    }
     const e = this.editors[key];
     const ta = $(key + 'Textarea');
     const lines = ta.value.split('\n');

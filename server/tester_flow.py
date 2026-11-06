@@ -1,7 +1,7 @@
 """tester_flow.py - фоновые воркеры тестера и их хелперы (аудит #1/#3).
 
 Аудит #3: run_tester_action раздроблен на ветки-функции (_test_branch /
-_test_profiles_branch / _cdn_scan_branch / _current_branch / _naked_branch /
+_test_profiles_branch / _cdn_scan_branch / _naked_branch /
 _full_analysis_branch), сборка custom уехала в server/custom_build.py.
 Логика прогонов не менялась; state и tester передаются явно.
 """
@@ -155,10 +155,26 @@ def svc_was_running() -> bool:
         return False
 
 
-def restore_protection_after_naked(z2_was: bool, z1_was: bool, state, svc_was: bool = False) -> str:
-    """Восстановление защиты, активной до голого теста: naked гасит
-    winws/winws2, оставлять пользователя без защиты нельзя.
-    Best effort - ошибки возвращаем, не бросаем."""
+def restore_protection_after_naked_status(
+        z2_was: bool, z1_was: bool, state, svc_was: bool = False
+) -> tuple[bool, str]:
+    """Восстановление защиты с явным признаком успеха.
+
+    Возвращает (ok, note). Best effort: ошибки не бросаем, но больше не
+    выдаём неудачное восстановление за успешное.
+    """
+    ok, note = _restore_protection_after_naked_status(z2_was, z1_was, state, svc_was)
+    if not ok:
+        try:
+            state.restore_failed = True
+        except Exception:
+            pass
+    return ok, note
+
+
+def _restore_protection_after_naked_status(
+        z2_was: bool, z1_was: bool, state, svc_was: bool = False
+) -> tuple[bool, str]:
     try:
         if z2_was:
             # Если обход жил в службе - поднимаем службу (sc start с её же
@@ -170,9 +186,13 @@ def restore_protection_after_naked(z2_was: bool, z1_was: bool, state, svc_was: b
                     ok_s, msg_s = svc_start(None)
                     if ok_s:
                         state.set_progress(99, "Восстанавливаем Zapret 2 (через службу)...")
-                        return "Zapret 2 восстановлен через службу"
-                except Exception:
-                    pass
+                        return True, "Zapret 2 восстановлен через службу"
+                    # Если служба была активна, не подменяем её ручным
+                    # winws2: это могла быть служба другой установки, а
+                    # прямой запуск создал бы конфликт двух движков.
+                    return False, f"Не удалось восстановить службу Zapret 2: {msg_s}"
+                except Exception as e:  # noqa: BLE001
+                    return False, f"Не удалось восстановить службу Zapret 2: {e}"
             cfg = get_config_manager().load()
             profile = cfg.last_profile or DEFAULT_PROFILE
             state.set_progress(99, f"Восстанавливаем Zapret 2 ({profile})...")
@@ -187,21 +207,17 @@ def restore_protection_after_naked(z2_was: bool, z1_was: bool, state, svc_was: b
                 ipset_catchall=cfg.ipset_catchall,
                 discord_alt=cfg.discord_alt,
             )
-            return (f"Zapret 2 восстановлен (пресет {profile})" if ok
+            return (ok, f"Zapret 2 восстановлен (пресет {profile})" if ok
                     else f"Не удалось восстановить Zapret 2: {msg}")
-        if z1_was:
-            cfg = get_config_manager().load()
-            strat = cfg.zapret1_last_strategy
-            if cfg.zapret1_dir and strat:
-                bat = Path(cfg.zapret1_dir) / f"{strat}.bat"
-                if bat.exists():
-                    state.set_progress(99, f"Восстанавливаем Zapret 1 ({strat})...")
-                    subprocess.Popen([str(bat)], cwd=str(bat.parent),
-                                     creationflags=subprocess.CREATE_NO_WINDOW)
-                    return f"Zapret 1 восстановлен ({strat})"
-            return "Zapret 1 не восстановлен (стратегия не настроена)"
+        return True, ""
     except Exception as e:
-        return f"Не удалось восстановить защиту: {e}"
+        return False, f"Не удалось восстановить защиту: {e}"
+
+
+def restore_protection_after_naked(z2_was: bool, z1_was: bool, state,
+                                   svc_was: bool = False) -> str:
+    """Совместимая обёртка: только текст для UI/логов."""
+    return restore_protection_after_naked_status(z2_was, z1_was, state, svc_was)[1]
 
 
 def run_asn_scan() -> None:
@@ -213,6 +229,16 @@ def run_asn_scan() -> None:
     плюс durable-журнал на случай гибели GUI (ревью 18.10)."""
     state = STATE.tester_state
     tester = get_tester()
+    try:
+        if scan_winws_exe().get("running"):
+            with state.lock:
+                state.error = ("Обнаружен Zapret 1 (winws.exe). Остановите его "
+                               "вручную и повторите: поддержка Zapret 1 удалена.")
+                state.running = False
+            end_operation("tester")
+            return
+    except Exception:
+        pass
     svc_was = svc_was_running()
     z2_was = tester.is_running()
     z1_was = tester._any_winws_running()
@@ -238,9 +264,9 @@ def run_asn_scan() -> None:
         with state.lock:
             state.reset()
             state.action_type = "asn_scan"
-        if z2_was or z1_was:
+        if z2_was:
             state.set_progress(2, "Останавливаем обход (замер чистого пути к ТСПУ)...")
-            kill_never_hang(["winws.exe", "winws2.exe"])
+            kill_never_hang(["winws2.exe"])
         results = run_tester(lambda: tester.asn_scan(make_progress_cb(state)))
         note = _restore()
         with state.lock:
@@ -253,7 +279,8 @@ def run_asn_scan() -> None:
         _restore()
         resume_recovery()
         try:
-            session_recovery.clear_session_journal(get_root_dir())
+            if not getattr(state, "restore_failed", False):
+                session_recovery.clear_session_journal(get_root_dir())
         except Exception:
             pass
         with state.lock:
@@ -267,6 +294,16 @@ def run_blob_probe(data: dict) -> None:
     сервис-осведомлённое, в ЛЮБОМ исходе + durable-журнал (ревью 18.10)."""
     state = STATE.tester_state
     tester = get_tester()
+    try:
+        if scan_winws_exe().get("running"):
+            with state.lock:
+                state.error = ("Обнаружен Zapret 1 (winws.exe). Остановите его "
+                               "вручную и повторите: поддержка Zapret 1 удалена.")
+                state.running = False
+            end_operation("tester")
+            return
+    except Exception:
+        pass
     svc_was = svc_was_running()
     z2_was = tester.is_running()
     z1_was = tester._any_winws_running()
@@ -319,7 +356,8 @@ def run_blob_probe(data: dict) -> None:
         _restore()
         resume_recovery()
         try:
-            session_recovery.clear_session_journal(get_root_dir())
+            if not getattr(state, "restore_failed", False):
+                session_recovery.clear_session_journal(get_root_dir())
         except Exception:
             pass
         with state.lock:
@@ -330,7 +368,6 @@ def _start_logger(tester, action: str) -> TestLogger:
     mode_map = {
         "test":         "test",
         "test_profiles":"quick",
-        "current":      "current",
         "naked":        "naked",
         "full_analysis":"full",
     }
@@ -373,8 +410,6 @@ def _test_branch(state, tester, data: dict) -> None:
     z2_was = get_controller().status().running
     z1_was = scan_winws_exe()["running"]
     svc_was = svc_was_running()
-    if z1_was:
-        kill_never_hang(["winws.exe"])
     result = run_tester(lambda: tester.test_profile(
         data.get("profile", DEFAULT_PROFILE), make_progress_cb(state),
         tier=data.get("tier", "critical"), result_cb=make_result_cb(state),
@@ -459,11 +494,6 @@ def _test_profiles_branch(state, tester, data: dict) -> None:
         _restored = True
         return restore_protection_after_naked(
             z2_was or svc_was, z1_was, state, svc_was)
-
-    if z1_was:
-        # Zapret 1 иначе искажает и «голый» тест, и все профили
-        # (ревью-раунд 3): гасим на время свипа и вернём после (как naked).
-        kill_never_hang(["winws.exe"])
 
     # Сначала naked-baseline: ловит «стратегии ничего не делают».
     naked_baseline = run_tester(lambda: tester.run_naked_baseline(
@@ -627,34 +657,13 @@ def _test_profiles_branch(state, tester, data: dict) -> None:
         state.running = False
 
 
-def _current_branch(state, tester, data: dict) -> None:
-    winws_info = scan_winws_exe()
-    if not winws_info["running"]:
-        state.set_final({"type": "need_zapret1"})
-        state.running = False
-        return
-
-    state.set_progress(0, "Zapret 1 обнаружен. Тестирование...")
-    cur_progress = make_progress_cb(state)
-    cur_result_cb = make_result_cb(state, profile="__current__")
-    cur_result = run_tester(
-        lambda: tester.test_current_setup(
-            cur_progress, tier=data.get("tier", "critical"),
-            result_cb=cur_result_cb)
-    )
-    state.set_final({
-        "type": "current_result",
-        **serialize_result(cur_result),
-    })
-
-
 def _naked_branch(state, tester, data: dict) -> None:
     # Запоминаем, чем был защищён пользователь, чтобы вернуть после
     z2_was = get_controller().status().running
     z1_was = scan_winws_exe()["running"]
     svc_was = svc_was_running()
     state.set_progress(1, "Останавливаем zapret...")
-    kill_never_hang(["winws.exe", "winws2.exe"])
+    kill_never_hang(["winws2.exe"])
     state.set_progress(3, "Защита остановлена. Запуск голого теста...")
     naked_result = run_tester(
         lambda: tester.test_naked(
@@ -676,7 +685,7 @@ def _full_analysis_branch(state, tester, data: dict) -> None:
     z2_was = get_controller().status().running
     z1_was = scan_winws_exe()["running"]
     svc_was = svc_was_running()
-    kill_never_hang(["winws.exe", "winws2.exe"])
+    kill_never_hang(["winws2.exe"])
     time.sleep(0.5)
 
     from core.full_analyzer import run_full_analysis, AnalyzerEvent
@@ -718,7 +727,7 @@ def _full_analysis_branch(state, tester, data: dict) -> None:
 def run_tester_action(data: dict) -> None:
     action = data.get("action", "")
     state = STATE.tester_state
-    known = ("test", "test_profiles", "current", "naked", "cdn_scan",
+    known = ("test", "test_profiles", "naked", "cdn_scan",
              "check-winws", "check_vpn", "full_analysis")
     if action not in known:
         with state.lock:
@@ -726,6 +735,18 @@ def run_tester_action(data: dict) -> None:
             state.running = False
         end_operation("tester")
         return
+    if action in ("test", "test_profiles", "naked", "full_analysis", "cdn_scan"):
+        try:
+            z1_running = bool(scan_winws_exe().get("running"))
+        except Exception:
+            z1_running = False
+        if z1_running:
+            with state.lock:
+                state.error = ("Обнаружен Zapret 1 (winws.exe). Остановите его "
+                               "вручную и повторите: поддержка Zapret 1 удалена.")
+                state.running = False
+            end_operation("tester")
+            return
     with state.lock:
         cancelled_before = state.cancelled
         state.running = True
@@ -737,6 +758,7 @@ def run_tester_action(data: dict) -> None:
 
     tester = None
     logger = None
+    journal_clear_ok = True
     _ui_debug(f"tester worker: start action={action!r} data={dict(data)}")
 
     try:
@@ -791,8 +813,6 @@ def run_tester_action(data: dict) -> None:
             _test_branch(state, tester, data)
         elif action == "test_profiles":
             _test_profiles_branch(state, tester, data)
-        elif action == "current":
-            _current_branch(state, tester, data)
         elif action == "naked":
             _naked_branch(state, tester, data)
         elif action == "full_analysis":
@@ -803,14 +823,16 @@ def run_tester_action(data: dict) -> None:
         # незавершённый прогон: вернуть recovery+защиту сразу (тот же путь,
         # что при аварийном старте) - иначе обход остаётся выключенным
         try:
-            session_recovery.recover_unfinished_session(
+            rec = session_recovery.recover_unfinished_session(
                 get_root_dir(),
                 restore_recovery=restore_recovery_from_snapshot,
-                restore_protection=lambda z, o, s: restore_protection_after_naked(
-                    z, o, state, s),
+                restore_protection=lambda z, o, s: (
+                    restore_protection_after_naked_status(z, o, state, s)),
                 log=_ui_debug)
-        except Exception:
-            pass
+            journal_clear_ok = bool(rec[0]) if rec else True
+        except Exception as re:
+            journal_clear_ok = False
+            _ui_debug(f"tester worker: recovery failed: {re!r}")
         with state.lock:
             state.error = str(e)
     finally:
@@ -820,9 +842,12 @@ def run_tester_action(data: dict) -> None:
         _ui_debug(f"tester worker: end action={action!r} error={st_err!r} final={has_final}")
         resume_recovery()
         try:
-            # журнал отработан (успешный прогон сам вернул защиту; исключение
-            # обработано recover выше) - файл больше не нужен
-            session_recovery.clear_session_journal(get_root_dir())
+            # Журнал удаляем только после подтверждённого восстановления.
+            # При сбое он остаётся TESTING и будет повторён на следующем старте.
+            if journal_clear_ok and not getattr(state, "restore_failed", False):
+                session_recovery.clear_session_journal(get_root_dir())
+            else:
+                _ui_debug("tester worker: recovery/protection unsuccessful - journal kept")
         except Exception:
             pass
         with state.lock:

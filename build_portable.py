@@ -28,7 +28,6 @@ PY = PORTABLE / "python"
 
 PY_VER = "3.13.14"
 PY_URL = f"https://www.python.org/ftp/python/{PY_VER}/python-{PY_VER}-embed-amd64.zip"
-PIP_URL = "https://bootstrap.pypa.io/get-pip.py"
 PY_SHORT = "".join(PY_VER.split(".")[:2])  # 3.13.14 -> 313 (dll/pth используют короткую форму)
 
 COPY_DIRS = ("bin", "blobs", "lua", "lists", "presets", "windivert", "frontend", "core", "server")
@@ -71,7 +70,7 @@ README_TXT = """Zapret 2 GUI - portable version (no packer, official Python runt
 архив) - делать ничего не нужно: программа снимает метку сама при первом
 запуске (иначе система блокирует часть компонентов интерфейса).
 
-Готовый файл hosts (пины GitHub/AI/Discord и т.п.) лежит в app\\hosts.txt:
+Готовый файл hosts (пины GitHub/Discord и т.п.) лежит в app\\hosts.txt:
 применяйте вручную, только если он вам нужен (ваши правки в lists\\presets
 он не затрагивает).
 
@@ -104,19 +103,21 @@ def main() -> None:
     pth = PY / f"python{PY_SHORT}._pth"
     pth.write_text(f"python{PY_SHORT}.zip\n.\nLib\\site-packages\nimport site\n", encoding="ascii")
 
-    # 2. pip + runtime (pywebview, niquests[http3] для QUIC-пробы тестера)
-    pip_script = ROOT / "build" / "get-pip.py"
-    _download(PIP_URL, pip_script)
-    subprocess.run([str(PY / "python.exe"), str(pip_script), "--no-warn-script-location"],
-                   check=True)
-    subprocess.run([str(PY / "python.exe"), "-m", "pip", "install", "--no-warn-script-location",
-                    "pywebview", "niquests[http3]>=3.21.2"], check=True)
+    # 2. runtime: ставим pinned-зависимости официальным pip текущего Python
+    # в site-packages embeddable-рантайма. Не скачиваем get-pip.py и не
+    # разрешаем pip выбирать «свежие» версии - сборка воспроизводимее.
+    if sys.version_info[:2] != (3, 13):
+        raise SystemExit("build_portable.py требует Python 3.13")
+    subprocess.run([sys.executable, "-m", "pip", "install", "--no-compile",
+                    "--no-warn-script-location", "--target",
+                    str(PY / "Lib" / "site-packages"), "-r",
+                    str(ROOT / "requirements.txt")], check=True)
 
     # 3. код приложения
     for d in COPY_DIRS:
         shutil.copytree(ROOT / d, APP / d)
     shutil.copy2(ROOT / "main.py", APP / "main.pyw")
-    # готовый hosts (пины GitHub/AI/Discord и т.п.) - в app/, чтобы апдейтер
+    # готовый hosts (пины GitHub/Discord и т.п.) - в app/, чтобы апдейтер
     # обновлял его вместе с кодом; применяется вручную
     shutil.copy2(ROOT / "hosts.txt", APP / "hosts.txt")
     # экспериментальные пресеты и генерируемый custom не попадают в дистрибутив

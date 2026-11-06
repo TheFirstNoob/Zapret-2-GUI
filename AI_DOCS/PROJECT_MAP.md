@@ -1,8 +1,8 @@
 # Zapret 2 GUI — карта проекта
 
-> Обновлено 2026-10-24. Версия — Pre-Release 0.10 (тег `3fd25f0`) + коммиты
-> после релиза. Главные правила и текущее состояние — `AGENTS.md`.
-> Индекс документации — `AI_DOCS/README.md`.
+> Обновлено 2026-10-27. Версия — Pre-Release 0.11 (черновик; тег ещё не
+> создан). Предыдущий релиз — 0.10 (тег `3fd25f0`). Главные правила и
+> текущее состояние — `AGENTS.md`. Индекс документации — `AI_DOCS/README.md`.
 
 ## Что делает программа
 
@@ -30,7 +30,7 @@ GUI-оболочка: main.py (pywebview/Local HTTP, UAC, single-instance)
   update_verify, session_recovery, collector/logs.
 - **frontend/** — HTML/CSS/JS SPA, без pywebview API (только HTTP).
 - **presets/** — 11 release-стратегий; `exp-*`/`cand-*` удалены, тестовый
-  untracked `flaky.txt` не релиз.
+  `flaky.txt` в рабочем дереве отсутствует и в релиз не входит.
 - **bin/lua/blobs/lists/windivert/** — движок и данные.
 - **build.py / build_portable.py / build_lite.py** — EXE / portable / lite.
 
@@ -59,8 +59,8 @@ GUI-оболочка: main.py (pywebview/Local HTTP, UAC, single-instance)
 
 ## Репозитории и документация
 
-- Истина: `Documents\GitHub\Zapret-2-GUI` (`origin`).
-- Зеркало: `Desktop\Zapret 2 GUI\zapret2_gui` (живые user-данные; синк).
+- Истина: репозиторий `Zapret-2-GUI` (`origin`).
+- Отдельная live-копия синхронизируется точечно; user-данные не публиковать.
 - Доки: `AI_DOCS/AGENTS.md` (главное), `AI_DOCS/README.md` (индекс).
 
 ## Правила (кратко)

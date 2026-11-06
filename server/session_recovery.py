@@ -72,12 +72,14 @@ def recover_unfinished_session(
         root_dir: Path,
         *,
         restore_recovery: Callable[[Optional[dict]], bool],
-        restore_protection: Callable[[bool, bool, bool], str],
-        log: Callable[[str], None]) -> Optional[str]:
+        restore_protection: Callable[[bool, bool, bool], tuple[bool, str]],
+        log: Callable[[str], None]) -> Optional[tuple[bool, str]]:
     """Обработка незавершённой сессии (одна попытка, ошибки не бросает).
 
-    restore_protection(z2_or_svc, z1, svc) -> строка-заметка (контракт
-    как у restore_protection_after_naked). Возвращает описание или None."""
+    restore_protection(z2_or_svc, z1, svc) -> (ok, note). Возвращает
+    (ok, summary) или None, если журнала нет. При неудаче журнал остаётся
+    в состоянии TESTING: следующий старт повторит восстановление, а не
+    пометит сессию успешно восстановленной."""
     data = read_session_journal(root_dir)
     if not data or data.get("state") != "TESTING":
         return None
@@ -90,23 +92,39 @@ def recover_unfinished_session(
     log(f"session-recovery: найдена незавершённая сессия "
         f"(action={action}, started={data.get('started', '?')})")
     notes: list[str] = []
+    recovered = True
     try:
         if restore_recovery(data.get("recovery")):
             notes.append("recovery-конфигурация восстановлена")
         else:
+            recovered = False
             notes.append("recovery-конфигурация НЕ восстановлена")
     except Exception as e:  # noqa: BLE001
+        recovered = False
         notes.append(f"recovery ошибка: {e}")
     try:
         if z2 or z1 or svc:
-            note = restore_protection(z2 or svc, z1, svc)
+            result = restore_protection(z2 or svc, z1, svc)
+            if isinstance(result, tuple):
+                prot_ok, note = bool(result[0]), str(result[1] or "")
+            else:  # совместимость со старыми callback-ами
+                prot_ok, note = True, str(result or "")
+            if not prot_ok:
+                recovered = False
             notes.append(note or "защита восстановлена")
         else:
             notes.append("защита не требовалась")
     except Exception as e:  # noqa: BLE001
+        recovered = False
         notes.append(f"защита: ошибка {e}")
     summary = "; ".join(notes)
     log(f"session-recovery: {summary}")
+    if not recovered:
+        # Журнал НЕ помечаем RECOVERED и НЕ удаляем: состояние TESTING
+        # заставит следующий запуск повторить восстановление.
+        log("session-recovery: восстановление неуспешно - журнал сохранён "
+            "для повторной попытки")
+        return False, summary
     # Ревью 18.10: пока шло восстановление, мог стартовать НОВЫЙ тест и
     # перезаписать журнал. Метку RECOVERED ставим только если это всё ещё
     # наш исходный TESTING-снимок (иначе затёрли бы свежий журнал).
@@ -115,14 +133,14 @@ def recover_unfinished_session(
             or current.get("started") != started):
         log("session-recovery: журнал изменился (новый прогон?) - "
             "метка RECOVERED не пишется")
-        return summary
+        return False, summary
     _write(root_dir, {"state": "RECOVERED",
                       "action": action,
                       "started": data.get("started"),
                       "note": summary,
                       "recovered_at":
                           datetime.datetime.now().isoformat(timespec="seconds")})
-    return summary
+    return True, summary
 
 
 def start_startup_recovery() -> None:
@@ -133,10 +151,11 @@ def start_startup_recovery() -> None:
         try:
             from core.service_manager import restore_recovery_from_snapshot
             from server.app_state import STATE, get_root_dir, ui_debug
-            from server.tester_flow import restore_protection_after_naked
+            from server.tester_flow import restore_protection_after_naked_status
 
-            def _restore_protection(z2_or_svc: bool, z1: bool, svc: bool) -> str:
-                return restore_protection_after_naked(
+            def _restore_protection(z2_or_svc: bool, z1: bool,
+                                     svc: bool) -> tuple[bool, str]:
+                return restore_protection_after_naked_status(
                     z2_or_svc, z1, STATE.tester_state, svc)
 
             # Ревью 18.10: не восстанавливаемся ПАРАЛЛЕЛЬНО с уже

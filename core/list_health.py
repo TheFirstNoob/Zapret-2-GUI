@@ -24,7 +24,7 @@ DOMAIN_EXCLUDE_USER = "list-exclude-user.txt"
 # файлы, которые чистит dedupe (редактируются через GUI).
 # Только user-файлы: lists/ipset-exclude.txt - СИСТЕМНЫЙ (приватные
 # диапазоны), GUI/dedupe его не трогают (решение автора,
-# REVIEW_VERDICT.md §2.9); пользовательский - ipset-exclude-user.txt.
+# исторический аудит §2.9); пользовательский - ipset-exclude-user.txt.
 IPSET_INCLUDE_USER = "ipset-include-user.txt"
 IPSET_EXCLUDE_USER = "ipset-exclude-user.txt"
 USER_EDITABLE = (DOMAIN_INCLUDE_USER, DOMAIN_EXCLUDE_USER,

@@ -43,6 +43,7 @@ USER_FILES: tuple[str, ...] = (
     "lists/list-include-user.txt",
     "lists/list-exclude-user.txt",
     "lists/list-games.txt",
+    "lists/list-include-all.txt",
     "lists/ipset-include-user.txt",
     "lists/ipset-exclude-user.txt",
     "test_session.log",
@@ -74,7 +75,7 @@ def is_user_file(rel: str) -> bool:
     """Файл, который обновление никогда не трогает."""
     rel = rel.replace("/", "\\").lstrip("\\")
     p = Path(rel)
-    if rel in USER_FILES:
+    if p.as_posix() in USER_FILES:
         return True
     if p.parts[:1] == ("lists",) and p.name.endswith("-user.txt"):
         return True

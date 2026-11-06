@@ -96,7 +96,7 @@ def run_update_worker(kind: str, tag: str, info: dict) -> None:
                 mei_dir=mei or None)
             # Батник НЕ запускаем здесь: пользователь должен увидеть
             # «обновление применено» до того, как программа закроется.
-            # Запуск - отдельным запросом /api/update/apply (REVIEW_VERDICT.md §2.7).
+            # Запуск - отдельным запросом /api/update/apply (исторический аудит §2.7).
             result["update_bat"] = str(bat)
             result["restart_required"] = True
         else:

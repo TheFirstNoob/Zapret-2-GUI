@@ -122,7 +122,7 @@ def bundled_domains(ctx: AppContext) -> dict:
 # Списки, редактируемые через GUI: нормализуются при старте - BOM/zero-width
 # в первой строке не даёт движку сматчить домен/подсеть (кейс 2026-09-14).
 # ТОЛЬКО user-файлы: lists/ipset-exclude.txt - системный список приватных
-# диапазонов, GUI его не правит (решение автора, REVIEW_VERDICT.md §2.9),
+# диапазонов, GUI его не правит (решение автора, исторический аудит §2.9),
 # поэтому чистить его здесь было неверно - правится ipset-exclude-user.txt.
 USER_LIST_FILES = ("list-include-user.txt", "list-exclude-user.txt",
                    "ipset-include-user.txt", "ipset-exclude-user.txt")

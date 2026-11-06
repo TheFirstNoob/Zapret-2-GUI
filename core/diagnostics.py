@@ -279,7 +279,7 @@ def _check_net() -> list[Check]:
             # «Интернет (канарейка)» был жёлтым, а красным выглядел только
             # discord. Маппинг тот же, что у не-квирк-хостов:
             # dns/ip_block/tls_block - реальная блокировка -> fail,
-            # sni_block - обход обязан брать -> warn (REVIEW_VERDICT.md §2.8).
+            # sni_block - обход обязан брать -> warn (исторический аудит §2.8).
             kind_block = classify_block(host)
             bkind = kind_block.get("kind", "")
             if bkind == "sni_block":

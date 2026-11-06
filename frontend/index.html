@@ -112,8 +112,7 @@
         <section id="page-main" class="page active">
 
             <div id="conflictBanner" class="notice notice-fail" hidden>
-              <span>Одновременно запущены Zapret 1 и Zapret 2 - обход не будет работать.</span>
-              <button class="btn btn-sm btn-stop" id="btnStopZ1Now">Остановить Zapret 1</button>
+              <span>Одновременно запущены Zapret 1 и Zapret 2 - обход не будет работать. Остановите Zapret 1 вручную.</span>
             </div>
 
           <div class="stack">
@@ -177,8 +176,8 @@
 
               <div class="param-row wide">
                 <div class="param-main">
-                  <div class="param-title">Активная стратегия<span class="param-tag">winws2</span></div>
-                  <div class="param-desc">Правила, которыми программа обходит блокировки. Не знаете, что выбрать - оставьте default.</div>
+                  <div class="param-title">Активная стратегия<button type="button" class="param-help" aria-label="Пояснение: активная стратегия" data-popover-title="Активная стратегия" data-popover="Правила, которыми программа обходит блокировки. Не знаете, что выбрать - оставьте default.">?</button><span class="param-tag">winws2</span></div>
+                  <div class="param-desc">Правила обхода блокировок.</div>
                   <div class="param-hint" id="strategyApplyHint" hidden></div>
                 </div>
                 <div class="param-ctl">
@@ -218,6 +217,63 @@
               </div>
             </div>
 
+          <div class="panel dns-panel" id="dnsPanel">
+            <div class="card-head">
+              <div class="head-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+              </div>
+              <div class="head-text">
+                <div class="head-title">DNS-профили</div>
+                <div class="head-desc">Быстрая смена системного DNS: Основной и Резервный. Не меняется автоматически.</div>
+              </div>
+              <div class="head-right">
+                <button class="btn btn-primary" id="dnsApplyBtn">Применить</button>
+              </div>
+            </div>
+            <div class="dns-current" id="dnsCurrent">Проверяю текущий DNS…</div>
+            <div class="dns-controls">
+              <label class="field-label" for="dnsProfile">Профиль</label>
+              <select class="input input-sm" id="dnsProfile">
+                <option value="main">Основной</option>
+                <option value="reserve">Резервный</option>
+              </select>
+              <button class="btn btn-sm" id="dnsResetBtn">Вернуть системный DNS</button>
+              <span class="dns-active" id="dnsActive"></span>
+            </div>
+            <div class="dns-grid">
+              <div class="dns-profile">
+                <div class="dns-profile-head">
+                  <b>Основной</b>
+                  <select class="input input-sm dns-provider" id="dnsMainProvider" aria-label="Шаблон основного DNS">
+                    <option value="custom">Свой</option>
+                    <option value="google">Google</option>
+                    <option value="cloudflare">Cloudflare</option>
+                    <option value="quad9">Quad9</option>
+                    <option value="comss">Comss (AI/фильтр)</option>
+                  </select>
+                </div>
+                <input class="input" id="dnsMainPrimary" autocomplete="off" spellcheck="false" aria-label="Основной DNS 1" placeholder="Основной DNS">
+                <input class="input" id="dnsMainSecondary" autocomplete="off" spellcheck="false" aria-label="Основной DNS 2" placeholder="Резервный DNS (необязательно)">
+              </div>
+              <div class="dns-profile">
+                <div class="dns-profile-head">
+                  <b>Резервный</b>
+                  <select class="input input-sm dns-provider" id="dnsReserveProvider" aria-label="Шаблон резервного DNS">
+                    <option value="custom">Свой</option>
+                    <option value="google">Google</option>
+                    <option value="cloudflare">Cloudflare</option>
+                    <option value="quad9">Quad9</option>
+                    <option value="comss">Comss (AI/фильтр)</option>
+                  </select>
+                </div>
+                <input class="input" id="dnsReservePrimary" autocomplete="off" spellcheck="false" aria-label="Резервный DNS 1" placeholder="Основной DNS">
+                <input class="input" id="dnsReserveSecondary" autocomplete="off" spellcheck="false" aria-label="Резервный DNS 2" placeholder="Резервный DNS (необязательно)">
+              </div>
+            </div>
+            <div class="dns-hint">DNS-серверы можно смешивать: например, 1.1.1.1 + 8.8.8.8. Это системный DNS; DNS over HTTPS в браузере настраивается отдельно.</div>
+          </div>
+
+
             <!-- Параметры запуска (только Zapret 2) -->
             <details class="panel" id="togglesPanel" open>
               <summary class="card-head">
@@ -231,16 +287,14 @@
                 <div class="head-right"><span class="opt-tag">Только Zapret 2</span></div>
               </summary>
 
-              <div class="toggles-overlay" id="togglesOverlay" hidden>
-                Настройки ниже относятся к Zapret 2 - сейчас запущен Zapret 1.
-              </div>
+
 
               <div class="param-rows">
                 <div class="param-row">
                   <div class="param-main">
-                    <div class="param-title">Игровые порты<span class="param-tag">GameFilter</span></div>
-                    <div class="param-desc">Открывает обходу порты 1024-65535 (игры, голосовые чаты).</div>
-                    <div class="param-hint">Простой вариант - включите, если игра не подключается. Точечно под конкретную игру - вкладка <a href="#games">Игровые блокировки</a>.</div>
+                    <div class="param-title">Игровые порты<button type="button" class="param-help" aria-label="Пояснение: игровые порты" data-popover-title="Игровые порты" data-popover="Открывает обходу порты 1024-65535 (игры, голосовые чаты). Включайте, если игра не подключается. Точечная настройка - вкладка «Игровые блокировки».">?</button><span class="param-tag">GameFilter</span></div>
+                    <div class="param-desc">Порты 1024-65535 для игр и голосовых чатов.</div>
+                    <div class="param-hint">Точечно - <a href="#games">Игровые блокировки</a>.</div>
                   </div>
                   <div class="param-ctl">
                     <select class="input input-sm" id="toggleGameFilter">
@@ -254,9 +308,8 @@
 
                 <div class="param-row">
                   <div class="param-main">
-                    <div class="param-title">Discord Voice<span class="param-tag">UDP</span></div>
+                    <div class="param-title">Discord Voice<button type="button" class="param-help" aria-label="Пояснение: Discord Voice" data-popover-title="Discord Voice" data-popover="Дополнительный обход голосового UDP-трафика Discord. «Стандарт» - обычная обработка; «UDP-длина» меняет длину пакетов, если голос рвётся. Обычно достаточно «Выключено».">?</button><span class="param-tag">UDP</span></div>
                     <div class="param-desc">Дополнительный обход голосового UDP-трафика Discord.</div>
-                    <div class="param-hint">Обычно «Выключено» хватает.</div>
                     <span class="opt-mode-hint" id="voiceModeHint"></span>
                   </div>
                   <div class="param-ctl">
@@ -270,18 +323,16 @@
 
                 <div class="param-row">
                   <div class="param-main">
-                    <div class="param-title">Альт-режим Discord<span class="param-tag">nodrop</span></div>
-                    <div class="param-desc">Прежний режим обработки Discord - для сетей, где базовый не пробивает «холодный старт».</div>
-                    <div class="param-hint">Включайте, если Discord не открывается, а остальное работает.</div>
+                    <div class="param-title">Альт-режим Discord<button type="button" class="param-help" aria-label="Пояснение: альт-режим Discord" data-popover-title="Альт-режим Discord" data-popover="Прежний режим обработки Discord - для сетей, где базовый не пробивает «холодный старт». Включайте, если Discord не открывается, а остальное работает.">?</button><span class="param-tag">nodrop</span></div>
+                    <div class="param-desc">Для сетей, где базовый режим не пробивает «холодный старт».</div>
                   </div>
                   <div class="param-ctl"><label class="switch"><input type="checkbox" id="toggleDiscordAlt"><span class="switch-track"><span class="switch-knob"></span></span></label></div>
                 </div>
 
                 <div class="param-row">
                   <div class="param-main">
-                    <div class="param-title">Блоб фейка<span class="param-tag">TLS fake</span></div>
-                    <div class="param-desc">Чем подменять TLS-фейк: у каждого «белого» домена своя живучесть на разных провайдерах.</div>
-                    <div class="param-hint">Google пробивают чаще, редкие держатся дольше.</div>
+                    <div class="param-title">Блоб фейка<button type="button" class="param-help" aria-label="Пояснение: блоб фейка" data-popover-title="Блоб фейка" data-popover="Чем подменять TLS-фейк: у каждого «белого» домена своя живучесть на разных провайдерах. Google пробивает чаще, редкие держатся дольше. «Подобрать блоба» переберёт заготовки и подставит рабочую.">?</button><span class="param-tag">TLS fake</span></div>
+                    <div class="param-desc">Чем подменять TLS-фейк под конкретного провайдера.</div>
                     <span class="opt-mode-hint" id="fakeBlobHint"></span>
                   </div>
                   <div class="param-ctl">
@@ -296,26 +347,25 @@
 
                 <div class="param-row">
                   <div class="param-main">
-                    <div class="param-title">Авто-список<span class="param-tag">Auto Hostlist</span></div>
-                    <div class="param-desc">Zapret сам добавит домен в обход, когда заметит блокировку.</div>
-                    <div class="param-hint">Дело добровольное: помогает самому добирать новые блокировки. Особенно полезен для стратегии auto.</div>
+                    <div class="param-title">Авто-список<button type="button" class="param-help" aria-label="Пояснение: авто-список" data-popover-title="Авто-список" data-popover="Zapret сам добавит домен в обход, когда заметит блокировку. Дело добровольное: помогает самому добирать новые блокировки. Особенно полезен для стратегии auto.">?</button><span class="param-tag">Auto Hostlist</span></div>
+                    <div class="param-desc">Автоматически добавлять заблокированные домены в обход.</div>
                   </div>
                   <div class="param-ctl"><label class="switch"><input type="checkbox" id="toggleAutoHostlist"><span class="switch-track"><span class="switch-knob"></span></span></label></div>
                 </div>
 
                 <div class="param-row">
                   <div class="param-main">
-                    <div class="param-title">Общий IP-обход<span class="param-tag">ipset</span></div>
-                    <div class="param-desc">Обрабатывать весь трафик в известных блокируемых подсетях, а не только по спискам доменов.</div>
-                    <div class="param-hint">Включайте осознанно: может «задушить» то, что работало по доменам. Сравнить варианты с ipset и без - вкладка <a href="#cdn">CDN-стабилизация</a>.</div>
+                    <div class="param-title">Общий IP-обход<button type="button" class="param-help" aria-label="Пояснение: общий IP-обход" data-popover-title="Общий IP-обход" data-popover="Обрабатывать весь трафик в известных блокируемых подсетях, а не только по спискам доменов. Включайте осознанно: может «задушить» то, что работало по доменам. Сравнить варианты с ipset и без - вкладка «CDN-стабилизация».">?</button><span class="param-tag">ipset</span></div>
+                    <div class="param-desc">Весь трафик в известных блокируемых подсетях.</div>
+                    <div class="param-hint param-hint-warn">Осторожно: может «задушить» то, что работало по доменам. Сравнить - <a href="#cdn">CDN-стабилизация</a>.</div>
                   </div>
                   <div class="param-ctl"><label class="switch"><input type="checkbox" id="toggleIpFilter"><span class="switch-track"><span class="switch-knob"></span></span></label></div>
                 </div>
 
                 <div class="param-row danger">
                   <div class="param-main">
-                    <div class="param-title">DEBUG-лог<span class="param-tag">winws2</span></div>
-                    <div class="param-desc">Запись каждого пакета в журнал для глубокой отладки.</div>
+                    <div class="param-title">DEBUG-лог<button type="button" class="param-help" aria-label="Пояснение: DEBUG-лог" data-popover-title="DEBUG-лог" data-popover="Запись каждого пакета в журнал для глубокой отладки. Повышает пинг и нагрузку на CPU. Только для разбора проблем по запросу.">?</button><span class="param-tag">winws2</span></div>
+                    <div class="param-desc">Запись каждого пакета в журнал для отладки.</div>
                     <div class="param-hint">Повышает пинг и нагрузку на CPU. Только для разбора проблем по запросу.</div>
                   </div>
                   <div class="param-ctl"><label class="switch"><input type="checkbox" id="toggleWinws2Debug"><span class="switch-track"><span class="switch-knob"></span></span></label></div>
@@ -330,38 +380,7 @@
               </div>
             </details>
 
-            <!-- Zapret 1 - запасной вариант -->
-            <details class="panel panel-fallback" id="z1Panel">
-              <summary class="card-head">
-                <div class="head-icon">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                </div>
-                <div class="head-text">
-                  <div class="head-title">Zapret 1</div>
-                  <div class="head-desc">запасной вариант - если Zapret 2 не справится (только для тех, у кого он есть)</div>
-                </div>
-                <div class="head-right">
-                  <span class="state" id="z1State"><span class="dot dot-unknown"></span><span class="state-text">-</span></span>
-                </div>
-              </summary>
 
-              <div class="grid-field">
-                <div class="grid-label">
-                  <span class="grid-title">Папка Zapret 1</span>
-                  <span class="grid-tag">Directory</span>
-                </div>
-                <input class="input mono" id="z1DirPath" placeholder="C:\Zapret">
-                <button class="btn" id="btnZ1SaveDir">Сохранить путь</button>
-              </div>
-              <div class="grid-field">
-                <div class="grid-label">
-                  <span class="grid-title">Стратегия</span>
-                  <span class="grid-tag">.bat</span>
-                </div>
-                <select class="input" id="z1StrategySelect" disabled><option value="">- сначала укажите папку -</option></select>
-                <button class="btn" id="btnZ1Toggle">Запустить</button>
-              </div>
-            </details>
 
           </div><!-- /stack -->
 
@@ -424,16 +443,6 @@
                         <span class="opt-hint">ZIP с результатами теста и данными о системе</span>
                       </span>
                     </label>
-                    <details class="opt-more">
-                      <summary>Дополнительно</summary>
-                      <label class="opt-line">
-                        <input type="checkbox" class="cbx" id="extendedCheck">
-                        <span class="opt-text">
-                          <span class="opt-title">Расширенный режим <span class="opt-tag">Zapret 1 + анализ</span></span>
-                          <span class="opt-hint">сравнение с Zapret 1 и обычным интернетом, полный анализ комбинаций - дольше; обычному пользователю не нужно</span>
-                        </span>
-                      </label>
-                    </details>
                   </div>
                   <div>
                     <button class="btn btn-primary" id="btnStartTest">Начать подбор</button>
@@ -537,60 +546,6 @@
                 <button class="btn btn-warn" onclick="location.hash='tester'">Начать подбор стратегии</button>
               </div>
             </div>
-          </div>
-
-          <div class="panel dns-panel" id="dnsPanel">
-            <div class="card-head">
-              <div class="head-icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-              </div>
-              <div class="head-text">
-                <div class="head-title">DNS-профили</div>
-                <div class="head-desc">Быстрая смена системного DNS: Основной и Резервный. Не меняется автоматически.</div>
-              </div>
-              <div class="head-right">
-                <button class="btn btn-primary" id="dnsApplyBtn">Применить</button>
-              </div>
-            </div>
-            <div class="dns-current" id="dnsCurrent">Проверяю текущий DNS…</div>
-            <div class="dns-controls">
-              <label class="field-label" for="dnsProfile">Профиль</label>
-              <select class="input input-sm" id="dnsProfile">
-                <option value="main">Основной</option>
-                <option value="reserve">Резервный</option>
-              </select>
-              <button class="btn btn-sm" id="dnsResetBtn">Вернуть системный DNS</button>
-              <span class="dns-active" id="dnsActive"></span>
-            </div>
-            <div class="dns-grid">
-              <div class="dns-profile">
-                <div class="dns-profile-head">
-                  <b>Основной</b>
-                  <select class="input input-sm dns-provider" id="dnsMainProvider" aria-label="Шаблон основного DNS">
-                    <option value="custom">Свой</option>
-                    <option value="google">Google</option>
-                    <option value="cloudflare">Cloudflare</option>
-                    <option value="quad9">Quad9</option>
-                  </select>
-                </div>
-                <input class="input" id="dnsMainPrimary" autocomplete="off" spellcheck="false" aria-label="Основной DNS 1" placeholder="Основной DNS">
-                <input class="input" id="dnsMainSecondary" autocomplete="off" spellcheck="false" aria-label="Основной DNS 2" placeholder="Резервный DNS (необязательно)">
-              </div>
-              <div class="dns-profile">
-                <div class="dns-profile-head">
-                  <b>Резервный</b>
-                  <select class="input input-sm dns-provider" id="dnsReserveProvider" aria-label="Шаблон резервного DNS">
-                    <option value="custom">Свой</option>
-                    <option value="google">Google</option>
-                    <option value="cloudflare">Cloudflare</option>
-                    <option value="quad9">Quad9</option>
-                  </select>
-                </div>
-                <input class="input" id="dnsReservePrimary" autocomplete="off" spellcheck="false" aria-label="Резервный DNS 1" placeholder="Основной DNS">
-                <input class="input" id="dnsReserveSecondary" autocomplete="off" spellcheck="false" aria-label="Резервный DNS 2" placeholder="Резервный DNS (необязательно)">
-              </div>
-            </div>
-            <div class="dns-hint">DNS-серверы можно смешивать: например, 1.1.1.1 + 8.8.8.8. Это системный DNS; DNS over HTTPS в браузере настраивается отдельно.</div>
           </div>
 
           <div class="panel diag-tips">
@@ -1066,7 +1021,7 @@
     </main>
   </div>
 
-  <div id="toast" class="toast" hidden></div>
+  <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true" hidden></div>
 
   <!-- Отчёт для поддержки -->
   <div id="collectFormOverlay" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="collectFormTitle">
@@ -1076,10 +1031,6 @@
       <p class="modal-desc">Будет сохранён ZIP с результатами теста, версией Windows и сетевыми настройками. Личные файлы и пароли не собираются. Отчёт сохраняется на вашем компьютере - программа никуда его не отправляет.</p>
       <label class="field"><span class="field-label">Город</span><input class="input" id="collectCity" placeholder="Москва"></label>
       <label class="field"><span class="field-label">Провайдер</span><input class="input" id="collectIsp" placeholder="Ростелеком"></label>
-      <div class="drop-zone" id="collectBatZone">
-        <input type="file" accept=".bat" id="collectBatInput" hidden>
-        <span id="collectBatLabel">Файл стратегии Zapret 1 (.bat) - по желанию</span>
-      </div>
       <label class="opt-line"><input type="checkbox" class="cbx" id="collectConsent"><span>Согласен предоставить данные для анализа</span></label>
       <div class="modal-actions">
         <button class="btn" id="collectCancelBtn">Отмена</button>
@@ -1098,19 +1049,6 @@
         <button class="btn" id="vpnCancelBtn">Отмена</button>
         <button class="btn btn-primary" id="retryVpnBtn">Проверить снова</button>
         <button class="btn" id="vpnSkipBtn">Продолжить всё равно</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Нужен Zapret 1 -->
-  <div id="needZapret1Overlay" class="modal-overlay" role="dialog" aria-modal="true">
-    <div class="modal">
-      <div class="modal-title">Не запущен Zapret 1</div>
-      <p class="modal-desc">Расширенный режим сравнивает результат с вашим текущим Zapret 1. Запустите его батник и продолжите, либо вернитесь и отключите расширенный режим.</p>
-      <div class="modal-status" id="needZapret1Status"></div>
-      <div class="modal-actions">
-        <button class="btn" id="needZ1CancelBtn">Отмена</button>
-        <button class="btn btn-primary" id="checkZapret1Btn">Я запустил - продолжить</button>
       </div>
     </div>
   </div>

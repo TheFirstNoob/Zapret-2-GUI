@@ -109,10 +109,8 @@ def service_install(ctx: AppContext, data: dict) -> dict:
         return _svc_fail("подготовка установки", e)
     if err:
         return {"status": "error", "message": f"Установка отменена - {err}"}
-    cleanup = bool(data.get("cleanup_zapret1")) if isinstance(data, dict) else False
     try:
-        ok, msg = svc_install(root_dir=get_root_dir(), args=args,
-                              cleanup_zapret1=cleanup)
+        ok, msg = svc_install(root_dir=get_root_dir(), args=args)
     except Exception as e:  # noqa: BLE001
         return _svc_fail("установка", e)
     if ok:
