@@ -26,6 +26,11 @@ TOKEN = "tok"
 
 
 def main() -> int:
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="backslashreplace")
+        except (AttributeError, ValueError):
+            pass
     init(str(REPO), TOKEN)
     httpd = create_server("127.0.0.1", PORT)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
