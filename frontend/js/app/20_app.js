@@ -203,6 +203,12 @@ if (start) start.addEventListener('click', () => TesterPage.startProbe());
       const r = await apiGet('/update-check');
       if (r.available && r.latest) {
         $('updateVersion').textContent = r.latest;
+        const warn = $('updateRuntimeWarn');
+        if (warn) {
+          warn.textContent = r.runtime_warning || '';
+          warn.hidden = !r.runtime_warning;
+          warn.title = r.runtime_warning || '';
+        }
         $('updateLink').href = r.url || '#';
         $('updateMirrorLink').href = r.mirror_url || '#';
         this._updateTag = r.tag || r.latest.replace(' ', '-');

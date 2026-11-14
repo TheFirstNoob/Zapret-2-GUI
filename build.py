@@ -36,6 +36,16 @@ for name in ("list-include-user", "list-exclude-user",
     (REL_LISTS / f"{name}.txt").write_text("", encoding="utf-8")
 # Пул-файлы игр (lists/games/*) - рантайм конкретной машины, в релиз не идут
 shutil.rmtree(REL_LISTS / "games", ignore_errors=True)
+# RUNTIME_FILES апдейтера (lists/zapret-auto.txt и т.п.) генерируются обходом
+# на машине пользователя; в архив их класть нельзя (T22, 2026-11-14).
+try:
+    import sys as _sys
+    _sys.path.insert(0, str(ROOT))
+    from core.updater import RUNTIME_FILES as _RUNTIME_FILES
+    for _rel in _RUNTIME_FILES:
+        (REL_LISTS / Path(_rel).name).unlink(missing_ok=True)
+except Exception as _e:  # noqa: BLE001 - не повод валить сборку
+    print(f"WARN: runtime-files filter: {_e}")
 
 PyInstaller.__main__.run([
     "--noconfirm",

@@ -23,6 +23,7 @@ tools/voice_flap_watch.log
 _tspu-docs/
 
 # Runtime-generated files
+/runtime/
 *.log
 logs/
 _zapret_run.bat

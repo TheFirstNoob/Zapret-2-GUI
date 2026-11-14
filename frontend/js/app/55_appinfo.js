@@ -58,6 +58,12 @@ const AppInfo = {
         } else {
           st.textContent = `Установлена последняя версия (${r.current || ''})`;
         }
+        if (r.runtime_warning) {
+          const warn = document.createElement('div');
+          warn.className = 'help-note';
+          warn.textContent = 'Внимание: ' + r.runtime_warning;
+          st.appendChild(warn);
+        }
       } catch (e) {
         st.textContent = 'Ошибка проверки: ' + (e.message || e);
       }

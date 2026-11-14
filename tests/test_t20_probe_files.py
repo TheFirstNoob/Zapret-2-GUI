@@ -249,7 +249,13 @@ def test_runtime_dir_not_packaged_or_collected():
     # spec и build.py перечисляют каталоги/staging вручную - runtime/ нет.
     spec = (ROOT_DIR / "Zapret2GUI.spec").read_text(encoding="utf-8")
     build_py = (ROOT_DIR / "build.py").read_text(encoding="utf-8")
-    assert "runtime" not in spec and "runtime" not in build_py
+    # Проверяем именно ПАКЕТИРОВАНИЕ каталога runtime/, а не слово "runtime"
+    # где-либо: build.py законно фильтрует updater.RUNTIME_FILES.
+    spec_norm = spec.replace("\\", "/").lower()
+    build_norm = build_py.replace("\\", "/").lower()
+    assert "runtime/probe" not in spec_norm
+    assert "runtime/probe" not in build_norm
+    assert '"runtime"' not in spec_norm and '"runtime"' not in build_norm
     # collector кладёт в ZIP только presets/ и lists/ (никаких probe-файлов).
     collector_src = (ROOT_DIR / "core" / "collector.py").read_text(
         encoding="utf-8")

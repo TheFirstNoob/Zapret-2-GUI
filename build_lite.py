@@ -361,6 +361,15 @@ def main() -> None:
         (LITE / "lists" / f"{name}.txt").write_text("", encoding="utf-8")
     # пул-файлы игр (lists/games/*) — рантайм конкретной машины
     shutil.rmtree(LITE / "lists" / "games", ignore_errors=True)
+    # RUNTIME_FILES (lists/zapret-auto.txt и т.п.) — генерируются обходом у
+    # пользователя, в архив не идут (T22, 2026-11-14).
+    try:
+        sys.path.insert(0, str(ROOT))
+        from core.updater import RUNTIME_FILES as _RUNTIME_FILES
+        for _rel in _RUNTIME_FILES:
+            (LITE / "lists" / Path(_rel).name).unlink(missing_ok=True)
+    except Exception as _e:  # noqa: BLE001
+        print(f"WARN: runtime-files filter: {_e}")
 
     # манифест обновления пишется НИЖЕ, после генерации всех файлов
     # (bat/тестер/VERSION/README): иначе манифест не совпадал с содержимым
