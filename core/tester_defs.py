@@ -45,7 +45,11 @@ QUIC_QUIRK_DOMAINS = frozenset({
 # QUIC-проба (12.10): реальный H3 вместо эвристики. niquests+qh3 - опциональная
 # зависимость сборки; без неё - прежний нейтральный статус QUIC. Контракт:
 # forced-H3, ассерт http_version==30, свежая сессия, внешний wall-clock дедлайн.
-H3_WALL_DEADLINE = 12.0
+# T20: дедлайн 12->6 с + lib_timeout (2,4) - на чёрной QUIC-сети 5 хостов
+# добавляли ~12 с к профилю; после первого дедлайна в батарее остальные
+# QUIC-хосты не пробуем (нейтральный H3_NONE «не проверялся»).
+H3_WALL_DEADLINE = 6.0
+H3_LIB_TIMEOUT: tuple[float, float] = (2.0, 4.0)
 
 # Пробуются, но НЕ в network_rate: excluded/непокрытые хосты показывают сырую
 # сеть без искажения сравнения стратегий. Чистка 2026-09-11: убраны мёртвые
@@ -113,6 +117,21 @@ NAKED_BASELINE_HOSTS: list[str] = [
 
 # Размер тела TCP 16-20 теста: 64 КБ случайных данных - stateful DPI режет поток в середине передачи.
 TCP1620_BODY = 64 * 1024
+
+# T20: бюджет TCP16-20 обязан покрывать ОТПРАВКУ тела на медленном аплинке,
+# иначе -m 6 обрывает поток на N КБ и это ложно классифицируется как
+# stateful DPI (аудит B5: загрузка >12 КБ при таймауте != сигнатура обрыва).
+# timeout = max(TCP1620_TIMEOUT_MIN, body / measured_rate * margin + запас),
+# потолок - TCP1620_TIMEOUT_CAP. Скорость аплинка измеряется отдельной мелкой
+# POST-пробой (tester_probes.measure_upload_rate); при недоступности -
+# консервативный fallback (больше времени, но не бесконечно).
+TCP1620_TIMEOUT_MIN = 6.0
+TCP1620_TIMEOUT_CAP = 30.0
+TCP1620_RATE_MARGIN = 1.5
+TCP1620_RATE_PROBE_BODY = 16 * 1024
+# rate неизвестен: 64 КБ при ~8 КБ/с (медленный 3G/ADSL) успевают за 8 с,
+# плюс connect/потери - 14 с покрывает; потолок сверху - TCP1620_TIMEOUT_CAP.
+TCP1620_TIMEOUT_FALLBACK = 14.0
 
 # CDN-хосты теста (опционально, через галочку). Источник списка:
 # hyperion-cs/dpi-checkers ru/tcp-16-20/suite.v2.json (Apache-2.0; см.
@@ -202,6 +221,9 @@ class ProfileTestResult:
     tier: str = "full"
     provider_hop: int = 0      # первый хоп вне локальной сети (TTL-проба)
     provider_ip: str = ""       # IP этого хопа
+    # T20: прогон прерван пользователем (shutdown_event) - результаты в
+    # results частичные, в ранжирование/start_failures такой профиль не идёт.
+    cancelled: bool = False
 
 
 class _TestAbort(Exception):

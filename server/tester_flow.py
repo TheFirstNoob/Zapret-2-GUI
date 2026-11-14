@@ -36,6 +36,9 @@ def play_completion_sound() -> None:
 
 
 def serialize_result(res) -> dict:
+    # T20: отмена прогона - частичный результат с явным признаком (аддитивные
+    # поля, старый контракт не меняется). h3_skipped - сколько QUIC-хостов не
+    # проверялось H3 после первого дедлайна батареи (нейтральный H3_NONE).
     return {
         "profile": res.profile_name,
         "ok_count": res.ok_count,
@@ -50,6 +53,9 @@ def serialize_result(res) -> dict:
         "total_time_ms": res.total_time,
         "provider_hop": res.provider_hop,
         "provider_ip": res.provider_ip,
+        "cancelled": bool(getattr(res, "cancelled", False)),
+        "h3_skipped": sum(1 for r in res.results
+                          if "H3 не проверялся" in (r.error or "")),
         "results": [
             {"domain": r.domain, "test_type": r.test_type, "status": r.status,
              "time_ms": r.time_ms, "error": r.error}
@@ -402,6 +408,8 @@ def _cdn_scan_branch(state, tester, data: dict) -> None:
         "note": note,
         "error": scan.error,
         "ipset_mode": scan.ipset_mode,
+        # T20: отмена посреди скана - вердикты неполные (аддитивное поле).
+        "cancelled": tester.shutdown_event.is_set(),
     })
     state.running = False
 
@@ -441,9 +449,14 @@ def _is_start_failure(res) -> bool:
 
     Аборт test_profile возвращает ProfileTestResult с единственным служебным
     TestResult(test_type="process"); такие НЕ должны попадать в ранжирование
-    как 0%-стратегии (ревью-раунд 3: ошибка запуска != плохая стратегия)."""
+    как 0%-стратегии (ревью-раунд 3: ошибка запуска != плохая стратегия).
+    Отменённый профиль (cancelled, T20) - тоже НЕ сбой запуска: у него может
+    быть частичный результат, а может и не быть ни одного - в обоих случаях
+    это не повод писать «стратегия не запустилась»."""
     if res is None:
         return True
+    if getattr(res, "cancelled", False):
+        return False
     res_list = getattr(res, "results", None) or []
     if not res_list:
         return True
@@ -469,6 +482,7 @@ def _test_profiles_branch(state, tester, data: dict) -> None:
     # свежая сборка получает одну проверочную сессию ниже.
     profiles = [p for p in profiles if p != "custom"]
     all_results = []
+    cancelled_run = None
     start_failures: list[str] = []
     start_failure_errors: list[str] = []
     alt_params = bool(data.get("alt_params", False))
@@ -539,6 +553,24 @@ def _test_profiles_branch(state, tester, data: dict) -> None:
             # P2: неожиданный сбой одного профиля не рушит весь свип
             _ui_debug(f"tester: profile {label} EXCEPTION: {e!r}")
             res = None
+        if res is not None and getattr(res, "cancelled", False):
+            # T20: отмена не «не запустилась» и не 0%-стратегия. Частичный
+            # результат сохраняем отдельным полем финала; ранжирование по
+            # неполной батарее было бы ложным.
+            cancelled_run = res
+            progress(int(6 + (idx + 1) / total * 94),
+                     f"Стратегия {label}: отменено")
+            with state.lock:
+                state.completed.append(label)
+            break
+        if res is None and tester.shutdown_event.is_set():
+            # Исключение пришло уже после нажатия «Остановить»: это отмена,
+            # а не «стратегия не запустилась» (нет повода для start_failures).
+            progress(int(6 + (idx + 1) / total * 94),
+                     f"Стратегия {label}: отменено")
+            with state.lock:
+                state.completed.append(label)
+            break
         if _is_start_failure(res):
             # P1-1: движок не запустился - это НЕ 0%-стратегия; в
             # ранжирование не идёт (иначе вердикт врёт «не пробило»)
@@ -634,6 +666,11 @@ def _test_profiles_branch(state, tester, data: dict) -> None:
         # (было: после basic-прогона обход пропадал молча).
         # z2_was/svc_was захвачены В НАЧАЛЕ прогона (до naked),
         # здесь они уже не читаются - winws2 к этому моменту гашен.
+        if cancelled_run is not None:
+            # Частичный результат отменённого профиля - в финале (аддитивные
+            # поля: старый UI/JSON-контракт их игнорирует), не в рейтинге.
+            final["cancelled"] = True
+            final["partial_profile"] = serialize_result(cancelled_run)
         if start_failures:
             final["start_failures"] = start_failures
         # Восстановление защиты - единой точкой, и при отмене (отмена

@@ -59,6 +59,12 @@ def _plan_cdn_action(domain: str, action: str, ips: list[str],
     ipset-include не включает сети из ipset-exclude[-user], general в
     ipset-режиме пишет сырые IP, ipset-include - префиксы _safe_prefixes
     относительно protection.
+
+    T20/T14: пишем ТОЛЬКО в user-каналы (lists/*-user.txt), которые
+    апдейтер/переустановка не трогают (core.updater.is_user_file). Bundled
+    list-general.txt/list-exclude.txt - релизные курируемые файлы: правка в
+    них молча исчезала после обновления (а для списков из апдейта была и
+    бы race с перезаписью).
     """
     values: list[str] = []
     if action in ("ipset-include", "ipset-exclude"):
@@ -84,7 +90,10 @@ def _plan_cdn_action(domain: str, action: str, ips: list[str],
             return True, "уже в списке", []
         return True, "", [(fname, values)]
     if action == "exclude":
-        fname = "list-exclude.txt"
+        # user-канал: апдейтер/переустановка bundled list-exclude.txt не
+        # сохранят, а list-exclude-user.txt инжектится как
+        # --hostlist-exclude в каждый hostlist-блок (см. args_transforms).
+        fname = "list-exclude-user.txt"
         from core import list_health
         cov = list_health.coverage(get_root_dir(), [domain]).get(domain, {})
         if cov.get("excludes"):
@@ -113,7 +122,9 @@ def _plan_cdn_action(domain: str, action: str, ips: list[str],
         if not values:
             return True, "уже в списке", []
         return True, "", [(fname, values)]
-    fname = "list-general.txt"
+    # user-канал: bundled list-general.txt перезаписывается апдейтером и
+    # уезжает в релиз - правка пользователя терялась молча (T20/T14).
+    fname = "list-include-user.txt"
     from core import list_health
     cov = list_health.coverage(get_root_dir(), [domain]).get(domain, {})
     if any(n in list_health.DOMAIN_EXCLUDE_BUNDLED for n in cov.get("excludes", [])):
@@ -132,12 +143,14 @@ def _plan_cdn_action(domain: str, action: str, ips: list[str],
 def cdn_recommendation(ctx: AppContext, data: dict) -> dict:
     """Полу-автономное применение вердикта CDN-скана без наложений.
 
-    general - домен → list-general.txt (в ipset-режиме IP кандидата →
+    general - домен → list-include-user.txt (в ipset-режиме IP кандидата →
     ipset-include-user.txt, с проверкой пересечения с ipset-exclude);
-    exclude - домен → list-exclude.txt (работает в обоих режимах);
+    exclude - домен → list-exclude-user.txt (работает в обоих режимах);
     ipset-include/ipset-exclude - IP → ipset-include-user.txt.
-    Применение перезапускает обход - busy-чек не даёт делать это во время
-    теста (M1: кнопки строк CDN активны во время прогона)."""
+    Все цели - user-каналы: bundled-списки апдейтер перезаписывает, правки
+    в них терялись молча (T20/T14). Применение перезапускает обход -
+    busy-чек не даёт делать это во время теста (M1: кнопки строк CDN
+    активны во время прогона)."""
     busy = checkers_busy()
     if busy:
         raise ApiError(409, {"status": "error", "message": busy})

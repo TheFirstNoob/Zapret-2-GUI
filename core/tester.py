@@ -47,6 +47,13 @@ class Zapret2Tester:
         # профилями одной сессии - tracert гоняем один раз.
         self._ttl_cache: Optional[dict] = None
         self._ipset_net_cache: Optional[list] = None
+        # T20/аудит B7: страховка на старте - probe-файлы прошлых версий
+        # (lists/list-probe.txt, lists/ipset-probe.txt, presets/_probe_cdn.txt)
+        # могли остаться после kill/питания и уехать в релиз/диагностику/backup.
+        try:
+            tester_probes.cleanup_stale_probe_files(self.root_dir)
+        except OSError:
+            pass
 
     def set_logger(self, logger: Optional["TestLogger"]) -> None:
         self._logger = logger
@@ -92,14 +99,19 @@ class Zapret2Tester:
 
     def _run_profile(self, profile_name: str, ipset_catchall: bool = False,
                      fake_blob: str = "", discord_alt: bool = False,
-                     ipset_include_file: Optional[Path] = None) -> bool:
+                     ipset_include_file: Optional[Path] = None,
+                     preset_path: Optional[Path] = None) -> bool:
         exe_path = self.bin_dir / "winws2.exe"
         if not exe_path.exists():
             exe_path = self.root_dir / "winws2.exe"
         if not exe_path.exists():
             return False
 
-        preset = self.root_dir / "presets" / f"{profile_name}.txt"
+        # preset_path - пробный пресет (CDN-верификация пишет его в
+        # runtime/probe, а не в живые presets/: T20/аудит B7). По умолчанию -
+        # штатный presets/<profile>.txt.
+        preset = (Path(preset_path) if preset_path is not None
+                  else self.root_dir / "presets" / f"{profile_name}.txt")
         if not preset.exists():
             return False
 
@@ -123,11 +135,22 @@ class Zapret2Tester:
         self._process = proc if ok else None
         return ok
 
-    def _run_domain_tests(self, domains: list[str], concurrency: int = 5, http_only: bool = False, result_cb=None, expand_www: bool = False, progress_cb=None) -> list[TestResult]:
+    def _run_domain_tests(self, domains: list[str], concurrency: int = 5,
+                          http_only: bool = False, result_cb=None,
+                          expand_www: bool = False, progress_cb=None,
+                          stop_event: Optional[threading.Event] = None,
+                          ) -> list[TestResult]:
+        # stop_event по умолчанию - общий shutdown_event тестера: кнопка
+        # «Остановить» прерывает батарею между пробами, уже собранные
+        # результаты возвращаются частично (T20, аудит B10). getattr - для
+        # тестовых инстансов, собранных через __new__ без __init__.
+        ev = stop_event if stop_event is not None else getattr(
+            self, "shutdown_event", None)
         return tester_probes.run_domain_tests(
             domains, concurrency=concurrency, http_only=http_only,
             result_cb=result_cb, expand_www=expand_www,
-            progress_cb=progress_cb, timeout=self.probe_timeout)
+            progress_cb=progress_cb, timeout=self.probe_timeout,
+            stop_event=ev)
 
     # ── TTL-проба ──────────────────────────────────────────────────
     # Traceroute до первого хопа вне локальной сети - вероятный DPI-бокс
@@ -229,6 +252,20 @@ class Zapret2Tester:
             _logged_progress, kill_fn=self._ensure_winws2_dead,
             logger=self._logger)
 
+    def _partial_result(self, profile_name, all_results, provider_hop,
+                        provider_ip, tier) -> ProfileTestResult:
+        """Частичный результат отменённого прогона (T20, аудит B10).
+
+        Считается тем же scoring.build_result, но НЕ гасит движок и не двигает
+        прогресс: гашение делает except-ветка test_profile, прогресс после
+        отмены пользователю уже не нужен. cancelled=True - профиль не идёт в
+        ранжирование/start_failures (см. _is_start_failure в tester_flow)."""
+        res = tester_scoring.build_result(
+            profile_name, all_results, provider_hop, provider_ip, tier,
+            lambda pct, msg: None, kill_fn=lambda: None, logger=self._logger)
+        res.cancelled = True
+        return res
+
     def test_profile(
         self,
         profile: str,
@@ -279,16 +316,21 @@ class Zapret2Tester:
             _logged_progress(15, f"Тест {len(domains)} доменов...")
 
             if self.shutdown_event.is_set():
-                raise _TestAbort(ProfileTestResult(profile_name=profile_name))
+                raise _TestAbort(self._partial_result(
+                    profile_name, all_results, provider_hop, provider_ip, tier))
 
             def _on_curl_progress(done_curl, total_curl):
                 pct = 15 + int(done_curl * 40 / total_curl)
                 progress_cb(pct, f"curl-тест {done_curl}/{total_curl}")
 
-            for r in self._run_domain_tests(domains, concurrency=8, expand_www=True, result_cb=result_cb, progress_cb=_on_curl_progress):
-                if self.shutdown_event.is_set():
-                    raise _TestAbort(ProfileTestResult(profile_name=profile_name))
-                all_results.append(r)
+            # Батарея сама останавливается по shutdown_event (T20) и отдаёт
+            # частичный список - отменённые результаты больше не теряются.
+            all_results.extend(self._run_domain_tests(
+                domains, concurrency=8, expand_www=True,
+                result_cb=result_cb, progress_cb=_on_curl_progress))
+            if self.shutdown_event.is_set():
+                raise _TestAbort(self._partial_result(
+                    profile_name, all_results, provider_hop, provider_ip, tier))
 
             # Пинг-фаза считается отдельно: tests_done включал curl-результаты,
             # бар прыгал с 55% сразу на ~88%. Пинги только на DNS-канарейках (IP);
@@ -302,6 +344,9 @@ class Zapret2Tester:
                 if result_cb: result_cb(all_results[-1])
                 ping_done += 1
                 progress_cb(55 + int(ping_done * 20 / ping_total), f"ping {host}")
+            if self.shutdown_event.is_set():
+                raise _TestAbort(self._partial_result(
+                    profile_name, all_results, provider_hop, provider_ip, tier))
 
             return self._build_result(profile_name, all_results, provider_hop, provider_ip, tier, _logged_progress)
 
@@ -330,6 +375,12 @@ class Zapret2Tester:
         защиту (флаги z2_was/z1_was)."""
         result = CdnScanResult(ipset_mode=ipset_mode)
         try:
+            # T20/аудит B7: probe-файлы прошлых упавших прогонов и legacy-мусор
+            # в живых lists//presets/ - чистим один раз на скан (не критично).
+            try:
+                tester_probes.cleanup_stale_probe_files(self.root_dir)
+            except OSError:
+                pass
             if not self._any_winws2_running():
                 result.error = "winws2 не запущен - запустите защиту перед сканированием"
                 return result
@@ -339,10 +390,14 @@ class Zapret2Tester:
                 return result
             alive = [r.domain for r in protected if r.status == "OK"]
             dpi_map: dict[str, str] = {}
-            if alive:
+            if alive and not self.shutdown_event.is_set():
                 progress_cb(25, "Проверка stateful DPI (TCP 16-20)...")
-                for r in tester_probes.run_tcp1620_tests(self.root_dir, alive, timeout=self.probe_timeout):
+                for r in tester_probes.run_tcp1620_tests(
+                        self.root_dir, alive, timeout=self.probe_timeout,
+                        stop_event=self.shutdown_event):
                     dpi_map[r.domain] = "DET" if r.status == "TCP16_20" else "ok"
+            if self.shutdown_event.is_set():
+                return result
             # ── A/B: второй прогон в противоположном режиме ipset ──
             # Включение/выключение IP-обхода меняет картину «пробило/сломало»:
             # ipset-all чинит одних и ломает других - один прогон этого не
@@ -366,17 +421,23 @@ class Zapret2Tester:
                     alive2 = [r.domain for r in battery2 if r.status == "OK"]
                     if alive2 and not self.shutdown_event.is_set():
                         progress_cb(42, "Проверка stateful DPI во втором прогоне...")
-                        for r in tester_probes.run_tcp1620_tests(self.root_dir, alive2, timeout=self.probe_timeout):
+                        for r in tester_probes.run_tcp1620_tests(
+                                self.root_dir, alive2, timeout=self.probe_timeout,
+                                stop_event=self.shutdown_event):
                             det2_map[r.domain] = "DET" if r.status == "TCP16_20" else "ok"
                 else:
                     progress_cb(48, "A/B-прогон не состоялся (пресет не стартовал)")
                 self._ensure_winws2_dead()
+                if self.shutdown_event.is_set():
+                    return result
             # мёртвые в первом прогоне: naked-перепроверка нужна только тем,
             # кого A/B не спас (во втором прогоне они тоже мертвы)
+            if self.shutdown_event.is_set():
+                return result
             dead = [r.domain for r in protected
                     if r.status != "OK" and alive2_map.get(r.domain) is not True]
             naked_map: dict[str, str] = {}
-            if naked_check and dead:
+            if naked_check and dead and not self.shutdown_event.is_set():
                 result.z2_was = result.z2_was or self._any_winws2_running()
                 result.z1_was = result.z1_was or self._any_winws_running()
                 progress_cb(52, "Перепроверка мёртвых хостов без защиты...")
@@ -384,6 +445,8 @@ class Zapret2Tester:
                 result.naked_done = True
                 for r in self._run_domain_tests(dead, concurrency=8, http_only=True, result_cb=result_cb):
                     naked_map[r.domain] = "A" if r.status == "OK" else "x"
+            if self.shutdown_event.is_set():
+                return result
             candidates = [d for d in alive if dpi_map.get(d) == "DET"]
             verify_map: dict[str, str] = {}
             if candidates and not self.shutdown_event.is_set():
@@ -399,6 +462,11 @@ class Zapret2Tester:
                 # верификация ВСЕГДА снимает защиту (finally в verify-функциях),
                 # даже если пробный прогон не состоялся - рестор обязателен
                 result.naked_done = True
+            if self.shutdown_event.is_set():
+                # Отмена: не собираем вердикты по неполным данным - вызывающий
+                # восстановит защиту (naked_done/protection_touched) и пометит
+                # прогон отменённым.
+                return result
             # покрытие ipset-all для fix-кандидатов (только ipset-режим)
             ip_map: dict[str, list[str]] = {}
             cover_map: dict[str, bool] = {}
@@ -406,6 +474,8 @@ class Zapret2Tester:
                 nets = self._ipset_networks()
                 fix_domains = [d for d in verify_map if verify_map[d] == "fix"]
                 for d in fix_domains:
+                    if self.shutdown_event.is_set():
+                        return result
                     ips = tester_probes.resolve_ips(d)
                     ip_map[d] = ips
                     cover_map[d] = bool(ips) and all(
@@ -660,41 +730,144 @@ class Zapret2Tester:
         progress_cb(100, f"Готово: {ok_n}/{total} OK")
         return out
 
+    # Маркер общего блока default.txt, в который вставляется пробный hostlist.
+    _PROBE_HOSTLIST_MARKER = "--hostlist=@lists/list-general.txt"
+
+    def _probe_log(self, msg: str) -> None:
+        """Диагностика пробной верификации: test_session.log + app-лог."""
+        if self._logger:
+            try:
+                self._logger.progress("_probe", f"probe: {msg}")
+            except Exception:
+                pass
+        try:
+            from core.applog import log as _applog
+            _applog("tester", f"probe: {msg}")
+        except Exception:
+            pass
+
+    def _relative_to_root(self, path: Path) -> Optional[str]:
+        """Путь пробы относительно корня приложения (токен для winws2).
+
+        None, если путь вне root: относительный токен тогда небезопасен -
+        вызывающий отказывается от верификации (вердикт unknown), а не
+        подставляет absolute-путь (T20: absolute/temp не используем)."""
+        try:
+            return str(Path(path).resolve().relative_to(self.root_dir.resolve()))
+        except (ValueError, OSError):
+            return None
+
+    def _probe_preset_text(self, hostlist_rel: str, with_chdir: bool = False) -> str:
+        """Текст пробного пресета: default.txt + пробный hostlist.
+
+        hostlist_rel - путь ОТНОСИТЕЛЬНО root приложения: движок запускается
+        с cwd=root (launch_winws2_direct/launch_winws2_bat - проверено), а
+        with_chdir добавляет --chdir=<root> как страховку на случай смены cwd
+        лаунчера. Пустая строка = в default.txt нет маркера (верификация
+        невозможна, не молчим - см. _probe_log)."""
+        preset_src = (self.root_dir / "presets" / "default.txt").read_text(
+            encoding="utf-8")
+        marker = self._PROBE_HOSTLIST_MARKER + "\n"
+        if marker not in preset_src:
+            return ""
+        text = preset_src.replace(
+            marker, marker + f"--hostlist={hostlist_rel}\n")
+        if with_chdir:
+            text = f"--chdir={self.root_dir}\n" + text
+        return text
+
+    def _probe_hostlist_error(self, probe_list: Path) -> str:
+        """Вывод движка, если пробный hostlist не открылся (relative-путь).
+
+        Пустая строка = признаков проблемы нет. Без этой проверки движок,
+        стартовавший без пробного списка, дал бы всем кандидатам ложный
+        вердикт hard («не лечится»)."""
+        try:
+            from core.launcher import _read_stderr_sink
+            sink = _read_stderr_sink(self.root_dir) or ""
+        except Exception:
+            return ""
+        low = sink.lower()
+        markers = ("cannot open", "cannot access", "bad file", "unable to open",
+                   "failed to open", "not accessible", "cannot create")
+        if probe_list.name.lower() in low and any(m in low for m in markers):
+            return sink[:300]
+        return ""
+
     def _verify_with_desync(self, domains: list[str], result_cb,
                             ipset_catchall: bool = False) -> dict[str, str]:
         """Пробный прогон с десинком кандидатов: вердикт fix/hard по факту.
 
         Вердикт для КАЖДОГО домена (fix - вылечился, hard - умер или режется
-        дальше); пустой словарь = проверка не состоялась (unknown у вызывающего)."""
+        дальше); пустой словарь = проверка не состоялась (unknown у
+        вызывающего). Пробные файлы (список + пресет) живут в runtime/probe
+        с уникальными именами и удаляются в finally (T20/аудит B7): в живые
+        lists//presets/ не пишем - они уезжали в релиз/диагностику/backup."""
         result: dict[str, str] = {}
-        probe_list = self.root_dir / "lists" / "list-probe.txt"
-        preset_path = self.root_dir / "presets" / "_probe_cdn.txt"
+        try:
+            probe_list = tester_probes.probe_file(self.root_dir, "list-probe", ".txt")
+            probe_preset = tester_probes.probe_file(self.root_dir, "preset-probe", ".txt")
+        except OSError as e:
+            self._probe_log(f"каталог проб недоступен: {e}")
+            return result
+        rel = self._relative_to_root(probe_list)
+        if not rel:
+            self._probe_log("пробный файл вне корня приложения - верификация пропущена")
+            return result
         try:
             probe_list.write_text("\n".join(domains) + "\n", encoding="utf-8")
-            preset_src = (self.root_dir / "presets" / "default.txt").read_text(encoding="utf-8")
-            marker = "--hostlist=@lists/list-general.txt\n"
-            if marker not in preset_src:
+            # Попытка 1 - как production-пресеты: cwd движка = root (launcher),
+            # относительный hostlist корректен. Попытка 2 - со страховочным
+            # --chdir=<root>, если движок всё же не открыл пробный список.
+            for with_chdir in (False, True):
+                text = self._probe_preset_text(rel, with_chdir=with_chdir)
+                if not text:
+                    self._probe_log(
+                        "в default.txt нет маркера '" + self._PROBE_HOSTLIST_MARKER
+                        + "' - верификация не состоялась")
+                    return result
+                probe_preset.write_text(text, encoding="utf-8")
+                if not self._run_profile("_probe_cdn",
+                                         ipset_catchall=ipset_catchall,
+                                         preset_path=probe_preset):
+                    self._probe_log(
+                        f"пробный пресет не стартовал (chdir={with_chdir})")
+                    continue
+                if not self._any_winws2_running():
+                    self._probe_log(
+                        f"движок с пробным пресетом умер (chdir={with_chdir})")
+                    continue
+                bad = self._probe_hostlist_error(probe_list)
+                if bad:
+                    self._probe_log(
+                        f"hostlist пробы не открылся (chdir={with_chdir}): "
+                        f"{bad}")
+                    self._ensure_winws2_dead()
+                    continue
+                alive_now = self._run_domain_tests(
+                    domains, concurrency=15, http_only=True,
+                    result_cb=result_cb)
+                measured = {r.domain for r in alive_now}
+                alive_names = {r.domain for r in alive_now if r.status == "OK"}
+                for d in domains:
+                    # Домены, которые не успели пробить (отмена батареи), не
+                    # получают ложный hard - остаются unknown у вызывающего.
+                    if d in measured:
+                        result[d] = "fix" if d in alive_names else "hard"
+                if alive_names and not self.shutdown_event.is_set():
+                    for r in tester_probes.run_tcp1620_tests(
+                            self.root_dir, sorted(alive_names),
+                            timeout=self.probe_timeout,
+                            stop_event=self.shutdown_event):
+                        if r.status == "TCP16_20":
+                            result[r.domain] = "hard"
                 return result
-            probe_preset = preset_src.replace(marker, marker + "--hostlist=@lists/list-probe.txt\n")
-            preset_path.write_text(probe_preset, encoding="utf-8")
-            if not self._run_profile("_probe_cdn", ipset_catchall=ipset_catchall):
-                return result
-            if not self._any_winws2_running():
-                return result
-            alive_now = self._run_domain_tests(domains, concurrency=15, http_only=True, result_cb=result_cb)
-            alive_names = {r.domain for r in alive_now if r.status == "OK"}
-            for d in domains:
-                result[d] = "hard" if d not in alive_names else "fix"
-            if alive_names:
-                for r in tester_probes.run_tcp1620_tests(self.root_dir, sorted(alive_names), timeout=self.probe_timeout):
-                    if r.status == "TCP16_20":
-                        result[r.domain] = "hard"
             return result
         except (OSError, _TestAbort):
             return result
         finally:
             self._ensure_winws2_dead()
-            for p in (probe_list, preset_path):
+            for p in (probe_list, probe_preset):
                 try:
                     p.unlink()
                 except OSError:
@@ -708,11 +881,18 @@ class Zapret2Tester:
         Ревью 18.10: пользовательский ipset-include-user.txt НЕ трогаем
         (раньше писали пробные IP в него и восстанавливали из памяти:
         crash/kill оставлял мусор, а параллельная правка юзера могла быть
-        молча откатана finally)."""
+        молча откатана finally). T20: пробный файл - runtime/probe с
+        уникальным именем (не lists/), build/collector его не копируют."""
         result: dict[str, str] = {}
-        probe_inc = self.root_dir / "lists" / "ipset-probe.txt"
+        try:
+            probe_inc = tester_probes.probe_file(self.root_dir, "ipset-probe", ".txt")
+        except OSError as e:
+            self._probe_log(f"каталог проб недоступен: {e}")
+            return result
         all_ips: set[str] = set()
         for d in domains:
+            if self.shutdown_event.is_set():
+                break
             all_ips.update(tester_probes.resolve_ips(d))
         if not all_ips:
             return result
@@ -725,11 +905,16 @@ class Zapret2Tester:
             if not self._any_winws2_running():
                 return result
             alive_now = self._run_domain_tests(domains, concurrency=15, http_only=True, result_cb=result_cb)
+            measured = {r.domain for r in alive_now}
             alive_names = {r.domain for r in alive_now if r.status == "OK"}
             for d in domains:
-                result[d] = "hard" if d not in alive_names else "fix"
-            if alive_names:
-                for r in tester_probes.run_tcp1620_tests(self.root_dir, sorted(alive_names), timeout=self.probe_timeout):
+                if d in measured:
+                    result[d] = "fix" if d in alive_names else "hard"
+            if alive_names and not self.shutdown_event.is_set():
+                for r in tester_probes.run_tcp1620_tests(
+                        self.root_dir, sorted(alive_names),
+                        timeout=self.probe_timeout,
+                        stop_event=self.shutdown_event):
                     if r.status == "TCP16_20":
                         result[r.domain] = "hard"
             return result
@@ -741,6 +926,34 @@ class Zapret2Tester:
                 probe_inc.unlink()
             except OSError:
                 pass
+
+    def _baseline_result(self, profile_name, all_results, tier,
+                         cancelled: bool = False) -> ProfileTestResult:
+        """Счётчики/скор базового прогона (naked/current). Вынесено из
+        _test_baseline: тот же расчёт нужен частичному результату отмены."""
+        ok_count = sum(1 for r in all_results if r.status == "OK")
+        fail_count = sum(1 for r in all_results if r.status in FAIL_STATUSES)
+        total_time = sum(r.time_ms for r in all_results)
+        total = ok_count + fail_count
+        success_rate = (ok_count / total * 100) if total else 0
+        net_ok, net_fail, net_total, network_rate, ping_ok, ping_total = \
+            tester_scoring.net_stats(all_results)
+        return ProfileTestResult(
+            profile_name=profile_name,
+            results=all_results,
+            ok_count=ok_count,
+            fail_count=fail_count,
+            total_time=total_time,
+            success_rate=success_rate,
+            tier=tier,
+            net_ok_count=net_ok,
+            net_fail_count=net_fail,
+            net_total=net_total,
+            network_rate=network_rate,
+            ping_ok_count=ping_ok,
+            ping_total=ping_total,
+            cancelled=cancelled,
+        )
 
     def _test_baseline(
         self,
@@ -775,11 +988,13 @@ class Zapret2Tester:
             pct = 15 + int(done_curl * 40 / total_curl)
             progress_cb(pct, f"curl {done_curl}/{total_curl}")
 
-        async_results = self._run_domain_tests(domains, concurrency=8, expand_www=True, result_cb=result_cb, progress_cb=_on_curl_progress)
-        for r in async_results:
-            if self.shutdown_event.is_set():
-                return ProfileTestResult(profile_name=profile_name)
-            all_results.append(r)
+        all_results.extend(self._run_domain_tests(
+            domains, concurrency=8, expand_www=True,
+            result_cb=result_cb, progress_cb=_on_curl_progress))
+        if self.shutdown_event.is_set():
+            # Отмена: частичные результаты сохраняем (T20, аудит B10).
+            return self._baseline_result(profile_name, all_results, tier,
+                                         cancelled=True)
 
         # Пинг-фаза (только DNS-канарейки, доменные пинги убраны 2026-09-13).
         ping_total = len(PING_HOSTS)
@@ -787,35 +1002,18 @@ class Zapret2Tester:
 
         for host in PING_HOSTS:
             if self.shutdown_event.is_set():
-                return ProfileTestResult(profile_name=profile_name)
+                return self._baseline_result(profile_name, all_results, tier,
+                                             cancelled=True)
             all_results.append(tester_probes.ping_test(host, self.probe_timeout))
             if result_cb:
                 result_cb(all_results[-1])
             ping_done += 1
             progress_cb(55 + int(ping_done * 20 / ping_total), f"{profile_name} ping {host}")
 
-        ok_count = sum(1 for r in all_results if r.status == "OK")
-        fail_count = sum(1 for r in all_results if r.status in FAIL_STATUSES)
-        total_time = sum(r.time_ms for r in all_results)
+        result = self._baseline_result(profile_name, all_results, tier)
+        ok_count, fail_count = result.ok_count, result.fail_count
         total = ok_count + fail_count
-        success_rate = (ok_count / total * 100) if total else 0
-        net_ok, net_fail, net_total, network_rate, ping_ok, ping_total = tester_scoring.net_stats(all_results)
-
-        result = ProfileTestResult(
-            profile_name=profile_name,
-            results=all_results,
-            ok_count=ok_count,
-            fail_count=fail_count,
-            total_time=total_time,
-            success_rate=success_rate,
-            tier=tier,
-            net_ok_count=net_ok,
-            net_fail_count=net_fail,
-            net_total=net_total,
-            network_rate=network_rate,
-            ping_ok_count=ping_ok,
-            ping_total=ping_total,
-        )
+        success_rate = result.success_rate
 
         if self._logger:
             self._logger.result(profile_name, ok_count, fail_count, success_rate)
@@ -869,6 +1067,7 @@ class Zapret2Tester:
             success_rate=network_rate,
             net_ok_count=net_ok, net_fail_count=net_fail, net_total=net_total,
             network_rate=network_rate, tier="smoke",
+            cancelled=self.shutdown_event.is_set(),
         )
 
     def collect_sanity_info(self, profile_name: str, blocked_domains: list[str]) -> dict:
