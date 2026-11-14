@@ -453,17 +453,17 @@ git -C <repo> `
 
 ## 9. Проверки
 
-Минимальная батарея перед сдачей:
+Минимальная батарея перед сдачей (2026-11-14: `tests/` уже в репо):
 ```powershell
-python -m compileall -q core server tools main.py
+python -m compileall -q core server tools tests main.py build.py build_portable.py build_lite.py
+python -m pytest -q tests
+python -m pytest -q tools/security
 python tools/api_smoke.py
-python tools/security/test_updates_security.py
 python tools/args_golden.py compare
+python tools/check_arg_file.py
 python tools/js_bundle_check.py
 python tools/status_contract.py
 ```
-Локально дополнительно: T36/T39/T40/T41/T43/T45/T46/T47/T48/T49 —
-во временной песочнице (не входят в репо).
 
 Сборка/релиз — `AI_DOCS/RELEASE_CHECKLIST.md`: `build.py` (PyInstaller spec,
 фильтры корневых дублей cygwin/WinDivert), `build_portable.py` (Python
@@ -473,3 +473,49 @@ spec падает fail-loud. `VERSION` в корне и `core/config.py` дер�
 синхронно; 0.10 immutable, ассеты 0.11 — только pretty-имена.
 Исторически spec уменьшил exe до ~13.7 МБ / zip ~13.5 МБ за счёт удаления
 корневых дублей cygwin/WinDivert и лишних pythonnet-файлов.
+## 10. Fix batch 2026-11-14 (service/tester/status/updater/probe-файлы)
+
+- **Служба:** durable-журнал `logs/service_op_state.json` пишется ДО первой
+  мутации install/remove/repair/start/stop; при старте GUI
+  `recover_service_operation()` (через `server/session_recovery.py`)
+  дозавершает/откатывает операцию к снимку prev (служба+conf+failure+running),
+  orphaned → удаление; после 3 неудач RECOVERY_FAILED (не дёргает SCM каждый
+  старт). `remove()`: refcounted pause SCM-recovery + проверка failure actions
+  ДО delete, подтверждение отсутствия Win32+sc (1072 «marked for deletion» =
+  НЕ успех), точный resume при неудаче. Ожидание winws2 -
+  Toolhelp32 path-фильтр + `WaitForMultipleObjects` (fallback tasklist).
+- **Статус:** `/api/status` читает Toolhelp32-снимок с TTL-кэшем 1 c
+  (fallback tasklist), service status - `QueryServiceStatusEx` (fallback sc).
+  Контракт полей не менялся; кэш ≤1 c на читающих путях, мутации — force.
+- **Restart:** stop/start обхода сериализованы gate-локом (start ждёт
+  медленный stop), повторный start того же профиля при поднятом обходе —
+  дедуп 2.5 c (без второго stop/start).
+- **ProcessProbe:** один PowerShell-вызов на тик (tcp+udp, DNS раз в 5 c)
+  и rescan PID+UDP-порты одним вызовом; при сбое парсинга — прежний путь.
+- **Тестер:** TCP16-20 бюджет `max(6, min(30, 64КБ/rate*1.5+2))` по измеренной
+  скорости аплинка (кэш 300 c); `rc=28`+неполная загрузка = TIMEOUT, не
+  DETECTED. H3 wall 6 c, close/grace/orphan-threads; после первого дедлайна в
+  батарее — нейтральный `H3_NONE`/`h3_skipped`. Отмена батареи: `stop_event`,
+  частичные результаты, `cancelled` в JSON; CDN-скан — ранние выходы.
+- **Probe-файлы (B7):** `<root>/runtime/probe/` с именами pid+rand8,
+  ОТНОСИТЕЛЬНЫЙ `--hostlist=runtime\probe\...` (НЕ temp/absolute: absolute
+  paths исторически ломались, temp триггерит AV), `--chdir` fallback +
+  проверка stderr; legacy `lists/list-probe.txt`, `lists/ipset-probe.txt`,
+  `presets/_probe_cdn.txt` чистятся. `/runtime/` в `.gitignore`, build/spec/
+  collector/updater его не включают (build.py/build_lite.py дополнительно
+  вычищают `updater.RUNTIME_FILES`, напр. `lists/zapret-auto.txt`).
+- **CDN-стабилизатор:** пишет в `lists/list-include-user.txt` /
+  `lists/list-exclude-user.txt`, bundled-списки не мутирует.
+- **Portable runtime:** в `app/update_manifest.json` аддитивная секция
+  `runtime {rev, python, packages, files[python/...=sha256]}`; `apply_portable`
+  распаковывает в `python.new` с sha256, переключение — батник после выхода
+  GUI (`move python→python.old`, `python.new→python`, rollback при сбое);
+  post-check VERSION/файлы/runtime; при отсутствии runtime — fail-closed
+  «переустановите portable». `/update-check` отдаёт `runtime_warning`, UI его
+  показывает. **0.10→0.11 первым хопом python/ не доставит** — release notes
+  требуют переустановки portable из архива.
+- **Диагностика:** per-check guard (упавший чек = skip/warn, отчёт всегда);
+  DNS backup v2 (все v4/v6 + static-флаги, restore всех адресов); games lock;
+  DNS current_status через один PS/.NET-запрос (~0.83 c vs 3.42 c).
+- **Живая приёмка не выполнялась** (unit/read-only замеры): SCM install/remove/
+  repair/restart, portable-апдейт, тестер/H3/CDN, DNS apply/reset, Win10.

@@ -47,6 +47,13 @@
       движок внутри архивов (0.11: движок должен быть 1.0.7).
 - [ ] `release_publish.py --dry-run` проходит fail-closed сверку VERSION/tag/
       release.json/подпись/sha256/size (stale-манифест = отказ).
+- [ ] **Portable 0.10 → 0.11:** в release notes явно «переустановить portable
+      из архива» — первый хоп старым апдейтером не доставляет `python/`
+      (runtime-секция manifest работает начиная с 0.11).
+- [ ] **Live-приёмка fix batch 2026-11-14** (не unit): install/remove/repair/
+      restart службы + failure actions; живой portable-апдейт; тестер/H3/CDN
+      на реальной сети; DNS apply/reset на IPv6 + 3+ серверах; Win10/PS5.1.
+      Пока не пройдено — не писать в нотах «всё исправлено».
 - [x] `hosts.txt` актуален - он уезжает во все три сборки (exe-zip рядом
       с exe, portable `app\hosts.txt` - обновляется апдейтером, lite
       `hosts.txt` в корне).

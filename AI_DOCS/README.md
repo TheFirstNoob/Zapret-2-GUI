@@ -69,9 +69,10 @@
 - YouTube: у части пользователей 0.10 видео-спиннер — внешняя волна GGC/TLS-CH
   (см. `YOUTUBE_VIDEO_STALL_2026-11.md`); ждём логи affected
   (DevTools Protocol/Method/Size/Remote Address, форма A/B).
-- Тех-аудит 2026-11-14: P0/P1 исправлены; оставшийся бэклог (probe-файлы в
-  живых каталогах, TCP16-20/H3-таймауты, optimizations ProcessProbe/status,
-  portable-runtime при апдейте, CI hardening) — `TECH_AUDIT_2026-11-14.md` §3.
+- Тех-аудит 2026-11-14: P0/P1 и fix batch (T9–T14) закрыты —
+  `TECH_AUDIT_2026-11-14.md` §3/§6. **Live-приёмка ещё не пройдена:**
+  SCM install/remove/restart, portable-апдейт, живой тестер/H3/CDN, живой DNS
+  apply/reset, Win10/PS5.1. Portable 0.10→0.11 — переустановка из архива.
 - Upstream-sync 2026-11-14: данные dpi-detector/dpi-checkers актуальны,
   атрибуция добавлена, ASN Checker приведён к upstream-семантике; ipset-
   staged (27206 CIDR) ждёт A/B catchall + break-class чек; post-0.11 идеи

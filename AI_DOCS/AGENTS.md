@@ -29,11 +29,11 @@
   stock-lua lib/antidpi/auto обновлены, `zapret-custom.lua` сохранён).
   T37/T43/T44 dry-run зелёные; служба в зеркале перезапущена. 0.10 шипится с
   v1.0.5 (без QUIC-dissect фиксов 1.0.5.2+); 0.11-черновик 27.10 = 1.0.6.
-- **Тесты:** отдельного `tests/` в репо нет. Батарея:
-  `compileall`, `tools/api_smoke.py`, `tools/security/test_updates_security.py`
-  (46), `tools/args_golden.py compare`, `tools/js_bundle_check.py`,
-  `tools/status_contract.py`, локальные T36/T39/T40/T41/T43/T45/T46/T47/T48/T49.
-  Перед сдачей — минимум compile + api_smoke + args_golden + security.
+- **Тесты:** `tests/` (pytest, 314 passed на 2026-11-14) + батарея:
+  `compileall`, `tools/api_smoke.py`, `tools/security` (47),
+  `tools/args_golden.py compare`, `tools/check_arg_file.py`,
+  `tools/js_bundle_check.py`, `tools/status_contract.py`.
+  Перед сдачей — минимум compile + pytest + api_smoke + args_golden + security.
 - **Hardening 2026-10-24:** JSON-body/типы полей, quarantine config/games,
   безопасный report-path, atomic import настроек, service ownership и
   remove-check, operation-lock tester/diag/service/update, updater deadline/
@@ -57,6 +57,12 @@
   AI_DOCS/TECH_AUDIT_2026-11-14.md §2–§3. Fail-closed проверки в
   launcher/service/tools не ослаблять.
   `presets/flaky.txt` в рабочем дереве отсутствует и в релиз не входит.
+- **Fix batch 2026-11-14:** закрыты T9/T10/T11/T12/T13/T14 (launcher,
+  service journal/recovery, tester stability/probe-файлы, status/ProcessProbe,
+  diagnostics/DNS/games, portable runtime-апдейт) — см. `TECH_AUDIT` §6.
+  **Live-приёмка ещё не пройдена:** реальные install/remove/restart службы,
+  живой portable-апдейт, живой тестер/H3/CDN, живой DNS apply/reset, Win10.
+  Portable 0.10→0.11 первым хопом: **переустановка из архива** (в release notes).
   Upstream-sync 2026-11-14: данные dpi-detector/dpi-checkers актуальны
   (байт-в-байт), добавлена атрибуция; ipset-база остаётся наша, staged-база
   (27206 CIDR) ждёт A/B в catchall; итоги/бэклог —
