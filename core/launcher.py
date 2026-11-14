@@ -13,8 +13,12 @@ from core.applog import log as _applog
 from core.utils import short_path
 
 
-# Маркеры ошибок winws2 на неверные параметры (exit code ненадёжен: даже на
-# "unknown option" возвращает 0 - вывод приходится сканировать).
+# Маркеры ошибок winws2 на неверные параметры.
+# До 2026-11 считалось, что exit code ненадёжен; проверка трёх движков
+# (1.0.5/1.0.6/1.0.7) показала обратное: фатальные ошибки (unknown option,
+# failed to register hostlist/ipset, дубль файла листов, wf_priority вне
+# диапазона, missing blob) возвращают rc != 0. Поэтому rc - основной сигнал,
+# маркеры остаются для текста ошибки и старых/неизвестных сообщений.
 _DRY_RUN_ERROR_MARKERS = (
     "unknown option",
     "bad file",
@@ -24,6 +28,19 @@ _DRY_RUN_ERROR_MARKERS = (
     "invalid autottl",
     "lua error",
     "error loading",
+    "failed to register hostlist",
+    "failed to register ipset",
+    "failed to register",
+    "wf_priority must",
+    "must specify port",
+    "duplicate blob",
+    "only one --hostlist-auto",
+)
+# Легитимные сообщения, при которых rc != 0 не означает ошибку параметров:
+# движок может ругаться при уже запущенном экземпляре с тем же фильтром.
+_DRY_RUN_RC_EXCEPTIONS = (
+    "already running with the same filter",
+    "already running",
 )
 
 
@@ -136,6 +153,13 @@ def validate_args(exe_path: Path, args: list[str], cwd: Optional[Path] = None, t
     finally:
         conf.unlink(missing_ok=True)
     output = ((r.stdout or "") + "\n" + (r.stderr or "")).lower()
+    if r.returncode != 0 and not any(x in output for x in _DRY_RUN_RC_EXCEPTIONS):
+        first = next((ln.strip() for ln in output.splitlines() if ln.strip()
+                      and "github version" not in ln
+                      and "user defined desync" not in ln
+                      and "template" not in ln), "")
+        return False, (f"winws2 отклонил параметры (rc={r.returncode}): "
+                       f"{first[:200]}")
     for line in output.splitlines():
         stripped = line.strip()
         if any(marker in stripped for marker in _DRY_RUN_ERROR_MARKERS):
@@ -202,6 +226,12 @@ def validate_lua(exe_path: Path, args: list[str], cwd: Optional[Path] = None, ti
     finally:
         conf.unlink(missing_ok=True)
     output = ((r.stdout or "") + "\n" + (r.stderr or "")).lower()
+    if r.returncode != 0 and not any(x in output for x in _DRY_RUN_RC_EXCEPTIONS):
+        first = next((ln.strip() for ln in output.splitlines() if ln.strip()
+                      and "github version" not in ln
+                      and "user defined desync" not in ln
+                      and "template" not in ln), "")
+        return False, (f"winws2 --intercept=0 rc={r.returncode}: {first[:200]}")
     for line in output.splitlines():
         stripped = line.strip()
         if any(marker in stripped for marker in _LUA_ERROR_MARKERS):

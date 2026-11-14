@@ -13,11 +13,30 @@ from typing import Callable, Optional
 
 FAMILIES = ("discord", "google", "general")
 
-# Сегменты, проверяемые тестером, и их family.
-SEGMENT_FAMILY = {
-    "Discord TCP tls": "discord",
-    "Google TCP tls": "google",
-    "General TCP": "general",
+def segment_family(name: str) -> Optional[str]:
+    """Family проверяемого сегмента по его имени (--comment/--name).
+
+    Раньше здесь был жёсткий dict с именами default: у 6/11 пресетов блоки
+    называются иначе ("Discord TCP", "Google TCP", fake-disorder - через
+    --name), из-за чего build_custom молча подставлял сегмент из default, но
+    писал в custom "(из <другого пресета)" - стратегия не соответствовала
+    измеренной. Матчим по смыслу, а не по точной строке."""
+    n = name.strip().lower()
+    if "discord" in n and ("tcp" in n or "tls" in n):
+        return "discord"
+    if "google" in n and ("tcp" in n or "tls" in n):
+        return "google"
+    if "general" in n and "tcp" in n:
+        return "general"
+    return None
+
+
+# Имена сегментов тестера в UI/логе (для обратной совместимости с внешними
+# потребителями результата build_custom).
+SEGMENT_NAMES = {
+    "discord": "Discord TCP tls",
+    "google": "Google TCP tls",
+    "general": "General TCP",
 }
 
 # Сегменты, недоступные тестеру (UDP voice, media-порты, QUIC):
@@ -79,12 +98,43 @@ def parse_preset(preset_path: Path) -> tuple[list[str], dict[str, list[str]]]:
     segments: dict[str, list[str]] = {}
     for b in rest:
         name = "unnamed"
-        for l in b:
-            if l.strip().startswith("--comment="):
-                name = l.strip().split("=", 1)[1]
+        for i, l in enumerate(b):
+            s = l.strip()
+            if s.startswith("--comment="):
+                name = s.split("=", 1)[1]
+                break
+            if s == "--name" and i + 1 < len(b) and not b[i + 1].strip().startswith("--"):
+                name = b[i + 1].strip()
+                break
+            if s.startswith("--name="):
+                name = s.split("=", 1)[1]
                 break
         segments[name] = b
     return header, segments
+
+
+def _strip_meta(block: list[str]) -> list[str]:
+    """Убрать --comment/--name (с их значениями) из копируемого блока."""
+    out: list[str] = []
+    i = 0
+    while i < len(block):
+        s = block[i].strip()
+        if s == "--name" and i + 1 < len(block) and not block[i + 1].strip().startswith("--"):
+            i += 2
+            continue
+        if s.startswith("--name=") or s.startswith("--comment="):
+            i += 1
+            continue
+        out.append(block[i])
+        i += 1
+    return out
+
+
+def _find_family_segment(segments: dict[str, list[str]], fam: str) -> tuple[str, list[str]] | tuple[None, None]:
+    for name, block in segments.items():
+        if segment_family(name) == fam:
+            return name, block
+    return None, None
 
 
 def _family_rates(results_by_profile: dict[str, list[dict]], fam_fn) -> dict[str, dict[str, float]]:
@@ -207,14 +257,17 @@ def build_custom(
     lines: list[str] = list(header)
     if any(l.strip().startswith("--filter") for l in header):
         lines.append("--new")
-    for seg_name, fam in SEGMENT_FAMILY.items():
+    for fam in FAMILIES:
         src = sources[fam]
         src_segs = parse_preset(root / "presets" / f"{src}.txt")[1]
-        block = src_segs.get(seg_name) or def_segs.get(seg_name)
+        seg_name, block = _find_family_segment(src_segs, fam)
+        if block is None:
+            seg_name, block = _find_family_segment(def_segs, fam)
+            src = default_name if block is not None else src
         if block is None:
             continue
-        lines.append(f"--comment={seg_name} (из {src})")
-        lines.extend(l for l in block if not l.strip().startswith("--comment="))
+        lines.append(f"--comment={SEGMENT_NAMES[fam]} (из {src})")
+        lines.extend(_strip_meta(block))
         lines.append("--new")
     for seg_name in KEEP_FROM_DEFAULT:
         block = def_segs.get(seg_name)
