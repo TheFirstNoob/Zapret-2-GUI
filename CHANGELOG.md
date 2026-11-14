@@ -109,23 +109,3 @@
   constant-time; тело запроса ограничено; завершение winws2 фильтруется по пути.
 - **Игры**: проверка доменов ограничена по времени; битый `games.json` уходит в
   `.bad` и не затирается.
-
-### Ограничения и что проверить на живых сетях
-
-- **Portable 0.10 → 0.11**: первый переход старым апдейтером не доставляет
-  `python/`. Один раз переустановите portable из архива 0.11; начиная с 0.11
-  runtime-обновления работают автоматически.
-- **Live-приёмка ещё не пройдена**: реальные install/remove/repair/restart
-  службы и failure actions, живой portable-апдейт, живой тестер/H3/CDN,
-  DNS apply/reset на Wi-Fi/Ethernet/VPN, Win10 без WebView2 Runtime.
-- **YouTube**: «фикс YouTube» не обещаем. Видео у части сетей идёт только по
-  QUIC/h3; TCP-путь к GGC может блокироваться на TLS — маршрут/провайдер/
-  WARP, а не настройки desync. Диагностика — `AI_DOCS/YOUTUBE_VIDEO_STALL_2026-11.md`.
-- **ipset**: staged-база 27206 CIDR (V3nilla/Flowseal) ждёт A/B catchall;
-  релизная база не меняется до проверки. Лицензия V3nilla/RIPEstat — решение
-  владельца (RIPEstat ToC).
-- **Зеркало jsDelivr:** portable и lite доступны; полный exe-архив (~21 MB)
-  превышает лимит 20 MB, поэтому при блокировке GitHub используйте portable/lite
-  или WARP (GitHub — основной источник обновлений).
-- **Discord media/stream**: z2 `default`/`auto` не подтверждены как стабильные;
-  открытый кейс. UDP-фиксы Valorant/Fortnite ждут «Анализа приложения».
