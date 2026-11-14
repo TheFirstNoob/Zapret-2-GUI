@@ -118,6 +118,7 @@ def _copy_data_dir(src_dir: Path, dst_dir: Path, top: str) -> None:
     списки пользователя молча исчезали при каждом обновлении (аудит 2026-10).
     """
     from core.updater import is_user_file
+    failures = 0
     for root_, _dirs, files in os.walk(src_dir):
         rel_dir = Path(root_).relative_to(src_dir)
         for fn in files:
@@ -126,7 +127,61 @@ def _copy_data_dir(src_dir: Path, dst_dir: Path, top: str) -> None:
             if target.exists() and is_user_file(f"{top}/{rel.as_posix()}"):
                 continue
             target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(Path(root_) / fn, target)
+            try:
+                shutil.copy2(Path(root_) / fn, target)
+            except OSError as e:
+                # Файл занят живым winws2/AV/OneDrive (WinError 32). Не
+                # валим весь запуск GUI: кладём рядом .new и помечаем провал,
+                # чтобы маркер data_version не записался и копирование
+                # повторилось на следующем старте (аудит 2026-11-14, P0).
+                failures += 1
+                _applog("layout", f"data copy FAIL {top}/{rel.as_posix()}: {e!r}")
+                try:
+                    shutil.copy2(Path(root_) / fn,
+                                 target.with_name(target.name + ".new"))
+                    _applog("layout", f"  отложено в {target.name}.new")
+                except OSError:
+                    pass
+    return failures
+
+
+def _stop_local_bypass_for_update(exe_dir: Path) -> bool:
+    """Остановить НАШ текущий обход перед заменой bin/*.exe (P0 2026-11-14).
+
+    Иначе копирование нового bin/winws2.exe поверх работающего даёт WinError
+    32, MessageBox «не удалось подготовить данные» и GUI не стартует -
+    повторяется на каждом запуске, пока служба жива. Останавливаем только
+    свою службу/свои winws2 (path-фильтр по каталогу). Возвращает True, если
+    служба была запущена (её надо вернуть после копирования)."""
+    svc_was = False
+    try:
+        from core.service_manager import path_status, status as svc_status
+        from core.service_manager import stop as svc_stop
+        ps, _detail = path_status()
+        if ps in ("ok", "orphaned") and svc_status() == "running":
+            ok, msg = svc_stop()
+            _applog("layout", f"update: служба остановлена перед копированием "
+                              f"bin (ok={ok}, {msg})")
+            svc_was = bool(ok)
+    except Exception as e:  # noqa: BLE001 - диагностика не роняет старт
+        _applog("layout", f"update: stop service перед копированием: {e!r}")
+    try:
+        from core import tester_proc
+        candidates = [exe_dir / "bin" / "winws2.exe", exe_dir / "winws2.exe"]
+        tester_proc.taskkill_safe("winws2.exe", allowed_paths=candidates)
+    except Exception as e:  # noqa: BLE001
+        _applog("layout", f"update: pathkill winws2: {e!r}")
+    return svc_was
+
+
+def _restore_local_bypass_after_update() -> None:
+    try:
+        from core.service_manager import start as svc_start
+        ok, msg = svc_start(None)
+        _applog("layout", f"update: служба возвращена после копирования "
+                          f"(ok={ok}, {msg})")
+    except Exception as e:  # noqa: BLE001
+        _applog("layout", f"update: восстановление службы: {e!r}")
 
 
 def _ensure_data_dir() -> Path:
@@ -147,25 +202,39 @@ def _ensure_data_dir() -> Path:
     if current != VERSION:
         _applog("layout", f"data copy: marker={current!r} -> {VERSION!r} "
                           f"exe_dir={exe_dir}")
+        # P0 2026-11-14: живая служба/winws2 держат bin/winws2.exe - копия
+        # нового движка падала WinError 32 и GUI вообще не запускался
+        # (на каждом старте, пока служба жива). Останавливаем свой обход,
+        # копируем, возвращаем службу (если она была запущена).
+        svc_was = _stop_local_bypass_for_update(exe_dir)
+        failures = 0
         for d in _DATA_DIRS:
             target = exe_dir / d
             try:
-                _copy_data_dir(src / d, target, d)
+                failures += _copy_data_dir(src / d, target, d)
             except OSError as e:
-                # файл под локом AV/OneDrive - молчаливая смерть pythonw
-                # недопустима (M3): показываем причину и выходим чисто
+                failures += 1
                 _applog("layout", f"data copy FAIL {d}: {e!r}")
+        if failures:
+            _applog("layout", f"data copy: {failures} файл(ов) не обновлены - "
+                              "маркер не пишем, повторим на следующем старте")
+            try:
                 ctypes.windll.user32.MessageBoxW(
                     0,
-                    "Не удалось подготовить данные программы:\n\n"
-                    f"{e}\n\nЗакройте антивирус/OneDrive, снимите залоченные "
-                    "файлы и запустите снова.",
-                    "Zapret2 - ошибка", 0x30)
-                return None
-        try:
-            marker.write_text(VERSION, encoding="utf-8")
-        except OSError as e:
-            _applog("layout", f"marker write FAIL: {e!r}")
+                    "Часть файлов программы не удалось обновить (заняты):\n\n"
+                    f"{failures} файл(ов). Программа запустится на старых "
+                    "данных. Закройте антивирус/OneDrive, остановите обход и "
+                    "перезапустите программу - обновление повторится.",
+                    "Zapret2 - предупреждение", 0x30)
+            except Exception:  # noqa: BLE001
+                pass
+        else:
+            try:
+                marker.write_text(VERSION, encoding="utf-8")
+            except OSError as e:
+                _applog("layout", f"marker write FAIL: {e!r}")
+        if svc_was:
+            _restore_local_bypass_after_update()
 
     _heal_missing_data(exe_dir, src)
     return exe_dir
