@@ -367,9 +367,9 @@ const MainPage = {
     $('btnSvcStop').hidden = !(installed && running);
     $('btnSvcRemove').hidden = !installed;
     $('svcStatusText').textContent = this._svcBusy ? '…'
-      : !installed ? 'не установлена - обход только при открытом приложении'
-      : (running ? 'установлена · работает (автозапуск при загрузке)'
-                 : 'установлена · остановлена');
+      : !installed ? 'Не установлена - обход работает только при открытом приложении.'
+      : (running ? 'Автозапуск включён - после перезагрузки обход поднимется сам.'
+                 : 'Служба установлена, но остановлена: автозапуск неактивен.');
     const chip = $('svcState');
     if (chip) {
       const dot = chip.querySelector('.dot');

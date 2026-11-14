@@ -167,27 +167,27 @@
                   <div class="head-desc">Zapret 2</div>
                 </div>
                 <div class="head-right">
+                  <span class="state" id="z2State"><span class="dot dot-unknown"></span><span class="state-text">-</span></span>
+                </div>
+              </div>
+
+              <div class="strategy-line">
+                <div class="strategy-label">
+                  <span class="param-title">Активная стратегия<button type="button" class="param-help" aria-label="Пояснение: активная стратегия" data-popover-title="Активная стратегия" data-popover="Правила, которыми программа обходит блокировки. Не знаете, что выбрать - оставьте default.">?</button></span>
+                  <span class="param-tag">winws2</span>
+                </div>
+                <select class="input" id="strategySelect" aria-label="Активная стратегия"></select>
+              </div>
+              <div class="param-hint" id="strategyApplyHint" hidden></div>
+              <div class="card-feedback"><span class="meta" id="z2Feedback"></span></div>
+
+              <div class="card-actions">
+                <div class="card-actions-left">
+                  <button class="btn btn-sm" id="btnQuickCheck" hidden>Проверить работу</button>
+                </div>
+                <div class="card-actions-right">
                   <button class="btn btn-go" id="btnZ2Toggle">Запустить</button>
-                  <span class="state" id="z2State">
-                    <span class="dot dot-unknown"></span><span class="state-text">-</span>
-                  </span>
                 </div>
-              </div>
-
-              <div class="param-row wide">
-                <div class="param-main">
-                  <div class="param-title">Активная стратегия<button type="button" class="param-help" aria-label="Пояснение: активная стратегия" data-popover-title="Активная стратегия" data-popover="Правила, которыми программа обходит блокировки. Не знаете, что выбрать - оставьте default.">?</button><span class="param-tag">winws2</span></div>
-                  <div class="param-desc">Правила обхода блокировок.</div>
-                  <div class="param-hint" id="strategyApplyHint" hidden></div>
-                </div>
-                <div class="param-ctl">
-                  <select class="input" id="strategySelect"></select>
-                </div>
-              </div>
-
-              <div class="row z2-feedback">
-                <span class="meta" id="z2Feedback"></span>
-                <button class="btn btn-sm btn-go" id="btnQuickCheck" hidden>Проверить работу</button>
               </div>
             </div>
 
@@ -199,81 +199,89 @@
                 </div>
                 <div class="head-text">
                   <div class="head-title">Служба</div>
-                  <div class="head-desc">автозапуск Zapret 2 при загрузке</div>
+                  <div class="head-desc">Автозапуск Zapret 2 при загрузке</div>
                 </div>
                 <div class="head-right">
                   <span class="state" id="svcState"><span class="dot dot-off"></span><span class="state-text st-mute">-</span></span>
                 </div>
               </div>
-              <div class="row">
-                <span class="meta" id="svcStatusText"></span>
-                <span class="svc-actions">
-                  <button class="btn" id="btnSvcRepair" data-popover-title="Выгрузка драйвера" data-popover="Штатная выгрузка драйвера WinDivert (драйвер не ломается - он остаётся резидентным до sc stop/перезагрузки): остановит службу и winws2, выполнит sc stop WinDivert (выгрузка без перезагрузки), исправит битый путь к файлу драйвера и вернёт службу обратно. Занимает несколько секунд и кратко прерывает обход.">Выгрузить драйвер</button>
+              <div class="card-feedback"><span class="meta" id="svcStatusText"></span></div>
+              <div class="card-actions">
+                <div class="card-actions-left">
+                  <details class="svc-more">
+                    <summary class="btn btn-sm">Ещё…</summary>
+                    <div class="svc-more-pop">
+                      <button class="btn btn-sm" id="btnSvcRepair" data-popover-title="Выгрузка драйвера" data-popover="Штатная выгрузка драйвера WinDivert (драйвер не ломается - он остаётся резидентным до sc stop/перезагрузки): остановит службу и winws2, выполнит sc stop WinDivert (выгрузка без перезагрузки), исправит битый путь к файлу драйвера и вернёт службу обратно. Занимает несколько секунд и кратко прерывает обход.">Выгрузить драйвер</button>
+                      <button class="btn btn-sm btn-danger" id="btnSvcRemove" hidden>Удалить службу</button>
+                    </div>
+                  </details>
+                </div>
+                <div class="card-actions-right">
                   <button class="btn btn-go" id="btnSvcInstall" hidden>Установить службу</button>
                   <button class="btn btn-go" id="btnSvcStart" hidden>Запустить службу</button>
                   <button class="btn btn-stop" id="btnSvcStop" hidden>Остановить службу</button>
-                  <button class="btn btn-danger" id="btnSvcRemove" hidden>Удалить службу</button>
-                </span>
+                </div>
               </div>
             </div>
 
-          <div class="panel dns-panel" id="dnsPanel">
-            <div class="card-head">
-              <div class="head-icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+            <!-- DNS-профили -->
+            <div class="panel dns-panel" id="dnsPanel">
+              <div class="card-head">
+                <div class="head-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                </div>
+                <div class="head-text">
+                  <div class="head-title">DNS-профили</div>
+                  <div class="head-desc">Системный DNS: Основной и Резервный. Не меняется автоматически.</div>
+                </div>
+                <div class="head-right"><span class="head-note" id="dnsActive"></span></div>
               </div>
-              <div class="head-text">
-                <div class="head-title">DNS-профили</div>
-                <div class="head-desc">Быстрая смена системного DNS: Основной и Резервный. Не меняется автоматически.</div>
+              <div class="dns-current" id="dnsCurrent">Проверяю текущий DNS…</div>
+              <div class="dns-grid">
+                <div class="dns-profile">
+                  <div class="dns-profile-head">
+                    <span class="dns-profile-title">Основной</span>
+                    <select class="input input-sm dns-provider" id="dnsMainProvider" aria-label="Шаблон основного DNS">
+                      <option value="custom">Свой</option>
+                      <option value="google">Google</option>
+                      <option value="cloudflare">Cloudflare</option>
+                      <option value="quad9">Quad9</option>
+                      <option value="comss">Comss (AI/фильтр)</option>
+                    </select>
+                  </div>
+                  <div class="dns-field"><label class="dns-field-label" for="dnsMainPrimary">DNS 1</label><input class="input" id="dnsMainPrimary" autocomplete="off" spellcheck="false" aria-label="Основной DNS 1" placeholder="Основной DNS"></div>
+                  <div class="dns-field"><label class="dns-field-label" for="dnsMainSecondary">DNS 2 <span class="meta">необязательно</span></label><input class="input" id="dnsMainSecondary" autocomplete="off" spellcheck="false" aria-label="Основной DNS 2" placeholder="Резервный DNS (необязательно)"></div>
+                </div>
+                <div class="dns-profile">
+                  <div class="dns-profile-head">
+                    <span class="dns-profile-title">Резервный</span>
+                    <select class="input input-sm dns-provider" id="dnsReserveProvider" aria-label="Шаблон резервного DNS">
+                      <option value="custom">Свой</option>
+                      <option value="google">Google</option>
+                      <option value="cloudflare">Cloudflare</option>
+                      <option value="quad9">Quad9</option>
+                      <option value="comss">Comss (AI/фильтр)</option>
+                    </select>
+                  </div>
+                  <div class="dns-field"><label class="dns-field-label" for="dnsReservePrimary">DNS 1</label><input class="input" id="dnsReservePrimary" autocomplete="off" spellcheck="false" aria-label="Резервный DNS 1" placeholder="Основной DNS"></div>
+                  <div class="dns-field"><label class="dns-field-label" for="dnsReserveSecondary">DNS 2 <span class="meta">необязательно</span></label><input class="input" id="dnsReserveSecondary" autocomplete="off" spellcheck="false" aria-label="Резервный DNS 2" placeholder="Резервный DNS (необязательно)"></div>
+                </div>
               </div>
-              <div class="head-right">
-                <button class="btn btn-primary" id="dnsApplyBtn">Применить</button>
-              </div>
-            </div>
-            <div class="dns-current" id="dnsCurrent">Проверяю текущий DNS…</div>
-            <div class="dns-controls">
-              <label class="field-label" for="dnsProfile">Профиль</label>
-              <select class="input input-sm" id="dnsProfile">
-                <option value="main">Основной</option>
-                <option value="reserve">Резервный</option>
-              </select>
-              <button class="btn btn-sm" id="dnsResetBtn">Вернуть системный DNS</button>
-              <span class="dns-active" id="dnsActive"></span>
-            </div>
-            <div class="dns-grid">
-              <div class="dns-profile">
-                <div class="dns-profile-head">
-                  <b>Основной</b>
-                  <select class="input input-sm dns-provider" id="dnsMainProvider" aria-label="Шаблон основного DNS">
-                    <option value="custom">Свой</option>
-                    <option value="google">Google</option>
-                    <option value="cloudflare">Cloudflare</option>
-                    <option value="quad9">Quad9</option>
-                    <option value="comss">Comss (AI/фильтр)</option>
+              <div class="dns-hint">DNS-серверы можно смешивать: например, 1.1.1.1 + 8.8.8.8. Это системный DNS; DNS over HTTPS в браузере настраивается отдельно.</div>
+              <div class="card-actions">
+                <div class="card-actions-left">
+                  <label class="field-label" for="dnsProfile">Применить профиль</label>
+                  <select class="input input-sm" id="dnsProfile">
+                    <option value="main">Основной</option>
+                    <option value="reserve">Резервный</option>
                   </select>
                 </div>
-                <input class="input" id="dnsMainPrimary" autocomplete="off" spellcheck="false" aria-label="Основной DNS 1" placeholder="Основной DNS">
-                <input class="input" id="dnsMainSecondary" autocomplete="off" spellcheck="false" aria-label="Основной DNS 2" placeholder="Резервный DNS (необязательно)">
-              </div>
-              <div class="dns-profile">
-                <div class="dns-profile-head">
-                  <b>Резервный</b>
-                  <select class="input input-sm dns-provider" id="dnsReserveProvider" aria-label="Шаблон резервного DNS">
-                    <option value="custom">Свой</option>
-                    <option value="google">Google</option>
-                    <option value="cloudflare">Cloudflare</option>
-                    <option value="quad9">Quad9</option>
-                    <option value="comss">Comss (AI/фильтр)</option>
-                  </select>
+                <div class="card-actions-right">
+                  <button class="btn btn-sm" id="dnsResetBtn">Вернуть системный DNS</button>
+                  <button class="btn btn-primary" id="dnsApplyBtn">Применить</button>
                 </div>
-                <input class="input" id="dnsReservePrimary" autocomplete="off" spellcheck="false" aria-label="Резервный DNS 1" placeholder="Основной DNS">
-                <input class="input" id="dnsReserveSecondary" autocomplete="off" spellcheck="false" aria-label="Резервный DNS 2" placeholder="Резервный DNS (необязательно)">
               </div>
             </div>
-            <div class="dns-hint">DNS-серверы можно смешивать: например, 1.1.1.1 + 8.8.8.8. Это системный DNS; DNS over HTTPS в браузере настраивается отдельно.</div>
-          </div>
-
-
             <!-- Параметры запуска (только Zapret 2) -->
             <details class="panel" id="togglesPanel" open>
               <summary class="card-head">
