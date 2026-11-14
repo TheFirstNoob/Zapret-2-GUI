@@ -6,6 +6,11 @@
 
 ## 0. Ключевые правила
 
+- **GGC/TLS-CH-класс (2026-11):** TCP/80/ICMP к локальным GGC-узлам
+  googlevideo живы, но TLS-хендшейк блокируется для видео-SNI (проходит
+  только whitelist-SNI). fake/split такой маршрут НЕ лечат — это route-class,
+  как SYN-блок. Видео живо только по QUIC/h3; не советовать «отключить QUIC».
+  Детали — `YOUTUBE_VIDEO_STALL_2026-11.md`.
 - **`--payload` обязателен:** без него lua-desync не знает, что искать.
   TLS — `tls_client_hello`, HTTP — `http_req`, QUIC — `quic_initial`,
   Discord voice — `discord_ip_discovery`; unknown UDP — `:payload=all`.
@@ -33,6 +38,10 @@
 
 ## Как тестировать
 
+**Видео YouTube (2026-11):** плеер — SABR-only, per-format `videoplayback`
+URL в player-response нет; проверять видео нужно отдельно от страницы
+(InnerTube/SABR-поток + h3-проба), а не только `curl https://www.youtube.com/`.
+`curl`-статус страницы не доказывает работу видео.
 ```powershell
 taskkill /F /IM winws2.exe 2>$null
 # запустить профиль через GUI
