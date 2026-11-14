@@ -49,3 +49,18 @@ def test_health_does_not_expose_system_only_conflicts_as_user_totals(tmp_path: P
     r = list_health.check_health(tmp_path)
     assert r["bundled_conflicts"] >= 1
     assert r["total_conflicts"] == 1  # только conflict.com с user-файлами
+
+def test_dedupe_does_not_touch_conflict_only(tmp_path: Path):
+    lists = tmp_path / "lists"
+    lists.mkdir()
+    (lists / "list-general.txt").write_text("a.com\n", encoding="utf-8")
+    (lists / "list-google.txt").write_text("", encoding="utf-8")
+    (lists / "list-discord.txt").write_text("", encoding="utf-8")
+    (lists / "list-cdn-fix.txt").write_text("", encoding="utf-8")
+    (lists / "list-exclude.txt").write_text("minecraft.net\n", encoding="utf-8")
+    (lists / "list-include-user.txt").write_text("minecraft.net\n", encoding="utf-8")
+    (lists / "list-exclude-user.txt").write_text("", encoding="utf-8")
+    r = list_health.dedupe(tmp_path)
+    # Конфликт - не дубль: кнопка «Убрать дубли» не должна ничего удалять.
+    assert r["total"] == 0
+    assert (lists / "list-include-user.txt").read_text(encoding="utf-8").strip() == "minecraft.net"
