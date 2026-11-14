@@ -265,11 +265,13 @@ const ListsPage = {
       if (r.total_conflicts) bits.push(`конфликты вкл/искл: ${r.total_conflicts}`);
       this._renderHealth(r);
       if (bits.length) {
-        const tail = fixable
-          ? ' - подробности ниже: домен, список и что делать'
-          : ' - автоматически такие записи не удаляются: смотрите подробности ниже';
-        txt.innerHTML = `<span class="st-err">Найдено: ${escapeHtml(bits.join(' · '))}</span>`
-          + `<span class="meta">${tail}</span>`;
+
+        const tailText = fixable
+          ? 'Подробности ниже: домен, список и что делать.'
+          : 'Автоматически такие записи не удаляются - подробности ниже.';
+        txt.innerHTML = `<div class="lh-summary"><span class="lh-summary-title">Найдено:</span>`
+          + `<span>${escapeHtml(bits.join(' · '))}</span></div>`
+          + `<div class="lh-hint">${escapeHtml(tailText)}</div>`;
         if (btn) {
           btn.hidden = !fixable;
           btn.title = fixable ? 'Удалить дубли и повторы в ваших списках'
@@ -312,12 +314,20 @@ const ListsPage = {
     return `<div class="lh-section"><h4>${escapeHtml(title)} <span class="meta">(${count})</span></h4>${shown}${more}</div>`;
   },
 
+  _healthItem(domain, pairs, hint) {
+    const rows = (pairs || []).map(p =>
+      `<div class="lh-pair"><span class="lh-pair-label">${escapeHtml(p[0])}</span>`
+      + `<span class="lh-pair-values">${p[1]}</span></div>`).join('');
+    const h = hint ? `<div class="lh-hint">${escapeHtml(hint)}</div>` : '';
+    return `<div class="lh-item"><div class="lh-item-head">`
+      + `<span class="lh-domain">${escapeHtml(domain)}</span></div>${rows}${h}</div>`;
+  },
+
   _renderHealth(r) {
     const box = $('listsHealthDetails');
     const legend = $('listsHealthLegend');
     if (!box) return;
     const isUser = n => this._healthIsUser(n, r);
-    const row = (domain, text) => `<div class="lh-row"><span class="lh-domain">${escapeHtml(domain)}</span> ${text}</div>`;
     const conflicts = (r.conflicts || []).filter(c =>
       [...(c.include || []), ...(c.exclude || [])].some(isUser));
     const redundant = r.redundant || [];
@@ -336,19 +346,21 @@ const ListsPage = {
       } else {
         hint = 'Домен одновременно в обходе и исключениях: исключение приоритетнее. Уберите его из одного из списков.';
       }
-      return row(c.entry,
-        `- в обход: ${this._healthBadges(inc, r)}; в исключениях: ${this._healthBadges(exc, r)}`
-        + `<div class="lh-hint">${escapeHtml(hint)}</div>`);
+      return this._healthItem(c.entry, [
+        ['В обход:', this._healthBadges(inc, r)],
+        ['Не трогать:', this._healthBadges(exc, r)],
+      ], hint);
     });
-    const redRows = redundant.map(x => row(x.entry,
-      `- уже есть в ${this._healthBadges(x.also_in_files && x.also_in_files.length ? x.also_in_files : [x.also_in], r)}; в вашем ${this._healthBadge(x.file, r)} он не нужен.`
-      + '<div class="lh-hint">Можно убрать: кнопка «Убрать дубли» или вручную из вашего списка.</div>'));
-    const crossRows = cross.map(x => row(x.entry,
-      `- встречается в: ${this._healthBadges(x.files, r)}`
-      + '<div class="lh-hint">Обычно достаточно системного списка; дубль в вашем можно убрать.</div>'));
-    const dupRows = dups.map(d => row(d.entry,
-      `- повторяется ${d.count} раза в ${this._healthBadge(d.file, r)}`
-      + '<div class="lh-hint">Оставьте одну строку (или нажмите «Убрать дубли»).</div>'));
+    const redRows = redundant.map(x => this._healthItem(x.entry, [
+      ['Уже есть в:', this._healthBadges(x.also_in_files && x.also_in_files.length ? x.also_in_files : [x.also_in], r)],
+      ['В вашем:', this._healthBadge(x.file, r)],
+    ], 'Можно убрать: кнопка «Убрать дубли» или вручную из вашего списка.'));
+    const crossRows = cross.map(x => this._healthItem(x.entry, [
+      ['Встречается в:', this._healthBadges(x.files, r)],
+    ], 'Обычно достаточно системного списка; дубль в вашем можно убрать.'));
+    const dupRows = dups.map(d => this._healthItem(d.entry, [
+      ['Повторяется:', `${d.count} раза в ${this._healthBadge(d.file, r)}`],
+    ], 'Оставьте одну строку (или нажмите «Убрать дубли»).'));
     const html = [
       this._healthSection('Конфликт «в обход ↔ не трогать»', conflicts.length, conflictRows),
       this._healthSection('Уже есть в системных списках (в вашем - лишнее)', redundant.length, redRows),
@@ -367,7 +379,11 @@ const ListsPage = {
       legend.hidden = false;
       const sys = (r.system_files || []).map(n => this._healthBadge(n, r)).join(' ');
       const usr = (r.user_files || []).map(n => this._healthBadge(n, r)).join(' ');
-      legend.innerHTML = `Системные списки: ${sys} - обновляются программой, чаще всего нужный домен уже там. Ваши списки: ${usr} - только ваши; «Убрать дубли» чистит их.`;
+      legend.innerHTML = `<div class="lh-legend-row"><span class="lh-legend-key">Системные списки</span>`
+        + `<span class="lh-legend-values">${sys}</span></div>`
+        + `<div class="lh-legend-row"><span class="lh-legend-key">Ваши списки</span>`
+        + `<span class="lh-legend-values">${usr}</span></div>`
+        + '<div class="lh-hint">Системные обновляются программой - если домен уже там, добавлять в свой не нужно. Ваши редактируются здесь; «Убрать дубли» чистит их.</div>';
     }
   },
   async dedupeLists() {
