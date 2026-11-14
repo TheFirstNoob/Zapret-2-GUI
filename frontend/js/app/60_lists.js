@@ -261,11 +261,10 @@ const ListsPage = {
       if (r.total_cross) bits.push(`повторы между вашими списками: ${r.total_cross}`);
       if (r.total_redundant) bits.push(`повторы уже включённых: ${r.total_redundant}`);
       if (r.total_conflicts) bits.push(`конфликты вкл/искл: ${r.total_conflicts}`);
+      this._renderHealth(r, bits);
       if (bits.length) {
-        const example = (r.conflicts[0] && r.conflicts[0].entry)
-          || (r.redundant[0] && r.redundant[0].entry) || '';
         txt.innerHTML = `<span class="st-err">Найдено: ${escapeHtml(bits.join(' · '))}</span>`
-          + (example ? ` <span class="meta">(например: ${escapeHtml(example)})</span>` : '');
+          + ' <span class="meta">- подробности ниже: домен, список и что делать</span>';
         if (btn) btn.hidden = false;
         if (warnIfClear) showToast('Списки: ' + bits.join(' · '), 'warn');
       } else {
@@ -278,6 +277,73 @@ const ListsPage = {
     }
   },
 
+  _healthIsUser(name, r) {
+    return (r.user_files || []).includes(name);
+  },
+
+  _healthBadge(name, r) {
+    const user = this._healthIsUser(name, r);
+    const label = (r.file_labels || {})[name] || name;
+    const title = user ? 'ваш список (*-user), редактируется вами'
+      : 'системный список: обновляется программой';
+    return `<span class="lh-file${user ? ' is-user' : ''}" title="${escapeHtml(title)}">${escapeHtml(label)}</span>`;
+  },
+
+  _healthBadges(names, r) {
+    return (names || []).map(n => this._healthBadge(n, r)).join(' ');
+  },
+
+  _healthSection(title, count, rows) {
+    if (!rows.length) return '';
+    const shown = rows.slice(0, 30).join('');
+    const more = rows.length > 30 ? `<div class="lh-hint">…и ещё ${rows.length - 30}</div>` : '';
+    return `<div class="lh-section"><h4>${escapeHtml(title)} <span class="meta">(${count})</span></h4>${shown}${more}</div>`;
+  },
+
+  _renderHealth(r) {
+    const box = $('listsHealthDetails');
+    const legend = $('listsHealthLegend');
+    if (!box) return;
+    const isUser = n => this._healthIsUser(n, r);
+    const row = (domain, text) => `<div class="lh-row"><span class="lh-domain">${escapeHtml(domain)}</span> ${text}</div>`;
+    const conflicts = (r.conflicts || []).filter(c =>
+      [...(c.include || []), ...(c.exclude || [])].some(isUser));
+    const redundant = r.redundant || [];
+    const cross = (r.cross || []).filter(c => (c.files || []).some(isUser));
+    const dups = (r.dups || []).filter(d => isUser(d.file));
+    const conflictRows = conflicts.map(c => row(c.entry,
+      `- в обход: ${this._healthBadges(c.include, r)}; в исключениях: ${this._healthBadges(c.exclude, r)}`
+      + '<div class="lh-hint">Исключение приоритетнее: обход для этого домена не действует. Уберите домен из «не трогать» или из «в обход» (не оставляйте в двух местах).</div>'));
+    const redRows = redundant.map(x => row(x.entry,
+      `- уже есть в ${this._healthBadges(x.also_in_files && x.also_in_files.length ? x.also_in_files : [x.also_in], r)}; в вашем ${this._healthBadge(x.file, r)} он не нужен.`
+      + '<div class="lh-hint">Можно убрать: кнопка «Убрать дубли» или вручную из вашего списка.</div>'));
+    const crossRows = cross.map(x => row(x.entry,
+      `- встречается в: ${this._healthBadges(x.files, r)}`
+      + '<div class="lh-hint">Обычно достаточно системного списка; дубль в вашем можно убрать.</div>'));
+    const dupRows = dups.map(d => row(d.entry,
+      `- повторяется ${d.count} раза в ${this._healthBadge(d.file, r)}`
+      + '<div class="lh-hint">Оставьте одну строку (или нажмите «Убрать дубли»).</div>'));
+    const html = [
+      this._healthSection('Конфликт «в обход ↔ не трогать»', conflicts.length, conflictRows),
+      this._healthSection('Уже есть в системных списках (в вашем - лишнее)', redundant.length, redRows),
+      this._healthSection('Повтор между вашими списками', cross.length, crossRows),
+      this._healthSection('Дубли внутри вашего списка', dups.length, dupRows),
+    ].join('');
+    if (!html) {
+      box.hidden = true; box.innerHTML = '';
+    } else {
+      box.innerHTML = html;
+      box.hidden = false;
+    }
+    // Пояснение показываем всегда: пользователь должен понимать, что
+    // большая часть доменов уже в системных списках, и что они не его.
+    if (legend) {
+      legend.hidden = false;
+      const sys = (r.system_files || []).map(n => this._healthBadge(n, r)).join(' ');
+      const usr = (r.user_files || []).map(n => this._healthBadge(n, r)).join(' ');
+      legend.innerHTML = `Системные списки: ${sys} - обновляются программой, чаще всего нужный домен уже там. Ваши списки: ${usr} - только ваши; «Убрать дубли» чистит их.`;
+    }
+  },
   async dedupeLists() {
     const ok = await Confirm.ask({
       title: 'Убрать дубли во всех списках?',

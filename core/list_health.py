@@ -30,6 +30,31 @@ IPSET_EXCLUDE_USER = "ipset-exclude-user.txt"
 USER_EDITABLE = (DOMAIN_INCLUDE_USER, DOMAIN_EXCLUDE_USER,
                  IPSET_INCLUDE_USER, IPSET_EXCLUDE_USER)
 
+# Человекочитаемые названия для UI: пользователь должен видеть, где именно
+# домен уже есть (системный список vs его собственный), а не только счётчик.
+FILE_LABELS = {
+    "list-general.txt": "системный: общие домены",
+    "list-google.txt": "системный: Google",
+    "list-discord.txt": "системный: Discord",
+    "list-cdn-fix.txt": "системный: CDN-фиксы",
+    "list-exclude.txt": "системный: исключения",
+    "list-include-user.txt": "ваш: в обход",
+    "list-exclude-user.txt": "ваш: не трогать",
+    "ipset-include-user.txt": "ваш: IP в обход",
+    "ipset-exclude-user.txt": "ваш: IP не трогать",
+}
+
+
+def file_label(name: str) -> str:
+    """Название списка для пользователя (с пометкой системный/ваш)."""
+    return FILE_LABELS.get(name, name)
+
+
+def is_user_file(name: str) -> bool:
+    """True для редактируемых пользователем списков."""
+    return name in USER_EDITABLE or name in (
+        DOMAIN_INCLUDE_USER, DOMAIN_EXCLUDE_USER)
+
 _DOMAIN_RE = re.compile(r"^[a-z0-9]([a-z0-9._-]*[a-z0-9])?$")
 
 # HTTP-сервер потоковый: две одновременные правки одного user-списка
@@ -114,11 +139,15 @@ def check_health(root: Path) -> dict:
     for n in DOMAIN_EXCLUDE_BUNDLED:
         bundled_exc.update(files[n])
     for e in sorted(bundled_inc & set(files[DOMAIN_INCLUDE_USER])):
+        where_inc = [n for n in DOMAIN_INCLUDE_BUNDLED if e in files[n]]
         redundant.append({"file": DOMAIN_INCLUDE_USER, "entry": e,
-                          "also_in": "стандартные списки"})
+                          "also_in": "стандартные списки",
+                          "also_in_files": where_inc})
     for e in sorted(bundled_exc & set(files[DOMAIN_EXCLUDE_USER])):
+        where_exc = [n for n in DOMAIN_EXCLUDE_BUNDLED if e in files[n]]
         redundant.append({"file": DOMAIN_EXCLUDE_USER, "entry": e,
-                          "also_in": DOMAIN_EXCLUDE_BUNDLED[0]})
+                          "also_in": DOMAIN_EXCLUDE_BUNDLED[0],
+                          "also_in_files": where_exc})
 
     inc_all: dict[str, list[str]] = {}
     for n in DOMAIN_INCLUDE_BUNDLED + (DOMAIN_INCLUDE_USER,):
@@ -147,6 +176,8 @@ def check_health(root: Path) -> dict:
     conflicts_user = [c for c in conflicts
                       if any(n in USER_EDITABLE
                              for n in c["include"] + c["exclude"])]
+    all_files = (DOMAIN_INCLUDE_BUNDLED + (DOMAIN_INCLUDE_USER,)
+                 + DOMAIN_EXCLUDE_BUNDLED + (DOMAIN_EXCLUDE_USER,))
     return {"dups": dups, "cross": cross, "redundant": redundant,
             "conflicts": conflicts, "total_dups": len(dups_user),
             "total_cross": len(cross_user),
@@ -154,7 +185,11 @@ def check_health(root: Path) -> dict:
             "total_conflicts": len(conflicts_user),
             "bundled_dups": len(dups) - len(dups_user),
             "bundled_cross": len(cross) - len(cross_user),
-            "bundled_conflicts": len(conflicts) - len(conflicts_user)}
+            "bundled_conflicts": len(conflicts) - len(conflicts_user),
+            # Для UI: где системные списки, где пользовательские, и их подписи.
+            "user_files": [DOMAIN_INCLUDE_USER, DOMAIN_EXCLUDE_USER],
+            "system_files": list(DOMAIN_INCLUDE_BUNDLED + DOMAIN_EXCLUDE_BUNDLED),
+            "file_labels": {n: file_label(n) for n in all_files}}
 
 
 def dedupe(root: Path) -> dict:
