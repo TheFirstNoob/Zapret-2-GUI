@@ -22,6 +22,8 @@ from urllib.parse import quote
 
 from core import timeouts
 from core.probe_h3 import probe_h3
+_TCP1620_MIN_KB = 12  # порог dpi-detector: меньше 12 КБ - не DPI-сигнатура
+
 from core.tester_defs import (BROWSER_HEADERS, H3_WALL_DEADLINE, HOST_TEST,
                               QUIC_QUIRK_DOMAINS, TCP1620_BODY, TestResult)
 
@@ -414,18 +416,24 @@ def tcp1620_test_curl(domain: str, body_file: Path, timeout: float) -> TestResul
                 r = _curl(["--resolve", f"{domain}:443:{doh_ips[0]}"])
                 code, uploaded = _parse(r)
         elapsed = (time.time() - start) * 1000
-        if code >= 200 and code < 500:
-            # Сервер ответил - загрузка 64 КБ пережила поток: обрыва нет.
-            return TestResult(domain, "tcp1620", "OK", code, elapsed)
         if uploaded >= TCP1620_BODY:
             # Полный объём ушёл, ответа нет (сервер молчит/таймаут) -
             # поток НЕ резан: это не сигнатура stateful DPI.
             return TestResult(domain, "tcp1620", "OK", 0, elapsed,
                               "upload OK, ответа нет")
-        if uploaded > 0:
-            # Поток обрезан на N КБ - сигнатура stateful DPI (dpich Detected).
+        if code >= 200 and code < 500:
+            # Сервер ответил - поток не резался (загрузка пережила ответ).
+            return TestResult(domain, "tcp1620", "OK", code, elapsed)
+        if uploaded >= _TCP1620_MIN_KB * 1024:
+            # Обрыв в окне 12..64 КБ - сигнатура stateful DPI (как в
+            # dpi-detector: TCP_BLOCK_MIN_KB=12; меньше 12 КБ = медленный
+            # канал/ранний обрыв, не признак DPI).
             return TestResult(domain, "tcp1620", "TCP16_20", 0, elapsed,
                               f"обрыв на {uploaded // 1024} КБ - stateful DPI")
+        if uploaded > 0:
+            return TestResult(domain, "tcp1620", "TIMEOUT", 0, elapsed,
+                              f"upload {uploaded // 1024} КБ < 12 КБ - "
+                              "медленный канал/ранний обрыв")
         # uploaded == 0: соединение умерло до/в начале загрузки - фаза.
         err = (r.stderr or "").lower()
         if "reset by peer" in err or "recv failure" in err:

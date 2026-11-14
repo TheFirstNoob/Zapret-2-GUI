@@ -510,6 +510,7 @@ class Zapret2Tester:
     # пропускает максимум (батарея SNI 07.09: example 104/110, sferum 100,
     # hcaptcha 84, google 79; чёрный rutracker.org = 0/110 - ТСПУ режет по SNI)
     ASN_BODY = 32 * 1024
+    ASN_DETECT_MIN_KB = 12            # порог dpi-detector: <12 КБ = TIMEOUT, не DETECTED
 
     def asn_scan(self, progress_cb, result_cb=None, sni: str = "") -> list[dict]:
         """IP-пробы по ASN: IP:443 с белым SNI и загрузкой ~32 КБ. Статусы:
@@ -562,14 +563,26 @@ class Zapret2Tester:
         def _probe_once(p: dict) -> dict:
             start = time.time()
             ip, pid = p.get("ip", ""), p.get("id", "?")
+            # per-item SNI (dpi-detector: item.get("sni") or FAT_DEFAULT_SNI):
+            # 7 Fastly-проб (FST-01..07) гоняются со своими SNI, иначе чужой
+            # vhost -> ранний 421/404 и ложный DETECTED (аудит T16, P0).
+            probe_sni = str(p.get("sni") or sni or "").strip() or sni
+            # HTTP-пробы (порт 80) нельзя гонять на 443: в снимке dpi-detector
+            # есть отдельные HTTP-пробы, а код всегда резолвил SNI:443 и шёл
+            # по https - они гарантированно давали ERROR/TIMEOUT.
+            try:
+                port = int(p.get("port") or 443)
+            except (TypeError, ValueError):
+                port = 443
+            scheme = "https" if port == 443 else "http"
             try:
                 r = subprocess.run(
                     ["curl.exe", "-4", "-k", "-sS", "-m", "10", "--connect-timeout", "3",
-                     "--resolve", f"{sni}:443:{ip}",
+                     "--resolve", f"{probe_sni}:{port}:{ip}",
                      "-w", "%{http_code} %{size_upload} %{time_total}",
                      "-o", "NUL",
                      "--data-binary", f"@{body_file}",
-                     f"https://{sni}/"],
+                     f"{scheme}://{probe_sni}/"],
                     capture_output=True, text=True, encoding="oem", errors="replace",
                     timeout=15, creationflags=subprocess.CREATE_NO_WINDOW,
                 )
@@ -580,15 +593,23 @@ class Zapret2Tester:
                 uploaded = int(out[1]) if len(out) > 1 and out[1].isdigit() else 0
                 kb = uploaded // 1024
                 status, detail = "", ""
-                if code and uploaded >= 28 * 1024:
+                # OK-правило upstream: важен ФАКТ полной отправки 32 КБ, а не
+                # HTTP-код (сервер мог ответить 4xx/421 - это не обход/DPI).
+                if uploaded >= 28 * 1024:
                     status, detail = "OK", f"{elapsed}s"
-                elif uploaded:
+                elif uploaded >= self.ASN_DETECT_MIN_KB * 1024:
+                    # порог dpi-detector: break <12 КБ - это медленный канал/
+                    # ранний обрыв, а не stateful-DPI (TCP_BLOCK_MIN_KB=12).
                     status = "DETECTED"
                     detail = f"обрыв на {kb} КБ | {elapsed}s"
+                elif uploaded:
+                    status = "TIMEOUT"
+                    detail = (f"upload {kb} КБ < {self.ASN_DETECT_MIN_KB} КБ "
+                              f"(медленный канал/ранний обрыв) | {elapsed}s")
                 elif "reset by peer" in err or "recv failure" in err:
                     status, detail = "TCP RST", f"{elapsed}s"
                 elif "connection timed out" in err and "connect" in err:
-                    status, detail = "SYN DROP", "TCP SYN timeout | 8.0s"
+                    status, detail = "SYN DROP", f"TCP SYN timeout | {elapsed}s"
                 elif "timed out" in err:
                     status, detail = "TIMEOUT", f"{elapsed}s"
                 elif "ssl" in err and ("handshake" in err or "alert" in err):
