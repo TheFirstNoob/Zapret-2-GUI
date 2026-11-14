@@ -101,3 +101,54 @@
 `02-dpi-checkers.md` (548 стр.), `03-flowseal-ipset-lists.md` (37.8 KB),
 `scratch-t16/`, `scratch-t17/`, `scratch-lead/` (staged gz + diff/compare PoC).
 В репозиторий не коммитится (gitignored), в docs — только обезличенная выжимка.
+## 6. Как читать снимок hyperion TCP16-20 (пример: T2 моб., без WARP)
+
+Пользовательский снимок: `Alive=Yes` у большинства узлов, `TCP 16-20 =
+Detected` у SE.AKM-01, DE.DO-01, UK.DO-02, US.FTBVM-01/02, US.GC-01/02,
+FR.OVH-01; `No 🔴 / Skip` — у CDN77-01, Contabo FR, Hetzner DE, Vultr,
+OVH-02, Oracle SG; `Unknown/Unlikely` — FI.HE-02, US.MBCOM-01.
+
+- Это **stateful-DPI по направлению upload**: TLS-handshake проходит (Alive
+  Yes), POST 64 КБ обрывается в окне 16–20 КБ. Класс не SNI-специфичный:
+  набор «Detected» — ровно break-class хостинги (DO/OVH/BuyVM/GC/Akamai),
+  которые нельзя включать в широкий ipset (наш A/B 2026-10-10).
+- `No/Skip` = Alive-проверка (HEAD/TLS) не прошла; это не отдельный класс
+  блокировки: узел может быть недоступен/гео-фильтр/rate-limit/чужой vhost.
+- `Unknown/Unlikely` — таймауты/неопределённость чекера, не «блок».
+- Наш ASN-скан (`asn_scan`) и CDN-батарея измеряют то же самое, но иначе:
+  ASN-скан — 110 IP с белым SNI и без нашего обхода; CDN-батарея — домены
+  **под** обходом (fix/break). Их нельзя сравнивать построчно с hyperion:
+  разные IP, SNI и направление/метод.
+
+### Механизмы, которые можно добавить (приоритеты)
+
+1. **P1 — SNI-swap второй проход** для DETECTED-проб: повторить с benign
+   (`example.com`/google) и whitelist-SNI (`vk.ru/ya.ru/gosuslugi.ru`),
+   получить класс `ip` (всё DETECTED) / `sni` (real DETECTED, benign OK) /
+   `whitelist` (только whitelist OK). Прямо про GGC/YouTube-класс, ~40 строк.
+2. **P1 — UI-сводка профиля DPI**: агрегаты по классам/провайдерам +
+   предупреждение «break-class → ipset catchall не включать» + рекомендации
+   (домен в «Спорные домены», пробовать fake-disorder/fakedsplit/QUIC).
+3. **P2 — метод 2 TCP16-20** (HEAD с URI ~7 КБ ×9): отличать «сервер режет
+   upload» от stateful DPI; снижает ложные DETECTED (413/лимит загрузки).
+4. **P2 — whitelist-mode precheck** (3 whitelisted vs 3 обычных URL):
+   при массовом SYN DROP отличать «IP протухли» от CIDR-whitelist режима.
+5. **P2 — повторы/медиана** для DETECTED/TIMEOUT и статус UNKNOWN вместо
+   ложного OK/ERROR на мобильных рывках.
+6. **P3 — 64 КБ «тщательный» режим** с точной точкой обрыва (32 КБ хватает
+   для 16–20, но не отделяет обрыв >20 КБ; на мобиле трафик ×2).
+
+### Что делать со списками
+
+- **Не добавлять** обнаруженные provider-CIDR в `ipset-all` (break-class;
+  ipset catchall их ломает) и не менять `CDN_HOSTS`/`whitelist-sni` —
+  они и так актуальны/идентичны upstream.
+- **Можно добавить** `lists/list-whitelist-sni.txt` (max.ru, ya.ru, vk.ru,
+  gosuslugi.ru) как контрольные домены для будущего SNI-swap/precheck
+  (наш curated список, лицензионно чисто).
+- **Код-карта break-class ASN** (DO 14061, Hetzner 24940, OVH 16276,
+  Vultr 20473, FranTech/BuyVM 53667, GC 396982, …) — для предупреждений в UI,
+  чтобы никто не «лечил» эти детекты широким ipset.
+- **Не брать**: DWC-266, RU whitelist-CIDR флот, dpich, GeoLite2 (см. §2).
+- Доменные списки Flowseal/`list-cdn-test` по этому снимку не меняются: он
+  про hosting-IP, а не про домены.
