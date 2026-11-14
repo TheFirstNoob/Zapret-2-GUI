@@ -20,6 +20,8 @@
    SABR-only, QUIC, что не переоткрывать, что делать в 0.11.
 10. **`TECH_AUDIT_2026-11-14.md`** — тех-аудит: исправленные баги, бэклог,
    оптимизации, применимость zapret2 1.0.6/1.0.7.
+11. **`UPSTREAM_SYNC_2026-11-14.md`** — dpi-detector/dpi-checkers/Flowseal:
+   что актуально, ASN Checker, ipset staged/A-B, лицензии.
 
 Пользовательский мануал — в корне репозитория: `README.md`.
 
@@ -37,6 +39,7 @@
 | `PLAN_WEBVIEW2_FALLBACK.md` | preflight/fallback, остались проверки |
 | `YOUTUBE_VIDEO_STALL_2026-11.md` | YouTube видео-спиннер 2026-11 (курируемая выжимка) |
 | `TECH_AUDIT_2026-11-14.md` | тех-аудит 2026-11-14: фиксы + бэклог |
+| `UPSTREAM_SYNC_2026-11-14.md` | dpi-detector/dpi-checkers/Flowseal: sync + A/B-план |
 | `README.md` (корень) | пользовательский мануал |
 
 ## Исторические документы
@@ -69,6 +72,10 @@
 - Тех-аудит 2026-11-14: P0/P1 исправлены; оставшийся бэклог (probe-файлы в
   живых каталогах, TCP16-20/H3-таймауты, optimizations ProcessProbe/status,
   portable-runtime при апдейте, CI hardening) — `TECH_AUDIT_2026-11-14.md` §3.
+- Upstream-sync 2026-11-14: данные dpi-detector/dpi-checkers актуальны,
+  атрибуция добавлена, ASN Checker приведён к upstream-семантике; ipset-
+  staged (27206 CIDR) ждёт A/B catchall + break-class чек; post-0.11 идеи
+  (whitelist-SNI рунг, CIDR-whitelist precheck) — `UPSTREAM_SYNC_2026-11-14.md`.
 
 ## Чувствительные данные
 

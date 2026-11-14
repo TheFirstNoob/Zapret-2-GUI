@@ -57,8 +57,11 @@
   AI_DOCS/TECH_AUDIT_2026-11-14.md §2–§3. Fail-closed проверки в
   launcher/service/tools не ослаблять.
   `presets/flaky.txt` в рабочем дереве отсутствует и в релиз не входит.
-  CDN/ASN refresh — запаркован; ipset-база остаётся наша; чувствительные
-  сетевые кейсы — только локально, вне git.
+  Upstream-sync 2026-11-14: данные dpi-detector/dpi-checkers актуальны
+  (байт-в-байт), добавлена атрибуция; ipset-база остаётся наша, staged-база
+  (27206 CIDR) ждёт A/B в catchall; итоги/бэклог —
+  `AI_DOCS/UPSTREAM_SYNC_2026-11-14.md`. Чувствительные сетевые кейсы —
+  только локально, вне git.
 
 ## 1. Железные правила
 
@@ -197,6 +200,8 @@ main.py (UAC, pywebview/WebView2, single-instance)
   бэклог P1/P2, оптимизации, применимость фич zapret2 1.0.6/1.0.7.
 - `AI_DOCS/IPSETS_V3NILLA.md` — правила обновления ipset-базы (восстановлен
   из git-истории 2026-11-14), свежий coverage-diff и staged-база.
+- `AI_DOCS/UPSTREAM_SYNC_2026-11-14.md` — dpi-detector/dpi-checkers/Flowseal:
+  что актуально, что исправлено в ASN Checker, A/B-план ipset, лицензии.
 - При чистке доков важные параметры/источники/решения переносить в
   `ENGINEERING_NOTES.md`; raw-оригиналы остаются в git-истории, но секреты/
   регион/IP туда заново не добавлять.
