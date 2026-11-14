@@ -311,9 +311,23 @@ const ListsPage = {
     const redundant = r.redundant || [];
     const cross = (r.cross || []).filter(c => (c.files || []).some(isUser));
     const dups = (r.dups || []).filter(d => isUser(d.file));
-    const conflictRows = conflicts.map(c => row(c.entry,
-      `- в обход: ${this._healthBadges(c.include, r)}; в исключениях: ${this._healthBadges(c.exclude, r)}`
-      + '<div class="lh-hint">Исключение приоритетнее: обход для этого домена не действует. Уберите домен из «не трогать» или из «в обход» (не оставляйте в двух местах).</div>'));
+    const conflictRows = conflicts.map(c => {
+      const inc = c.include || [];
+      const exc = c.exclude || [];
+      const userInc = inc.some(isUser);
+      const userExc = exc.some(isUser);
+      let hint;
+      if (userInc && !userExc) {
+        hint = 'Исключение задано системным списком и приоритетнее: обход для домена не действует. Уберите домен из вашего «в обход» - системный список обновляется программой и править его в GUI нельзя.';
+      } else if (!userInc && userExc) {
+        hint = 'Обход задан системным списком. Уберите домен из вашего «не трогать», чтобы обход заработал.';
+      } else {
+        hint = 'Домен одновременно в обходе и исключениях: исключение приоритетнее. Уберите его из одного из списков.';
+      }
+      return row(c.entry,
+        `- в обход: ${this._healthBadges(inc, r)}; в исключениях: ${this._healthBadges(exc, r)}`
+        + `<div class="lh-hint">${escapeHtml(hint)}</div>`);
+    });
     const redRows = redundant.map(x => row(x.entry,
       `- уже есть в ${this._healthBadges(x.also_in_files && x.also_in_files.length ? x.also_in_files : [x.also_in], r)}; в вашем ${this._healthBadge(x.file, r)} он не нужен.`
       + '<div class="lh-hint">Можно убрать: кнопка «Убрать дубли» или вручную из вашего списка.</div>'));
