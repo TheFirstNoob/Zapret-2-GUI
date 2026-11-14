@@ -367,7 +367,7 @@ def main() -> None:
         sys.path.insert(0, str(ROOT))
         from core.updater import RUNTIME_FILES as _RUNTIME_FILES
         for _rel in _RUNTIME_FILES:
-            (LITE / "lists" / Path(_rel).name).unlink(missing_ok=True)
+            (LITE / "lists" / pathlib.Path(_rel).name).unlink(missing_ok=True)
     except Exception as _e:  # noqa: BLE001
         print(f"WARN: runtime-files filter: {_e}")
 
