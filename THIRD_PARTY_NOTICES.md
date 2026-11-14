@@ -56,6 +56,28 @@ SOFTWARE.
   `ACTIVE_GAME_UDP.bin`, `stun2.bin` (образцы UDP-пакетов для fake-режима).
   Спасибо автору.
 
+## Runnin4ik/dpi-detector — данные ASN/DPI-проб
+
+- Источник: https://github.com/Runnin4ik/dpi-detector
+- Лицензия: MIT (Copyright (c) 2026 Runnin4ik; полный текст — upstream
+  `LICENSE`, https://github.com/Runnin4ik/dpi-detector/blob/main/LICENSE)
+- Что используется: `lists/cdn-asn-probes.json` (upstream `tcp16.json`),
+  `lists/whitelist-sni.txt` — снимок; sha256 и порядок обновления —
+  `AI_DOCS/ENGINEERING_NOTES.md` §1. Идея ASN-скана (IP:443 + 32 КБ)
+  реализована самостоятельно в `core/tester.py`.
+- Обновление: `python tools/sync_dpi_detector.py [--apply]`.
+
+## hyperion-cs/dpi-checkers — CDN-батарея (данные suite.v2)
+
+- Источник: https://github.com/hyperion-cs/dpi-checkers
+- Лицензия: Apache License 2.0
+- Что используется: набор хостов `ru/tcp-16-20/suite.v2.json` (36 хостов)
+  лёг в `core/tester_defs.py::CDN_HOSTS` (порядок upstream сохранён);
+  производные подмножества — `lists/list-cdn-test.txt` (12),
+  `lists/list-cdn-fix.txt` (9) и fix-класс-хосты в `lists/list-general.txt`.
+- Снимок: `suite.v2.json` sha256 `9c844313a8120e54…f50e7e` (2026-06-16);
+  сверка 2026-11-14 = upstream HEAD `bb38d7a` (файл не менялся).
+
 ## V3nilla/IPSets-For-Bypass-in-Russia — CIDR-списки
 
 - Источник: https://github.com/V3nilla/IPSets-For-Bypass-in-Russia

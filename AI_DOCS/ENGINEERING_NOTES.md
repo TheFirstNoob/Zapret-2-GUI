@@ -20,9 +20,10 @@
 | Движок winws2 | `github.com/bol-van/zapret2`; win-bundle `github.com/bol-van/zapret-win-bundle` | `bin/winws2.exe` **1.0.7**; обновлять движок и stock-lua вместе, `zapret-custom.lua` сохранять |
 | WinDivert | `github.com/basil00/WinDivert` | `windivert/` + `bin/WinDivert*.dll/sys`; не чинить удалением при живом драйвере |
 | Lua | `lua/zapret-lib.lua`, `zapret-antidpi.lua`, `zapret-auto.lua` — vendor; `zapret-custom.lua` — наш | vendor не рефакторить; обновлять только синхронизацией с upstream tag |
-| IPset-база | V3nilla `github.com/V3nilla/IPSets-For-Bypass-in-Russia`; jsDelivr `https://cdn.jsdelivr.net/gh/V3nilla/IPSets-For-Bypass-in-Russia@main/` | наша база `lists/ipset-all.txt.gz` (26441 CIDR на 2026-10-24); **не вливать целиком**, только coverage-diff + CDN A/B |
+| IPset-база | V3nilla `github.com/V3nilla/IPSets-For-Bypass-in-Russia`; jsDelivr `https://cdn.jsdelivr.net/gh/V3nilla/IPSets-For-Bypass-in-Russia@main/` | наша база `lists/ipset-all.txt.gz` (26441 CIDR на 2026-10-24); **не вливать целиком**, только coverage-diff + CDN A/B; 2026-11-14: upstream 33336 CIDR, candidates 1123 CIDR/+1.12M адр., staged готов (27206 CIDR), A/B ещё не выполнен — см. `IPSETS_V3NILLA.md` |
 | Реестр РФ | `github.com/bol-van/rulist`: `reestr_hostname.txt`, `reestr_smart4`, `reestr_ipban4`; raw base `https://raw.githubusercontent.com/bol-van/rulist/main/` | один GET + фильтр по семействам; не массово в ipset |
-| ASN/DPI-пробы | `github.com/Runnin4ik/dpi-detector` (v4.2.4); `https://cdn.jsdelivr.net/gh/Runnin4ik/dpi-detector@main/tcp16.json`, `whitelist_sni.txt`, `domains.txt` | только диагностика; список IP протухает, обновлять через jsDelivr |
+| CDN-батарея | `github.com/hyperion-cs/dpi-checkers` (Apache-2.0), `ru/tcp-16-20/suite.v2.json` sha256 `9c844313…f50e7e`; snapshot 2026-11-14 = upstream HEAD `bb38d7a` | `CDN_HOSTS` в `core/tester_defs.py` (36 хостов, порядок upstream) + производные `list-cdn-test.txt` (12), `list-cdn-fix.txt` (9); обновлять только осознанной сверкой списка хостов, не вливать в ipset |
+| ASN/DPI-пробы | `github.com/Runnin4ik/dpi-detector` (MIT; snapshot 2026-10-13: `tcp16.json` sha256 `546c14d6…`, `whitelist_sni.txt` sha256 `0f85b93e…`; upstream main на 2026-11-14 идентичен); `tcp16.json`/`whitelist_sni.txt` (upstream `domains.txt` не бандлим — рантаймом не читается, тест 4 «sweep SNI» = P2) | только диагностика; снимок обновлять `python tools/sync_dpi_detector.py --check/--apply` (jsDelivr → raw, sha256+дифф); атрибуция — `THIRD_PARTY_NOTICES.md` |
 | Теория ТСПУ | `github.com/DanielLavrushin/tspu-docs` | локальный клон; SNI/деградация/двухстадийность |
 | Механики обхода | `github.com/DanielLavrushin/b4` | RST/FIN/ACK, TTL, SNI-first; не переносить 1-в-1 |
 | Референс Zapret 1 | `github.com/Flowseal/zapret-discord-youtube` | сравнение паттернов; чужие пресеты не вливать слепо |
@@ -41,11 +42,17 @@
 - ASN-скан — снимок, не приговор. Не сканить подряд и не делать вывод по
   одному прогону.
 - ASN v2: скан сам глушит защиту и восстанавливает её service-aware;
-  concurrency 4, `curl -S`, exit 28 различается по stderr (CONNECT/SYN DROP
+  concurrency 8, `curl -S`, exit 28 различается по stderr (CONNECT/SYN DROP
   vs общий timeout), «не отвечает» подтверждается повтором. `example.com` —
   лучший белый SNI-зонд; чёрный SNI — контроль. Список `tcp16.json` протухает.
   Исторический ориентир: `example.com` 104/110, `hcaptcha.com` 84/110;
   одиночный прогон — снимок, не приговор; ASN-скан не влияет на стратегии.
+  **2026-11-14 (аудит T16):** семантика приведена к dpi-detector — порт из
+  пробы (6/110 HTTP), per-item `sni` (7 Fastly-проб FST-01..07), OK по факту
+  полной отправки 32 КБ (не по HTTP-коду), DETECTED только при обрыве
+  ≥12 КБ (<12 КБ = TIMEOUT/медленный канал, `TCP_BLOCK_MIN_KB=12`).
+  Baseline 104/110 снят ДО правок — сравнивать с ним некорректно;
+  live-прогон на RU-сети после мерджа не выполнялся.
   dpi-detector запускать обычным python: `python dpi_detector.py -t 34 --batch
   -o report.txt -c 30` (TUI/rich; не pythonw).
 - Файлы данных: `lists/cdn-asn-probes.json` (110 ASN-проб),

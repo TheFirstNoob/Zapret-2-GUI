@@ -114,7 +114,9 @@ NAKED_BASELINE_HOSTS: list[str] = [
 # Размер тела TCP 16-20 теста: 64 КБ случайных данных - stateful DPI режет поток в середине передачи.
 TCP1620_BODY = 64 * 1024
 
-# CDN-хосты теста (опционально, через галочку)
+# CDN-хосты теста (опционально, через галочку). Источник списка:
+# hyperion-cs/dpi-checkers ru/tcp-16-20/suite.v2.json (Apache-2.0; см.
+# THIRD_PARTY_NOTICES.md), порядок upstream сохранён.
 CDN_HOSTS = [
     "hyperion-cs.github.io", "www.mobil.com.se", "cdn.apple-mapkit.com",
     "amplifon.com", "optout.aboutads.info", "cdn.eso.org",

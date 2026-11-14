@@ -406,6 +406,8 @@ python build_lite.py            :: lite на .bat     -> Windows build\Zapret2GU
 - [Запрет 2 (zapret2)](https://github.com/bol-van/zapret2) - bol-van, оригинальный проект (движок winws2 и lua)
 - [Flowseal/zapret-discord-youtube](https://github.com/Flowseal/zapret-discord-youtube) - Zapret 1, по сути то, чем пользуется большинство (структура батников, данные, сравнение в тестах)
 - [V3nilla/IPSets-For-Bypass-in-Russia](https://github.com/V3nilla/IPSets-For-Bypass-in-Russia) - CIDR-списки для ipset-обхода
+- [hyperion-cs/dpi-checkers](https://github.com/hyperion-cs/dpi-checkers) - CDN-батарея (набор хостов suite.v2) и идеи диагностики DPI (Apache-2.0)
+- [Runnin4ik/dpi-detector](https://github.com/Runnin4ik/dpi-detector) - данные ASN/DPI-проб (tcp16.json, whitelist_sni.txt) и идея ASN-скана (MIT)
 - [DanielLavrushin/b4](https://github.com/DanielLavrushin/b4) - примеры нетипичных механизмов DPI-обхода (алгоритмы и параметры fake)
 - [WinDivert](https://github.com/basil00/WinDivert) - Graham Cleus
 - Сообществу Windows-порта winws и движка winws2 (lua-desync)
