@@ -35,6 +35,11 @@ class Zapret2Tester:
         self.hostlists_dir = self.root_dir / "hostlists"
         self.timeout = timeout
         self._original_timeout = timeout
+        # Стабильный таймаут СКОРИНГОВЫХ проб (curl/ping/TCP16-20). Раньше
+        # self.timeout сжимался по RTT до 2 c (max(2.0, rtt*3/1000)) - при
+        # RTT<666 мс все профили мерились -m 2, а naked-база -m 6; один хост =
+        # 12.5 п.п. network_rate и ложные same_as_naked/no_bypass.
+        self.probe_timeout = float(timeouts.HTTP)
         self.shutdown_event = threading.Event()
         self._process: Optional[subprocess.Popen] = None
         self._logger: Optional["TestLogger"] = None
@@ -122,7 +127,7 @@ class Zapret2Tester:
         return tester_probes.run_domain_tests(
             domains, concurrency=concurrency, http_only=http_only,
             result_cb=result_cb, expand_www=expand_www,
-            progress_cb=progress_cb, timeout=self.timeout)
+            progress_cb=progress_cb, timeout=self.probe_timeout)
 
     # ── TTL-проба ──────────────────────────────────────────────────
     # Traceroute до первого хопа вне локальной сети - вероятный DPI-бокс
@@ -293,7 +298,7 @@ class Zapret2Tester:
 
             for host in PING_HOSTS:
                 if self.shutdown_event.is_set(): break
-                all_results.append(tester_probes.ping_test(host, self.timeout))
+                all_results.append(tester_probes.ping_test(host, self.probe_timeout))
                 if result_cb: result_cb(all_results[-1])
                 ping_done += 1
                 progress_cb(55 + int(ping_done * 20 / ping_total), f"ping {host}")
@@ -336,7 +341,7 @@ class Zapret2Tester:
             dpi_map: dict[str, str] = {}
             if alive:
                 progress_cb(25, "Проверка stateful DPI (TCP 16-20)...")
-                for r in tester_probes.run_tcp1620_tests(self.root_dir, alive, timeout=self.timeout):
+                for r in tester_probes.run_tcp1620_tests(self.root_dir, alive, timeout=self.probe_timeout):
                     dpi_map[r.domain] = "DET" if r.status == "TCP16_20" else "ok"
             # ── A/B: второй прогон в противоположном режиме ipset ──
             # Включение/выключение IP-обхода меняет картину «пробило/сломало»:
@@ -361,7 +366,7 @@ class Zapret2Tester:
                     alive2 = [r.domain for r in battery2 if r.status == "OK"]
                     if alive2 and not self.shutdown_event.is_set():
                         progress_cb(42, "Проверка stateful DPI во втором прогоне...")
-                        for r in tester_probes.run_tcp1620_tests(self.root_dir, alive2, timeout=self.timeout):
+                        for r in tester_probes.run_tcp1620_tests(self.root_dir, alive2, timeout=self.probe_timeout):
                             det2_map[r.domain] = "DET" if r.status == "TCP16_20" else "ok"
                 else:
                     progress_cb(48, "A/B-прогон не состоялся (пресет не стартовал)")
@@ -660,7 +665,7 @@ class Zapret2Tester:
             for d in domains:
                 result[d] = "hard" if d not in alive_names else "fix"
             if alive_names:
-                for r in tester_probes.run_tcp1620_tests(self.root_dir, sorted(alive_names), timeout=self.timeout):
+                for r in tester_probes.run_tcp1620_tests(self.root_dir, sorted(alive_names), timeout=self.probe_timeout):
                     if r.status == "TCP16_20":
                         result[r.domain] = "hard"
             return result
@@ -703,7 +708,7 @@ class Zapret2Tester:
             for d in domains:
                 result[d] = "hard" if d not in alive_names else "fix"
             if alive_names:
-                for r in tester_probes.run_tcp1620_tests(self.root_dir, sorted(alive_names), timeout=self.timeout):
+                for r in tester_probes.run_tcp1620_tests(self.root_dir, sorted(alive_names), timeout=self.probe_timeout):
                     if r.status == "TCP16_20":
                         result[r.domain] = "hard"
             return result
@@ -762,7 +767,7 @@ class Zapret2Tester:
         for host in PING_HOSTS:
             if self.shutdown_event.is_set():
                 return ProfileTestResult(profile_name=profile_name)
-            all_results.append(tester_probes.ping_test(host, self.timeout))
+            all_results.append(tester_probes.ping_test(host, self.probe_timeout))
             if result_cb:
                 result_cb(all_results[-1])
             ping_done += 1
