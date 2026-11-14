@@ -23,6 +23,14 @@ VERSION_URL = "https://raw.githubusercontent.com/TheFirstNoob/Zapret-2-GUI/main/
 MIRROR_VERSION_URL = ("https://cdn.jsdelivr.net/gh/TheFirstNoob/Zapret-2-GUI"
                       "@main/VERSION")
 RELEASES_URL = "https://github.com/TheFirstNoob/Zapret-2-GUI/releases"
+# Опубликованный манифест (подписанный release.json): источник истины о том,
+# какая версия реально опубликована. VERSION в main может быть уже 0.11 (draft),
+# но релиза ещё нет - тогда 0.10-клиенты видели баннер и падали на апдейте
+# ("манифест недоступен"). Баннер показываем только по предоставленной версии.
+RELEASE_JSON_URLS = (
+    "https://raw.githubusercontent.com/TheFirstNoob/Zapret-2-GUI/main/release.json",
+    "https://cdn.jsdelivr.net/gh/TheFirstNoob/Zapret-2-GUI@main/release.json",
+)
 # jsDelivr отдаёт файлы репо с другого CDN - работает даже в сетях,
 # где raw/objects.githubusercontent заблокированы по IP.
 MIRROR_URL = ("https://cdn.jsdelivr.net/gh/TheFirstNoob/Zapret-2-GUI@main/"
@@ -50,6 +58,22 @@ def tag_from_version(version: str) -> str:
     (пробел → дефис). Теги вида «0.7.1-hotfix» ломали порядок списка -
     от них отказались."""
     return (version or "").strip().replace(" ", "-")
+
+
+def _fetch_published_version() -> Optional[str]:
+    """Версия из ОПУБЛИКОВАННОГО release.json (raw, затем jsDelivr)."""
+    import json as _json
+    for url in RELEASE_JSON_URLS:
+        try:
+            req = urllib.request.Request(url, headers=_UA)
+            with urllib.request.urlopen(req, timeout=_CHECK_TIMEOUT) as r:
+                data = _json.loads(r.read(4096).decode("utf-8", errors="replace"))
+            ver = str(data.get("version") or "").strip()
+            if ver:
+                return ver
+        except Exception:  # noqa: BLE001 - best-effort, пробуем следующий
+            continue
+    return None
 
 
 def _fetch_latest_raw() -> Optional[str]:
@@ -101,20 +125,27 @@ def check_for_updates() -> dict:
         "mirror_url": MIRROR_URL,
     }
     try:
-        raw = None
-        mirror = None
-        try:
-            raw = _fetch_latest_raw()
-        except Exception:
+        published = _fetch_published_version()
+        if published:
+            # Опубликованная версия - единственная, которую можно поставить:
+            # опережающий VERSION в main (draft) не должен слать баннер.
+            latest = f"Pre-Release {published}"
+        else:
             raw = None
-        try:
-            mirror = _fetch_latest_mirror()
-        except Exception:
             mirror = None
-        latest, err = merge_version_sources(raw, mirror)
-        if latest is None:
-            info["error"] = err
-            return info
+            try:
+                raw = _fetch_latest_raw()
+            except Exception:
+                raw = None
+            try:
+                mirror = _fetch_latest_mirror()
+            except Exception:
+                mirror = None
+            merged, err = merge_version_sources(raw, mirror)
+            if merged is None:
+                info["error"] = err
+                return info
+            latest = merged
         info["latest"] = latest
         info["tag"] = tag_from_version(latest)
         info["available"] = version_key(latest) > version_key(VERSION)
