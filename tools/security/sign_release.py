@@ -14,7 +14,10 @@ import argparse
 import hashlib
 import json
 import re
+import shutil
+import subprocess
 import sys
+import tempfile
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -41,6 +44,66 @@ def _sha256(path: Path) -> str:
     return h.hexdigest()
 
 
+def _norm_version(text: str) -> str:
+    m = re.search(r"(\d+\.\d+(?:\.\d+)?)", text or "")
+    return m.group(1) if m else ""
+
+
+def _zip_version(zf: zipfile.ZipFile) -> str:
+    for name in ("VERSION", "app/VERSION"):
+        try:
+            return zf.read(name).decode("utf-8-sig").strip()
+        except KeyError:
+            continue
+    # portable не кладёт VERSION в архив - версия есть в update_manifest.json
+    for name in ("update_manifest.json", "app/update_manifest.json"):
+        try:
+            data = json.loads(zf.read(name).decode("utf-8-sig"))
+            ver = str(data.get("version") or "").strip()
+            if ver:
+                return ver
+        except (KeyError, ValueError):
+            continue
+    return ""
+
+
+def _zip_engine_version(zip_path: Path) -> str:
+    """Версия bin/winws2.exe из portable/lite архива (extract + --version)."""
+    try:
+        with zipfile.ZipFile(zip_path) as zf:
+            member = next((n for n in zf.namelist()
+                           if n.replace("\\", "/").lower().endswith("bin/winws2.exe")),
+                          None)
+            if not member:
+                return ""
+            tmp = Path(tempfile.mkdtemp(prefix="zapret2_sign_"))
+            try:
+                out = tmp / "winws2.exe"
+                # winws2 - Cygwin-бинарь: нужен весь набор bin/ (cygwin1.dll,
+                # WinDivert.dll), иначе STATUS_DLL_NOT_FOUND.
+                base_dir = member.rsplit("/", 1)[0] if "/" in member else ""
+                for name in zf.namelist():
+                    if name.endswith("/"):
+                        continue
+                    if base_dir and not name.startswith(base_dir + "/"):
+                        continue
+                    flat = name.rsplit("/", 1)[-1]
+                    if flat.lower() in ("winws2.exe", "cygwin1.dll",
+                                        "windivert.dll", "windivert64.sys"):
+                        (tmp / flat).write_bytes(zf.read(name))
+                r = subprocess.run([str(out), "--version"], capture_output=True,
+                                   text=True, encoding="oem", errors="replace",
+                                   timeout=15, cwd=str(tmp),
+                                   creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                m = re.search(r"github version v(\d+\.\d+(?:\.\d+)?)",
+                              (r.stdout or "") + (r.stderr or ""))
+                return m.group(1) if m else ""
+            finally:
+                shutil.rmtree(tmp, ignore_errors=True)
+    except (OSError, zipfile.BadZipFile, subprocess.SubprocessError):
+        return ""
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Подпись релиза")
     ap.add_argument("--version", required=True, help='например "0.9"')
@@ -62,15 +125,52 @@ def main() -> int:
         print("Ключ не совпадает с public_hex в файле — не тот файл?")
         return 1
 
+    # Fail-closed (аудит 2026-11-14): подписывать неполный набор нельзя -
+    # иначе релиз уедет без части артефактов / со старой версией.
+    version_norm = _norm_version(args.version)
+    if not version_norm or _norm_version(args.tag) != version_norm:
+        print(f"Версия и тег не согласованы: version={args.version} tag={args.tag}")
+        return 1
+    if uv.PUBKEY and pk != uv.PUBKEY:
+        print("Публичный ключ файла не совпадает с вшитым PUBKEY - не тот ключ?")
+        return 1
+    repo_exe = REPO_ROOT / "bin" / "winws2.exe"
+    repo_engine = ""
+    if repo_exe.exists():
+        try:
+            r = subprocess.run([str(repo_exe), "--version"], capture_output=True,
+                               text=True, encoding="oem", errors="replace",
+                               timeout=15, cwd=str(REPO_ROOT),
+                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            m_eng = re.search(r"github version v(\d+\.\d+(?:\.\d+)?)",
+                              (r.stdout or "") + (r.stderr or ""))
+            repo_engine = m_eng.group(1) if m_eng else ""
+        except (OSError, subprocess.SubprocessError):
+            repo_engine = ""
     zips_dir = Path(args.zips_dir).resolve()
     out_dir = Path(args.out_dir).resolve()
     artifacts: dict[str, dict] = {}
     for kind, fname in ARTIFACTS.items():
         p = zips_dir / fname
         if not p.is_file():
-            print(f"Пропуск: нет архива {p}")
-            continue
+            print(f"Ошибка: нет архива {p} (нужны все три: {', '.join(ARTIFACTS.values())})")
+            return 1
         art = {"file": fname, "size": p.stat().st_size, "sha256": _sha256(p)}
+        if kind in ("portable", "lite"):
+            with zipfile.ZipFile(p) as zf:
+                inner_v = _norm_version(_zip_version(zf))
+            if inner_v != version_norm:
+                print(f"Ошибка: VERSION внутри {fname} = {inner_v!r}, "
+                      f"а подписываем {version_norm!r}")
+                return 1
+            eng = _zip_engine_version(p)
+            if not eng:
+                print(f"Ошибка: не удалось определить версию winws2 в {fname}")
+                return 1
+            if repo_engine and eng != repo_engine:
+                print(f"Ошибка: в {fname} движок v{eng}, а в репо v{repo_engine} - "
+                      "соберите артефакты из HEAD")
+                return 1
         if kind == "exe":
             # Хеш самого exe внутри архива: апдейтер сверит его после
             # распаковки, до подмены файла.

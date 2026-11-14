@@ -491,3 +491,10 @@ class TestUpdateWorkerSignature(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+def test_pubkey_is_configured():
+    """Канал обновлений не должен существовать с пустым PUBKEY (аудит 2026-11-14)."""
+    from core import update_verify as uv
+    assert uv.PUBKEY, "PUBKEY пуст: обновления не установятся ни у кого"
+    assert len(bytes.fromhex(uv.PUBKEY)) == 32
+    assert uv.pubkey_fingerprint() == "50DCECF29451"

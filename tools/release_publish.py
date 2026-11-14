@@ -44,6 +44,74 @@ ASSETS = {
 }
 
 
+def _sha256(path) -> str:
+    import hashlib
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _norm_version(text: str) -> str:
+    m = re.search(r"(\d+\.\d+(?:\.\d+)?)", text or "")
+    return m.group(1) if m else ""
+
+
+def _verify_release_inputs(version: str, tag: str) -> list[str]:
+    """Fail-closed проверка ПЕРЕД публикацией (аудит 2026-11-14, P1).
+
+    Раньше stale release.json 0.10 под тегом 0.11 уезжал в immutable-релиз
+    (dry-run exit 0). Проверяем: VERSION/tag/manifest согласованы, подпись
+    валидна, sha256/size артефактов совпадают с manifest и файлами."""
+    errors: list[str] = []
+    ver = _norm_version(version)
+    if not ver or _norm_version(tag) != ver:
+        errors.append(f"версия и тег не согласованы: {version} / {tag}")
+    try:
+        vtext = (REPO / "VERSION").read_text(encoding="utf-8").strip()
+    except OSError as e:
+        errors.append(f"нет VERSION: {e}")
+        vtext = ""
+    if vtext and _norm_version(vtext) != ver:
+        errors.append(f"VERSION в репо ({vtext!r}) != {version!r}")
+    man_path = REPO / "release.json"
+    sig_path = REPO / "release.json.sig"
+    if not man_path.exists() or not sig_path.exists():
+        return errors + ["нет release.json/release.json.sig - сначала sign_release.py"]
+    raw = man_path.read_bytes()
+    try:
+        manifest = json.loads(raw.decode("utf-8"))
+    except Exception as e:  # noqa: BLE001
+        return errors + [f"release.json повреждён: {e}"]
+    if _norm_version(manifest.get("version", "")) != ver:
+        errors.append(f"release.json.version={manifest.get('version')!r} != {version!r}")
+    if manifest.get("tag") != tag:
+        errors.append(f"release.json.tag={manifest.get('tag')!r} != {tag!r}")
+    try:
+        sys.path.insert(0, str(REPO))
+        from core.update_verify import verify as _verify_sig
+        if not _verify_sig(raw, sig_path.read_text(encoding="ascii").strip()):
+            errors.append("подпись release.json не проходит проверку")
+    except Exception as e:  # noqa: BLE001
+        errors.append(f"не удалось проверить подпись: {e}")
+    arts = manifest.get("artifacts") or {}
+    for kind, (canon, _pretty) in ASSETS.items():
+        art = arts.get(kind)
+        if not art:
+            errors.append(f"в manifest нет артефакта {kind}")
+            continue
+        src = REPO / "Windows build" / canon
+        if not src.exists():
+            errors.append(f"нет {src}")
+            continue
+        if art.get("sha256") != _sha256(src):
+            errors.append(f"sha256 {canon} не совпадает с manifest")
+        if int(art.get("size", -1)) != src.stat().st_size:
+            errors.append(f"size {canon} не совпадает с manifest")
+    return errors
+
+
 def _token() -> str:
     out = subprocess.run(
         ["git", "credential", "fill"],
@@ -68,7 +136,8 @@ def _api(token: str, method: str, url: str, data=None,
         req.add_header("Content-Type", ctype)
     try:
         with urllib.request.urlopen(req, timeout=300) as r:
-            return json.loads(r.read().decode("utf-8"))
+            raw = r.read().decode("utf-8")
+            return json.loads(raw) if raw.strip() else {}
     except urllib.error.HTTPError as e:
         detail = e.read().decode("utf-8", "replace")[:400]
         print(f"HTTP {e.code} {method} {url}: {detail}")
@@ -86,6 +155,13 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true",
                     help="только собрать stage и показать список (без GitHub)")
     args = ap.parse_args()
+
+    verify_errors = _verify_release_inputs(args.version, args.tag)
+    if verify_errors:
+        print("ПРОВАЛ: входные данные релиза не готовы к публикации:")
+        for e in verify_errors:
+            print("  -", e)
+        return 1
 
     stage = REPO / "build" / "release_stage"
     if stage.exists():

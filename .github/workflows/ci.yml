@@ -26,7 +26,11 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt pytest
       - name: Compile Python
-        run: python -m compileall -q core server tools
+        run: python -m compileall -q core server tools main.py build.py build_portable.py build_lite.py
+      - name: Engine version (must match shipped)
+        run: python -c "import subprocess,sys; out=subprocess.run(['bin/winws2.exe','--version'],capture_output=True,text=True).stdout; sys.exit(0 if 'v1.0.7' in out else 1)"
+      - name: Arg-file equivalence (argv vs @conf)
+        run: python tools/check_arg_file.py
       - name: Unit and security tests
         run: python -m pytest tests tools/security -q
       - name: API smoke

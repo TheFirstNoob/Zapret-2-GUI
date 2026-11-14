@@ -29,17 +29,27 @@ def _exe() -> Path:
     raise SystemExit("winws2.exe не найден (bin/winws2.exe)")
 
 
-def _run(cmd: str | list[str], cwd: Path | None = None) -> str:
-    r = subprocess.run(cmd, capture_output=True, text=True, encoding="oem",
-                       errors="replace", timeout=90,
-                       creationflags=subprocess.CREATE_NO_WINDOW,
-                       cwd=str(cwd) if cwd else None, env=_winws2_env())
-    return (r.stdout or "") + "\n" + (r.stderr or "")
+def _run(cmd: str | list[str], cwd: Path | None = None) -> tuple[str, int]:
+    # Ретрай: на Windows редкие 0xC0000142 (STATUS_DLL_INIT_FAILED) при
+    # частых спавнах winws2/AV дают пустой вывод; это не отказ параметров.
+    best: tuple[str, int] = ("", -1)
+    for _ in range(2):
+        r = subprocess.run(cmd, capture_output=True, text=True, encoding="oem",
+                           errors="replace", timeout=90,
+                           creationflags=subprocess.CREATE_NO_WINDOW,
+                           cwd=str(cwd) if cwd else None, env=_winws2_env())
+        out = (r.stdout or "") + "\n" + (r.stderr or "")
+        best = (out, r.returncode)
+        if r.returncode == 0:
+            return best
+    return best
 
 
-def _key(out: str) -> tuple[str, bool]:
+def _key(out: str, rc: int) -> tuple[str, bool]:
     prof = [l.strip() for l in out.splitlines() if "profile(s)" in l]
-    return (prof[0] if prof else "?", "verified" in out)
+    # "verified" должен быть И rc=0: иначе при отказе движка argv и conf
+    # одинаково дают ("?", False) и проверка ложно-зелёная (аудит 2026-11-14).
+    return (prof[0] if prof else "?", rc == 0 and "verified" in out)
 
 
 def golden() -> int:
@@ -55,11 +65,11 @@ def golden() -> int:
         except Exception as e:  # noqa: BLE001
             print(f"SKIP {pf.name}: build_args: {e}")
             continue
-        o_argv = _run([str(exe), "--dry-run"] + args, cwd=ROOT)
+        o_argv, rc_argv = _run([str(exe), "--dry-run"] + args, cwd=ROOT)
         conf = write_run_conf(ROOT, args, name="check_golden.conf")
-        o_conf = _run(_winws2_raw_cmdline(exe, conf, "--dry-run"), cwd=ROOT)
-        ka, kc = _key(o_argv), _key(o_conf)
-        ok = ka == kc
+        o_conf, rc_conf = _run(_winws2_raw_cmdline(exe, conf, "--dry-run"), cwd=ROOT)
+        ka, kc = _key(o_argv, rc_argv), _key(o_conf, rc_conf)
+        ok = ka == kc and bool(ka[1])
         fails += 0 if ok else 1
         print(("PASS" if ok else "FAIL") + f" {pf.name}: argv={ka} conf={kc}")
         if not ok:
@@ -97,8 +107,8 @@ def quoting() -> int:
             conf = tmp / "q.conf"
             conf.write_text("\n".join(base[:2] + [token] + base[2:]) + "\n",
                             encoding="utf-8")
-            out = _run(_winws2_raw_cmdline(exe, conf, "--dry-run"), cwd=ROOT)
-            ok = ("verified" in out
+            out, rc = _run(_winws2_raw_cmdline(exe, conf, "--dry-run"), cwd=ROOT)
+            ok = (rc == 0 and "verified" in out
                   and "cannot access" not in out and "bad file" not in out)
             good = ok == expect_ok
             fails += 0 if good else 1
