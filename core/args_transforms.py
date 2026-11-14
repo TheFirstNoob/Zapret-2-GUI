@@ -56,9 +56,10 @@ def _append_wf_udp_ports(tokens: list[str], ports: str) -> None:
 def transform_fake_blob(tokens: list[str], ctx: ArgsCtx) -> list[str]:
     """Fake blob selector: подмена TLS-фейка без записи в пресет.
 
-    Регистрируется отдельное имя alt_tls на новый файл и переписываются
-    ТОЛЬКО fake:blob=<tls-blob> - seqovl_pattern (выравнивание перекрытия) и
-    QUIC/HTTP блобы остаются родными."""
+    Регистрируется отдельное имя alt_tls на новый файл и переписывается
+    параметр blob=<tls-blob> в ЛЮБОМ --lua-desync (fake, tls_fake_disorder,
+    fakedsplit, ...) - seqovl_pattern (выравнивание перекрытия) и QUIC/HTTP
+    блобы остаются родными (аудит T9 №5)."""
     if not ctx.fake_blob:
         return tokens
     alt_file = ctx.blobs_dir / f"tls_clienthello_{ctx.fake_blob}.bin"
@@ -76,18 +77,31 @@ def transform_fake_blob(tokens: list[str], ctx: ArgsCtx) -> list[str]:
     tokens = list(tokens)
     tokens.insert(0, "--blob")
     tokens.insert(1, f"alt_tls:@{alt_file}")
+    return [_swap_blob_ref(t, tls_blob_names) for t in tokens]
 
-    def _swap_fake_ref(t: str) -> str:
-        if not t.startswith("--lua-desync=fake:blob="):
-            return t
-        for n in tls_blob_names:
-            if t == f"--lua-desync=fake:blob={n}":
-                return "--lua-desync=fake:blob=alt_tls"
-            if t.startswith(f"--lua-desync=fake:blob={n}:"):
-                return t.replace(f"fake:blob={n}", "fake:blob=alt_tls", 1)
+
+def _swap_blob_ref(t: str, tls_blob_names: set[str]) -> str:
+    """Заменить параметр blob=<tls-блоб> на blob=alt_tls в ЛЮБОМ --lua-desync.
+
+    Раньше подменялась только форма fake:blob=<blob>, поэтому custom-lua
+    пресеты (fake-disorder: tls_fake_disorder:blob=..., fakedsplit:
+    fakedsplit:blob=...) продолжали слать родной TLS-блоб и тумблер "fake
+    blob" молча не работал (аудит T9 №5). Параметры функции (fakes/repeats/
+    pos/...) сохраняются; seqovl_pattern= не трогаем - это позиция
+    перекрытия, а не источник фейка; QUIC/HTTP-блобы не в tls_blob_names.
+    """
+    if not t.startswith("--lua-desync=") or "blob=" not in t:
         return t
-
-    return [_swap_fake_ref(t) for t in tokens]
+    head, sep, params = t.partition("=")
+    parts = params.split(":")
+    changed = False
+    for i, part in enumerate(parts):
+        if part.startswith("blob=") and part[5:] in tls_blob_names:
+            parts[i] = "blob=alt_tls"
+            changed = True
+    if not changed:
+        return t
+    return head + sep + ":".join(parts)
 
 
 def transform_voice_udplen_rewrite(tokens: list[str], ctx: ArgsCtx) -> list[str]:

@@ -239,6 +239,48 @@ def validate_lua(exe_path: Path, args: list[str], cwd: Optional[Path] = None, ti
     return True, ""
 
 
+# Единый список режимов с preset_parse - чтобы парсер и лаунчер не разошлись.
+_GAME_FILTER_MODES = preset_parse.GAME_FILTER_MODES
+_VOICE_MODES = ("off", "fake", "udplen")
+
+
+def _normalize_game_filter_mode(mode: object) -> str:
+    """Режим GameFilter из конфига/API: невалидный -> off (аудит T9 №4).
+
+    Раньше любое значение кроме строки "off" включало окна захвата без
+    профилей (тихий холостой конфиг), а не-строка (int) падала на .strip().
+    """
+    if isinstance(mode, str):
+        norm = mode.strip().lower()
+        if norm in _GAME_FILTER_MODES:
+            return norm
+    if mode not in (None, ""):
+        _applog("launch", f"game_filter_mode={mode!r} невалиден - использую off")
+    return "off"
+
+
+def _normalize_voice_mode(discord_voice_mode: object,
+                          discord_voice: object) -> str:
+    """Режим Discord Voice: legacy-bool при отсутствии строки; мусор -> off."""
+    raw = discord_voice_mode if isinstance(discord_voice_mode, str) else ""
+    mode = (raw or ("fake" if discord_voice else "off")).strip().lower()
+    if mode not in _VOICE_MODES:
+        _applog("launch",
+                f"discord_voice_mode={discord_voice_mode!r} невалиден - off")
+        return "off"
+    return mode
+
+
+def _normalize_fake_blob(fake_blob: object) -> str:
+    """Ключ fake-блоба: не-строка не должна ронять сборку args (аудит T9 №4)."""
+    if fake_blob is None:
+        return ""
+    if isinstance(fake_blob, str):
+        return fake_blob.strip()
+    _applog("launch", f"fake_blob={fake_blob!r} не строка - игнорирую")
+    return ""
+
+
 def build_args_from_preset(
     root_dir: Path,
     lua_dir: Path,
@@ -269,11 +311,12 @@ def build_args_from_preset(
         lists_dir = root_dir / "lists"
     if windivert_dir is None:
         windivert_dir = root_dir / "windivert"
-    game_on = game_filter_mode != "off"
+    # Типы из конфига/API нормализуются и здесь (второй слой после
+    # ConfigManager.load): битое значение не должно ронять старт/диагностику.
+    mode = _normalize_game_filter_mode(game_filter_mode)
     # Discord Voice: legacy bool + новый селект. Неизвестное значение -> off.
-    voice_mode = (discord_voice_mode or ("fake" if discord_voice else "off")).strip().lower()
-    if voice_mode not in ("off", "fake", "udplen"):
-        voice_mode = "off"
+    voice_mode = _normalize_voice_mode(discord_voice_mode, discord_voice)
+    fake_blob = _normalize_fake_blob(fake_blob)
 
     auto_path = ""
     if autohostlist:
@@ -300,14 +343,15 @@ def build_args_from_preset(
 
     tokens = preset_parse.parse_preset(
         preset_path, lists_base=str(lists_dir), lua_dir=lua_dir,
-        blobs_dir=blobs_dir, windivert_dir=windivert_dir, game_on=game_on,
+        blobs_dir=blobs_dir, windivert_dir=windivert_dir,
+        game_filter_mode=mode,
         ipset_catchall=ipset_catchall, autohostlist=autohostlist,
         auto_path=auto_path, ipset_inc_path=ipset_inc_path,
         ipset_excl_path=ipset_excl_path)
     ctx = args_transforms.ArgsCtx(
         root_dir=root_dir, lua_dir=lua_dir, blobs_dir=blobs_dir,
         lists_dir=lists_dir, windivert_dir=windivert_dir,
-        game_filter_mode=game_filter_mode, voice_mode=voice_mode, debug=debug,
+        game_filter_mode=mode, voice_mode=voice_mode, debug=debug,
         fake_blob=fake_blob, autohostlist=autohostlist,
         ipset_catchall=ipset_catchall, discord_alt=discord_alt,
         auto_path=auto_path, ipset_inc_path=ipset_inc_path,
