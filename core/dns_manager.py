@@ -295,8 +295,13 @@ def apply_profile(root_dir: Path, cfg, profile: str) -> dict:
         try:
             _ps_run(_apply_script(idx, servers))
             after = current_status()
-            got = {str(ipaddress.ip_address(x)) for x in after.get("servers") or []}
             want = {str(ipaddress.ip_address(x)) for x in servers}
+            # Сравниваем ТОЛЬКО семейства профиля (аудит 2026-11-14, P1):
+            # IPv4-профиль + оставшийся IPv6 DNS на адаптере давали ложное
+            # "Windows не применил DNS" и откат, профиль навсегда "custom".
+            want_versions = {ipaddress.ip_address(x).version for x in want}
+            got = {str(ipaddress.ip_address(x)) for x in after.get("servers") or []
+                   if ipaddress.ip_address(x).version in want_versions}
             if got != want:
                 raise DnsError("Windows не применил DNS (проверьте права администратора)")
         except Exception:

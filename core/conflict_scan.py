@@ -87,19 +87,28 @@ def _adapter_descriptions() -> List[str]:
 
 
 def _running_services() -> List[str]:
+    """Имена ЗАПУЩЕННЫХ служб.
+
+    2026-11-14: запрос со state= active на актуальной Windows возвращает
+    rc=87 "Invalid state= field" -> список всегда пуст и чек конфликтов с
+    VPN-службами был ложно-зелёным. Берём state= all и фильтруем по строке
+    STATE (значение RUNNING всегда английское, заголовок может быть
+    локализован)."""
     try:
         r = subprocess.run(
-            ["sc", "query", "type=", "service", "state=", "active"],
-            capture_output=True, text=True, timeout=10,
+            ["sc", "query", "type=", "service", "state=", "all"],
+            capture_output=True, text=True, timeout=15,
             encoding="oem", errors="replace",
             creationflags=subprocess.CREATE_NO_WINDOW,
         )
-        names = []
+        names: List[str] = []
+        cur: Optional[str] = None
         for line in r.stdout.splitlines():
             if "SERVICE_NAME" in line:
-                parts = line.split(":", 1)
-                if len(parts) == 2:
-                    names.append(parts[1].strip())
+                cur = line.split(":", 1)[1].strip() if ":" in line else None
+            elif cur and "RUNNING" in line.upper():
+                names.append(cur)
+                cur = None
         return names
     except (subprocess.TimeoutExpired, OSError):
         return []

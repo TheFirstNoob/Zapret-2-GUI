@@ -189,6 +189,16 @@ def export_data_package(
             cfg_json = root_dir / "zapret2_config.json"
             if cfg_json.exists():
                 zf.write(cfg_json, "zapret2_config.json")
+            # 2026-11-14: без этих файлов нельзя разобрать «игры/UDP» и
+            # «движок не стартовал» (games.json, stderr и @conf службы).
+            for rel in ("games.json", "logs/winws2_last_stderr.log",
+                        "logs/run.conf", "logs/service_run.conf"):
+                p = root_dir / rel
+                if p.exists():
+                    try:
+                        zf.write(p, rel)
+                    except OSError:
+                        pass
 
             # debug_winws2.log НЕ включается (2026-09-13): тестер не запускает
             # winws2 с --debug, файл - остаток от прошлой DEBUG-сессии;
