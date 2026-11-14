@@ -9,7 +9,7 @@
 ## 1. Батарея проверок (после исправлений)
 
 - `python -m compileall -q core server tools main.py build*.py` — OK
-- `python -m pytest -q tests` — 314 passed (после fix batch 2026-11-14)
+- `python -m pytest -q tests` — 317 passed (после fix batch 2026-11-14)
 - `python -m pytest -q tools/security` — 47 passed
 - `python tools/api_smoke.py` — OK (включая новый кейс «битый JSON -> 400»)
 - `python tools/args_golden.py compare` — OK
@@ -75,7 +75,9 @@
 `07-tooling-tests.md` (локально, gitignored, ~3000 строк с file:line и PoC).
 ## 6. Fix batch 2026-11-14 — закрытые P1/P2 и live-остатки
 
-Все пункты §3 (кроме части п.8) реализованы и покрыты unit-тестами; живая
+Все пункты §3 (кроме части п.8) реализованы и в основном покрыты unit-тестами;
+три P1-фикса `a64d25a` (repair/orphaned/precheck) покрыты только live-приёмкой
+(см. `_analysis/release-0.11/release-audit-service.md`, R2). Живая
 приёмка SCM/апдейтера/тестера на реальной сети намеренно НЕ выполнялась
 (запрет живых манипуляций в ТЗ), поэтому её нельзя считать пройденной.
 
@@ -102,6 +104,6 @@ failure actions; живой portable-апдейт (в т.ч. 0.10→0.11); жи�
 помечен); `full_analyzer` может включить частичный профиль в screening;
 V3nilla/RIPEstat-лицензия (решение владельца); A/B ipset staged — ждёт прогона.
 
-**Батарея после batch:** compileall OK · `pytest tests` 314 passed · security
+**Батарея после batch:** compileall OK · `pytest tests` 317 passed · security
 47 passed · api_smoke OK · args_golden OK · check_arg_file OK · js_bundle OK ·
 status_contract OK.

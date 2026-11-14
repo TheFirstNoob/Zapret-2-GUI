@@ -29,7 +29,7 @@
   stock-lua lib/antidpi/auto обновлены, `zapret-custom.lua` сохранён).
   T37/T43/T44 dry-run зелёные; служба в зеркале перезапущена. 0.10 шипится с
   v1.0.5 (без QUIC-dissect фиксов 1.0.5.2+); 0.11-черновик 27.10 = 1.0.6.
-- **Тесты:** `tests/` (pytest, 314 passed на 2026-11-14) + батарея:
+- **Тесты:** `tests/` (pytest, 317 passed на 2026-11-14) + батарея:
   `compileall`, `tools/api_smoke.py`, `tools/security` (47),
   `tools/args_golden.py compare`, `tools/check_arg_file.py`,
   `tools/js_bundle_check.py`, `tools/status_contract.py`.
@@ -63,6 +63,10 @@
   **Live-приёмка ещё не пройдена:** реальные install/remove/restart службы,
   живой portable-апдейт, живой тестер/H3/CDN, живой DNS apply/reset, Win10.
   Portable 0.10→0.11 первым хопом: **переустановка из архива** (в release notes).
+- **Релиз 0.11 — НЕ готов к публикации (2026-11-14):** код-батарея зелёная,
+  но нет 0.11-артефактов/подписи, артефакты+манифест не закоммичены до тега,
+  live-приёмка не пройдена; риск jsDelivr >20 MB. Вердикт, блокеры и точная
+  последовательность — `AI_DOCS/RELEASE_READINESS_0.11.md`.
   Upstream-sync 2026-11-14: данные dpi-detector/dpi-checkers актуальны
   (байт-в-байт), добавлена атрибуция; ipset-база остаётся наша, staged-база
   (27206 CIDR) ждёт A/B в catchall; итоги/бэклог —
@@ -208,6 +212,9 @@ main.py (UAC, pywebview/WebView2, single-instance)
   из git-истории 2026-11-14), свежий coverage-diff и staged-база.
 - `AI_DOCS/UPSTREAM_SYNC_2026-11-14.md` — dpi-detector/dpi-checkers/Flowseal:
   что актуально, что исправлено в ASN Checker, A/B-план ipset, лицензии.
+- `AI_DOCS/RELEASE_READINESS_0.11.md` — вердикт готовности 0.11, блокеры,
+  обязательная последовательность и live-чек-лист.
+- `CHANGELOG.md` (корень) — пользовательский список изменений 0.11.
 - `AI_DOCS/TEAM_PLAYBOOK.md` — правила использования durable-агентов: сначала
   продолжать существующего владельца домена, не спавнить fresh; контекст-кэш
   `_analysis/team/CONTEXT-PACK.md`, реестр `_analysis/team/ROSTER.md`.

@@ -8,6 +8,9 @@
 > без `midsld`) — собирать из HEAD (1.0.7 + `pos=1,midsld`); остались
 > пересборка, подпись офлайн-ключом, публикация и live-смоук. «Фикс YouTube»
 > в release notes не обещать (см. `YOUTUBE_VIDEO_STALL_2026-11.md`).
+> **Вердикт готовности 0.11 (14.11): НЕ выпускать** — нет 0.11-артефактов и
+> подписи, артефакты/манифест не закоммичены, live-приёмка не пройдена.
+> Полный вердикт/шаги — `RELEASE_READINESS_0.11.md`.
 
 ## Риск-свип перед сборкой (~30 мин)
 
@@ -36,7 +39,8 @@
 - [ ] VERSION в core/config.py → X.Y (в манифесты portable/lite уходит сам).
 - [x] Корневой файл `VERSION` в репо → тот же X.Y: его читает проверка обновлений
       (raw + jsDelivr). Протухший файл = пользователи не увидят обновление.
-- [x] Ченджлог на рабочем столе дополнен и выверен.
+- [x] `CHANGELOG.md` в репозитории дополнен и выверен (0.11).
+- [ ] Код-фриз: `git status` чистый; README/CHANGELOG/docs закоммичены.
 - [x] Пресеты/списки release-набора актуальны.
 - [ ] 0.11 собирать из HEAD (1.0.7 + `pos=1,midsld`); архивы 27.10 (1.0.6,
       старые пресеты) не публиковать.
@@ -46,14 +50,17 @@
 - [ ] `sign_release.py` берёт ВСЕ 3 архива и проверяет версию/тег/PUBKEY/
       движок внутри архивов (0.11: движок должен быть 1.0.7).
 - [ ] `release_publish.py --dry-run` проходит fail-closed сверку VERSION/tag/
-      release.json/подпись/sha256/size (stale-манифест = отказ).
+      release.json/подпись/sha256/size/runtime (stale-манифест = отказ).
+- [ ] После пересборки: ассеты < 20 MB для jsDelivr (сейчас у 0.10 exe-zip
+      21.43 MB) — иначе честно ограничить зеркало/запросить лимит.
 - [ ] **Portable 0.10 → 0.11:** в release notes явно «переустановить portable
       из архива» — первый хоп старым апдейтером не доставляет `python/`
       (runtime-секция manifest работает начиная с 0.11).
 - [ ] **Live-приёмка fix batch 2026-11-14** (не unit): install/remove/repair/
       restart службы + failure actions; живой portable-апдейт; тестер/H3/CDN
       на реальной сети; DNS apply/reset на IPv6 + 3+ серверах; Win10/PS5.1.
-      Пока не пройдено — не писать в нотах «всё исправлено».
+      Пока не пройдено — не писать в нотах «всё исправлено». Чек-лист —
+      `RELEASE_READINESS_0.11.md` §«Live-чек-лист».
 - [x] `hosts.txt` актуален - он уезжает во все три сборки (exe-zip рядом
       с exe, portable `app\hosts.txt` - обновляется апдейтером, lite
       `hosts.txt` в корне).
@@ -61,18 +68,20 @@
 ## Сборка
 - [ ] build-env: `pip install -r requirements.txt` (нужен `niquests[http3]`;
       spec падает с подсказкой, если стека нет - с 13.10).
-- [x] `python build.py` → exe + `Windows build/Zapret2GUI.zip` + .sha256
-- [x] `python build_portable.py` → Zapret2GUI-portable.zip + .sha256
-- [x] `python build_lite.py` → Zapret2GUI-lite.zip + .sha256 (внутри: VERSION и
+- [ ] `python build.py` → exe + `Windows build/Zapret2GUI.zip` + .sha256 (0.11 из HEAD)
+- [ ] `python build_portable.py` → Zapret2GUI-portable.zip + .sha256 (0.11; manifest runtime.rev)
+- [ ] `python build_lite.py` → Zapret2GUI-lite.zip + .sha256 (внутри: VERSION и
       дата в README; сборка сама прогоняет dry-run всех release-пресетов)
-- [x] `python tools/security/test_updates_security.py` — все зелёные.
+- [ ] `python tools/security/test_updates_security.py` — 47 тестов зелёные (включая PUBKEY-гард).
 
 ## Подпись (обязательно)
-- [x] `python tools/security/sign_release.py --version X.Y --tag Pre-Release-X.Y --key <офлайн-ключ>`
+- [ ] `python tools/security/sign_release.py --version 0.11 --tag Pre-Release-0.11 --key <офлайн-ключ>`
       → release.json + release.json.sig в корне репо (внутри — самопроверка).
-- [x] Отпечаток в выводе = 50DCECF29451 (тот самый ключ).
+- [ ] Отпечаток в выводе = 50DCECF29451 (тот самый ключ).
 
 ## Публикация
+- [ ] **(0.11) Закоммитить дистрибутивы + `.sha256` + release.json + release.json.sig в main ДО тега** (publish создаёт тег от main и не проверяет git-состояние).
+- [ ] **(0.11) После коммита ещё раз `release_publish --dry-run` — только потом publish.**
 - [x] (0.10) Закоммитить дистрибутивы + `.sha256` + release.json + release.json.sig в main.
 - [x] (0.10) Тег Pre-Release-X.Y → GitHub Release; в **описание релиза** — SHA256
       всех трёх архивов (печатает sign_release) — README обещает сверку
