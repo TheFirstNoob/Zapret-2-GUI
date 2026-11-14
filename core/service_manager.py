@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import base64
+import contextlib
+import datetime
 import functools
+import json
 import os
 import re
 import subprocess
@@ -63,15 +67,40 @@ def _svc_log(msg: str) -> None:
     _applog("service", msg)
 
 
+def _winws2_paths() -> set[str]:
+    """Пути winws2 ТОЛЬКО этой установки (path-фильтр, не имя вслепую)."""
+    root = app_root()
+    return {str(root / "bin" / "winws2.exe"), str(root / "winws2.exe")}
+
+
 def _taskkill_winws2():
     """Единый kill winws2, но ТОЛЬКО этой установки (ревью 18.10:
     name-wide kill убивал движок второй копии GUI в другой папке).
     Возвращает список реально завершённых PID (пустой - ничего не убито)."""
     from core.proc import kill_image_filtered
-    root = app_root()
-    return kill_image_filtered("winws2.exe",
-                               {str(root / "bin" / "winws2.exe"),
-                                str(root / "winws2.exe")}, timeout=10)
+    return kill_image_filtered("winws2.exe", _winws2_paths(), timeout=10)
+
+
+def _wait_winws2_exit(pids, *, timeout: float = 5.0) -> bool:
+    """Дождаться смерти известных PID winws2 (T19: WaitForSingleObject).
+
+    Раньше remove/repair крутили 20 x tasklist/sleep(0.25) - до 5 с простоя.
+    Хендлы известных PID сигналятся за миллисекунды; если Win32-API не дало
+    хендлов (права/не-Windows) - прежний поллинг по имени, как fallback."""
+    try:
+        from core.proc import wait_pids_exit
+        leftover = wait_pids_exit([int(p) for p in (pids or [])], timeout=timeout)
+    except Exception:  # noqa: BLE001
+        leftover = list(pids or [])
+    if not leftover:
+        return True
+    # Не подтвердили по PID - старый путь: ждём исчезновения winws2 по имени.
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if not _winws2_running():
+            return True
+        time.sleep(0.15)
+    return not _winws2_running()
 
 
 def is_installed() -> bool:
@@ -90,15 +119,23 @@ def status() -> str:
     now = time.time()
     if _status_cache_value is not None and now - _status_cache_at < _STATUS_TTL:
         return _status_cache_value
-    code, out = _sc(["query", SERVICE_NAME])
-    if code != 0:
-        _status_cache_value = "not_installed"
+    # T19: QueryServiceStatusEx (единицы микросекунд) вместо sc.exe (~33 мс):
+    # /api/status поллится каждые ~4 c, а diagnostics зовёт status() ещё чаще.
+    state = _query_service_state()
+    if state is not None:
+        # SERVICE_RUNNING=4; START_PENDING/STOPPED/PENDING -> "stopped"
+        # (прежний разбор sc query искал RUNNING в выводе - поведение то же).
+        _status_cache_value = "running" if state == 4 else "stopped"
     else:
-        # Парсим ЗНАЧЕНИЕ из sc query: заголовок локализован («STATE» -
-        # «СОСТОЯНИЕ» на русской Windows), но значение всегда английское
-        # ("4  RUNNING") - ищем значение, не подпись.
-        upper = out.upper()
-        _status_cache_value = "running" if "RUNNING" in upper else "stopped"
+        code, out = _sc(["query", SERVICE_NAME])
+        if code != 0:
+            _status_cache_value = "not_installed"
+        else:
+            # Парсим ЗНАЧЕНИЕ из sc query: заголовок локализован («STATE» -
+            # «СОСТОЯНИЕ» на русской Windows), но значение всегда английское
+            # ("4  RUNNING") - ищем значение, не подпись.
+            upper = out.upper()
+            _status_cache_value = "running" if "RUNNING" in upper else "stopped"
     _status_cache_at = now
     return _status_cache_value
 
@@ -464,6 +501,14 @@ def _zapret1_conflict() -> Optional[str]:
 
 @_serialized
 def repair(root_dir: Optional[Path] = None) -> dict:
+    """«Выгрузить драйвер» + heal службы под durable-журналом (T19)."""
+    root = Path(root_dir) if root_dir is not None else app_root()
+    with _service_journal(root, "repair") as journal:
+        return _repair_impl(root_dir, journal)
+
+
+def _repair_impl(root_dir: Optional[Path] = None,
+                 journal=None) -> dict:
     """Выгрузка драйвера WinDivert (кнопка «Выгрузить драйвер») + heal
     битых записей службы и сообщение о конфликте с Zapret 1.
 
@@ -471,6 +516,8 @@ def repair(root_dir: Optional[Path] = None) -> dict:
     останавливаем их, затем sc stop WinDivert выгружает драйвер, и отложенное
     удаление/занятые файлы bin/ освобождаются БЕЗ перезагрузки. Служба, если
     была запущена, поднимается обратно. В ответе - перепроверка (resolved)."""
+    if journal is None:
+        journal = _NullJournal()
     from core.utils import (fix_stale_windivert_services,
                             windivert_emergency_unload, windivert_delete_flag,
                             windivert_service_state)
@@ -487,14 +534,14 @@ def repair(root_dir: Optional[Path] = None) -> dict:
         if was_running:
             _sc(["stop", SERVICE_NAME])
             actions.append("служба zapret2 остановлена")
-        if _winws2_running() and _taskkill_winws2():
+        killed = _taskkill_winws2() if _winws2_running() else []
+        if killed:
             actions.append("winws2.exe остановлен (драйвер освобождён)")
             # Ждём фактического выхода процесса: sc stop WinDivert при живом
-            # хендле оставляет драйвер загруженным (ревью 18.10).
-            for _ in range(20):
-                if not _winws2_running():
-                    break
-                time.sleep(0.25)
+            # хендле оставляет драйвер загруженным (ревью 18.10). T19:
+            # WaitForSingleObject по известным PID вместо 20 x sleep(0.25).
+            _wait_winws2_exit(killed, timeout=5.0)
+            journal.step("winws2-stopped")
         actions += fix_stale_windivert_services(root_dir)
         if _winws_running():
             actions.append("Zapret 1 (winws.exe) запущен - драйвер не трогаю")
@@ -522,6 +569,7 @@ def repair(root_dir: Optional[Path] = None) -> dict:
     stuck = bool(dead) or any(
         ("нужна перезагрузка" in a) or ("stop не помог" in a)
         or ("драйвер занят" in a) for a in actions)
+    journal.step("done")
     return {
         "actions": actions,
         "reboot_required": stuck,
@@ -554,7 +602,8 @@ def _restore_install_conf(path: Path, data: Optional[bytes]) -> tuple[bool, str]
         return False, str(e)
 
 
-def _recreate_old_service(binpath: str, was_running: bool) -> tuple[bool, str]:
+def _recreate_old_service(binpath: str, was_running: bool,
+                          failure: Optional[dict] = None) -> tuple[bool, str]:
     if not binpath:
         return False, "старый binPath не прочитан"
     ok, det = _win32_create_service(binpath)
@@ -567,6 +616,18 @@ def _recreate_old_service(binpath: str, was_running: bool) -> tuple[bool, str]:
         if code != 0:
             return False, f"sc create: {out.strip()}"
     _sc(["description", SERVICE_NAME, "zapret DPI bypass (Zapret 2)"])
+    # T19: до remove() failure actions были отключены и исчезли вместе со
+    # службой; возвращаем прочитанную конфигурацию (иначе rollback оставит
+    # службу без обещанного автозапуска при падении winws2).
+    if failure is not None:
+        if not _apply_failure_actions(int(failure.get("reset") or 0),
+                                      list(failure.get("actions") or [])):
+            _svc_log("install rollback: failure actions restore failed")
+    elif was_running:
+        # T19: исходную конфигурацию прочитать не удалось - возвращаем
+        # штатный auto-restart, иначе откат оставит службу без него молча.
+        _sc(["failure", SERVICE_NAME, "reset=", "86400",
+             "actions=", "restart/60000/restart/60000/restart/60000"])
     if was_running:
         code, out = _sc(["start", SERVICE_NAME])
         if code != 0:
@@ -576,6 +637,17 @@ def _recreate_old_service(binpath: str, was_running: bool) -> tuple[bool, str]:
 
 @_serialized
 def install(root_dir: Optional[Path] = None, args: Optional[list[str]] = None) -> tuple[bool, str]:
+    """Установка/переустановка службы под durable-журналом (T19)."""
+    root = Path(root_dir) if root_dir is not None else app_root()
+    with _service_journal(root, "install") as journal:
+        return _install_impl(root_dir, args, journal)
+
+
+def _install_impl(root_dir: Optional[Path] = None,
+                  args: Optional[list[str]] = None,
+                  journal=None) -> tuple[bool, str]:
+    if journal is None:
+        journal = _NullJournal()
     conflict = _zapret1_conflict()
     if conflict:
         return False, conflict
@@ -595,6 +667,10 @@ def install(root_dir: Optional[Path] = None, args: Optional[list[str]] = None) -
     old_installed = is_installed()
     old_was_running = old_installed and status() == "running"
     old_native = _read_stored_binpath() if old_installed else ""
+    # T19: failure actions старой службы исчезнут вместе с ней при remove -
+    # сохраняем, чтобы rollback вернул auto-restart, а не молчаливую потерю.
+    old_failure = (_read_failure_actions_win32()
+                   if old_installed else None)
     conf_path, conf_backup, conf_read_ok = _backup_install_conf(Path(root_dir))
     if not conf_read_ok:
         return False, ("не удалось прочитать старый logs/service_run.conf - "
@@ -612,14 +688,16 @@ def install(root_dir: Optional[Path] = None, args: Optional[list[str]] = None) -
         if not ok:
             details.append(f"service_run.conf не восстановлен: {msg}")
         if old_installed and old_removed:
-            ok, msg = _recreate_old_service(old_native, old_was_running)
+            ok, msg = _recreate_old_service(old_native, old_was_running,
+                                            old_failure)
             if ok:
                 details.append("старая служба восстановлена")
             else:
                 details.append(f"старую службу не удалось восстановить: {msg}")
         elif old_installed:
             if not is_installed():
-                ok, msg = _recreate_old_service(old_native, old_was_running)
+                ok, msg = _recreate_old_service(old_native, old_was_running,
+                                                old_failure)
                 details.append("старая служба восстановлена" if ok
                                else f"старую службу не удалось восстановить: {msg}")
             else:
@@ -640,12 +718,14 @@ def install(root_dir: Optional[Path] = None, args: Optional[list[str]] = None) -
         conf = write_run_conf(root_dir, args, name="service_run.conf")
     except OSError as e:
         return False, f"не записался service_run.conf: {e}"
+    journal.step("conf")
     ok_r, msg_r = remove()
     if not ok_r:
         # Не перезаписываем/не теряем рабочую службу, если старую не удалось
         # убрать (1072/чужой движок/SCM). Аудит 24.10.
         return rollback(f"не удалось удалить старую службу: {msg_r}")
     old_removed = True
+    journal.step("old-removed")
     time.sleep(0.5)
     # Драйвер лечим ПОСЛЕ остановки winws2 (кейс 2026-09-13): править или
     # удалять службу драйвера при живых хендлах нельзя - она получит
@@ -672,6 +752,7 @@ def install(root_dir: Optional[Path] = None, args: Optional[list[str]] = None) -
                      f"out={out.strip()[:200]!r}")
             return rollback(f"sc create failed: {out.strip()}")
     created = True
+    journal.step("created")
     _sc(["description", SERVICE_NAME, "zapret DPI bypass (Zapret 2)"])
     # Verify BEFORE start: old/broken SCM может молча исказить binPath
     # (аргументы по пробелам рвутся, кириллические пути не читаются) -
@@ -680,6 +761,7 @@ def install(root_dir: Optional[Path] = None, args: Optional[list[str]] = None) -
     if not okv:
         _svc_log(f"install FAIL: verify binPath: {msgv}")
         return rollback(f"Установка отменена (кривой binPath): {msgv}")
+    journal.step("verified")
     # SCM recovery: если winws2 умрёт (случай 2026-09-12: три падения за утро,
     # обход пропадал до ручного перезапуска) - перезапустить службу через 60 с.
     # Результат проверяем: молчаливая потеря автоперезапуска - это ровно тот
@@ -700,10 +782,12 @@ def install(root_dir: Optional[Path] = None, args: Optional[list[str]] = None) -
         if old_installed:
             return rollback(f"новая служба не запустилась ({reason})")
         _svc_log(f"install WARN: установлена, но не запустилась: {reason}")
+        journal.step("installed-no-start")
         return True, ("Служба установлена, но не запустилась (" + reason
                       + "). Обхода сейчас нет - нажмите «Запустить службу» "
                         "или откройте «Проверку системы».")
     _svc_log("install OK")
+    journal.step("done")
     if not recovery_ok:
         return True, ("Служба установлена и запущена, но автозапуск при падении "
                       "не настроен - если обход отвалится, он не поднимется сам. "
@@ -818,56 +902,142 @@ def migrate_if_needed() -> tuple[bool, str]:
     return True, "служба переведена на conf-формат"
 
 
+def _is_marked_for_delete(out: str) -> bool:
+    """SCM: служба отмечена для удаления (1072) - ещё фактически существует."""
+    lowered = (out or "").lower()
+    return ("1072" in lowered or "marked for deletion" in lowered
+            or "отмечен" in lowered)
+
+
+def _service_absent(*, timeout: float = 2.0) -> bool:
+    """Подтверждение отсутствия службы после delete (Win32 + sc fallback).
+
+    T19/T10-2: delete отдаёт успех до фактического исчезновения записи
+    (отложенное удаление при живом хендле). Успех сообщаем только когда
+    Win32/SCM реально больше не видит службу; статус 1072 «marked for
+    deletion» - НЕ отсутствие."""
+    deadline = time.time() + max(0.0, timeout)
+    while True:
+        if _query_service_state() is None:
+            code, out = _sc(["query", SERVICE_NAME])
+            if code != 0 and not _is_marked_for_delete(out):
+                return True
+        if time.time() >= deadline:
+            return False
+        time.sleep(0.1)
+
 @_serialized
 def remove():
+    """Удаление службы под durable-журналом (T19/T10-1, T10-2)."""
+    root = app_root()
+    with _service_journal(root, "remove") as journal:
+        return _remove_impl(journal)
+
+
+def _remove_impl(journal=None):
+    if journal is None:
+        journal = _NullJournal()
     _invalidate_service_cache()
     remove_ps, remove_msg = path_status()
     if remove_ps in ("mismatch", "unknown"):
         _svc_log(f"remove REFUSED: {remove_ps}: {remove_msg}")
         return False, ("Не удалось подтвердить, что служба zapret2 принадлежит "
                        f"этой копии: {remove_msg or remove_ps}. Удалять её нельзя.")
-    _svc_log("remove: stop+taskkill")
-    _sc(["stop", SERVICE_NAME])
-    _taskkill_winws2()
-    # Живой winws2 держит хендл: sc delete сразу после taskkill оставляет
-    # службу «отмеченной для удаления» (1072) - отсюда «удаляется со второго
-    # раза». Ждём фактического выхода процесса, затем удаляем с повторами.
-    for _ in range(20):
-        if not _winws2_running():
-            break
-        time.sleep(0.25)
-    else:
-        _svc_log("remove: winws2 ещё жив после 5с ожидания")
-    ok_d, det_d = _win32_delete_service()
-    if ok_d:
-        _svc_log("remove: Win32 API delete ok")
-    else:
-        _svc_log(f"remove: Win32 API delete failed: {det_d} - fallback sc delete")
-    for _ in range(10):
-        code, out = _sc(["delete", SERVICE_NAME])
-        if code == 0 or "1060" in out:
-            _svc_log(f"remove OK (sc delete rc={code})")
+    # T19/T10-2: перед taskkill/delete отключаем SCM failure actions: иначе
+    # SCM поднимает winws2 по recovery, тот снова держит хендл (delete -> 1072
+    # «отмечена для удаления»). Пауза refcounted: при вызове из install/repair
+    # внешняя пауза не снимается этим remove.
+    paused = pause_recovery()
+    removed = False
+    try:
+        if paused:
+            if not _failure_actions_disabled():
+                _svc_log("remove: WARN SCM-recovery не подтверждён выключенным")
+        else:
+            _svc_log("remove: SCM-recovery не отключён (fail-closed чтение "
+                     "failure actions) - удаление продолжаем")
+        _svc_log("remove: stop+taskkill")
+        _sc(["stop", SERVICE_NAME])
+        killed = _taskkill_winws2()
+        # Живой winws2 держит хендл: sc delete сразу после taskkill оставляет
+        # службу «отмеченной для удаления» (1072) - отсюда «удаляется со
+        # второго раза». T19: WaitForSingleObject по известным PID (мс)
+        # вместо 20 x tasklist/sleep(0.25) (до 5 с).
+        if killed:
+            _wait_winws2_exit(killed, timeout=5.0)
+        journal.step("stopped")
+        ok_d, det_d = _win32_delete_service()
+        if ok_d:
+            _svc_log("remove: Win32 API delete ok")
+        else:
+            _svc_log(f"remove: Win32 API delete failed: {det_d} - fallback "
+                     "sc delete")
+        journal.step("deleting")
+        for _ in range(10):
+            code, out = _sc(["delete", SERVICE_NAME])
+            if code == 0 or "1060" in out:
+                if _service_absent():
+                    journal.step("deleted")
+                    _svc_log(f"remove OK (sc delete rc={code}, отсутствие "
+                             "подтверждено)")
+                    removed = True
+                    return True, "Служба zapret2 удалена"
+                _svc_log("remove: delete принят, но запись ещё видна - повтор")
+            else:
+                _svc_log(f"remove: sc delete rc={code} "
+                         f"out={out.strip()[:160]!r} - повтор")
+            time.sleep(0.5)
+        code, out = _sc(["query", SERVICE_NAME])
+        if "1060" in out:
+            journal.step("deleted")
+            removed = True
+            _svc_log("remove OK (службы нет)")
             return True, "Служба zapret2 удалена"
-        _svc_log(f"remove: sc delete rc={code} out={out.strip()[:160]!r} - повтор")
-        time.sleep(0.5)
-    code, out = _sc(["query", SERVICE_NAME])
-    if "1060" in out:
-        _svc_log("remove OK (службы нет)")
-        return True, "Служба zapret2 удалена"
-    if code != 0:
-        # Ревью 18.10: НЕ выдаём успех, если sc query вообще не выполнился
-        # (rc=-1/пустой out): раньше `code != 0` трактовался как «службы нет».
-        _svc_log(f"remove FAIL: sc query rc={code} out={out.strip()[:160]!r}")
-        return False, ("не удалось подтвердить удаление службы "
-                       f"(sc query rc={code}) - проверьте вручную")
-    _svc_log(f"remove FAIL: служба осталась (query rc={code})")
-    return False, ("Служба zapret2 не удалилась: отмечена для удаления "
-                   "(winws2 не отпустил хендл) - повторите удаление или "
-                   "перезагрузите ПК")
+        if _is_marked_for_delete(out):
+            _svc_log(f"remove FAIL: служба отмечена для удаления (1072), "
+                     f"code={code}")
+            return False, ("Служба zapret2 не удалилась: отмечена для удаления "
+                           "(winws2 не отпустил хендл) - повторите удаление или "
+                           "перезагрузите ПК")
+        if code != 0:
+            # Ревью 18.10: НЕ выдаём успех, если sc query вообще не выполнился
+            # (rc=-1/пустой out): раньше `code != 0` трактовался как «службы нет».
+            _svc_log(f"remove FAIL: sc query rc={code} "
+                     f"out={out.strip()[:160]!r}")
+            return False, ("не удалось подтвердить удаление службы "
+                           f"(sc query rc={code}) - проверьте вручную")
+        _svc_log(f"remove FAIL: служба осталась (query rc={code})")
+        return False, ("Служба zapret2 не удалилась: отмечена для удаления "
+                       "(winws2 не отпустил хендл) - повторите удаление или "
+                       "перезагрузите ПК")
+    finally:
+        if removed:
+            # Службы больше нет: пауза recovery неактуальна (иначе следующий
+            # install/start не сможет её выставить для новой службы).
+            _reset_recovery_state()
+        else:
+            # Не удалили - возвращаем ровно ту failure-конфигурацию, что была.
+            resume_recovery()
 
 
 @_serialized
 def start(args: Optional[list[str]] = None):
+    """Запуск службы под durable-журналом (T19)."""
+    try:
+        has_service = bool(is_installed())
+    except Exception:  # noqa: BLE001
+        has_service = True
+    if not has_service:
+        # Службы нет - journal/recovery нечего откатывать, а снимок SCM на
+        # каждый старт «голого» winws2 - лишняя работа.
+        return _start_impl(args, _NullJournal())
+    with _service_journal(app_root(), "start") as journal:
+        return _start_impl(args, journal)
+
+
+def _start_impl(args: Optional[list[str]] = None, journal=None):
+    if journal is None:
+        journal = _NullJournal()
     conflict = _zapret1_conflict()
     if conflict:
         return False, conflict
@@ -891,6 +1061,7 @@ def start(args: Optional[list[str]] = None):
         if not ok_r:
             return False, msg_r
     stop()
+    journal.step("stopped")
     # Даём SCM время закрыть состояние (иначе первый sc start может дать 1053).
     time.sleep(0.5)
     # Драйвер мог сломаться между запусками (кейс 2026-09-13) - лечим до
@@ -939,6 +1110,7 @@ def start(args: Optional[list[str]] = None):
             _svc_log(f"start: conf precheck OSError: {e!r}")
         except Exception as e:  # noqa: BLE001
             _svc_log(f"start: conf precheck warn: {e!r}")
+    journal.step("starting")
     code, out = _sc(["start", SERVICE_NAME])
     _svc_log(f"start: sc start rc={code} out={out.strip()[:200]!r}")
     if code != 0:
@@ -946,6 +1118,7 @@ def start(args: Optional[list[str]] = None):
         if "1056" in out:
             ok_run, state = _wait_service_running(timeout=3.0)
             if ok_run:
+                journal.step("done")
                 return True, "winws2 уже запущен"
         return False, f"sc start failed: {out.strip()}"
     ok_run, state = _wait_service_running()
@@ -953,11 +1126,26 @@ def start(args: Optional[list[str]] = None):
         _invalidate_service_cache()
         return False, (f"sc start принят, но служба не перешла в RUNNING "
                        f"(state={state}); проверьте winws2 и драйвер")
+    journal.step("done")
     return True, "winws2 запущен"
 
 
 @_serialized
 def stop():
+    """Остановка службы под durable-журналом (T19)."""
+    try:
+        has_service = bool(is_installed())
+    except Exception:  # noqa: BLE001
+        has_service = True
+    if not has_service:
+        return _stop_impl(_NullJournal())  # откатывать нечего
+    with _service_journal(app_root(), "stop") as journal:
+        return _stop_impl(journal)
+
+
+def _stop_impl(journal=None):
+    if journal is None:
+        journal = _NullJournal()
     # Сначала - корректный sc stop (SCM состояние), taskkill как страховка
     # для вручную запущенного winws2.
     _invalidate_service_cache()
@@ -976,6 +1164,7 @@ def stop():
     # вышло - гасим процесс, временно сняв recovery.
     if _wait_service_stopped():
         _taskkill_winws2()
+        journal.step("done")
         return True, "winws2 остановлен"
     paused = False
     try:
@@ -994,6 +1183,7 @@ def stop():
     if not _wait_service_stopped():
         return False, ("служба не дошла до STOPPED за таймаут "
                        "(STOP_PENDING?) - проверьте состояние службы")
+    journal.step("done")
     return True, "winws2 остановлен"
 
 
@@ -1007,6 +1197,11 @@ _recovery_paused: bool = False
 _recovery_was_on: bool = False
 _recovery_saved: Optional[dict] = None
 _recovery_lock = threading.Lock()
+# T19: pause/resume могут быть вложенными (repair -> start -> stop,
+# install -> remove/start): без счётчика внутренний resume возвращал бы
+# SCM-recovery посреди операции, и упавший winws2 поднимался бы за спиной.
+# Совместимость: непарный resume по-прежнему no-op.
+_recovery_refs: int = 0
 
 
 def _read_failure_actions_win32() -> Optional[dict]:
@@ -1128,20 +1323,24 @@ def _recovery_owned() -> tuple[bool, str]:
     return True, ""
 
 
-def pause_recovery() -> None:
+def pause_recovery() -> bool:
     """На время тестов/починки: отключаем sc.exe restart на время worker (L4).
 
     Читает ИСХОДНУЮ failure-конфигурацию (P1-3) и сохраняет её; при
     недоступности точного чтения - legacy sc qfailure, fail-closed: не
-    прочитали - не мутируем SCM (внешнее ревью 14.10)."""
-    global _recovery_paused, _recovery_was_on, _recovery_saved
+    прочитали - не мутируем SCM (внешнее ревью 14.10).
+
+    T19: возвращает True, если пауза активна после вызова; вложенные вызовы
+    увеличивают счётчик (resume снимет паузу только последним)."""
+    global _recovery_paused, _recovery_was_on, _recovery_saved, _recovery_refs
     with _recovery_lock:
         if _recovery_paused:
-            return
+            _recovery_refs += 1
+            return True
         owned, why = _recovery_owned()
         if not owned:
             _svc_log(f"pause_recovery: пропущено ({why})")
-            return
+            return False
         saved = _read_failure_actions_win32()
         if saved is not None:
             _recovery_saved = saved
@@ -1150,21 +1349,42 @@ def pause_recovery() -> None:
                 _svc_log("pause_recovery: не удалось отключить failure actions "
                          "(fail-closed: пауза не выставлена)")
                 _recovery_saved = None
-                return
+                return False
             _recovery_paused = True
+            _recovery_refs = 1
             _svc_log(f"pause_recovery: actions off (saved {saved['actions']})")
-            return
+            return True
         # fail-closed (ревью 18.10): без точного чтения SCM НЕ мутируем.
         # Legacy-путь по подстрокам restart/перезапуск ломался на не-EN/RU
         # локалях: resume мог ОСТАВИТЬ failure actions выключенными.
         _svc_log("pause_recovery: точное чтение failure actions недоступно "
                  "- пауза пропущена (fail-closed)")
+        return False
+
+
+def _reset_recovery_state() -> None:
+    """Служба удалена: пауза recovery больше не актуальна (её конфиг исчез).
+
+    T19: без сброса _recovery_paused осталась бы True, и следующий
+    install/start не смог бы снова отключить recovery для новой службы."""
+    global _recovery_paused, _recovery_saved, _recovery_was_on, _recovery_refs
+    with _recovery_lock:
+        _recovery_refs = 0
+        _recovery_paused = False
+        _recovery_saved = None
+        _recovery_was_on = False
 
 
 def resume_recovery() -> None:
-    global _recovery_paused, _recovery_saved
+    global _recovery_paused, _recovery_saved, _recovery_refs
     with _recovery_lock:
+        if _recovery_refs <= 0:
+            return
+        _recovery_refs -= 1
+        if _recovery_refs > 0:
+            return
         if not _recovery_paused:
+            _recovery_saved = None
             return
         owned, why = _recovery_owned()
         if not owned:
@@ -1189,6 +1409,17 @@ def resume_recovery() -> None:
         finally:
             _recovery_paused = False
             _recovery_saved = None
+
+
+def _failure_actions_disabled() -> bool:
+    """Подтверждение, что auto-restart выключен (T19: remove + SCM-recovery).
+
+    None-чтение (нет прав/не-Windows) не доказывает выключенность - отдаём
+    False, решение принимает вызывающий (fail-open только для лога)."""
+    saved = _read_failure_actions_win32()
+    if saved is None:
+        return False
+    return not any(int(t) in (1, 2, 3) for t, _d in saved.get("actions") or [])
 
 
 def recovery_snapshot() -> Optional[dict]:
@@ -1231,3 +1462,454 @@ def restore_recovery_from_snapshot(snapshot: Optional[dict]) -> bool:
                           "actions=", "restart/60000/restart/60000/restart/60000"])
         return code == 0
     return True
+
+
+# ── T19/T10-1: durable-журнал mutating service-операций ────────────────────
+# Гибель GUI/краш посреди install/remove/repair/start/stop оставлял службу
+# удалённой/остановленной без записи о том, что должно было быть. Журнал
+# logs/service_op_state.json пишется ДО первой мутации, обновляется по шагам
+# и очищается после нормального завершения. На старте GUI
+# recover_service_operation() откатывает/дозавершает операцию (см.
+# server/session_recovery.start_startup_recovery). Внутри одной операции
+# установки/починки вложенные вызовы (install -> remove/start) журнал НЕ
+# перезаписывают: owner - самый внешний вызов.
+
+SERVICE_JOURNAL_NAME = "service_op_state.json"
+JOURNAL_TMP_SUFFIX = ".tmp"
+# Шаги, после которых операция считается успешно доехавшей: если процесс
+# умер между последним step() и удалением журнала, откатывать уже нечего.
+_TERMINAL_STEPS = ("done",)
+
+_journal_depth = 0
+_recovering = False
+
+
+class _NullJournal:
+    """Вложенная операция: журнал ведёт самый внешний вызов."""
+
+    def step(self, name: str) -> None:
+        return
+
+
+class _ServiceJournal:
+    def __init__(self, root_dir: Path, action: str, prev: dict) -> None:
+        self.root_dir = Path(root_dir)
+        self.payload = {
+            "state": "IN_PROGRESS",
+            "action": action,
+            "step": "begin",
+            "started": datetime.datetime.now().isoformat(timespec="seconds"),
+            "root": str(self.root_dir),
+            "prev": prev,
+        }
+        self._closed = False
+        _service_journal_write(self.root_dir, self.payload)
+
+    def step(self, name: str) -> None:
+        if self._closed:
+            return
+        self.payload["step"] = name
+        _service_journal_write(self.root_dir, self.payload)
+
+    def close(self) -> None:
+        self._closed = True
+
+
+def service_op_journal_path(root_dir: Path) -> Path:
+    return Path(root_dir) / "logs" / SERVICE_JOURNAL_NAME
+
+
+def _service_journal_write(root_dir: Path, payload: dict) -> None:
+    """Атомарная запись журнала (tmp + os.replace); ошибки не бросаем.
+
+    Журнал - страховка, а не условие операции: недоступный logs/ не должен
+    ломать установку/удаление."""
+    try:
+        path = service_op_journal_path(root_dir)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(path.name + JOURNAL_TMP_SUFFIX)
+        tmp.write_text(json.dumps(payload, ensure_ascii=False,
+                                  sort_keys=True), encoding="utf-8")
+        os.replace(tmp, path)
+    except OSError:
+        pass
+
+
+def read_service_op_journal(root_dir: Path) -> Optional[dict]:
+    try:
+        data = json.loads(
+            service_op_journal_path(root_dir).read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else None
+    except (OSError, ValueError):
+        return None
+
+
+def clear_service_op_journal(root_dir: Path) -> None:
+    try:
+        service_op_journal_path(root_dir).unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def _service_conf_path(root_dir: Path) -> Path:
+    return Path(root_dir) / "logs" / "service_run.conf"
+
+
+def _read_conf_b64(root_dir: Path) -> Optional[str]:
+    try:
+        path = _service_conf_path(root_dir)
+        if not path.exists():
+            return None
+        return base64.b64encode(path.read_bytes()).decode("ascii")
+    except (OSError, ValueError):
+        return None
+
+
+def _write_conf_b64(root_dir: Path, data_b64: Optional[str]) -> tuple[bool, str]:
+    """Восстановление logs/service_run.conf из журнала (атомарно)."""
+    path = _service_conf_path(root_dir)
+    try:
+        if data_b64 is None:
+            path.unlink(missing_ok=True)
+            return True, ""
+        raw = base64.b64decode(str(data_b64).encode("ascii"), validate=False)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(path.name + ".journal.tmp")
+        tmp.write_bytes(raw)
+        os.replace(tmp, path)
+        return True, ""
+    except (OSError, ValueError) as e:  # noqa: BLE001
+        return False, f"service_run.conf не восстановлен: {e}"
+
+
+def _failure_to_json(failure: Optional[dict]) -> Optional[dict]:
+    if not failure:
+        return None
+    try:
+        return {
+            "reset": int(failure.get("reset") or 0),
+            "actions": [[int(t), int(d)] for t, d in (failure.get("actions") or [])],
+        }
+    except (TypeError, ValueError):
+        return None
+
+
+def _failure_from_json(data) -> Optional[dict]:
+    if not isinstance(data, dict):
+        return None
+    actions: list[tuple[int, int]] = []
+    for pair in data.get("actions") or []:
+        try:
+            actions.append((int(pair[0]), int(pair[1])))
+        except (TypeError, ValueError, IndexError):
+            continue
+    try:
+        reset = int(data.get("reset") or 0)
+    except (TypeError, ValueError):
+        reset = 0
+    return {"reset": reset, "actions": actions}
+
+
+def _normalize_binpath(value: str) -> str:
+    return (value or "").replace('\\"', '"').strip()
+
+
+def _is_legacy_binpath(native: str) -> bool:
+    """Pre-0.11 служба: аргументы зашиты в binPath, @conf-токена нет."""
+    try:
+        from core.utils import split_windows_cmdline
+        tokens = split_windows_cmdline(_normalize_binpath(native))
+    except Exception:  # noqa: BLE001
+        return False
+    return len(tokens) >= 2 and not tokens[1].startswith("@")
+
+
+def _snapshot_prev_state(root_dir: Path) -> dict:
+    """Состояние службы/конфига ДО операции (для отката при краше)."""
+    _invalidate_service_cache()
+    installed = False
+    running = False
+    native = ""
+    owner = ""
+    failure: Optional[dict] = None
+    try:
+        owner, _detail = path_status()
+    except Exception:  # noqa: BLE001
+        owner = ""
+    try:
+        installed = bool(is_installed())
+    except Exception:  # noqa: BLE001
+        installed = False
+    if installed:
+        try:
+            running = status() == "running"
+        except Exception:  # noqa: BLE001
+            running = False
+        try:
+            native = _read_stored_binpath()
+        except Exception:  # noqa: BLE001
+            native = ""
+        try:
+            failure = _read_failure_actions_win32()
+        except Exception:  # noqa: BLE001
+            failure = None
+    return {
+        "installed": installed,
+        "running": running,
+        "native": native,
+        "owner": owner,
+        "conf": _read_conf_b64(root_dir),
+        "failure": _failure_to_json(failure),
+    }
+
+
+@contextlib.contextmanager
+def _service_journal(root_dir: Optional[Path], action: str):
+    """Журнал операции: пишется до мутации, очищается при нормальном выходе.
+
+    Исключение или убийство процесса оставляет журнал -> recovery на старте."""
+    global _journal_depth
+    if _recovering or _journal_depth > 0:
+        _journal_depth += 1
+        try:
+            yield _NullJournal()
+        finally:
+            _journal_depth -= 1
+        return
+    root = Path(root_dir) if root_dir is not None else app_root()
+    journal = _ServiceJournal(root, action, _snapshot_prev_state(root))
+    _journal_depth = 1
+    try:
+        yield journal
+    except BaseException:
+        # Журнал НЕ удаляем: операция прервалась нештатно -> recovery.
+        raise
+    else:
+        clear_service_op_journal(root)
+    finally:
+        _journal_depth = 0
+        journal.close()
+
+
+# ── recovery незавершённой service-операции (старт GUI) ────────────────────
+
+def _service_installed_safe() -> bool:
+    try:
+        _invalidate_service_cache()
+        return bool(is_installed())
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _service_running_safe() -> bool:
+    try:
+        _invalidate_service_cache()
+        return status() == "running"
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _create_service_native(native: str) -> tuple[bool, str]:
+    """Создать службу с сохранённым binPath (Win32, fallback sc-bat)."""
+    if not native:
+        return False, "нет сохранённого binPath"
+    ok, det = _win32_create_service(native)
+    if ok:
+        return True, ""
+    _svc_log(f"service-recovery: Win32 create failed: {det} - fallback sc-bat")
+    from core.utils import split_windows_cmdline
+    tokens = split_windows_cmdline(native.replace('\\"', '"'))
+    if len(tokens) == 2 and tokens[1].startswith("@"):
+        cmdline = _service_cmdline(Path(tokens[0].strip('"')),
+                                   Path(tokens[1][1:]))
+        code, out = _sc_run_bat([
+            f'sc create {SERVICE_NAME} binPath= "{cmdline}" '
+            f'DisplayName= "Zapret 2 DPI Bypass" start= auto'])
+        if code != 0:
+            return False, f"sc create: {out.strip()}"
+    else:
+        return False, det or "CreateService"
+    _sc(["description", SERVICE_NAME, "zapret DPI bypass (Zapret 2)"])
+    return True, ""
+
+
+def _change_service_native(native: str) -> tuple[bool, str]:
+    """Переписать binPath службы на сохранённый (Win32, fallback sc-bat)."""
+    if not native:
+        return False, "нет сохранённого binPath"
+    ok, det = _win32_change_service(native)
+    if ok:
+        return True, ""
+    _svc_log(f"service-recovery: Win32 change failed: {det} - fallback sc-bat")
+    from core.utils import split_windows_cmdline
+    tokens = split_windows_cmdline(native.replace('\\"', '"'))
+    if len(tokens) == 2 and tokens[1].startswith("@"):
+        cmdline = _service_cmdline(Path(tokens[0].strip('"')),
+                                   Path(tokens[1][1:]))
+        code, out = _sc_run_bat([f'sc config {SERVICE_NAME} binPath= "{cmdline}"'])
+        if code != 0:
+            return False, f"sc config: {out.strip()}"
+        return True, ""
+    return False, det or "ChangeServiceConfig"
+
+
+def _restore_prev_state(root_dir: Path, prev: dict, log) -> tuple[bool, str]:
+    """Откат операции к снимку prev (служба + conf + failure actions + running)."""
+    notes: list[str] = []
+    ok_conf, msg_conf = _write_conf_b64(root_dir, prev.get("conf"))
+    if not ok_conf:
+        return False, msg_conf
+    notes.append("service_run.conf восстановлен")
+    want_installed = bool(prev.get("installed"))
+    want_running = bool(prev.get("running"))
+    native = _normalize_binpath(str(prev.get("native") or ""))
+    installed = _service_installed_safe()
+    if want_installed:
+        if not installed:
+            ok, det = _create_service_native(native)
+            if not ok:
+                return False, f"служба не восстановлена: {det}"
+            notes.append("служба создана заново")
+            installed = True
+        else:
+            stored = _normalize_binpath(_read_stored_binpath())
+            if native and stored != native:
+                ok, det = _change_service_native(native)
+                if not ok:
+                    return False, f"binPath не восстановлен: {det}"
+                notes.append("binPath восстановлен")
+        failure = _failure_from_json(prev.get("failure"))
+        if failure is not None:
+            if _apply_failure_actions(failure["reset"], failure["actions"]):
+                notes.append("failure actions восстановлены")
+            else:
+                notes.append("failure actions не восстановлены")
+        elif want_running:
+            # Исходную конфигурацию прочитать не удалось (fail-closed чтение):
+            # служба пересоздана без auto-restart - ставим штатную, иначе
+            # падение winws2 оставит пользователя без обхода молча.
+            _sc(["failure", SERVICE_NAME, "reset=", "86400", "actions=",
+                 "restart/60000/restart/60000/restart/60000"])
+            notes.append("failure actions: штатные (исходные не читались)")
+        running = _service_running_safe()
+        if want_running and not running:
+            if _is_legacy_binpath(native):
+                # Pre-0.11 служба хранила аргументы в binPath, conf-файла у
+                # неё нет: start(None) отказал бы на валидации conf. Запускаем
+                # SCM напрямую восстановленным legacy-binPath.
+                code, out = _sc(["start", SERVICE_NAME])
+                if code != 0 and "1056" not in out:
+                    return False, f"legacy sc start: {out.strip()}"
+                running = _service_running_safe()
+                if not running:
+                    return False, "legacy-служба не перешла в RUNNING"
+                notes.append("служба запущена (legacy binPath)")
+            else:
+                ok, msg = start(None)
+                if not ok:
+                    return False, f"служба не запущена: {msg}"
+                notes.append("служба запущена")
+        elif not want_running and running:
+            ok, msg = stop()
+            if not ok:
+                return False, f"служба не остановлена: {msg}"
+            notes.append("служба остановлена")
+    else:
+        if installed:
+            ok, msg = remove()
+            if not ok:
+                return False, f"новая служба не удалена: {msg}"
+            notes.append("новая служба удалена (откат установки)")
+    log("service-recovery: " + "; ".join(notes))
+    return True, "; ".join(notes)
+
+
+def _recover_service_op_data(root_dir: Path, data: dict, log) -> tuple[bool, str]:
+    action = str(data.get("action") or "")
+    step = str(data.get("step") or "")
+    prev = data.get("prev")
+    if not isinstance(prev, dict):
+        prev = {}
+    if step in _TERMINAL_STEPS:
+        # Успешная операция: журнал не успел удалиться (убили процесс между
+        # step("done") и unlink) - откат сделал бы хуже.
+        return True, "операция уже завершена (журнал не очищен)"
+    if action == "stop":
+        if not _service_installed_safe() or not _service_running_safe():
+            return True, "служба уже остановлена"
+        ok, msg = stop()
+        return (True, "служба остановлена") if ok else (False, f"stop: {msg}")
+    if action == "start":
+        if not _service_installed_safe():
+            return False, "служба не установлена - запуск невозможен"
+        if _service_running_safe():
+            return True, "служба уже запущена"
+        ok, msg = start(None)
+        return (True, "служба запущена") if ok else (False, f"start: {msg}")
+    if action == "remove" and step in ("deleted", "verified"):
+        if not _service_installed_safe():
+            return True, "служба уже удалена"
+    if str(prev.get("owner") or "") == "orphaned":
+        # Служба осталась от удалённой папки: восстановление её exe
+        # невозможно; действие (install/remove/repair) логичнее довести до
+        # удаления, чем оставлять заведомо мёртвую запись.
+        if _service_installed_safe():
+            ok, msg = remove()
+            return ((True, "служба от удалённой копии удалена") if ok
+                    else (False, f"remove: {msg}"))
+        return True, "служба от удалённой копии уже удалена"
+    # install/remove/repair/reconfigure/migrate и прочие мутации: безопаснее
+    # вернуть исходное работающее состояние (пользователь остаётся с обходом).
+    return _restore_prev_state(root_dir, prev, log)
+
+
+def recover_service_operation(root_dir: Optional[Path] = None, *,
+                              log=None) -> Optional[tuple[bool, str]]:
+    """Recovery незавершённой service-операции (старт GUI, T10-1).
+
+    Возвращает (ok, summary) или None, если журнала нет/операция не начата.
+    При неудаче журнал сохраняется (attempts растёт, после 3 - RECOVERY_FAILED,
+    чтобы не дёргать службу на каждом старте)."""
+    global _recovering
+    root = Path(root_dir) if root_dir is not None else app_root()
+    if log is None:
+        log = _svc_log
+    data = read_service_op_journal(root)
+    if not data or data.get("state") != "IN_PROGRESS":
+        return None
+    if _recovering:  # защита от рекурсии (recovery сам зовёт start/stop/remove)
+        return None
+    log("service-recovery: найдена незавершённая операция службы "
+        f"(action={data.get('action')}, step={data.get('step')}, "
+        f"started={data.get('started')})")
+    # Recovery - такая же мутирующая операция службы: не пересекаемся с
+    # install/remove/start из GUI (запуск GUI и клик пользователя могут
+    # совпасть). Не дождались - журнал остаётся, попробуем на следующем старте.
+    if not _op_lock.acquire(timeout=10.0):
+        log("service-recovery: служба занята другой операцией - recovery пропущен")
+        return None
+    _recovering = True
+    try:
+        ok, summary = _recover_service_op_data(root, data, log)
+    except Exception as e:  # noqa: BLE001
+        ok, summary = False, f"исключение: {type(e).__name__}: {e}"
+    finally:
+        _recovering = False
+        _op_lock.release()
+    if ok:
+        clear_service_op_journal(root)
+        log(f"service-recovery: {summary}")
+        return True, summary
+    try:
+        data["attempts"] = int(data.get("attempts") or 0) + 1
+        data["last_error"] = summary
+        data["last_attempt"] = datetime.datetime.now().isoformat(
+            timespec="seconds")
+        if data["attempts"] >= 3:
+            data["state"] = "RECOVERY_FAILED"
+        _service_journal_write(root, data)
+    except Exception:  # noqa: BLE001
+        pass
+    log(f"service-recovery: НЕ восстановлено ({summary}); "
+        "журнал сохранён для повторной попытки")
+    return False, summary

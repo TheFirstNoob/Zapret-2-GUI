@@ -1,4 +1,9 @@
-"""session_recovery.py - журнал незавершённой тест-сессии (crash-recovery).
+"""session_recovery.py - журналы незавершённых операций (crash-recovery).
+
+Два журнала:
+  * logs/test_session_state.json - тест-сессия (recovery-конфигурация+защита);
+  * logs/service_op_state.json - mutating-операция службы (T19/T10-1):
+    install/remove/repair/start/stop; recovery откатывает/дозавершает её.
 
 Старший ревью (раунд 3) указал дыру: жёсткая гибель GUI посреди прогона
 оставляет защиту снятой, а SCM-recovery - выключенным (finally не выполняется).
@@ -143,8 +148,21 @@ def recover_unfinished_session(
     return True, summary
 
 
+def recover_service_operation(
+        root_dir: Path, *,
+        log: Callable[[str], None]) -> Optional[tuple[bool, str]]:
+    """Recovery незавершённой mutating-операции службы (T19/T10-1).
+
+    Журнал logs/service_op_state.json ведёт core.service_manager; здесь -
+    тонкая обёртка, чтобы server.init поднимал восстановление ДО тест-сессии
+    (незавершённый install/remove не должен пересекаться с восстановлением
+    защиты тестера). Ничего не делает, если журнала нет."""
+    from core.service_manager import recover_service_operation as _recover
+    return _recover(root_dir, log=log)
+
+
 def start_startup_recovery() -> None:
-    """Обработка журнала при init сервера (демон-поток, не тормозит старт).
+    """Обработка журналов при init сервера (демон-поток, не тормозит старт).
 
     Импорты поздние: модуль должен быть безопасен на import-стадии."""
     def _worker() -> None:
@@ -152,6 +170,18 @@ def start_startup_recovery() -> None:
             from core.service_manager import restore_recovery_from_snapshot
             from server.app_state import STATE, get_root_dir, ui_debug
             from server.tester_flow import restore_protection_after_naked_status
+
+            # T19/T10-1: сначала незавершённая операция службы (install/
+            # remove/repair/start/stop). Порядок важен: если recovery тест-
+            # сессии начнёт восстанавливать защиту, служба должна быть уже
+            # в консистентном состоянии после отката/дозавершения.
+            try:
+                result = recover_service_operation(get_root_dir(),
+                                                   log=ui_debug)
+                if result is not None:
+                    ui_debug(f"service-recovery: итог: {result[1]}")
+            except Exception as e:  # noqa: BLE001
+                ui_debug(f"service-recovery: исключение: {e}")
 
             def _restore_protection(z2_or_svc: bool, z1: bool,
                                      svc: bool) -> tuple[bool, str]:

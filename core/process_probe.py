@@ -51,6 +51,171 @@ def _non_empty(ra: str) -> bool:
     return bool(ra and ra not in ("0.0.0.0", "::", "::1", "127.0.0.1"))
 
 
+def _as_list(value) -> list:
+    """ConvertTo-Json может отдать одиночный объект вместо массива (PS 5.1)."""
+    if isinstance(value, list):
+        return value
+    if isinstance(value, dict):
+        return [value]
+    return []
+
+
+def _parse_tcp_items(items: list) -> dict:
+    """[{ra,rp,st}] -> {"ip:port": {"state": str, "n": int}}."""
+    tcp: dict[str, dict] = {}
+    for item in _as_list(items):
+        if not isinstance(item, dict):
+            continue
+        ra = str(item.get("ra") or "")
+        if not _non_empty(ra):
+            continue
+        port = item.get("rp")
+        state = str(item.get("st") or "?")
+        key = f"{ra}:{port}"
+        tcp[key] = {"state": state, "n": tcp.get(key, {}).get("n", 0) + 1}
+    return tcp
+
+
+def _parse_udp_items(items: list) -> dict:
+    """[{LocalAddress,LocalPort}] -> {"local:port": count}."""
+    udp: dict[str, int] = {}
+    for item in _as_list(items):
+        if not isinstance(item, dict):
+            continue
+        la = str(item.get("LocalAddress") or "")
+        lp = item.get("LocalPort")
+        if not la and not lp:
+            continue
+        key = f"{la}:{lp}"
+        udp[key] = udp.get(key, 0) + 1
+    return udp
+
+
+def _parse_dns_items(items: list) -> dict[str, list[str]]:
+    """[{Entry,Data}] -> {ip: [имена]} (A и AAAA, без фильтрации)."""
+    cache: dict[str, list[str]] = {}
+    ip4 = re.compile(r"^\d{1,3}(\.\d{1,3}){3}$")
+    for item in _as_list(items):
+        if not isinstance(item, dict):
+            continue
+        data = str(item.get("Data") or "").strip()
+        entry = str(item.get("Entry") or "").strip()
+        if not entry or not data:
+            continue
+        if not (ip4.match(data) or ":" in data):
+            continue
+        cache.setdefault(data, [])
+        if entry not in cache[data]:
+            cache[data].append(entry)
+    return cache
+
+
+def _net_script(pids: list[int], *, include_dns: bool = False) -> str:
+    """Один PowerShell-вызов на тик: TCP + UDP (+ DNS) снимки сразу (T19).
+
+    Было 2 вызова на тик (tcp/udp) + отдельный на DNS; теперь один -
+    ~40-55 запусков PowerShell за минуту падают примерно вдвое."""
+    ps = ",".join(str(p) for p in pids)
+    dns_part = (
+        "$dns = @(Get-DnsClientCache -ErrorAction SilentlyContinue | "
+        "Select-Object Entry,Data); "
+        if include_dns else "$dns = @(); "
+    )
+    return (
+        f"$pids = @({ps}); "
+        "$tcp = @(Get-NetTCPConnection -ErrorAction SilentlyContinue | "
+        "Where-Object { $pids -contains $_.OwningProcess } | "
+        "Select-Object @{n='ra';e={[string]$_.RemoteAddress}},"
+        "@{n='rp';e={$_.RemotePort}},@{n='st';e={[string]$_.State}}); "
+        "$udp = @(Get-NetUDPEndpoint -ErrorAction SilentlyContinue | "
+        "Where-Object { $pids -contains $_.OwningProcess } | "
+        "Select-Object LocalAddress,LocalPort); "
+        + dns_part +
+        "[pscustomobject]@{tcp=$tcp;udp=$udp;dns=$dns} | "
+        "ConvertTo-Json -Compress -Depth 4"
+    )
+
+
+def _net_snapshot(pids: list[int], *, include_dns: bool = False) -> Optional[dict]:
+    """Один вызов _ps: {"tcp": [...], "udp": [...], "dns": [...]}.
+
+    None - вывод не разобрался (не-PowerShell/битый JSON): вызывающий
+    откатывается на прежние отдельные вызовы (_tcp_snapshot/_udp_snapshot/
+    _dns_cache_entries), поведение и поля не меняются."""
+    out = _ps(_net_script(pids, include_dns=include_dns))
+    if not out:
+        return None
+    try:
+        data = json.loads(out)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    return {"tcp": _as_list(data.get("tcp")),
+            "udp": _as_list(data.get("udp")),
+            "dns": _as_list(data.get("dns"))}
+
+
+def _rescan_script(pids: list[int], spec: str) -> Optional[str]:
+    """Один вызов: PID по маске процесса + UDP-порты (T19).
+
+    spec - имя-маска ('WardogsClient') или числовой PID; валидация и
+    экранирование кавычек как в _find_pids (H4: инъекция от админа)."""
+    spec = (spec or "").strip()
+    ps = ",".join(str(p) for p in pids)
+    if spec.isdigit():
+        found_expr = f"@({int(spec)})"
+    else:
+        if not re.fullmatch(r"[\w .\-]+", spec, flags=re.UNICODE):
+            return None
+        safe = spec.replace("'", "''")
+        found_expr = ("@(Get-Process | Where-Object { $_.ProcessName -like "
+                      f"'*{safe}*' }} | Select-Object -ExpandProperty Id)")
+    return (
+        f"$pids = @({ps}); "
+        f"$found = {found_expr}; "
+        "$all = @($pids + $found) | Sort-Object -Unique; "
+        "$ports = @(Get-NetUDPEndpoint -ErrorAction SilentlyContinue | "
+        "Where-Object { $all -contains $_.OwningProcess } | "
+        "Select-Object -ExpandProperty LocalPort | Sort-Object -Unique); "
+        "[pscustomobject]@{pids=@($found);ports=@($ports)} | "
+        "ConvertTo-Json -Compress -Depth 4"
+    )
+
+
+def _rescan_snapshot(pids: list[int], spec: str) -> Optional[dict]:
+    """Один вызов вместо _find_pids + _udp_ports; None - fallback на старый путь."""
+    script = _rescan_script(pids, spec)
+    if not script:
+        return None
+    out = _ps(script)
+    if not out:
+        return None
+    try:
+        data = json.loads(out)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    found: list[int] = []
+    for value in _as_list(data.get("pids")):
+        try:
+            pid = int(value)
+        except (TypeError, ValueError):
+            continue
+        if pid > 0 and pid not in found:
+            found.append(pid)
+    ports: list[int] = []
+    for value in _as_list(data.get("ports")):
+        try:
+            port = int(value)
+        except (TypeError, ValueError):
+            continue
+        if 0 < port <= 65535 and port not in ports:
+            ports.append(port)
+    return {"pids": found, "ports": ports}
+
+
 def list_processes() -> list[dict]:
     """Процессы с активными сетевыми соединениями: [{name, pid}].
 
@@ -96,6 +261,7 @@ def list_processes() -> list[dict]:
 
 
 def _tcp_snapshot(pids: list[int]) -> dict:
+    """TCP-снимок отдельным PS-вызовом (fallback, если combined не разобрался)."""
     ps = ",".join(str(p) for p in pids)
     script = (
         f"$pids = @({ps}); "
@@ -105,16 +271,7 @@ def _tcp_snapshot(pids: list[int]) -> dict:
         "@{n='rp';e={$_.RemotePort}},@{n='st';e={[string]$_.State}} | "
         "ConvertTo-Json -Compress"
     )
-    tcp: dict[str, dict] = {}
-    for item in _ps_json(script):
-        ra = str(item.get("ra") or "")
-        if not _non_empty(ra):
-            continue
-        port = item.get("rp")
-        state = str(item.get("st") or "?")
-        key = f"{ra}:{port}"
-        tcp[key] = {"state": state, "n": tcp.get(key, {}).get("n", 0) + 1}
-    return tcp
+    return _parse_tcp_items(_ps_json(script))
 
 
 def _udp_snapshot(pids: list[int]) -> dict:
@@ -132,15 +289,7 @@ def _udp_snapshot(pids: list[int]) -> dict:
         "Select-Object LocalAddress,LocalPort | "
         "ConvertTo-Json -Compress"
     )
-    udp: dict[str, int] = {}
-    for item in _ps_json(script):
-        la = str(item.get("LocalAddress") or "")
-        lp = item.get("LocalPort")
-        if not la and not lp:
-            continue
-        key = f"{la}:{lp}"
-        udp[key] = udp.get(key, 0) + 1
-    return udp
+    return _parse_udp_items(_ps_json(script))
 
 
 def _udp_ports(pids: list[int]) -> list[int]:
@@ -169,22 +318,11 @@ def _dns_cache_entries() -> dict[str, list[str]]:
         "Get-DnsClientCache -ErrorAction SilentlyContinue | "
         "Select-Object Entry,Data | ConvertTo-Json -Compress"
     )
-    cache: dict[str, list[str]] = {}
-    ip4 = re.compile(r"^\d{1,3}(\.\d{1,3}){3}$")
-    for item in _ps_json(script):
-        data = str(item.get("Data") or "").strip()
-        entry = str(item.get("Entry") or "").strip()
-        if not entry or not data:
-            continue
-        if not (ip4.match(data) or ":" in data):
-            continue
-        cache.setdefault(data, [])
-        if entry not in cache[data]:
-            cache[data].append(entry)
-    return cache
+    return _parse_dns_items(_ps_json(script))
 
 
-def _run_pktmon(pids: list[int], etl: Path, txt: Path) -> Optional[dict]:
+def _run_pktmon(pids: list[int], etl: Path, txt: Path,
+                ports: Optional[list[int]] = None) -> Optional[dict]:
     """UDP-захват через pktmon (только заголовки). Возвращает {ip:port: count}.
 
     Без известных UDP-портов процесса захват НЕ запускается: pktmon не фильтрует
@@ -197,7 +335,10 @@ def _run_pktmon(pids: list[int], etl: Path, txt: Path) -> Optional[dict]:
             etl.unlink()
         except OSError:
             pass
-    ports = _udp_ports(pids)
+    # T19: ports передаёт combined-rescan (один PS-вызов вместо двух); None -
+    # старый путь с отдельным _udp_ports.
+    if ports is None:
+        ports = _udp_ports(pids)
     if not ports:
         # нет связанных UDP-сокетов - фильтровать было бы нечем (ALL UDP =
         # мусор со всей машины); TCP-наблюдение snapshot'ами этого покрывает
@@ -564,6 +705,14 @@ class ProcessProbe:
         dns_seen: dict[str, list[str]] = {}
         last_dns = 0.0
         last_udp_rescan = 0.0
+
+        def _accumulate_dns(mapping: dict) -> None:
+            for ip, names in mapping.items():
+                acc = dns_seen.setdefault(ip, [])
+                for name in names:
+                    if name not in acc:
+                        acc.append(name)
+
         try:
             handle = _run_pktmon(pids, etl, txt)
             while (duration <= 0 or time.time() - start < duration) \
@@ -576,30 +725,56 @@ class ProcessProbe:
                     last_udp_rescan = time.time()
                     # PID тоже обновляем: игры/анти-чит поднимают дочерние
                     # процессы уже после старта - у них свои сокеты, без этого
-                    # их соединения не попадали ни в снимки, ни в захват (аудит)
-                    for pid in self._find_pids(spec):
-                        if pid not in pids:
-                            pids.append(pid)
-                    if handle is None:
-                        handle = _run_pktmon(pids, etl, txt)
+                    # их соединения не попадали ни в снимки, ни в захват (аудит).
+                    # T19: один PS-вызов (PID + UDP-порты) вместо двух. При
+                    # сбое разбора - прежний путь _find_pids + _udp_ports.
+                    rescan = _rescan_snapshot(pids, spec)
+                    if rescan is not None:
+                        for pid in rescan["pids"]:
+                            if pid not in pids:
+                                pids.append(pid)
+                        if handle is None:
+                            handle = _run_pktmon(pids, etl, txt,
+                                                 ports=rescan["ports"])
+                        else:
+                            for p in rescan["ports"]:
+                                if p not in handle["ports"]:
+                                    utils.run_quiet(["pktmon", "filter", "add",
+                                                     f"gp{p}", "-t", "UDP",
+                                                     "-p", str(p)])
+                                    handle["ports"].append(p)
                     else:
-                        for p in _udp_ports(pids):
-                            if p not in handle["ports"]:
-                                utils.run_quiet(["pktmon", "filter", "add",
-                                                 f"gp{p}", "-t", "UDP", "-p", str(p)])
-                                handle["ports"].append(p)
-                tcp = _tcp_snapshot(pids)
-                udp = _udp_snapshot(pids)
+                        for pid in self._find_pids(spec):
+                            if pid not in pids:
+                                pids.append(pid)
+                        if handle is None:
+                            handle = _run_pktmon(pids, etl, txt)
+                        else:
+                            for p in _udp_ports(pids):
+                                if p not in handle["ports"]:
+                                    utils.run_quiet(["pktmon", "filter", "add",
+                                                     f"gp{p}", "-t", "UDP",
+                                                     "-p", str(p)])
+                                    handle["ports"].append(p)
+                # T19: tcp+udp(+dns раз в 5 c) - один вызов PowerShell на тик;
+                # при сбое разбора fallback на прежние отдельные вызовы.
+                include_dns = time.time() - last_dns >= 5
+                snapshot = _net_snapshot(pids, include_dns=include_dns)
+                if snapshot is not None:
+                    tcp = _parse_tcp_items(snapshot["tcp"])
+                    udp = _parse_udp_items(snapshot["udp"])
+                    if include_dns:
+                        last_dns = time.time()
+                        _accumulate_dns(_parse_dns_items(snapshot["dns"]))
+                else:
+                    tcp = _tcp_snapshot(pids)
+                    udp = _udp_snapshot(pids)
+                    if include_dns:
+                        last_dns = time.time()
+                        _accumulate_dns(_dns_cache_entries())
                 if any(":" in k.rsplit(":", 1)[0] for k in list(tcp) + list(udp)):
                     ipv6 = True
                 elapsed = int(time.time() - start)
-                if time.time() - last_dns >= 5:
-                    last_dns = time.time()
-                    for ip, names in _dns_cache_entries().items():
-                        acc = dns_seen.setdefault(ip, [])
-                        for n in names:
-                            if n not in acc:
-                                acc.append(n)
                 with self._lock:
                     _merge_history(self._state["history"], tcp, udp, time.time())
                     self._state.update({"tcp": tcp, "udp": udp, "elapsed": elapsed,

@@ -2,22 +2,123 @@
 
 Переехало из server.py (аудит #1, Inc C). Соглашение: (ctx, ...) -> dict.
 Если служба установлена, «Запустить»/«Стоп» работают через неё (её binPath
-с актуальными аргументами), а не голым процессом winws2."""
+с актуальными аргументами), а не голым процессом winws2.
+
+T12 (2026-11-14): кнопка «Перезапустить» на фронтенде - это ДВА запроса
+(/api/stop -> пауза 1.2 c -> /api/start). Если stop службы занимает больше
+1.2 c, start приходил, пока operation-lock ещё занят, получал «Уже
+выполняется» и обход оставался СНЯТЫМ. Теперь stop/start обхода
+сериализованы как одна цепочка перезапуска: вторая половина ждёт первую
+(до _GATE_WAIT), а повторный start того же профиля, когда обход уже поднят
+этим же запуском (<_DEDUPE_WINDOW), не крутит второй stop/start.
+"""
 from __future__ import annotations
+
+import functools
+import threading
+import time
 
 from core.proc import kill_image_filtered
 from core.service_manager import (is_installed as svc_installed,
-                                  start as svc_start, stop as svc_stop)
+                                  start as svc_start, status as svc_status,
+                                  stop as svc_stop)
 from server import api_service
 from server.app_state import (AppContext, checkers_busy, get_config_manager,
                               get_controller, operation_guard, scan_winws_exe)
 
+# Сколько ждать «вторую половину» перезапуска (stop->start). Stop службы
+# штатно укладывается в единицы секунд; 12 c - с запасом на медленный SCM.
+_GATE_WAIT = 12.0
+# Окно дедупликации повторного start (двойной клик/две цепочки restart).
+_DEDUPE_WINDOW = 2.5
 
+_bypass_gate = threading.Lock()
+_start_guard = threading.Lock()
+_last_start_fp = ""
+_last_start_at = 0.0
+
+
+def _bypass_serialized(fn):
+    """Провести stop/start обхода через единый gate перезапуска.
+
+    operation_guard внутри остаётся: чужие mutating-операции (тестер, служба,
+    обновление) по-прежнему получают ошибку «Уже выполняется», а не ждут."""
+    @functools.wraps(fn)
+    def wrapper(ctx, *args, **kwargs):
+        if not _bypass_gate.acquire(timeout=_GATE_WAIT):
+            return {"status": "error",
+                    "message": "Перезапуск обхода уже выполняется. "
+                               "Дождитесь завершения."}
+        try:
+            return fn(ctx, *args, **kwargs)
+        finally:
+            _bypass_gate.release()
+    return wrapper
+
+
+def _start_fingerprint(data: dict) -> str:
+    """Отпечаток start-запроса: профиль + переключатели (порядок стабилен)."""
+    if not isinstance(data, dict):
+        return ""
+    keys = ("profile", "game_filter", "discord_voice_mode", "discord_voice",
+            "debug", "autohostlist", "ipset_catchall", "fake_blob",
+            "discord_alt")
+    parts = []
+    for key in keys:
+        value = data.get(key)
+        if isinstance(value, (dict, list)):
+            value = repr(value)
+        parts.append(f"{key}={value!r}")
+    return "|".join(parts)
+
+
+def _bypass_running() -> bool:
+    """Обход уже поднят? (служба/процесс) - для дедупликации restart-кликов."""
+    try:
+        if svc_installed():
+            return svc_status() == "running"
+        return bool(get_controller().is_running())
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _is_duplicate_start(fingerprint: str) -> bool:
+    """Повторный start того же профиля, когда обход уже поднят (T12)."""
+    if not fingerprint:
+        return False
+    with _start_guard:
+        recent = (fingerprint == _last_start_fp
+                  and (time.monotonic() - _last_start_at) < _DEDUPE_WINDOW)
+    return recent and _bypass_running()
+
+
+def _remember_start(fingerprint: str) -> None:
+    global _last_start_fp, _last_start_at
+    with _start_guard:
+        _last_start_fp = fingerprint
+        _last_start_at = time.monotonic()
+
+
+@_bypass_serialized
 @operation_guard("bypass")
 def start_zapret(ctx: AppContext, data: dict) -> dict:
     busy = checkers_busy()
     if busy:
         return {"status": "error", "message": busy}
+    payload = data if isinstance(data, dict) else {}
+    fingerprint = _start_fingerprint(payload)
+    if _is_duplicate_start(fingerprint):
+        # Двойной клик «Перезапустить»: вторая цепочка stop->start уже не
+        # нужна, обход поднят первой. Не крутим второй stop/start.
+        return {"status": "ok",
+                "message": "Перезапуск уже выполнен - повторный запрос пропущен"}
+    result = _start_zapret_impl(ctx, payload)
+    if isinstance(result, dict) and result.get("status") == "ok":
+        _remember_start(fingerprint)
+    return result
+
+
+def _start_zapret_impl(ctx: AppContext, data: dict) -> dict:
     z1 = scan_winws_exe()
     if z1["running"]:
         return {"status": "error", "message": "Zapret 1 (winws.exe) запущен. Остановите его перед запуском Zapret 2."}
@@ -72,6 +173,7 @@ def _my_winws2_paths() -> set[str]:
     return {str(root / "bin" / "winws2.exe"), str(root / "winws2.exe")}
 
 
+@_bypass_serialized
 @operation_guard("bypass")
 def stop_zapret(ctx: AppContext) -> dict:
     busy = checkers_busy()
