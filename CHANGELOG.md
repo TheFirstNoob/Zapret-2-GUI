@@ -2,9 +2,9 @@
 
 > Полный список изменений. Сравнение коммитов:
 > https://github.com/TheFirstNoob/Zapret-2-GUI/compare/Pre-Release-0.10...Pre-Release-0.11
-> (ссылка станет рабочей после создания тега `Pre-Release-0.11`).
+> Релиз: https://github.com/TheFirstNoob/Zapret-2-GUI/releases/tag/Pre-Release-0.11
 
-## Pre-Release 0.11 (черновик, 2026-11-14)
+## Pre-Release 0.11 (2026-11-14) — опубликован
 
 ### Главное
 

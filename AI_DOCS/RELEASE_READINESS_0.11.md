@@ -1,14 +1,17 @@
-# Готовность Pre-Release 0.11 — статус после сборки и подписи
+# Pre-Release 0.11 — опубликован, live-приёмка остаётся
 
-> Обновлено 2026-11-14 16:1x MSK. HEAD для сборки: `1c64f92` + фикс
-> `build_lite.py` (runtime-files filter) в этом же коммите.
-> Отчёты аудита: `_analysis/release-0.11/` (локально, gitignored).
+> Обновлено 2026-11-14. Сборка: `64f9fd1`, релиз: `f29cdb3`, тег
+> `Pre-Release-0.11`. Отчёты аудита: `_analysis/release-0.11/` (локально,
+> gitignored).
 
-## Вердикт: артефакты готовы, релиз можно публиковать; live-приёмка остаётся
+## Вердикт: опубликован 2026-11-14; live-приёмка остаётся
 
-Три архива собраны из HEAD, подписаны офлайн-ключом (PUBKEY `50DCECF29451`),
-`release_publish --dry-run` зелёный. Осталось: закоммитить артефакты/манифест,
-опубликовать GitHub Release (тег `Pre-Release-0.11`) и пройти live-смоук.
+Релиз: https://github.com/TheFirstNoob/Zapret-2-GUI/releases/tag/Pre-Release-0.11
+
+Тег `Pre-Release-0.11` → `f29cdb3`, 8 pretty-ассетов загружены и проверены
+по sha256/размерам; `release.json`/`.sig` подписаны (`50DCECF29451`).
+`check_for_updates()` видит latest 0.11. Осталось пройти live-смоук и не
+обещать «всё исправлено» до него.
 
 ## Что уже сделано
 
@@ -24,13 +27,10 @@
 
 ## Остающиеся шаги
 
-1. Закоммитить `Windows build/*.zip` + `.sha256`, `release.json`, `release.json.sig`
-   и фикс `build_lite.py` (код-фриз). **До тега.**
-2. `release_publish.py --version 0.11 --tag Pre-Release-0.11 --notes CHANGELOG.md`
-   (draft или сразу publish; immutable — проверить 8 ассетов до publish).
-3. Live-смоук: portable 0.10→0.11 (reinstall), 0.11→0.11 runtime,
-   install/remove/repair службы, exe-апдейт при живой службе, тестер/H3/CDN,
-   DNS на адаптерах, Win10/PS5.1.
+Релиз опубликован. Осталась только live-приёмка: portable 0.10→0.11
+(reinstall), 0.11→0.11 runtime, install/remove/repair службы, exe-апдейт при
+живой службе, тестер/H3/CDN, DNS на адаптерах, Win10/PS5.1. До неё не
+писать в нотах «всё исправлено».
 
 ## Известное ограничение: jsDelivr >20 MB
 
