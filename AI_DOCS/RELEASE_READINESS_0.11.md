@@ -1,102 +1,69 @@
-# Готовность Pre-Release 0.11 к публикации (2026-11-14)
+# Готовность Pre-Release 0.11 — статус после сборки и подписи
 
-> HEAD: `42edee7` + незакоммиченные README/CHANGELOG/фикс security-теста.
-> Цель: зафиксировать вердикт и точную последовательность перед тегом.
-> Проверяли: T25 README, T26 батарея/гейты, T27 updater/release,
-> T28 service-код-фриз, T29 tester-код-фриз (отчёты —
-> `_analysis/release-0.11/`, локально, gitignored).
+> Обновлено 2026-11-14 16:1x MSK. HEAD для сборки: `1c64f92` + фикс
+> `build_lite.py` (runtime-files filter) в этом же коммите.
+> Отчёты аудита: `_analysis/release-0.11/` (локально, gitignored).
 
-## Вердикт: НЕ ГОТОВ к публикации
+## Вердикт: артефакты готовы, релиз можно публиковать; live-приёмка остаётся
 
-Механика релиза и код-батарея готовы, но нет 0.11-артефактов/подписи,
-не пройдена live-приёмка и не закоммичен код-фриз. Публиковать сейчас —
-нельзя: `release_publish --version 0.11 --dry-run` возвращает отказ.
+Три архива собраны из HEAD, подписаны офлайн-ключом (PUBKEY `50DCECF29451`),
+`release_publish --dry-run` зелёный. Осталось: закоммитить артефакты/манифест,
+опубликовать GitHub Release (тег `Pre-Release-0.11`) и пройти live-смоук.
 
-## Блокеры
+## Что уже сделано
 
-1. **B1. Нет 0.11-артефактов.** `Windows build/*.zip` и `release.json` в репо —
-   от 0.10 (внутри VERSION 0.10, движок 1.0.5). Черновики 27.10 на Desktop —
-   1.0.6 и без runtime-секции, подписывать их нельзя. Нужна пересборка трёх
-   архивов из HEAD (1.0.7 + `midsld` + runtime manifest).
-2. **B2. Нет подписи 0.11.** `release.json.sig` — 0.10; офлайн-ключ
-   (PUBKEY `50DCECF29451`) не применялся. Подписывать только свежие архивы.
-3. **B3. Артефакты и манифест должны быть закоммичены ДО тега.**
-   `release_publish` создаёт тег от текущего `main`, но не проверяет, что
-   `Windows build/*`, release.json и .sig закоммичены; иначе тег и jsDelivr
-   `@tag` будут без артефактов.
-4. **B4. jsDelivr-лимит 20 MB/файл.** У 0.10 exe-zip 21.43 MB, portable
-   20.17 MB — канонический exe-zip, вероятно, не отдаётся зеркалом
-   (`updates.MIRROR_URL` всегда ведёт на exe-zip). После сборки измерить
-   размеры; если >20 MB — запросить лимит/ограничить зеркало честно.
-5. **B5. Live-приёмка не пройдена:** реальные install/remove/repair/restart
-   службы и failure actions; crash-recovery журнала службы; portable-апдейт
-   (в т.ч. 0.10→0.11 reinstall); exe-апдейт при работающем обходе; тестер/H3/CDN
-   на реальной сети; DNS apply/reset; Win10/PS5.1, две копии GUI.
-6. **B6. Код-фриз:** README/CHANGELOG/security-тест/docs не закоммичены;
-   после коммита перегнать батарею и больше не менять код до тега.
+| Шаг | Результат |
+|---|---|
+| Сборка EXE | `Zapret2GUI.zip` 21 513 599 B, sha256 `dae51087…`; exe 0.11.0.0, движок 1.0.7 |
+| Сборка portable | `Zapret2GUI-portable.zip` 18 616 620 B, sha256 `459529f1…`; runtime.rev `070a007233a8483c` |
+| Сборка lite | `Zapret2GUI-lite.zip` 1 795 494 B, sha256 `6bd659e7…`; VERSION 0.11, движок 1.0.7 |
+| Подпись | `release.json` + `release.json.sig` созданы; отпечаток `50DCECF29451` |
+| Publish dry-run | **RC=0**, 8 pretty-ассетов; VERSION/tag/manifest/runtime/sha256/size сходятся |
+| Батарея после сборки | 317 tests, 47 security (direct runner 47), compileall/api_smoke/args_golden/check_arg_file/js_bundle/status_contract — OK |
+| Артефакты внутри | portable: 834 файла, runtime-секция; lite: 126 файлов; flaky/runtime-файлов нет; движок 1.0.7 |
 
-## Зелёное (проверено 2026-11-14)
+## Остающиеся шаги
 
-- `compileall` OK; `pytest tests` **317 passed**; security **47 passed**
-  (прямой runner теперь тоже 47); `api_smoke` OK; `args_golden` OK;
-  `check_arg_file` OK (11/11); `js_bundle` OK; `status_contract` OK.
-- Гейты работают: `release_publish --dry-run 0.11` падает с точными ошибками
-  (version/tag 0.10, нет `runtime.rev`); `sign_release` откажет на старых
-  архивах (inner 0.10 / engine 1.0.5 ≠ 1.0.7); `check_for_updates()` показывает
-  опубликованную 0.10, а не draft 0.11 (ложный баннер устранён).
-- Portable runtime-апдейт (python.new → switch bat → rollback → post-check)
-  и exe-апдейт при живой службе реализованы и покрыты тестами.
-- README реструктурирован (TOC/якоря проверены), CHANGELOG 0.11 дополнен и
-  соответствует текущему коду; фактические ошибки README исправлены.
-- `hosts.txt`, release-гейты, pretty-имена ассетов, WebView2 fallback,
-  DNS-профили, H3-пробы — проверены статически/тестами.
+1. Закоммитить `Windows build/*.zip` + `.sha256`, `release.json`, `release.json.sig`
+   и фикс `build_lite.py` (код-фриз). **До тега.**
+2. `release_publish.py --version 0.11 --tag Pre-Release-0.11 --notes CHANGELOG.md`
+   (draft или сразу publish; immutable — проверить 8 ассетов до publish).
+3. Live-смоук: portable 0.10→0.11 (reinstall), 0.11→0.11 runtime,
+   install/remove/repair службы, exe-апдейт при живой службе, тестер/H3/CDN,
+   DNS на адаптерах, Win10/PS5.1.
 
-## Обязательная последовательность перед тегом
+## Известное ограничение: jsDelivr >20 MB
 
-1. Закоммитить README/CHANGELOG/security-тест/docs (код-фриз), `git status` чист.
-2. Пересобрать из HEAD: `python build.py`, `python build_portable.py`,
-   `python build_lite.py`; проверить внутри архивов VERSION 0.11, движок 1.0.7
-   и runtime-секцию portable.
-3. Повторить батарею (317/47 + tools) и `check_arg_file` на чистом дереве.
-4. `sign_release.py --version 0.11 --tag Pre-Release-0.11 --key <offline>`;
-   отпечаток = `50DCECF29451`; самопроверка подписи зелёная.
-5. `release_publish.py --dry-run` должен быть ОК (VERSION/tag/manifest/
-   подпись/sha256/size/runtime); иначе не публиковать.
-6. Закоммитить `Windows build` zip+sha256, `release.json`, `release.json.sig`;
-   перепроверить `git status` и dry-run уже после коммита.
-7. Измерить размеры ассетов (<20 MB для jsDelivr) и решить по B4.
-8. Опубликовать (`--keep-draft` → проверить 8 ассетов → publish).
-9. Смоук: обновление 0.10 portable → 0.11 (reinstall), 0.11→0.11 runtime,
-   проверка подписи/хешей и jsDelivr-доступности.
-10. Пройти live-чек-лист §B5; результаты — в release notes / отчёт.
+- portable 17.8 MiB и lite 1.7 MiB зеркалом отдаются; полный exe-архив
+  20.5 MiB (21 513 599 B) превышает лимит jsDelivr 20 MB.
+- Совместимый deflate-level9 не помогает (20.51 MiB); LZMA ≈20.0 MiB и
+  несовместим с Explorer/старыми клиентами — не используем.
+- Решение 0.11: GitHub — основной источник; portable/lite — зеркало.
+  В README/CHANGELOG это записано. Пост-0.11: решить лимит/отдельный
+  источник для full exe, не менять формат поздно.
 
-## Остаточные риски (не блокеры кода)
+## Код-фриз и остаточные риски
 
-- **Service (T28):** R1 fail-closed precheck на restore-путях может оставить
-  службу остановленной при инфраструктурном сбое; R2 три P1-фикса `a64d25a`
-  без unit-тестов (live-only); R3 recovery читает журнал до `_op_lock`;
-  R4 remove в stuck-delete может блокироваться ~20–25 c; R5 orphaned takeover
-  не убивает winws2 из мёртвого stored-пути.
-- **Tester (T29):** P3 F1 cancel_event не прокинут в H3; F4/F5 мёртвый дрейф
-  таймаутов; F7 custom строится после отмены; F8 api_cdn не видит
-  list-exclude-user. P2: CDN-скан на очень медленном линке может удлиниться.
-- **Tooling (T26):** нет unit-тестов на release-гейты; api_smoke не герметичен
-  при stale crash-журнале; CI хардкодит v1.0.7; exe-архив не гейтится по VERSION.
-- **Лицензия:** V3nilla/RIPEstat — решение владельца; ipset staged ждёт A/B.
+- Service (T28): P0 нет; live-only R1–R5 (fail-closed precheck, журнал до
+  `_op_lock`, stuck-delete, orphaned takeover); три фикса `a64d25a` без unit-тестов.
+- Tester (T29): P0/P1-регрессий нет; P3 F1/F4/F5/F7/F8, P2 медленный CDN-скан.
+- Tooling (T26): release-гейты и security-раннер (47) OK; нет unit-тестов на
+  `release_publish`; api_smoke не герметичен при stale crash-журнале.
+- Docs: README реструктурирован и выправлен (P0 факты), CHANGELOG 0.11
+  актуален, RELEASE_CHECKLIST/B4-шаги обновлены.
 
-## Live-чек-лист (минимум до «всё исправлено» в нотах)
+## Live-чек-лист (обязателен до «всё исправлено» в нотах)
 
 1. install → start → stop → restart → repair службы; failure actions.
 2. Kill GUI посреди операции службы → журнал/восстановление при старте.
 3. Переименовать папку → orphaned/takeover; удалить службу из живой копии.
 4. Portable 0.10 → 0.11 (reinstall) и 0.11 → 0.11 runtime-апдейт.
-5. Exe-самообновление при работающем обходе (данные не ломаются).
+5. Exe-самообновление при работающем обходе.
 6. Тестер/H3/CDN на реальной сети; отмена во всех действиях.
 7. DNS apply/reset на Wi-Fi/Ethernet/VPN (IPv6, 3+ сервера).
-8. Win10 без WebView2 Runtime; PS5.1; путь с пробелом/кириллицей; две копии GUI.
+8. Win10 без WebView2; PS5.1; путь с пробелом/кириллицей; две копии GUI.
 
 ## Отчёты
 
 `_analysis/release-0.11/README-review.md`, `release-audit-tooling.md`,
-`release-audit-updater.md`, `release-audit-service.md`,
-`release-audit-tester.md` (локально, gitignored).
+`release-audit-updater.md`, `release-audit-service.md`, `release-audit-tester.md`.

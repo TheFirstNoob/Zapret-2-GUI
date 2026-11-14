@@ -49,10 +49,10 @@
 - [ ] `python tools/check_arg_file.py` зелёный (fail-closed argv↔@conf; в CI).
 - [ ] `sign_release.py` берёт ВСЕ 3 архива и проверяет версию/тег/PUBKEY/
       движок внутри архивов (0.11: движок должен быть 1.0.7).
-- [ ] `release_publish.py --dry-run` проходит fail-closed сверку VERSION/tag/
-      release.json/подпись/sha256/size/runtime (stale-манифест = отказ).
-- [ ] После пересборки: ассеты < 20 MB для jsDelivr (сейчас у 0.10 exe-zip
-      21.43 MB) — иначе честно ограничить зеркало/запросить лимит.
+- [x] `release_publish.py --dry-run` — RC=0, 8 pretty-ассетов, VERSION/tag/manifest/runtime/sha256/size сходятся.
+- [x] Размеры измерены: portable 17.8 MiB и lite 1.7 MiB проходят jsDelivr;
+      full exe-zip 20.5 MiB (21.5 MB) — не проходит. Решение 0.11: GitHub —
+      основной источник, portable/lite — зеркало; записано в README/CHANGELOG.
 - [ ] **Portable 0.10 → 0.11:** в release notes явно «переустановить portable
       из архива» — первый хоп старым апдейтером не доставляет `python/`
       (runtime-секция manifest работает начиная с 0.11).
@@ -68,16 +68,16 @@
 ## Сборка
 - [ ] build-env: `pip install -r requirements.txt` (нужен `niquests[http3]`;
       spec падает с подсказкой, если стека нет - с 13.10).
-- [ ] `python build.py` → exe + `Windows build/Zapret2GUI.zip` + .sha256 (0.11 из HEAD)
-- [ ] `python build_portable.py` → Zapret2GUI-portable.zip + .sha256 (0.11; manifest runtime.rev)
-- [ ] `python build_lite.py` → Zapret2GUI-lite.zip + .sha256 (внутри: VERSION и
+- [x] `python build.py` → exe + `Windows build/Zapret2GUI.zip` + .sha256 (0.11 из HEAD)
+- [x] `python build_portable.py` → Zapret2GUI-portable.zip + .sha256 (0.11; manifest runtime.rev)
+- [x] `python build_lite.py` → Zapret2GUI-lite.zip + .sha256 (внутри: VERSION и
       дата в README; сборка сама прогоняет dry-run всех release-пресетов)
-- [ ] `python tools/security/test_updates_security.py` — 47 тестов зелёные (включая PUBKEY-гард).
+- [x] `python tools/security/test_updates_security.py` — 47 тестов зелёные (включая PUBKEY-гард).
 
 ## Подпись (обязательно)
-- [ ] `python tools/security/sign_release.py --version 0.11 --tag Pre-Release-0.11 --key <офлайн-ключ>`
+- [x] `python tools/security/sign_release.py --version 0.11 --tag Pre-Release-0.11 --key <офлайн-ключ>`
       → release.json + release.json.sig в корне репо (внутри — самопроверка).
-- [ ] Отпечаток в выводе = 50DCECF29451 (тот самый ключ).
+- [x] Отпечаток в выводе = 50DCECF29451 (тот самый ключ).
 
 ## Публикация
 - [ ] **(0.11) Закоммитить дистрибутивы + `.sha256` + release.json + release.json.sig в main ДО тега** (publish создаёт тег от main и не проверяет git-состояние).

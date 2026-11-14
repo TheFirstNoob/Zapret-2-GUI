@@ -124,5 +124,8 @@
 - **ipset**: staged-база 27206 CIDR (V3nilla/Flowseal) ждёт A/B catchall;
   релизная база не меняется до проверки. Лицензия V3nilla/RIPEstat — решение
   владельца (RIPEstat ToC).
+- **Зеркало jsDelivr:** portable и lite доступны; полный exe-архив (~21 MB)
+  превышает лимит 20 MB, поэтому при блокировке GitHub используйте portable/lite
+  или WARP (GitHub — основной источник обновлений).
 - **Discord media/stream**: z2 `default`/`auto` не подтверждены как стабильные;
   открытый кейс. UDP-фиксы Valorant/Fortnite ждут «Анализа приложения».
