@@ -14,6 +14,7 @@ embeddable Python (pythonw.exe за подписью PSF, чистая репу�
 """
 from __future__ import annotations
 
+import json
 import pathlib
 import shutil
 import subprocess
@@ -79,6 +80,35 @@ README_TXT = """Zapret 2 GUI - portable version (no packer, official Python runt
 """
 
 
+def write_runtime_markers(app_dir: pathlib.Path, py_dir: pathlib.Path,
+                          requirements: pathlib.Path,
+                          python_version: str) -> str:
+    """Записать ревизию runtime в python/ (факт) и app/ (требование).
+
+    Ревизия = SHA256(requirements.txt + версия Python): апдейтер сравнивает
+    два маркера и понимает, что site-packages устарел (0.10→0.11: niquests/
+    qh3 не доехали - H3-проба отдаёт «нет niquests»).
+    app/runtime.json лежит в app/, поэтому его доставляет даже старый
+    апдейтер 0.10: смешанная установка детектируется, а не живёт молча.
+    Возвращает rev.
+    """
+    from core.updater import (RUNTIME_MARKER_NAME, RUNTIME_PACKAGES,
+                              RUNTIME_REQUIRED_NAME, runtime_rev_for)
+    rev = runtime_rev_for(requirements.read_bytes(), python_version)
+    marker = json.dumps({
+        "rev": rev,
+        "python": python_version,
+        "packages": list(RUNTIME_PACKAGES),
+    }, ensure_ascii=False, indent=2) + "\n"
+    (py_dir / RUNTIME_MARKER_NAME).write_text(marker, encoding="utf-8")
+    required = json.dumps({
+        "rev": rev,
+        "python": python_version,
+    }, ensure_ascii=False, indent=2) + "\n"
+    (app_dir / RUNTIME_REQUIRED_NAME).write_text(required, encoding="utf-8")
+    return rev
+
+
 def _download(url: str, dest: pathlib.Path) -> None:
     if dest.exists() and dest.stat().st_size > 0:
         return
@@ -131,6 +161,12 @@ def main() -> None:
         (APP / "lists" / f"{name}.txt").write_text("", encoding="utf-8")
     # пул-файлы игр (lists/games/*) — рантайм конкретной машины
     shutil.rmtree(APP / "lists" / "games", ignore_errors=True)
+    # autohostlist обхода (lists/zapret-auto.txt) - выученные домены
+    # сборочной машины; в релиз не уезжает (P2 аудита: privacy). Файл не
+    # включаем в архив, а не «обнуляем»: иначе старый апдейтер 0.10 (он не
+    # считает его user-файлом) заменил бы выученный список пользователя
+    # пустышкой. launcher создаёт пустой файл сам при первом запуске.
+    (APP / "lists" / "zapret-auto.txt").unlink(missing_ok=True)
 
 # 3b. манифест обновления (system-файлы + sha256).
     # ПОСЛЕ чистки __pycache__ (шаг 4): иначе манифест перечислял .pyc,
@@ -148,7 +184,17 @@ def main() -> None:
     for p in APP.rglob("__pycache__"):
         shutil.rmtree(p, ignore_errors=True)
 
-    write_manifest(APP, VERSION)
+    # 4b. runtime-маркеры: app/runtime.json (требование) + python/ (факт).
+    # Сравнение этих ревизий - единственный способ заметить установку, где
+    # app/ обновился, а site-packages нет (0.10→0.11: старый апдейтер не
+    # умеет python/). Маркер app/ доставляется вместе с кодом.
+    runtime_rev = write_runtime_markers(
+        APP, PY, ROOT / "requirements.txt", PY_VER)
+    print(f"runtime: python {PY_VER}, rev {runtime_rev}")
+
+    # 4c. манифест: app-файлы + секция runtime (sha256 python/**). Апдейтер
+    # распакует python/** в python.new и переключит после выхода процесса.
+    write_manifest(APP, VERSION, runtime_dir=PY)
     for p in APP.rglob("__pycache__"):
         shutil.rmtree(p, ignore_errors=True)
 

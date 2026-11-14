@@ -35,9 +35,10 @@ def run_update_worker(kind: str, tag: str, info: dict) -> None:
     """Worker обновления: скачать → бэкап → применить (portable) или
     подготовить self-update (exe) → проверить службу (аргументы устарели?)."""
     from core.updater import (apply_portable, fetch_release_manifest,
-                              fetch_update, prepare_app_restart_bat,
-                              prepare_exe_update,
-                              service_args_stale, validate_release)
+                              fetch_update, find_runtime_dir,
+                              prepare_app_restart_bat, prepare_exe_update,
+                              runtime_status, service_args_stale,
+                              validate_release)
     from core.update_verify import verify as verify_signature
     from core.config import ConfigManager
     from core.launcher import build_args_from_preset
@@ -140,13 +141,31 @@ def run_update_worker(kind: str, tag: str, info: dict) -> None:
                     ui_debug(f"update: stop controller failed: {e}")
                 time.sleep(1.0)
             prog(70, "Применение обновления…")
+            # Portable: python/ (site-packages) приезжает в том же архиве,
+            # но живой рантайм заменить нельзя - apply_portable распакует его
+            # в python.new, а переключит батник после выхода процесса.
+            # Для exe/dev/lite runtime_dir = None (поведение как раньше).
+            runtime_dir = None
+            try:
+                runtime_dir = find_runtime_dir(root_dir)
+                if runtime_dir is not None:
+                    # 0.10→0.11: app/ уже 0.11, python/ ещё старый - фиксируем
+                    # это в логе (UI покажет runtime_warning из /update-check)
+                    ui_debug(f"update: runtime before={runtime_dir} "
+                             f"state={runtime_status(root_dir, runtime_dir)}")
+            except Exception as e:  # noqa: BLE001 - не повод валить апдейт
+                ui_debug(f"update: runtime probe failed: {e}")
             # try/finally: служба/controller, остановленные ДО apply, обязаны
             # подняться и при исключении в apply.
             applied = None
             try:
                 applied = apply_portable(
                     zip_path, root_dir,
-                    progress_cb=lambda m: prog(80, str(m)))
+                    progress_cb=lambda m: prog(80, str(m)),
+                    runtime_dir=runtime_dir,
+                    # post-check в apply_portable: VERSION из нового
+                    # core/config.py должна совпасть с подписанным манифестом
+                    expected_version=str(manifest.get("version") or ""))
             finally:
                 if svc_was and _svc_start:
                     prog(92, "Запуск обхода…")
@@ -173,17 +192,41 @@ def run_update_worker(kind: str, tag: str, info: dict) -> None:
             result.update(applied=applied["updated"],
                           skipped_user=applied["skipped_user"],
                           backup=applied["backup"])
+            # Аддитивные поля для UI/диагностики: что произошло с python/.
+            result["runtime_update"] = {
+                "portable": runtime_dir is not None,
+                "staged": bool(applied.get("runtime_staged")),
+                "files": int(applied.get("runtime_files") or 0),
+                "skipped": str(applied.get("runtime_skipped") or ""),
+                "rev": str(applied.get("runtime_rev") or ""),
+            }
+            ui_debug(f"update: runtime_update={result['runtime_update']}")
             # Автоперезапуск приложения (portable/dev): сервер уже на новых
             # файлах, но процесс - старый; батник убьёт наш PID и запустит
             # заново тем же интерпретатором. Ошибки не фатальны - останется
             # ручной перезапуск.
             try:
                 import os as _os
-                bat = prepare_app_restart_bat(root_dir, _os.getpid())
+                staged = applied.get("runtime_staged") or ""
+                # Переключение python/ делает тот же батник, который
+                # перезапускает программу (до выхода процесса каталог занят
+                # pythonw.exe). Если рантайм уже актуален - обычный рестарт:
+                # runtime_dir без staged не передаём (батник без переключения).
+                bat = prepare_app_restart_bat(
+                    root_dir, _os.getpid(),
+                    runtime_staged=Path(staged) if staged else None,
+                    runtime_dir=runtime_dir if staged else None)
                 result["restart_bat"] = str(bat) if bat else ""
             except Exception as e:  # noqa: BLE001
                 ui_debug(f"update: restart bat failed: {e}")
                 result["restart_bat"] = ""
+                if applied.get("runtime_staged"):
+                    # Рантайм скачан, но автоматически не переключится -
+                    # честно предупреждаем (файлы app/ уже применены).
+                    result["runtime_manual"] = (
+                        "Компоненты Python подготовлены, но автопереключение "
+                        "не создано - запустите обновление ещё раз или "
+                        "переустановите portable-сборку")
             result["restart_required"] = True
 
         # Служба установлена? Сравнить её аргументы с собранными из НОВЫХ
@@ -219,6 +262,20 @@ def run_update_worker(kind: str, tag: str, info: dict) -> None:
         end_operation("update")
 
 
+def _runtime_info() -> dict:
+    """Состояние portable-runtime (python/) для UI/диагностики.
+
+    Локальная проверка (два маленьких json + пару stat), без сети: нужна,
+    чтобы замечать смешанную установку 0.10→0.11, где app/ обновился, а
+    site-packages остался старым (H3-проба: «нет niquests»)."""
+    try:
+        from core.updater import runtime_status
+        return runtime_status(get_root_dir())
+    except Exception as e:  # noqa: BLE001 - проверка обновлений не падает
+        ui_debug(f"update: runtime status failed: {e}")
+        return {"portable": False, "state": "unknown"}
+
+
 def update_check(ctx: AppContext, params: dict) -> dict:
     force = "1" in (params or {}).get("force", [])
     now = time.time()
@@ -227,7 +284,15 @@ def update_check(ctx: AppContext, params: dict) -> dict:
         from core.updates import check_for_updates
         STATE.update_check_cache = check_for_updates()
         STATE.update_check_at = now
-    return {"status": "ok", **STATE.update_check_cache}
+    info = {"status": "ok", **STATE.update_check_cache}
+    # Аддитивные поля (старый UI их игнорирует): состояние runtime и
+    # fail-closed предупреждение о смешанной установке.
+    runtime = _runtime_info()
+    if runtime.get("portable"):
+        info["runtime"] = runtime
+        if runtime.get("state") in ("runtime_missing", "stale", "broken"):
+            info["runtime_warning"] = str(runtime.get("message") or "")
+    return info
 
 
 def update_status(ctx: AppContext) -> dict:
@@ -248,6 +313,14 @@ def update_start(ctx: AppContext) -> dict:
         info = (STATE.update_check_cache or {}).copy()
         if not info.get("available"):
             end_operation("update")
+            runtime = _runtime_info()
+            if runtime.get("state") in ("runtime_missing", "stale", "broken"):
+                # Fail-closed: обновиться «поверх» смешанной установки нечем
+                # (версия та же) - просим полную переустановку portable.
+                return {"status": "error", "message": (
+                    "Версия актуальна, но компоненты Python (python/) "
+                    "устарели - переустановите portable-сборку из свежего "
+                    "архива (настройки, списки и пресеты сохраняются)")}
             return {"status": "error",
                     "message": "Обновление недоступно или версия уже актуальна"}
 

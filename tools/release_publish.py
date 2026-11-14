@@ -29,6 +29,7 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+import zipfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -56,6 +57,54 @@ def _sha256(path) -> str:
 def _norm_version(text: str) -> str:
     m = re.search(r"(\d+\.\d+(?:\.\d+)?)", text or "")
     return m.group(1) if m else ""
+
+
+def _portable_runtime_problems(zip_path: Path) -> list[str]:
+    """Portable-архив должен нести согласованную секцию runtime в манифесте.
+
+    Иначе апдейтер не сможет доставить python/ (niquests/qh3 для H3-пробы):
+    app/ обновится, site-packages останется старым - ровно та смешанная
+    установка, которую ловит T22. Гейт дешёвый (только чтение zip), а релиз
+    immutable после publish - лучше не публиковать.
+    """
+    try:
+        sys.path.insert(0, str(REPO))
+        from core.updater import RUNTIME_MARKER_NAME
+    except Exception:  # noqa: BLE001 - имя маркера не критично для гейта
+        RUNTIME_MARKER_NAME = "ZAPRET2_RUNTIME.json"
+    errors: list[str] = []
+    try:
+        with zipfile.ZipFile(zip_path) as zf:
+            names = set(zf.namelist())
+            try:
+                raw = zf.read("app/update_manifest.json")
+                doc = json.loads(raw.decode("utf-8"))
+            except KeyError:
+                return [f"{zip_path.name}: нет app/update_manifest.json"]
+            except Exception:  # noqa: BLE001
+                return [f"{zip_path.name}: битый app/update_manifest.json"]
+            runtime = doc.get("runtime") if isinstance(doc, dict) else None
+            if not isinstance(runtime, dict) or not runtime.get("rev"):
+                return [f"{zip_path.name}: в манифесте нет runtime.rev - "
+                        "апдейтер не сможет обновить python/"]
+            if not any(n.startswith("python/") for n in names):
+                errors.append(f"{zip_path.name}: в архиве нет python/")
+            marker = f"python/{RUNTIME_MARKER_NAME}"
+            if marker not in names:
+                errors.append(f"{zip_path.name}: нет маркера {marker}")
+            files = runtime.get("files")
+            if not isinstance(files, dict) or not files:
+                errors.append(f"{zip_path.name}: пустой runtime.files "
+                              "в манифесте")
+            else:
+                missing = [k for k in sorted(files) if k not in names]
+                if missing:
+                    errors.append(
+                        f"{zip_path.name}: runtime-файлов нет в архиве: "
+                        + ", ".join(missing[:3]))
+    except (OSError, zipfile.BadZipFile) as e:
+        errors.append(f"{zip_path.name}: не читается как zip: {e}")
+    return errors
 
 
 def _verify_release_inputs(version: str, tag: str) -> list[str]:
@@ -109,6 +158,10 @@ def _verify_release_inputs(version: str, tag: str) -> list[str]:
             errors.append(f"sha256 {canon} не совпадает с manifest")
         if int(art.get("size", -1)) != src.stat().st_size:
             errors.append(f"size {canon} не совпадает с manifest")
+    # Portable: без runtime-секции апдейт python/ не доставит (T22).
+    portable_src = REPO / "Windows build" / ASSETS["portable"][0]
+    if portable_src.exists():
+        errors.extend(_portable_runtime_problems(portable_src))
     return errors
 
 
