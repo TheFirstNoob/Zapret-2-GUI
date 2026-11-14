@@ -50,6 +50,12 @@
   YouTube-видеоспиннер у части 0.10 — внешняя волна GGC/TLS-CH (см. тот же
   документ); ждём логи affected (DevTools Protocol/Method/Size/Remote Address,
   форма A/B).
+- **Технический аудит 2026-11-14:** исправлены P0/P1 и точечные P2 (fail-closed
+  validate_args, ownership operation-lock, таймауты тестера, service
+  orphaned/repair/precheck, DNS-семейства, битый JSON→400, release-гейты,
+  EXE-апдейт при живом обходе). Итоги и НЕисправленный бэклог —
+  AI_DOCS/TECH_AUDIT_2026-11-14.md §2–§3. Fail-closed проверки в
+  launcher/service/tools не ослаблять.
   `presets/flaky.txt` в рабочем дереве отсутствует и в релиз не входит.
   CDN/ASN refresh — запаркован; ipset-база остаётся наша; чувствительные
   сетевые кейсы — только локально, вне git.
@@ -148,6 +154,10 @@
   `50DCECF29451`; fail-closed. Релиз подписывается офлайн-ключом.
 - Апдейтер ставит только валидную подпись, сверяет sha256, применяет
   manifest, откатывает portable. Не ослаблять проверки.
+- Релизные гейты (2026-11-14): sign_release.py требует все 3 архива,
+  совпадение версии/тега/ключа PUBKEY/версии движка внутри архивов;
+  release_publish.py сверяет VERSION/tag/манифест/подпись/sha256/size до
+  публикации. Ослаблять нельзя — stale-манифест уезжал в immutable-релиз.
 
 ## 2. Архитектура
 
@@ -183,6 +193,8 @@ main.py (UAC, pywebview/WebView2, single-instance)
 - `AI_DOCS/PLAN_WEBVIEW2_FALLBACK.md` — fallback WebView2.
 - `AI_DOCS/YOUTUBE_VIDEO_STALL_2026-11.md` — видео-спиннер 2026-11: GGC/TLS-CH,
   SABR-only, QUIC, что не переоткрывать и что делать в 0.11.
+- `AI_DOCS/TECH_AUDIT_2026-11-14.md` — итоги тех-аудита: исправленные баги,
+  бэклог P1/P2, оптимизации, применимость фич zapret2 1.0.6/1.0.7.
 - При чистке доков важные параметры/источники/решения переносить в
   `ENGINEERING_NOTES.md`; raw-оригиналы остаются в git-истории, но секреты/
   регион/IP туда заново не добавлять.

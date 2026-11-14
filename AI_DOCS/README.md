@@ -18,6 +18,8 @@
 8. **`PLAN_WEBVIEW2_FALLBACK.md`** — WebView2 preflight/fallback и его хвосты.
 9. **`YOUTUBE_VIDEO_STALL_2026-11.md`** — видео-спиннер 2026-11: GGC/TLS-CH,
    SABR-only, QUIC, что не переоткрывать, что делать в 0.11.
+10. **`TECH_AUDIT_2026-11-14.md`** — тех-аудит: исправленные баги, бэклог,
+   оптимизации, применимость zapret2 1.0.6/1.0.7.
 
 Пользовательский мануал — в корне репозитория: `README.md`.
 
@@ -34,6 +36,7 @@
 | `ARG_FILE_RESEARCH_2026-10-14.md` | справочник по `@conf` |
 | `PLAN_WEBVIEW2_FALLBACK.md` | preflight/fallback, остались проверки |
 | `YOUTUBE_VIDEO_STALL_2026-11.md` | YouTube видео-спиннер 2026-11 (курируемая выжимка) |
+| `TECH_AUDIT_2026-11-14.md` | тех-аудит 2026-11-14: фиксы + бэклог |
 | `README.md` (корень) | пользовательский мануал |
 
 ## Исторические документы
@@ -63,6 +66,9 @@
 - YouTube: у части пользователей 0.10 видео-спиннер — внешняя волна GGC/TLS-CH
   (см. `YOUTUBE_VIDEO_STALL_2026-11.md`); ждём логи affected
   (DevTools Protocol/Method/Size/Remote Address, форма A/B).
+- Тех-аудит 2026-11-14: P0/P1 исправлены; оставшийся бэклог (probe-файлы в
+  живых каталогах, TCP16-20/H3-таймауты, optimizations ProcessProbe/status,
+  portable-runtime при апдейте, CI hardening) — `TECH_AUDIT_2026-11-14.md` §3.
 
 ## Чувствительные данные
 

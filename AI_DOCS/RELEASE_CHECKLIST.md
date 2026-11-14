@@ -42,6 +42,11 @@
       старые пресеты) не публиковать.
 - [ ] В release notes не обещать «фикс YouTube»; видео-диагностика — по
       `YOUTUBE_VIDEO_STALL_2026-11.md` (P0: InnerTube/SABR + H3 + метрики).
+- [ ] `python tools/check_arg_file.py` зелёный (fail-closed argv↔@conf; в CI).
+- [ ] `sign_release.py` берёт ВСЕ 3 архива и проверяет версию/тег/PUBKEY/
+      движок внутри архивов (0.11: движок должен быть 1.0.7).
+- [ ] `release_publish.py --dry-run` проходит fail-closed сверку VERSION/tag/
+      release.json/подпись/sha256/size (stale-манифест = отказ).
 - [x] `hosts.txt` актуален - он уезжает во все три сборки (exe-zip рядом
       с exe, portable `app\hosts.txt` - обновляется апдейтером, lite
       `hosts.txt` в корне).
