@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import subprocess
+import threading
+import time
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 # Известные DPI-bypass-тулы, использующие драйвер WinDivert: работа рядом
 # с winws2 - ЖЁСТКИЙ конфликт (один из них перестаёт видеть пакеты).
@@ -46,6 +48,41 @@ VPN_SERVICES = {
     "ZeroTierOne": "ZeroTier",
 }
 
+# Короткий TTL-кэш дорогих опросов (аудит 2026-11-14, T21): tasklist/sc/
+# Get-NetAdapter занимают сотни мс, а скан вызывается из диагностики и может
+# повторяться подряд. 12 с - осознанно короткое окно: пользователь не увидит
+# устаревший список спустя минуту, но повторный скан в том же отчёте
+# бесплатен. Пустой результат НЕ кэшируем: это вероятный сбой опроса, и
+# «ложно-зелёный» скан на 12 с хуже лишнего вызова.
+_CACHE_TTL_SEC = 12.0
+_cache_lock = threading.Lock()
+_cache: dict[str, tuple[float, List[str]]] = {}
+
+
+def _now() -> float:
+    """Монотонное время (подменяется в тестах)."""
+    return time.monotonic()
+
+
+def _cached_list(key: str, loader: Callable[[], List[str]]) -> List[str]:
+    """Список от loader с TTL-кэшем; пустой/сбойный результат не кэшируется."""
+    now = _now()
+    with _cache_lock:
+        hit = _cache.get(key)
+        if hit is not None and (now - hit[0]) < _CACHE_TTL_SEC:
+            return list(hit[1])
+    values = list(loader())
+    if values:
+        with _cache_lock:
+            _cache[key] = (now, list(values))
+    return values
+
+
+def clear_cache() -> None:
+    """Сбросить кэш скана (тесты и повторная диагностика после изменений)."""
+    with _cache_lock:
+        _cache.clear()
+
 
 @dataclass
 class ConflictReport:
@@ -63,12 +100,12 @@ class ConflictReport:
         return bool(self.vpn_clients or self.tun_adapters or self.vpn_services)
 
 
-def _running_images() -> List[str]:
+def _load_running_images() -> List[str]:
     from core.proc import running_images
     return running_images(timeout=10)
 
 
-def _adapter_descriptions() -> List[str]:
+def _load_adapter_descriptions() -> List[str]:
     # encoding обязателен: вывод PowerShell OEM (cp866), text=True без него
     # даёт UnicodeDecodeError при разборе - чек молча пропадал бы целиком
     # (остальные пробы здесь с encoding, см. _running_images/_running_services).
@@ -86,7 +123,7 @@ def _adapter_descriptions() -> List[str]:
         return []
 
 
-def _running_services() -> List[str]:
+def _load_running_services() -> List[str]:
     """Имена ЗАПУЩЕННЫХ служб.
 
     2026-11-14: запрос со state= active на актуальной Windows возвращает
@@ -114,6 +151,18 @@ def _running_services() -> List[str]:
         return []
 
 
+def _running_images() -> List[str]:
+    return _cached_list("images", _load_running_images)
+
+
+def _adapter_descriptions() -> List[str]:
+    return _cached_list("adapters", _load_adapter_descriptions)
+
+
+def _running_services() -> List[str]:
+    return _cached_list("services", _load_running_services)
+
+
 def scan() -> ConflictReport:
     rep = ConflictReport()
 
@@ -131,8 +180,12 @@ def scan() -> ConflictReport:
         if any(hint.lower() in low for hint in TUN_HINTS):
             rep.tun_adapters.append(desc)
 
+    # Один опрос служб на скан: раньше sc query вызывался в цикле на каждую
+    # VPN-службу (5 вызовов подряд) - теперь один + TTL-кэш.
+    running = [s.lower() for s in _running_services()]
     for svc, name in VPN_SERVICES.items():
-        if any(s.lower().startswith(svc.rstrip("$").lower()) for s in _running_services()):
+        prefix = svc.rstrip("$").lower()
+        if any(s.startswith(prefix) for s in running):
             rep.vpn_services.append(name)
 
     return rep

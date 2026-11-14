@@ -8,9 +8,22 @@ from dataclasses import replace
 from zipfile import BadZipFile
 
 from core.config import VERSION
-from server.app_state import AppContext, get_config_manager, get_root_dir
+from server.api_common import ApiError
+from server.app_state import (AppContext, checkers_busy, get_config_manager,
+                              get_root_dir)
 
 _CONFIG_LOCK = threading.Lock()
+
+
+def _busy_or_409() -> None:
+    """Правка конфига/импорт во время проверки запрещены - 409.
+
+    Тестер/диагностика/обновление взаимоисключающие: сохранение настроек
+    или импорт user-файлов посреди прогона меняли бы условия теста и файлы
+    под живым обходом (аудит 2026-11-14, T12/T21)."""
+    busy = checkers_busy()
+    if busy:
+        raise ApiError(409, {"status": "error", "message": busy})
 
 
 def get_config(ctx: AppContext) -> dict:
@@ -40,6 +53,7 @@ def get_config(ctx: AppContext) -> dict:
 
 
 def save_config(ctx: AppContext, data: dict) -> dict:
+    _busy_or_409()
     if not isinstance(data, dict):
         return {"status": "error", "message": "JSON body должен быть объектом"}
     with _CONFIG_LOCK:
@@ -105,6 +119,8 @@ def settings_export(ctx: AppContext) -> dict:
 
 def settings_import(ctx: AppContext, data: dict) -> dict:
     """Импорт настроек из zip (base64): только юзер-файлы восстанавливаются."""
+    # Импорт пишет user-файлы на месте - во время проверки это 409.
+    _busy_or_409()
     import base64
     try:
         zip_data = base64.b64decode(data.get("data") or "")

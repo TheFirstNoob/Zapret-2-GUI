@@ -8,6 +8,17 @@ from server.api_common import ApiError
 from server.app_state import (AppContext, checkers_busy, get_root_dir)
 
 
+def _busy_or_409() -> None:
+    """Правка списков во время проверки запрещена - 409, как у service-ручек.
+
+    Тестер/диагностика/обновление держат живой прогон: правка user-списка
+    или комбинированного list-include-all.txt под ним меняет условия теста
+    и может «переизбрать» домен на ходу (аудит 2026-11-14, T12/T21)."""
+    busy = checkers_busy()
+    if busy:
+        raise ApiError(409, {"status": "error", "message": busy})
+
+
 def lists_health(ctx: AppContext) -> dict:
     try:
         from core import list_health
@@ -18,9 +29,7 @@ def lists_health(ctx: AppContext) -> dict:
 
 
 def lists_dedupe(ctx: AppContext) -> dict:
-    busy = checkers_busy()
-    if busy:
-        return {"status": "error", "message": busy}
+    _busy_or_409()
     try:
         from core import list_health
         with list_health.list_lock():
@@ -34,9 +43,7 @@ def lists_dedupe(ctx: AppContext) -> dict:
 
 
 def lists_add_domain(ctx: AppContext, data: dict) -> dict:
-    busy = checkers_busy()
-    if busy:
-        return {"status": "error", "message": busy}
+    _busy_or_409()
     mode = "exclude" if data.get("mode") == "exclude" else "include"
     result: dict = {}
     try:
@@ -74,6 +81,9 @@ def get_list(ctx: AppContext, filename: str) -> dict:
 
 
 def save_list(ctx: AppContext, data: dict, filename: str) -> dict:
+    # Правка списка во время проверки - 409 (аудит 2026-11-14, T12/T21):
+    # живой прогон не должен менять hostlist под собой. Проверка ДО записи.
+    _busy_or_409()
     # Пустой/битый POST НЕ должен стирать пользовательский список: требуем
     # явный ключ content (внешнее ревью 14.10 - класс "потери данных").
     # content:"" допустим - это осознанная очистка списка пользователем.

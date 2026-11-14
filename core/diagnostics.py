@@ -72,6 +72,49 @@ class Check:
         return d
 
 
+def _failed_check(check_id: str, name: str, exc: BaseException,
+                  status: str = "skip") -> Check:
+    """Чек упал: отчёт не теряем, помечаем проверку невыполненной.
+
+    Раньше ЛЮБОЕ исключение в одной проверке (занятый AV/OneDrive list-файл,
+    гонка stat debug-лога, TimeoutError пробы) убивало весь отчёт: в GUI
+    приходило "ошибка" вместо чек-листа (аудит 2026-11-14, T21)."""
+    reason = f"{type(exc).__name__}: {exc}"
+    return Check(check_id, name, status,
+                 f"проверка не выполнена: {reason}", tech=reason)
+
+
+def _safe_check(check_id: str, name: str, fn, *args,
+                on_error: str = "skip", **kwargs) -> Check:
+    """Один чек под guard'ом: исключение -> Check(on_error) с причиной."""
+    try:
+        result = fn(*args, **kwargs)
+        if not isinstance(result, Check):
+            raise TypeError(f"проверка вернула {type(result).__name__}, а не Check")
+        return result
+    except Exception as e:  # noqa: BLE001 - отчёт должен собраться всегда
+        return _failed_check(check_id, name, e, on_error)
+
+
+def _safe_checks(fn, fallback_id: str, fallback_name: str) -> list[Check]:
+    """Групповая проверка (список Check): падение -> один skip-чек."""
+    try:
+        result = list(fn())
+        if any(not isinstance(c, Check) for c in result):
+            raise TypeError("групповая проверка вернула не Check")
+        return result
+    except Exception as e:  # noqa: BLE001
+        return [_failed_check(fallback_id, fallback_name, e)]
+
+
+def _safe_pid(image_name: str) -> Optional[int]:
+    """PID процесса для чеков; сбой опроса не должен ронять отчёт."""
+    try:
+        return _pid_of(image_name)
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def _pid_of(image_name: str) -> Optional[int]:
     from core.proc import image_pids
     pids = image_pids(image_name, timeout=5)
@@ -83,6 +126,81 @@ def _curl_code(host: str, timeout: int = 6, scheme: str = "https") -> Optional[i
     from core.probe_http import curl_code
     return curl_code(f"{scheme}://{host}/", timeout=timeout, wall_pad=3,
                      headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+
+
+def _check_admin() -> Check:
+    admin = is_admin()
+    return Check("admin", "Права администратора",
+                 "ok" if admin else "fail",
+                 "есть" if admin else "нет - WinDivert не загрузится")
+
+
+def _check_winws2_process(cfg: AppConfig,
+                          pid: Optional[int] = None) -> Check:
+    """Процесс winws2; pid=None - "не запущен" (опрос делает caller/guard)."""
+    if pid is not None:
+        strategy = cfg.last_profile or DEFAULT_PROFILE
+        return Check("winws2", "Процесс winws2", "ok",
+                     f"запущен (PID {pid}), пресет «{strategy}»")
+    return Check("winws2", "Процесс winws2", "fail",
+                 "не запущен - обход неактивен")
+
+
+def _check_zapret1() -> Check:
+    z1 = _pid_of("winws.exe")
+    if z1 is not None:
+        return Check("zapret1", "Zapret 1", "warn",
+                     f"winws.exe запущен (PID {z1}) - два WinDivert-фильтра конфликтуют")
+    return Check("zapret1", "Zapret 1", "ok", "не запущен")
+
+
+def _check_env() -> Check:
+    """Другие DPI-тулзы / VPN-клиенты / туннели (core.conflict_scan)."""
+    from core.conflict_scan import scan as scan_conflicts
+    from core.conflict_scan import describe as describe_conflicts
+    cr = scan_conflicts()
+    if cr.hard_conflict:
+        return Check("env", "Конфликт DPI-тулзов", "fail",
+                     describe_conflicts(cr) or "обнаружен")
+    if cr.warnings:
+        return Check("env", "Окружение (VPN/туннели)", "warn",
+                     describe_conflicts(cr) or "обнаружено")
+    return Check("env", "Окружение", "ok", "конфликтов нет")
+
+
+def _check_tcp_timestamps() -> Check:
+    from core.tcp_timestamps import timestamps_enabled as ts_enabled
+    if ts_enabled():
+        return Check("tcp_ts", "TCP timestamps", "ok",
+                     "включены - обход работает в полную силу",
+                     tech="timestamps enabled")
+    return Check("tcp_ts", "TCP timestamps", "warn",
+                 "выключены - часть приёмов обхода молча не работает",
+                 tech="timestamps disabled, tcp_ts= silent")
+
+
+def _check_service() -> Check:
+    from core.service_manager import is_installed as svc_installed
+    from core.service_manager import status as svc_status
+    if not svc_installed():
+        return Check("service", "Служба zapret2", "skip",
+                     "не установлена - обход только при открытом GUI")
+    from core.service_manager import path_status as svc_path_status
+    pstate, pmsg = svc_path_status()
+    st = svc_status()
+    if pstate == "mismatch":
+        return Check("service", "Служба zapret2", "warn",
+                     "путь службы указывает на другую копию программы - "
+                     "переустановите службу, иначе обходит старый exe",
+                     tech=pmsg)
+    if st == "running":
+        return Check("service", "Служба zapret2", "ok", "установлена и работает")
+    if _pid_of("winws2.exe") is not None:
+        return Check("service", "Служба zapret2", "warn",
+                     "служба остановлена в SCM, но winws2 работает "
+                     "(запущен вручную)")
+    return Check("service", "Служба zapret2", "warn",
+                 "установлена, но не запущена (автозапуск после перезагрузки)")
 
 
 def _check_path(root_dir: Path) -> Check:
@@ -243,8 +361,17 @@ def _check_net() -> list[Check]:
 
     checks: list[Check] = []
     for host, name, kind in _NET_CHECKS:
-        code = futures[host]["tls"].result(timeout=15)
-        http_code = futures[host]["http"].result(timeout=15)
+        # Async-проба под guard'ом: сбой/таймаут одной задачи не должен
+        # убивать весь чек "Связь" (аудит 2026-11-14, T21).
+        try:
+            code = futures[host]["tls"].result(timeout=15)
+        except Exception as e:  # noqa: BLE001
+            checks.append(_failed_check(f"net_{host}", name, e))
+            continue
+        try:
+            http_code = futures[host]["http"].result(timeout=15)
+        except Exception:  # noqa: BLE001
+            http_code = None
         if code is None or code < 100:
             # Сторонний TLS-клиент (curl/openssl) сквозь движок ломается на
             # google-классе (fake+multisplit рвёт «небраузерный» ClientHello),
@@ -690,143 +817,102 @@ def _check_dns_spoof_system() -> Check:
 
 
 def run_diagnostics(root_dir: Path, cfg: AppConfig, progress_cb=None) -> dict:
+    """Полный отчёт диагностики.
+
+    Каждая проверка выполняется под своим guard'ом (аудит 2026-11-14, T21):
+    исключение внутри одного чека превращается в Check(status=skip/warn) с
+    причиной, остальные проверки и отчёт формируются как обычно. Раньше
+    одно исключение (занятый файл, гонка stat, таймаут пробы) убивало отчёт
+    целиком и пользователь получал "ошибка" вместо чек-листа.
+    """
     root_dir = Path(root_dir)
+    profile = cfg.last_profile or DEFAULT_PROFILE
 
     checks: list[Check] = []
 
-    def _add(ck: Check) -> None:
-        checks.append(ck)
+    def _notify(name: str) -> None:
         if progress_cb is not None:
             try:
-                progress_cb(ck.name)
-            except Exception:
+                progress_cb(name)
+            except Exception:  # noqa: BLE001 - прогресс не должен ронять отчёт
                 pass
+
+    def _add(ck: Check) -> None:
+        checks.append(ck)
+        _notify(ck.name)
+
+    def _add_safe(check_id: str, name: str, fn, *args,
+                  on_error: str = "skip") -> None:
+        # Per-check guard: одно падение не убивает отчёт целиком.
+        _add(_safe_check(check_id, name, fn, *args, on_error=on_error))
 
     _add(Check("version", "Версия", "ok", VERSION))
 
     # права
-    _add(Check("admin", "Права администратора",
-               "ok" if is_admin() else "fail",
-               "есть" if is_admin() else "нет - WinDivert не загрузится"))
+    _add_safe("admin", "Права администратора", _check_admin)
 
     # путь установки
-    _add(_check_path(root_dir))
-    _add(_check_launch_spot(root_dir))
+    _add_safe("path", "Путь установки", _check_path, root_dir)
+    _add_safe("launch_spot", "Расположение программы",
+              _check_launch_spot, root_dir)
 
     # winws2.exe + WinDivert64.sys + WinDivert.dll (AV удаляет sys - кейс друга)
-    _add(_check_windivert_files(root_dir))
-    _add(_check_windivert_service(root_dir))
+    _add_safe("windivert_files", "Файлы WinDivert",
+              _check_windivert_files, root_dir)
+    _add_safe("windivert_service", "Служба драйвера WinDivert",
+              _check_windivert_service, root_dir)
 
-    # процесс zapret2
-    pid = _pid_of("winws2.exe")
-    if pid is not None:
-        strategy = cfg.last_profile or DEFAULT_PROFILE
-        _add(Check("winws2", "Процесс winws2", "ok",
-                            f"запущен (PID {pid}), пресет «{strategy}»"))
-    else:
-        _add(Check("winws2", "Процесс winws2", "fail",
-                            "не запущен - обход неактивен"))
+    # процесс zapret2: PID опрашиваем ОДИН раз (чек службы раньше сканировал
+    # tasklist повторно - аудит 2026-11-14)
+    _add_safe("winws2", "Процесс winws2",
+              _check_winws2_process, cfg, _safe_pid("winws2.exe"))
 
     # конфликт с Zapret 1
-    z1 = _pid_of("winws.exe")
-    if z1 is not None:
-        _add(Check("zapret1", "Zapret 1", "warn",
-                            f"winws.exe запущен (PID {z1}) - два WinDivert-фильтра конфликтуют"))
-    else:
-        _add(Check("zapret1", "Zapret 1", "ok", "не запущен"))
+    _add_safe("zapret1", "Zapret 1", _check_zapret1)
 
     # скан окружения: другие DPI-тулзы / VPN-клиенты / туннели
-    try:
-        from core.conflict_scan import scan as scan_conflicts, describe as describe_conflicts
-        cr = scan_conflicts()
-        if cr.hard_conflict:
-            _add(Check("env", "Конфликт DPI-тулзов", "fail",
-                                describe_conflicts(cr) or "обнаружен"))
-        elif cr.warnings:
-            _add(Check("env", "Окружение (VPN/туннели)", "warn",
-                                describe_conflicts(cr) or "обнаружено"))
-        else:
-            _add(Check("env", "Окружение", "ok", "конфликтов нет"))
-    except Exception as e:
-        _add(Check("env", "Окружение", "skip", f"не удалось проверить: {e}"))
+    _add_safe("env", "Окружение", _check_env, on_error="warn")
 
     # LAN-соседи (информационно; кейс «два ПК глушили друг друга»)
-    _add(_check_lan_peers())
+    _add_safe("lan_peers", "Другие устройства в сети", _check_lan_peers)
 
     # DNS-серверы, которые подменяют ответы для заблокированных доменов
-    _add(_check_dns_spoof_servers())
+    _add_safe("dns_spoof", "DNS-подмена по серверам",
+              _check_dns_spoof_servers)
 
     # Спуф СИСТЕМНОГО резолвера (кейс 12.10: youtube «мёртв» на DNS-спуфе)
-    _add(_check_dns_spoof_system())
+    _add_safe("dns_spoof_system", "Системный DNS (спуф)",
+              _check_dns_spoof_system)
 
     # TCP timestamps (при выключенных ts-fooling молча не работает)
-    try:
-        from core.tcp_timestamps import timestamps_enabled as ts_enabled
-        if ts_enabled():
-            _add(Check("tcp_ts", "TCP timestamps", "ok",
-                       "включены - обход работает в полную силу",
-                       tech="timestamps enabled"))
-        else:
-            _add(Check("tcp_ts", "TCP timestamps", "warn",
-                       "выключены - часть приёмов обхода молча не работает",
-                       tech="timestamps disabled, tcp_ts= silent"))
-    except Exception as e:
-        _add(Check("tcp_ts", "TCP timestamps", "skip", f"не удалось проверить: {e}"))
+    _add_safe("tcp_ts", "TCP timestamps", _check_tcp_timestamps)
 
-    # служба
-    try:
-        from core.service_manager import is_installed as svc_installed, status as svc_status
-        if svc_installed():
-            from core.service_manager import path_status as svc_path_status
-            pstate, pmsg = svc_path_status()
-            st = svc_status()
-            if pstate == "mismatch":
-                _add(Check("service", "Служба zapret2", "warn",
-                           "путь службы указывает на другую копию программы - "
-                           "переустановите службу, иначе обходит старый exe",
-                           tech=pmsg))
-            elif st == "running":
-                _add(Check("service", "Служба zapret2", "ok", "установлена и работает"))
-            elif _pid_of("winws2.exe") is not None:
-                _add(Check("service", "Служба zapret2", "warn",
-                                    "служба остановлена в SCM, но winws2 работает (запущен вручную)"))
-            else:
-                _add(Check("service", "Служба zapret2", "warn",
-                                    "установлена, но не запущена (автозапуск после перезагрузки)"))
-        else:
-            _add(Check("service", "Служба zapret2", "skip",
-                                "не установлена - обход только при открытом GUI"))
-    except Exception as e:
-        _add(Check("service", "Служба zapret2", "warn", f"не удалось проверить: {e}"))
+    # служба: падение опроса - warn (как раньше: может скрывать реальную
+    # проблему, а не быть просто «не проверено»)
+    _add_safe("service", "Служба zapret2", _check_service, on_error="warn")
 
     # валидация пресета
-    _add(_check_preset(root_dir, cfg))
+    _add_safe("preset", f"Пресет «{profile}»", _check_preset, root_dir, cfg)
 
     # debug-лог
-    _add(_check_debug_log(root_dir, bool(cfg.winws2_debug)))
+    _add_safe("debug_log", "Debug-лог winws2", _check_debug_log,
+              root_dir, bool(cfg.winws2_debug))
 
     # связь (независимо от обхода; контекст - в чеке winws2)
-    if progress_cb is not None:
-        try:
-            progress_cb("Связь (канарейки)")
-        except Exception:
-            pass
-    net_checks = _check_net()
+    _notify("Связь (канарейки)")
+    net_checks = _safe_checks(_check_net, "net", "Связь (канарейки)")
     checks.extend(net_checks)
 
     # тип блока упавших хостов: DNS vs IP vs SNI
-    if progress_cb is not None:
-        try:
-            progress_cb("Тип блокировки")
-        except Exception:
-            pass
-    checks.extend(_check_block_types(net_checks))
+    _notify("Тип блокировки")
+    checks.extend(_safe_checks(lambda: _check_block_types(net_checks),
+                               "block_types", "Тип блокировки"))
 
     # DNS: обычный резолвер vs DoT (853) vs DoH (443)
-    _add(_check_dns_health())
+    _add_safe("dns_health", "DNS (обычный и защищённый)", _check_dns_health)
 
     # DNS-подмена: системный резолвер vs чистый DoH на заблокированных доменах
-    _add(_check_dns_poison())
+    _add_safe("dns_poison", "DNS подмена", _check_dns_poison)
 
     summary = {"ok": 0, "warn": 0, "fail": 0, "skip": 0}
     for c in checks:

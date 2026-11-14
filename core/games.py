@@ -12,6 +12,8 @@ import ipaddress
 import json
 import os
 import re
+import threading
+from contextlib import contextmanager
 from pathlib import Path
 
 from core.applog import log as _applog
@@ -31,6 +33,41 @@ _DOMAIN_RE = re.compile(
     r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?"
     r"(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$")
 _PORT_RE = re.compile(r"^(\d{1,5})(?:-(\d{1,5}))?$")
+
+# Транзакции games.json (аудит 2026-11-14, T21): HTTP-сервер потоковый, два
+# конкурентных mutating-запроса (save/custom/add-domain) читали один снимок
+# файла и последний молча затирал чужую правку. RLock: хендлер может держать
+# его на всю транзакцию, вложенные вызовы (mutate_games) не блокируются.
+# Порядок локов в проекте: games_lock -> list_lock (sync_include_list берёт
+# list_lock сам); обратного порядка (list_lock -> games_lock) нигде нет,
+# поэтому дедлока нет.
+_GAMES_LOCK = threading.RLock()
+
+
+@contextmanager
+def games_lock():
+    """Lock транзакций games.json (RLock: вложенный вызов безопасен)."""
+    with _GAMES_LOCK:
+        yield
+
+
+def mutate_games(root: Path, mutator) -> tuple[bool, str, dict]:
+    """Атомарный read-modify-write games.json под games_lock.
+
+    mutator(data) -> (ok, message, data): при ok=False правка отклонена и
+    файл НЕ пишется. Возвращает (ok, message, данные-после-правки).
+    """
+    with _GAMES_LOCK:
+        current = load_games(root)
+        ok, message, updated = mutator(current)
+        if not ok:
+            return False, message, updated
+        valid, err = validate_games(updated)
+        if not valid:
+            return False, err, updated
+        if not save_games(root, updated):
+            return False, "Не удалось сохранить games.json", updated
+        return True, message, updated
 
 
 def default_games() -> dict:
@@ -658,25 +695,38 @@ def add_game_domain(root: Path, game_id: str, domain: str) -> tuple[bool, str, b
     """Добавить домен в игру (включённым) - например, из анализа приложения.
 
     Дубли не добавляются. Возвращает (ok, сообщение, реально добавлено).
+    load->save->sync идёт под games_lock: параллельный save/custom не затрёт
+    только что добавленный домен (аудит 2026-11-14, T21).
     """
-    data = load_games(root)
-    game = next((g for g in (data.get("games") or [])
-                 if str(g.get("id")) == str(game_id)), None)
-    if game is None:
-        return False, "Игра не найдена", False
     dom = (domain or "").strip().lower().rstrip(".")
     if not dom:
         return False, "Пустой домен", False
-    for d in (game.get("domains") or []):
-        if str(d.get("domain", "")).strip().lower() == dom:
-            return True, "Домен уже в списке игры", False
-    game.setdefault("domains", []).append({
-        "domain": dom, "on": True, "warn": False, "tag": "",
-        "note": "добавлен из анализа приложения"})
-    if not save_games(root, data):
-        return False, "Не удалось сохранить games.json", False
-    try:
-        sync_include_list(root, data=data)
-    except Exception:
-        pass
-    return True, "Домен добавлен в игру - применяется к новым подключениям", True
+    state = {"added": False}
+
+    def _mutate(data: dict) -> tuple[bool, str, dict]:
+        game = next((g for g in (data.get("games") or [])
+                     if isinstance(g, dict)
+                     and str(g.get("id")) == str(game_id)), None)
+        if game is None:
+            return False, "Игра не найдена", data
+        for d in (game.get("domains") or []):
+            if not isinstance(d, dict):
+                continue
+            if str(d.get("domain", "")).strip().lower() == dom:
+                return True, "Домен уже в списке игры", data
+        game.setdefault("domains", []).append({
+            "domain": dom, "on": True, "warn": False, "tag": "",
+            "note": "добавлен из анализа приложения"})
+        state["added"] = True
+        return True, "Домен добавлен в игру - применяется к новым подключениям", data
+
+    with _GAMES_LOCK:
+        ok, message, _data = mutate_games(root, _mutate)  # RLock - вложенный
+        if not ok:
+            return False, message, False
+        if state["added"]:
+            try:
+                sync_include_list(root)
+            except Exception:  # noqa: BLE001 - домен уже сохранён, как раньше
+                pass
+    return True, message, state["added"]
