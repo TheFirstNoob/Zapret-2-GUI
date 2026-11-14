@@ -251,29 +251,41 @@ const ListsPage = {
   async checkHealth(warnIfClear) {
     const txt = $('listsHealthText');
     const btn = $('btnListsDedupe');
-    if (!txt) return;
+    if (!txt) return null;
     txt.textContent = 'Проверяю…';
     try {
       const r = await apiGet('/lists/health');
       if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
+      this._health = r;
+      const fixable = (r.total_dups || 0) + (r.total_redundant || 0);
       const bits = [];
       if (r.total_dups) bits.push(`дубли: ${r.total_dups}`);
       if (r.total_cross) bits.push(`повторы между вашими списками: ${r.total_cross}`);
       if (r.total_redundant) bits.push(`повторы уже включённых: ${r.total_redundant}`);
       if (r.total_conflicts) bits.push(`конфликты вкл/искл: ${r.total_conflicts}`);
-      this._renderHealth(r, bits);
+      this._renderHealth(r);
       if (bits.length) {
+        const tail = fixable
+          ? ' - подробности ниже: домен, список и что делать'
+          : ' - автоматически такие записи не удаляются: смотрите подробности ниже';
         txt.innerHTML = `<span class="st-err">Найдено: ${escapeHtml(bits.join(' · '))}</span>`
-          + ' <span class="meta">- подробности ниже: домен, список и что делать</span>';
-        if (btn) btn.hidden = false;
+          + `<span class="meta">${tail}</span>`;
+        if (btn) {
+          btn.hidden = !fixable;
+          btn.title = fixable ? 'Удалить дубли и повторы в ваших списках'
+            : 'Автоматически удалять нечего';
+        }
         if (warnIfClear) showToast('Списки: ' + bits.join(' · '), 'warn');
       } else {
         txt.textContent = 'Проблем не найдено - списки чистые.';
         if (btn) btn.hidden = true;
         if (warnIfClear) showToast('Списки в порядке', 'ok');
       }
+      return r;
     } catch (e) {
+      this._health = null;
       txt.textContent = 'Не удалось проверить: ' + (e.message || e);
+      return null;
     }
   },
 
@@ -359,9 +371,29 @@ const ListsPage = {
     }
   },
   async dedupeLists() {
+    let h = this._health;
+    if (!h) h = await this.checkHealth(false);
+    if (!h) return;
+    const dups = h.total_dups || 0;
+    const red = h.total_redundant || 0;
+    const conf = h.total_conflicts || 0;
+    const fixable = dups + red;
+    if (!fixable) {
+      const msg = conf
+        ? `Автоматически удалять нечего: конфликтов «в обход ↔ не трогать» - ${conf}. Они не убираются кнопкой, смотрите подробности ниже.`
+        : 'Дублей и повторов уже добавленных записей не найдено.';
+      showToast(msg, conf ? 'warn' : 'ok');
+      if (conf) this._scrollHealthDetails();
+      return;
+    }
+    const parts = [];
+    if (dups) parts.push(`дублей: ${dups}`);
+    if (red) parts.push(`записей, уже входящих в системные списки: ${red}`);
     const ok = await Confirm.ask({
-      title: 'Убрать дубли во всех списках?',
-      text: 'Несохранённые правки в полях будут потеряны.',
+      title: 'Убрать дубли в ваших списках?',
+      text: `Будет удалено - ${parts.join(', ')}. `
+        + (conf ? `Конфликты «в обход ↔ не трогать» (${conf}) автоматически не удаляются - они останутся, смотрите подробности ниже. ` : '')
+        + 'Несохранённые правки в полях будут потеряны.',
       ok: 'Убрать дубли',
       danger: true,
     });
@@ -371,13 +403,22 @@ const ListsPage = {
     try {
       const r = await apiPost('/lists/dedupe', {});
       if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
-      showToast(r.total ? `Убрано лишних записей: ${r.total}` : 'Дублей не найдено', 'ok');
       Object.keys(this.editors).forEach(key => this.load(key));
-      this.checkHealth(false);
+      const h2 = await this.checkHealth(false);
+      const left = h2 ? (h2.total_conflicts || 0) : 0;
+      let msg = r.total ? `Убрано лишних записей: ${r.total}` : 'Дублей не найдено';
+      if (left) msg += `; осталось конфликтов: ${left} (не удаляются автоматически)`;
+      showToast(msg, left ? 'warn' : 'ok');
+      if (left) this._scrollHealthDetails();
     } catch (e) {
       showToast('Не удалось почистить: ' + (e.message || e), 'error');
     }
     btn.disabled = false;
+  },
+
+  _scrollHealthDetails() {
+    const box = $('listsHealthDetails');
+    if (box && !box.hidden) box.scrollIntoView({ block: 'nearest' });
   },
 
   // Кнопка «В обход» из подсказок анализа приложения (дедуп на сервере)
