@@ -208,6 +208,25 @@ main.py (UAC, pywebview/WebView2, single-instance)
   из git-истории 2026-11-14), свежий coverage-diff и staged-база.
 - `AI_DOCS/UPSTREAM_SYNC_2026-11-14.md` — dpi-detector/dpi-checkers/Flowseal:
   что актуально, что исправлено в ASN Checker, A/B-план ipset, лицензии.
+- `AI_DOCS/TEAM_PLAYBOOK.md` — правила использования durable-агентов: сначала
+  продолжать существующего владельца домена, не спавнить fresh; контекст-кэш
+  `_analysis/team/CONTEXT-PACK.md`, реестр `_analysis/team/ROSTER.md`.
 - При чистке доков важные параметры/источники/решения переносить в
   `ENGINEERING_NOTES.md`; raw-оригиналы остаются в git-истории, но секреты/
   регион/IP туда заново не добавлять.
+
+## 4. Команда и durable-агенты (обязательно для Lead)
+
+- **Сначала `list_agents` + `_analysis/team/ROSTER.md`.** Если домен уже имеет
+  владельца — продолжить его `send_message` (агент сохраняет контекст даже
+  `inactive`). Fresh-спавн — только для новой предметной области; иначе это
+  повторное чтение проекта, лишние токены и расхождения.
+- Каждый тиммейт читает `AI_DOCS/TEAM_PLAYBOOK.md` + локальный
+  `_analysis/team/CONTEXT-PACK.md`, затем ТОЛЬКО свои файлы (grep/read с
+  offset/limit), а не весь проект/доки.
+- `subagent_fork` — когда задача опирается на историю Lead; `spawn_teammate`
+  fresh — новая область + ссылка на плейбук/кэш в промпте.
+- Один домен = один владелец; параллельные агенты — только по disjoint
+  `write_scopes` из shared task; коммитит только Lead.
+- После каждого батча Lead обновляет CONTEXT-PACK/ROSTER и «кэш» открытых
+  задач, чтобы следующий агент не перечитывал проект.
