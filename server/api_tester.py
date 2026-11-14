@@ -67,6 +67,16 @@ def asn_scan(ctx: AppContext, data: dict) -> dict:
     except Exception as e:  # noqa: BLE001
         end_operation("tester")
         raise ApiError(503, {"status": "error", "message": str(e)})
+    # Необязательный SNI для проб (пусто = example.com). Валидируем строго:
+    # значение уходит в --resolve/URL curl, произвольные символы недопустимы.
+    sni = str((data or {}).get("sni") or "").strip().lower()
+    if sni:
+        import re as _re
+        if (len(sni) > 253
+                or not _re.fullmatch(r"[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?", sni)):
+            end_operation("tester")
+            raise ApiError(400, {"status": "error",
+                                 "message": "Некорректный SNI (ожидается домен)"})
     with STATE.tester_state.lock:
         if STATE.tester_state.running:
             end_operation("tester")
@@ -74,7 +84,8 @@ def asn_scan(ctx: AppContext, data: dict) -> dict:
         tester.shutdown_event.clear()
         STATE.tester_state.cancelled = False
         STATE.tester_state.running = True
-    t = threading.Thread(target=tester_flow.run_asn_scan, daemon=True)
+    t = threading.Thread(target=tester_flow.run_asn_scan, args=(sni,),
+                         daemon=True)
     try:
         t.start()
     except Exception:

@@ -14,6 +14,8 @@ const AsnPage = {
     this._polling = true;
     App.setTestActive(true);
     $('asnScanBtn').disabled = true;
+    const sni = (($('asnSniInput') && $('asnSniInput').value) || '').trim();
+    if ($('asnSniInput')) $('asnSniInput').disabled = true;
     $('asnIdle').hidden = true;
     $('asnResults').hidden = true;
     $('asnScanning').hidden = false;
@@ -21,7 +23,7 @@ const AsnPage = {
     $('asnProgressPct').textContent = '0%';
     $('asnProgressFill').style.width = '0%';
     try {
-      const r = await apiPost('/asn-scan', {});
+      const r = await apiPost('/asn-scan', sni ? { sni } : {});
       if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
       const deadline = Date.now() + 10 * 60 * 1000;
       let final = null;
@@ -54,6 +56,7 @@ const AsnPage = {
     this._polling = false;
     App.setTestActive(false);
     $('asnScanBtn').disabled = false;
+    if ($('asnSniInput')) $('asnSniInput').disabled = false;
     $('asnScanning').hidden = true;
   },
 

@@ -220,7 +220,7 @@ def restore_protection_after_naked(z2_was: bool, z1_was: bool, state,
     return restore_protection_after_naked_status(z2_was, z1_was, state, svc_was)[1]
 
 
-def run_asn_scan() -> None:
+def run_asn_scan(sni: str = "") -> None:
     """ASN-пробы (110 IP): мериют ТСПУ напрямую, БЕЗ нашего десинка в пути.
 
     Обязателен чистый путь: под десинком замер показывает смесь «ТСПУ + наш
@@ -267,7 +267,7 @@ def run_asn_scan() -> None:
         if z2_was:
             state.set_progress(2, "Останавливаем обход (замер чистого пути к ТСПУ)...")
             kill_never_hang(["winws2.exe"])
-        results = run_tester(lambda: tester.asn_scan(make_progress_cb(state)))
+        results = run_tester(lambda: tester.asn_scan(make_progress_cb(state), sni=sni))
         note = _restore()
         with state.lock:
             state.final_result = {"type": "asn_scan", "probes": results, "restored": note}
