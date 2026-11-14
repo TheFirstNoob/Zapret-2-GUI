@@ -133,13 +133,22 @@ def begin_operation(name: str) -> Optional[str]:
 
 
 def end_operation(name: str) -> None:
+    """Освободить slot ТОЛЬКО если его держит эта операция.
+
+    Исторический баг: release() вызывался всегда, поэтому непарный
+    end_operation из чужой операции (blob_probe) освобождал lock активного
+    service/update-оператора и два mutating-воркера шли параллельно.
+    Повторный end того же имени безопасен (RuntimeError гасится)."""
+    if not name:
+        return
     with STATE.operation_meta_lock:
-        if STATE.operation_name == name:
-            STATE.operation_name = ""
-    try:
-        STATE.operation_lock.release()
-    except RuntimeError:
-        pass
+        if STATE.operation_name != name:
+            return
+        STATE.operation_name = ""
+        try:
+            STATE.operation_lock.release()
+        except RuntimeError:
+            pass
 
 
 def operation_guard(name: str):

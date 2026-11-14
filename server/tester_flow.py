@@ -300,7 +300,6 @@ def run_blob_probe(data: dict) -> None:
                 state.error = ("Обнаружен Zapret 1 (winws.exe). Остановите его "
                                "вручную и повторите: поддержка Zapret 1 удалена.")
                 state.running = False
-            end_operation("tester")
             return
     except Exception:
         pass
@@ -362,6 +361,9 @@ def run_blob_probe(data: dict) -> None:
             pass
         with state.lock:
             state.running = False
+        # begin_operation("tester") делает API (api_blobs.blob_probe);
+        # освобождаем ровно один раз при любом исходе.
+        end_operation("tester")
 
 
 def _start_logger(tester, action: str) -> TestLogger:
@@ -425,6 +427,15 @@ def _test_branch(state, tester, data: dict) -> None:
     state.set_final(final)
 
 
+def _start_failure_detail(res) -> str:
+    """Текст причины «профиль не запустился» из служебного process-результата."""
+    for r in getattr(res, "results", None) or []:
+        err = getattr(r, "error", "") or ""
+        if err:
+            return str(err)[:300]
+    return ""
+
+
 def _is_start_failure(res) -> bool:
     """Профиль НЕ запустился (аборт движка/пустой результат).
 
@@ -459,6 +470,7 @@ def _test_profiles_branch(state, tester, data: dict) -> None:
     profiles = [p for p in profiles if p != "custom"]
     all_results = []
     start_failures: list[str] = []
+    start_failure_errors: list[str] = []
     alt_params = bool(data.get("alt_params", False))
     # Прогоны: база для всех пресетов; с галочкой - ещё и ALT
     # (справочно: в рекомендацию идут только базовые прогоны).
@@ -531,6 +543,7 @@ def _test_profiles_branch(state, tester, data: dict) -> None:
             # P1-1: движок не запустился - это НЕ 0%-стратегия; в
             # ранжирование не идёт (иначе вердикт врёт «не пробило»)
             start_failures.append(label)
+            start_failure_errors.append(_start_failure_detail(res))
             progress(int(6 + (idx + 1) / total * 94),
                      f"Стратегия {label}: не запустилась")
         else:
@@ -645,9 +658,13 @@ def _test_profiles_branch(state, tester, data: dict) -> None:
                 "message": ("⚠ Ни один профиль не запустился: winws2 не "
                             "стартует или WinDivert занят (сбой: "
                             + ", ".join(start_failures[:6])
-                            + "). Смотрите test_session.log; попробуйте "
-                            "«Выгрузить драйвер» на главной или перезапустите "
-                            "программу."),
+                            + ")."
+                            + ((" Причина: " + _first_error)
+                               if (_first_error := next(
+                                   (e for e in start_failure_errors if e), ""))
+                               else " Смотрите test_session.log.")
+                            + " Попробуйте «Выгрузить драйвер» на главной "
+                            "или перезапустите программу."),
             },
         })
     else:

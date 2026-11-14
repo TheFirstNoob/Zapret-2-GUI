@@ -52,6 +52,16 @@ def main() -> int:
         with urllib.request.urlopen(req, timeout=15) as r:
             return r.status, json.loads(r.read().decode())
 
+    def post_raw(path, data: bytes):
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{PORT}" + path, method="POST", data=data,
+            headers={"X-App-Token": TOKEN, "Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=15) as r:
+                return r.status, r.read()
+        except urllib.error.HTTPError as e:
+            return e.code, e.read()
+
     def get_raw(path, token=False):
         h = {"X-App-Token": TOKEN} if token else {}
         req = urllib.request.Request(
@@ -110,6 +120,17 @@ def main() -> int:
         ok = ok and good
     except Exception as e:  # noqa: BLE001
         print("FAIL GET /js/app.js (bundle)", repr(e)[:120])
+        ok = False
+
+    # Битый JSON: раньше молча становился {} и мутирующие ручки применяли
+    # дефолты; теперь явный 400 (аудит 2026-11-14).
+    try:
+        st, body = post_raw("/api/frontend-log", b"{not a json")
+        good = st == 400
+        print(("PASS" if good else "FAIL"), "POST bad JSON ->", st)
+        ok = ok and good
+    except Exception as e:  # noqa: BLE001
+        print("FAIL POST bad JSON", repr(e)[:120])
         ok = False
 
     try:

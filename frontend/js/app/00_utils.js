@@ -86,9 +86,21 @@ function formatTime(ms) {
 // Локальный backend может задуматься (запуск winws2, sc query) - но не навсегда.
 const API_TIMEOUT_MS = 30000;
 
+async function _apiThrow(r) {
+  // Не терять server-текст busy/400/409: UI показывал только "HTTP 409".
+  let detail = '';
+  try {
+    const j = await r.json();
+    detail = String(j.message || j.detail || j.error || '');
+  } catch (e) { /* тело не JSON - останется код */ }
+  const err = new Error(detail ? detail + ' (HTTP ' + r.status + ')' : 'HTTP ' + r.status);
+  err.status = r.status;
+  throw err;
+}
+
 async function apiGet(path) {
   const r = await fetch('/api' + path, { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
-  if (!r.ok) throw new Error('HTTP ' + r.status);
+  if (!r.ok) await _apiThrow(r);
   return r.json();
 }
 
@@ -99,7 +111,7 @@ async function apiPost(path, body) {
     body: JSON.stringify(body || {}),
     signal: AbortSignal.timeout(API_TIMEOUT_MS),
   });
-  if (!r.ok) throw new Error('HTTP ' + r.status);
+  if (!r.ok) await _apiThrow(r);
   return r.json();
 }
 

@@ -8,7 +8,8 @@ import threading
 
 from server import tester_flow
 from server.api_common import ApiError
-from server.app_state import STATE, AppContext, checkers_busy, get_root_dir
+from server.app_state import (STATE, AppContext, begin_operation, checkers_busy,
+                              end_operation, get_root_dir)
 from server.recommend import BLOB_PRIORITY, BLOB_STOPLIST
 
 
@@ -43,10 +44,26 @@ def blob_probe(ctx: AppContext, data: dict) -> dict:
     busy = checkers_busy()
     if busy:
         raise ApiError(409, {"status": "error", "message": busy})
-    with STATE.tester_state.lock:
-        if STATE.tester_state.running:
-            raise ApiError(409, {"status": "error", "message": "Тестер занят"})
-        STATE.tester_state.running = True
-    t = threading.Thread(target=tester_flow.run_blob_probe, args=(data or {},), daemon=True)
-    t.start()
+    # Тот же глобальный mutating-slot, что у tester_action/asn_scan: иначе
+    # параллельный start/service/update мог гонять winws2 одновременно с
+    # перебором блобов (аудит 2026-11-14, P1).
+    busy = begin_operation("tester")
+    if busy:
+        raise ApiError(409, {"status": "error", "message": busy})
+    try:
+        with STATE.tester_state.lock:
+            if STATE.tester_state.running:
+                raise ApiError(409, {"status": "error", "message": "Тестер занят"})
+            STATE.tester_state.running = True
+        t = threading.Thread(target=tester_flow.run_blob_probe,
+                             args=(data or {},), daemon=True)
+        t.start()
+    except ApiError:
+        end_operation("tester")
+        raise
+    except Exception as e:  # noqa: BLE001 - running=True не должен залипнуть
+        with STATE.tester_state.lock:
+            STATE.tester_state.running = False
+        end_operation("tester")
+        raise ApiError(500, {"status": "error", "message": f"Не удалось запустить перебор: {e}"})
     return {"status": "ok"}

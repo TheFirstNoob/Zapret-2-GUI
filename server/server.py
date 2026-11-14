@@ -256,7 +256,10 @@ class ZapretHandler(BaseHTTPRequestHandler):
         try:
             length = int(self.headers.get("Content-Length", 0))
         except ValueError:
-            return {}
+            self._send_json({"status": "error",
+                             "message": "Некорректный Content-Length"},
+                            HTTPStatus.BAD_REQUEST)
+            return None
         if length <= 0:
             return {}
         if length > MAX_BODY_BYTES:
@@ -268,7 +271,12 @@ class ZapretHandler(BaseHTTPRequestHandler):
         try:
             obj = json.loads(raw)
         except (json.JSONDecodeError, UnicodeDecodeError):
-            return {}
+            # Раньше битый JSON молча становился {} и мутирующие ручки
+            # применяли ДЕФОЛТЫ (например /api/dns/apply менял системный DNS).
+            self._send_json({"status": "error",
+                             "message": "Некорректный JSON в теле запроса"},
+                            HTTPStatus.BAD_REQUEST)
+            return None
         if not isinstance(obj, dict):
             self._send_json({"status": "error",
                              "message": "JSON body должен быть объектом"},
