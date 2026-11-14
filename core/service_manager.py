@@ -106,9 +106,12 @@ def status() -> str:
 def path_status() -> tuple[str, str]:
     """Сверка exe из binPath службы с текущим каталогом программы.
 
-    Возвращает ("ok"|"mismatch"|"none"|"unknown", описание). Ловит переезд
-    папки и запуск GUI из другой копии: служба молча продолжает работать со
-    старым exe, а текущая копия об этом не знает."""
+    Возвращает ("ok"|"mismatch"|"orphaned"|"none"|"unknown", описание).
+    Ловит переезд папки и запуск GUI из другой копии: служба молча
+    продолжает работать со старым exe, а текущая копия об этом не знает.
+    "orphaned" - служба осталась от УДАЛЁННОЙ копии (её exe не существует):
+    такая служба безопасна для takeover (переустановки/удаления) и не должна
+    блокировать GUI навсегда (аудит 2026-11-14, P1-2)."""
     if not is_installed():
         return "none", ""
     stored = _read_stored_binpath()
@@ -121,7 +124,14 @@ def path_status() -> tuple[str, str]:
     cur = app_root() / "bin" / "winws2.exe"
     if not cur.exists():
         cur = app_root() / "winws2.exe"
-    if str(tokens[0]).strip('"').lower() != str(cur).lower():
+    stored_exe = str(tokens[0]).strip('"')
+    try:
+        if not Path(stored_exe).exists():
+            return "orphaned", (f"служба установлена из удалённой папки: "
+                                f"{stored_exe} не существует")
+    except OSError:
+        pass
+    if stored_exe.lower() != str(cur).lower():
         return "mismatch", (f"служба запускает {tokens[0]}, "
                             f"текущая копия программы: {cur}")
     return "ok", ""
@@ -498,9 +508,20 @@ def repair(root_dir: Optional[Path] = None) -> dict:
         ok_s, msg_s = start(None)
         actions.append("служба zapret2 запущена заново" if ok_s
                        else f"служба zapret2 не запустилась: {msg_s}")
+    # Start=4/DeleteFlag=1 у WinDivert - ШТАТНОЕ состояние при загруженном
+    # драйвере (см. diagnostics._check_windivert_service). Реальная
+    # незавершённость: мёртвый ImagePath или неудачная выгрузка/stop.
     state = windivert_service_state()
-    stuck = windivert_delete_flag("WinDivert") == 1 or (
-        state is not None and state[1] == 4)
+    dead = ""
+    if state is not None:
+        try:
+            from core.utils import windivert_image_dead
+            dead = windivert_image_dead(state[0])
+        except Exception:  # noqa: BLE001
+            dead = ""
+    stuck = bool(dead) or any(
+        ("нужна перезагрузка" in a) or ("stop не помог" in a)
+        or ("драйвер занят" in a) for a in actions)
     return {
         "actions": actions,
         "reboot_required": stuck,
@@ -854,8 +875,13 @@ def start(args: Optional[list[str]] = None):
     from core.tcp_timestamps import enable_for_engine
     enable_for_engine()
     start_ps, start_msg = path_status()
-    if start_ps in ("mismatch", "unknown"):
+    if start_ps in ("mismatch", "unknown", "orphaned"):
         _svc_log(f"start REFUSED: {start_ps}: {start_msg}")
+        if start_ps == "orphaned":
+            return False, ("Служба zapret2 осталась от удалённой копии "
+                           f"программы: {start_msg}. Нажмите «Переустановить "
+                           "службу» (или «Установить») в этой копии - она "
+                           "заменит устаревшую службу.")
         return False, ("Не удалось подтвердить, что служба zapret2 принадлежит "
                        f"этой копии: {start_msg or start_ps}. Не запускаю её.")
     # ПРЕДУСЛОВИЯ ДО stop() (ревью 18.10): кривой exe/guard/conf не должен
@@ -882,6 +908,37 @@ def start(args: Optional[list[str]] = None):
                 _svc_log(f"start: migrate warn: {msg_m}")
         except Exception as e:  # noqa: BLE001
             _svc_log(f"start: migrate exception: {e!r}")
+        # P1-3 (аудит 2026-11-14): внутренний start(None) (repair/restore
+        # тестера/updater/session-recovery) стартовал службу по УСТАРЕВШЕМУ
+        # logs/service_run.conf без валидации. После 1.0.7 такие конфы могут
+        # быть фатальны (дубль hostlist-файла в профиле, wf_priority вне
+        # диапазона и т.п.) - проверяем перед sc start и не запускаем мусор.
+        root0 = app_root()
+        exe0 = root0 / "bin" / "winws2.exe"
+        if not exe0.exists():
+            exe0 = root0 / "winws2.exe"
+        conf0 = root0 / "logs" / "service_run.conf"
+        try:
+            from core.launcher import validate_args
+            from core.utils import split_windows_cmdline
+            if not conf0.exists():
+                _svc_log("start REFUSED: service_run.conf отсутствует")
+                return False, ("Нет logs/service_run.conf - аргументы службы "
+                               "потеряны. Переустановите службу из этой копии "
+                               "программы.")
+            raw_conf = conf0.read_text(encoding="utf-8", errors="replace")
+            conf_tokens = split_windows_cmdline(raw_conf)
+            if conf_tokens:
+                ok_v, msg_v = validate_args(exe0, conf_tokens)
+                if not ok_v:
+                    _svc_log(f"start REFUSED: conf invalid: {msg_v}")
+                    return False, ("Параметры службы не проходят проверку "
+                                   f"winws2: {msg_v}. Переустановите службу "
+                                   "из этой копии программы.")
+        except OSError as e:
+            _svc_log(f"start: conf precheck OSError: {e!r}")
+        except Exception as e:  # noqa: BLE001
+            _svc_log(f"start: conf precheck warn: {e!r}")
     code, out = _sc(["start", SERVICE_NAME])
     _svc_log(f"start: sc start rc={code} out={out.strip()[:200]!r}")
     if code != 0:
@@ -1066,7 +1123,7 @@ def _recovery_owned() -> tuple[bool, str]:
         return False, f"path_status: {e}"
     if state == "none":
         return False, "служба не установлена"
-    if state in ("mismatch", "unknown"):
+    if state in ("mismatch", "unknown", "orphaned"):
         return False, detail or state
     return True, ""
 
