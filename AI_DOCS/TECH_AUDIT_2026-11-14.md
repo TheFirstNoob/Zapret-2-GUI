@@ -9,7 +9,7 @@
 ## 1. Батарея проверок (после исправлений)
 
 - `python -m compileall -q core server tools main.py build*.py` — OK
-- `python -m pytest -q tests` — 317 passed (после fix batch 2026-11-14)
+- `python -m pytest -q tests` — 328 passed (recheck 2026-11-15)
 - `python -m pytest -q tools/security` — 47 passed
 - `python tools/api_smoke.py` — OK (включая новый кейс «битый JSON -> 400»)
 - `python tools/args_golden.py compare` — OK
@@ -104,6 +104,6 @@ failure actions; живой portable-апдейт (в т.ч. 0.10→0.11); жи�
 помечен); `full_analyzer` может включить частичный профиль в screening;
 V3nilla/RIPEstat-лицензия (решение владельца); A/B ipset staged — ждёт прогона.
 
-**Батарея после batch:** compileall OK · `pytest tests` 317 passed · security
+**Батарея после recheck:** compileall OK · `pytest tests` 328 passed · security
 47 passed · api_smoke OK · args_golden OK · check_arg_file OK · js_bundle OK ·
 status_contract OK.

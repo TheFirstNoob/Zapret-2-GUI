@@ -30,7 +30,7 @@
   stock-lua lib/antidpi/auto обновлены, `zapret-custom.lua` сохранён).
   T37/T43/T44 dry-run зелёные; служба в зеркале перезапущена. 0.10 шипится с
   v1.0.5 (без QUIC-dissect фиксов 1.0.5.2+); 0.11-черновик 27.10 = 1.0.6.
-- **Тесты:** `tests/` (pytest, 317 passed на 2026-11-14) + батарея:
+- **Тесты:** `tests/` (pytest, 328 passed на 2026-11-15) + батарея:
   `compileall`, `tools/api_smoke.py`, `tools/security` (47),
   `tools/args_golden.py compare`, `tools/check_arg_file.py`,
   `tools/js_bundle_check.py`, `tools/status_contract.py`.
@@ -69,6 +69,14 @@
   `50DCECF29451`; `check_for_updates()` видит 0.11. Осталась live-приёмка.
   Ограничение: jsDelivr не отдаёт full exe-архив (21.5 MB > 20 MB),
   portable/lite — отдаёт; GitHub — основной источник.
+- **Recheck 2026-11-15 (P0/P1 найдены и исправлены в main `ab41b57`):**
+  `start(None)` ломался на разборе service_run.conf; fail-closed
+  `--intercept=0` блокировал install/start до починки WinDivert (инцидент
+  0.11). Исправлены tester operation-lock/blob-teardown, repair resolved,
+  update restart error, импорт settings, backup mtime<1980, диагностика,
+  CDN/DNS-края, release-гейты, UX/security-заголовки. 328 tests + live
+  stop/start/repair/remove/install и DNS apply/reset — зелёные. 0.11.1
+  ещё не собран/не опубликован. Итог — `RECHECK_2026-11-15.md`.
   Upstream-sync 2026-11-14: данные dpi-detector/dpi-checkers актуальны
   (байт-в-байт), добавлена атрибуция; ipset-база остаётся наша, staged-база
   (27206 CIDR) ждёт A/B в catchall; итоги/бэклог —
@@ -217,6 +225,8 @@ main.py (UAC, pywebview/WebView2, single-instance)
 - `AI_DOCS/RELEASE_READINESS_0.11.md` — вердикт готовности 0.11, блокеры,
   обязательная последовательность и live-чек-лист.
 - `CHANGELOG.md` (корень) — пользовательский список изменений 0.11.
+- `AI_DOCS/RECHECK_2026-11-15.md` — полный recheck 0.11: P0/P1-фиксы,
+  live-матрица, остаточные P2/P3 (0.11.1).
 - `AI_DOCS/TEAM_PLAYBOOK.md` — правила использования durable-агентов: сначала
   продолжать существующего владельца домена, не спавнить fresh; контекст-кэш
   `_analysis/team/CONTEXT-PACK.md`, реестр `_analysis/team/ROSTER.md`.
