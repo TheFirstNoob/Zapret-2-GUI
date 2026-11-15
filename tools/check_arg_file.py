@@ -63,7 +63,10 @@ def golden() -> int:
                                           lists_dir=ROOT / "lists",
                                           windivert_dir=ROOT / "windivert")
         except Exception as e:  # noqa: BLE001
-            print(f"SKIP {pf.name}: build_args: {e}")
+            # SKIP не должен давать зелёный итог: иначе 11×SKIP = «ОК»
+            # (fail-open гейта, F-04 recheck 2026-11-15).
+            print(f"FAIL {pf.name}: build_args: {e}")
+            fails += 1
             continue
         o_argv, rc_argv = _run([str(exe), "--dry-run"] + args, cwd=ROOT)
         conf = write_run_conf(ROOT, args, name="check_golden.conf")

@@ -98,6 +98,11 @@ def _plan_cdn_action(domain: str, action: str, ips: list[str],
         cov = list_health.coverage(get_root_dir(), [domain]).get(domain, {})
         if cov.get("excludes"):
             return True, f"уже в исключениях ({', '.join(cov['excludes'])})", []
+        if cov.get("includes"):
+            # Не плодим конфликт включение+исключение молча.
+            return False, (f"{domain} уже в ваших включениях "
+                           f"({', '.join(cov['includes'])}) - сначала уберите "
+                           "его из обхода в «Списках»"), []
         existing = _read_lines(fname)
         values = [domain] if domain not in existing else []
         if not values:
@@ -130,6 +135,12 @@ def _plan_cdn_action(domain: str, action: str, ips: list[str],
     if any(n in list_health.DOMAIN_EXCLUDE_BUNDLED for n in cov.get("excludes", [])):
         return False, (f"{domain} уже в стандартных исключениях - исключение "
                        "сильнее, пропускаем"), []
+    if cov.get("excludes"):
+        # user-исключение сильнее hostlist: раньше мы писали домен в include,
+        # отвечали ok, а обхода не было + конфликт списков (recheck F1).
+        return False, (f"{domain} уже в ваших исключениях "
+                       f"({', '.join(cov['excludes'])}) - исключение сильнее; "
+                       "сначала уберите его из «не трогать»"), []
     if cov.get("includes"):
         return True, f"уже в обходе ({', '.join(cov['includes'])})", []
     existing = _read_lines(fname)

@@ -319,7 +319,10 @@ def _check_preset(root_dir: Path, cfg: AppConfig) -> Check:
         autohostlist=cfg.autohostlist,
         ipset_catchall=cfg.ipset_catchall,
     )
-    ok, err = validate_args(exe, args, cwd=root_dir)
+    # check_lua=False: проверка пресета не должна поднимать WinDivert и
+    # валить «Пресет» при битом драйвере (F4 2026-11-15). Драйвер проверяют
+    # отдельные чеки windivert_files/windivert_service.
+    ok, err = validate_args(exe, args, cwd=root_dir, check_lua=False)
     if ok:
         return Check("preset", f"Пресет «{profile}»", "ok",
                      "конфигурация в порядке",

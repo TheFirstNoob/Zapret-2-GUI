@@ -24,7 +24,8 @@ from core.service_manager import (is_installed as svc_installed,
                                   stop as svc_stop)
 from server import api_service
 from server.app_state import (AppContext, checkers_busy, get_config_manager,
-                              get_controller, operation_guard, scan_winws_exe)
+                              get_controller, operation_guard, scan_winws_exe,
+                              ui_debug)
 
 # Сколько ждать «вторую половину» перезапуска (stop->start). Stop службы
 # штатно укладывается в единицы секунд; 12 c - с запасом на медленный SCM.
@@ -140,6 +141,17 @@ def _start_zapret_impl(ctx: AppContext, data: dict) -> dict:
                 return {"status": "error",
                         "message": f"Не удалось собрать аргументы службы: {err}"}
             ok, msg = svc_start(args)
+            if ok:
+                # Статус отдаёт controller.current_strategy; после сервисного
+                # старта он раньше оставался старым, и UI показывал «Запущена
+                # «default»», провоцируя лишний restart (F-05, 2026-11-15).
+                try:
+                    cfg = get_config_manager().load()
+                    profile = str((data or {}).get("profile")
+                                  or getattr(cfg, "last_profile", "") or "default")
+                    get_controller().current_strategy = profile
+                except Exception as e:  # noqa: BLE001
+                    ui_debug(f"start: strategy update failed: {e}")
             return {"status": "ok" if ok else "error", "message": msg}
         except Exception as e:  # noqa: BLE001
             return {"status": "error",
@@ -195,6 +207,13 @@ def stop_zapret(ctx: AppContext) -> dict:
                 return {"status": "error",
                         "message": f"Не удалось остановить службу: {msg_s}"}
             get_controller().stop()
+            # Не оставлять «активную стратегию» после остановки службы:
+            # иначе /api/status врёт и главная кнопка снова «Применить»
+            # (F-04, recheck 2026-11-15).
+            try:
+                get_controller().current_strategy = None
+            except Exception:
+                pass
             kill_image_filtered("winws2.exe", _my_winws2_paths(), timeout=6)
             return {"status": "ok",
                     "message": "Обход остановлен (служба zapret2 "

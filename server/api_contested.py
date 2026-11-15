@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 from core import list_health
-from server.app_state import AppContext, get_controller, get_root_dir
+from server.api_common import ApiError
+from server.app_state import (AppContext, checkers_busy, get_controller,
+                              get_root_dir)
 
 # Спорные домены (нужен десинк одним, ломается у других - §15)
 CONTESTED = [
@@ -32,6 +34,9 @@ def contested_status(ctx: AppContext) -> dict:
 
 
 def contested_toggle(ctx: AppContext, data: dict) -> dict:
+    busy = checkers_busy()
+    if busy:
+        raise ApiError(409, {"status": "error", "message": busy})
     item_id = str(data.get("id") or "")
     item = next((i for i in CONTESTED if i["id"] == item_id), None)
     if not item:

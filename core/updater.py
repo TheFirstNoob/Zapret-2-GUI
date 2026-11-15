@@ -610,7 +610,9 @@ def _backup_user_files(root_dir: Path, old_version: str) -> Optional[Path]:
                             and pf.stem not in USER_PRESET_IGNORE:
                         zf.write(pf, f"presets/{pf.name}")
         return backup_path
-    except OSError:
+    except (OSError, ValueError):
+        # ValueError: zipfile не умеет mtime < 1980 (0/битые timestamps
+        # user-файлов) - бэкап не должен блокировать portable-апдейт.
         return None
 
 
@@ -642,7 +644,7 @@ def export_settings_zip(root_dir: Path) -> Optional[Path]:
                             and pf.stem not in USER_PRESET_IGNORE:
                         zf.write(pf, f"presets/{pf.name}")
         return export_path
-    except OSError:
+    except (OSError, ValueError):
         return None
 
 
@@ -675,19 +677,23 @@ def import_settings_zip(zip_data: bytes, root_dir: Path) -> tuple[int, int]:
             total_size += max(0, int(info.file_size))
             if info.file_size > 8 * 1024 * 1024 or total_size > 32 * 1024 * 1024:
                 raise RuntimeError("архив настроек слишком большой")
-            rel = info.filename.replace("/", "\\")
+            rel_posix = info.filename
+            rel = rel_posix.replace("/", "\\")
             # защита от path traversal внутри чужого zip
             if rel.startswith(("/", "\\")) or ".." in rel:
                 skipped += 1
                 continue
+            # USER_FILES записаны в posix-виде (lists/...), поэтому сравнивать
+            # надо ДО замены "/" на "\\"; иначе list-games/list-include-all
+            # молча терялись при импорте (P2 2026-11-15).
             is_user = (
-                rel in USER_FILES
-                or (Path(rel).parts[:1] == ("lists",)
-                    and Path(rel).name.endswith("-user.txt"))
-                or (Path(rel).parts[:1] == ("presets",)
-                    and Path(rel).name.endswith(".txt")
-                    and Path(rel).stem not in RELEASE_PRESETS
-                    and Path(rel).stem != "custom")
+                rel_posix in USER_FILES
+                or (Path(rel_posix).parts[:1] == ("lists",)
+                    and Path(rel_posix).name.endswith("-user.txt"))
+                or (Path(rel_posix).parts[:1] == ("presets",)
+                    and Path(rel_posix).name.endswith(".txt")
+                    and Path(rel_posix).stem not in RELEASE_PRESETS
+                    and Path(rel_posix).stem != "custom")
             )
             if not is_user:
                 skipped += 1

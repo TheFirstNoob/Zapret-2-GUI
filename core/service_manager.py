@@ -226,6 +226,22 @@ def _verify_binpath(exe: Path, conf: Path) -> tuple[bool, str]:
     conf_path = Path(tokens[1][1:])
     if not conf_path.exists():
         return False, f"conf-файл из binPath не существует: {conf_path}"
+    # Сверяем не только формат: запись того же формата, но на другой exe/conf
+    # (вторая копия/старый путь) раньше считалась валидной.
+    try:
+        got_exe = os.path.normcase(str(Path(tokens[0]).resolve()))
+        want_exe = os.path.normcase(str(Path(exe).resolve()))
+        got_conf = os.path.normcase(str(conf_path.resolve()))
+        want_conf = os.path.normcase(str(Path(conf).resolve()))
+    except OSError:
+        got_exe = os.path.normcase(str(tokens[0]))
+        want_exe = os.path.normcase(str(exe))
+        got_conf = os.path.normcase(str(conf_path))
+        want_conf = os.path.normcase(str(conf))
+    if got_exe != want_exe:
+        return False, f"binPath указывает на другой winws2.exe: {tokens[0]}"
+    if got_conf != want_conf:
+        return False, f"binPath указывает на другой conf: {conf_path}"
     return True, ""
 
 
@@ -551,8 +567,10 @@ def _repair_impl(root_dir: Optional[Path] = None,
         actions.append(f"ошибка починки драйвера: {e}")
     finally:
         resume_recovery()
+    restart_failed = False
     if was_installed and was_running:
         ok_s, msg_s = start(None)
+        restart_failed = not ok_s
         actions.append("служба zapret2 запущена заново" if ok_s
                        else f"служба zapret2 не запустилась: {msg_s}")
     # Start=4/DeleteFlag=1 у WinDivert - ШТАТНОЕ состояние при загруженном
@@ -566,14 +584,15 @@ def _repair_impl(root_dir: Optional[Path] = None,
             dead = windivert_image_dead(state[0])
         except Exception:  # noqa: BLE001
             dead = ""
-    stuck = bool(dead) or any(
+    stuck = (bool(dead) or restart_failed or any(
         ("нужна перезагрузка" in a) or ("stop не помог" in a)
-        or ("драйвер занят" in a) for a in actions)
+        or ("драйвер занят" in a) for a in actions))
     journal.step("done")
     return {
         "actions": actions,
         "reboot_required": stuck,
         "resolved": not stuck,
+        "restart_failed": restart_failed,
         "zapret1": _zapret1_conflict(),
     }
 
@@ -1090,15 +1109,13 @@ def _start_impl(args: Optional[list[str]] = None, journal=None):
             exe0 = root0 / "winws2.exe"
         conf0 = root0 / "logs" / "service_run.conf"
         try:
-            from core.launcher import validate_args
-            from core.utils import split_windows_cmdline
+            from core.launcher import read_run_conf, validate_args
             if not conf0.exists():
                 _svc_log("start REFUSED: service_run.conf отсутствует")
                 return False, ("Нет logs/service_run.conf - аргументы службы "
                                "потеряны. Переустановите службу из этой копии "
                                "программы.")
-            raw_conf = conf0.read_text(encoding="utf-8", errors="replace")
-            conf_tokens = split_windows_cmdline(raw_conf)
+            conf_tokens = read_run_conf(conf0)
             if conf_tokens:
                 ok_v, msg_v = validate_args(exe0, conf_tokens)
                 if not ok_v:

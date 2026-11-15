@@ -96,6 +96,26 @@ def write_run_conf(root_dir: Path, args: list[str], name: str = "run.conf") -> P
     return conf
 
 
+def read_run_conf(conf_path: Path) -> list[str]:
+    """Прочитать conf, записанный write_run_conf: один токен на строку.
+
+    Нельзя использовать split_windows_cmdline: он рассчитан на ОДНУ строку
+    командной строки и склеивает весь файл в пару токенов (P0 2026-11-15:
+    start(None) после stop читал service_run.conf и объявлял рабочие
+    параметры «bad value for --wf-tcp-out», требуя переустановку службы).
+    """
+    tokens: list[str] = []
+    text = Path(conf_path).read_text(encoding="utf-8-sig")
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if len(line) >= 2 and line.startswith('"') and line.endswith('"'):
+            line = line[1:-1]
+        tokens.append(line)
+    return tokens
+
+
 def _write_temp_conf(tokens: list[str]) -> Path:
     """Временный conf для dry-run/lua-проверок (в TEMP)."""
     fd, name = tempfile.mkstemp(prefix="zapret2_preflight_", suffix=".conf")
@@ -124,7 +144,8 @@ def _read_stderr_sink(root_dir: Path, limit: int = 1500) -> str:
     return head + "\n...\n" + tail
 
 
-def validate_args(exe_path: Path, args: list[str], cwd: Optional[Path] = None, timeout: float = 10.0) -> tuple[bool, str]:
+def validate_args(exe_path: Path, args: list[str], cwd: Optional[Path] = None,
+                  timeout: float = 10.0, check_lua: bool = True) -> tuple[bool, str]:
     """Проверка аргументов winws2 через --dry-run перед реальным запуском.
 
     Гоняет настоящий бинарник в режиме проверки (~0.1-0.3с) и ищет в выводе
@@ -164,6 +185,13 @@ def validate_args(exe_path: Path, args: list[str], cwd: Optional[Path] = None, t
         stripped = line.strip()
         if any(marker in stripped for marker in _DRY_RUN_ERROR_MARKERS):
             return False, f"winws2 отклонил параметры: {stripped}"
+    if not check_lua:
+        # Установка службы: --intercept=0 поднимает WinDivert и на чистой
+        # машине может вернуть rc=3 «error opening filter» ДО установки
+        # службы. В 0.10 этот preflight не блокировал install; в 0.11
+        # fail-closed превратил его в регрессию. Lua проверит сама служба
+        # при старте, а драйвер подготовит service_manager.
+        return True, ""
     return validate_lua(exe_path, args, cwd, timeout)
 
 
@@ -231,6 +259,18 @@ def validate_lua(exe_path: Path, args: list[str], cwd: Optional[Path] = None, ti
                       and "github version" not in ln
                       and "user defined desync" not in ln
                       and "template" not in ln), "")
+        # --intercept=0 фактически поднимает WinDivert (проверено live),
+        # поэтому rc≠0 с windivert-маркером — это состояние драйвера/среды,
+        # а не ошибка Lua. В 0.10 rc здесь игнорировался; в 0.11 fail-closed
+        # сделал его фатальным и сломал install на машине с мёртвой службой
+        # WinDivert (инцидент 2026-11-15). Реальные Lua/arg-ошибки ниже
+        # по-прежнему fail-closed.
+        if "windivert" in output and ("error opening filter" in output
+                                      or "cannot find" in output
+                                      or "win32 error" in output):
+            _applog("validate", f"lua preflight: WinDivert env error ignored: "
+                                f"{first[:300]}")
+            return True, ""
         return False, (f"winws2 --intercept=0 rc={r.returncode}: {first[:200]}")
     for line in output.splitlines():
         stripped = line.strip()
@@ -438,6 +478,17 @@ def _launch_preflight(root_dir: Path, exe_path: Path, args: list[str],
         return False, (f"пустой аргумент #{i} (рядом: {ctx}) - стратегия или "
                        f"тоггл формирует пустую строку")
     return True, ""
+
+
+def prepare_engine_environment(root_dir: Path) -> None:
+    """Публичная точка подготовки окружения движка (драйвер/привилегии).
+
+    Нужна не только перед реальным запуском, но и перед preflight-проверками
+    (`--intercept=0`): на чистой машине WinDivert ещё не загружен, а на
+    машине с остатками другого обхода может быть битая служба драйвера.
+    Без этого установка службы падала с «windivert: error opening filter:...»
+    ещё до того, как программа успевала починить драйвер."""
+    _prepare_winws2_launch(root_dir)
 
 
 def _prepare_winws2_launch(root_dir: Path) -> None:

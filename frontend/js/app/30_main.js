@@ -401,8 +401,11 @@ const MainPage = {
     try {
       const r = await fn();
       if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
-      Activity.done(okText);
-      showToast(okText, 'ok');
+      // fn может вернуть объединённый текст (install-note + start-error):
+      // раньше внутренний showToast мгновенно перезаписывался успехом.
+      const shown = (r && r.display) ? r.display : okText;
+      Activity.done(shown);
+      showToast(shown, (r && r.warn) ? 'warn' : 'ok');
     } catch (e) {
       Activity.fail(errText + e.message);
       showToast(errText + e.message, 'error');
@@ -431,13 +434,24 @@ const MainPage = {
         // автозапуск при падении (service_manager.install).
         const note = (r.message || '').trim();
         const bad = /не запустилась|не настроен/i.test(note);
-        if (note) showToast(note, bad ? 'warn' : 'ok');
         const started = await apiPost('/service/start', payload);
-        if (started.status !== 'ok') return started;
-        return r;
+        if (started.status !== 'ok') {
+          return {
+            status: 'error',
+            message: (note ? note + '; ' : '') + 'запуск: '
+              + (started.message || 'не удалось'),
+          };
+        }
+        return {
+          status: 'ok',
+          display: note
+            ? 'Служба установлена и запущена. ' + note
+            : 'Служба установлена и запущена - обход работает без программы',
+          warn: bad,
+        };
       },
       'Установка…', 'Служба установлена и запущена - обход работает без программы',
-      'Не удалось установить службу: ');
+      'Не удалось установить/запустить службу: ');
   },
 
   svcStart() {

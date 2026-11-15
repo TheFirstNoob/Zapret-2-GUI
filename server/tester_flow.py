@@ -306,6 +306,10 @@ def run_blob_probe(data: dict) -> None:
                 state.error = ("Обнаружен Zapret 1 (winws.exe). Остановите его "
                                "вручную и повторите: поддержка Zapret 1 удалена.")
                 state.running = False
+            # P1 2026-11-15: этот early-return выходит ДО try/finally ниже,
+            # поэтому begin_operation("tester") из api_blobs раньше оставался
+            # занятым навсегда (все mutating-API получали 409 до перезапуска).
+            end_operation("tester")
             return
     except Exception:
         pass

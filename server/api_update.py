@@ -84,6 +84,7 @@ def run_update_worker(kind: str, tag: str, info: dict) -> None:
         result: dict = {"applied": 0, "backup": None,
                         "service_mismatch": False,
                         "signature_verified": True,
+                        "restart_error": "",
                         "restart_required": True}
 
         if kind == "exe":
@@ -170,13 +171,17 @@ def run_update_worker(kind: str, tag: str, info: dict) -> None:
                 if svc_was and _svc_start:
                     prog(92, "Запуск обхода…")
                     try:
-                        _svc_start()
+                        ok_s, msg_s = _svc_start()
+                        if not ok_s:
+                            result["restart_error"] = str(msg_s or "служба не запустилась")
+                            ui_debug(f"update: start service failed: {msg_s}")
                     except Exception as e:  # noqa: BLE001
-                        ui_debug(f"update: start service failed: {e}")
+                        result["restart_error"] = str(e)
+                        ui_debug(f"update: start service exception: {e}")
                 elif ctrl_was and ctrl and ctrl_cfg:
                     prog(92, "Запуск обхода…")
                     try:
-                        ctrl.start(
+                        ok_c, msg_c = ctrl.start(
                             ctrl_cfg.last_profile,
                             game_filter_mode=ctrl_cfg.game_filter_mode,
                             discord_voice=ctrl_cfg.discord_voice,
@@ -187,8 +192,12 @@ def run_update_worker(kind: str, tag: str, info: dict) -> None:
                             ipset_catchall=ctrl_cfg.ipset_catchall,
                             discord_alt=ctrl_cfg.discord_alt,
                         )
+                        if not ok_c:
+                            result["restart_error"] = str(msg_c or "обход не запустился")
+                            ui_debug(f"update: start controller failed: {msg_c}")
                     except Exception as e:  # noqa: BLE001
-                        ui_debug(f"update: start controller failed: {e}")
+                        result["restart_error"] = str(e)
+                        ui_debug(f"update: start controller exception: {e}")
             result.update(applied=applied["updated"],
                           skipped_user=applied["skipped_user"],
                           backup=applied["backup"])

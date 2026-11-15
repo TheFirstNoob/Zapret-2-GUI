@@ -287,10 +287,17 @@ if (start) start.addEventListener('click', () => TesterPage.startProbe());
           }
           if (res.service_mismatch) {
             hideProgress();
-            showToast('Обновление проверено по подписи и применено. Служба стоит на старой конфигурации - переустановите её кнопкой ниже', 'warn');
+            showToast('Обновление проверено по подписи и применено. Служба стоит на старой конфигурации - переустановите её кнопкой ниже'
+              + (res.restart_error ? '. Не удалось поднять обход: ' + res.restart_error : ''), 'warn');
             btn.disabled = false;
             btn.textContent = 'Переустановить службу';
             this._updateStage = 'service';
+          } else if (res.restart_error) {
+            hideProgress();
+            $('updateBanner').hidden = true;
+            showToast('Обновление применено, но обход не запустился: ' + res.restart_error
+              + ' - откройте «Проверку системы»', 'warn');
+            setTimeout(() => { location.reload(); }, 2000);
           } else {
             hideProgress();
             $('updateBanner').hidden = true;

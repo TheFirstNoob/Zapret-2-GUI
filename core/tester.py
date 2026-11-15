@@ -187,10 +187,15 @@ class Zapret2Tester:
         if not self._run_profile(profile_name, ipset_catchall,
                                  discord_alt=discord_alt,
                                  ipset_include_file=ipset_include_file):
-            # диагностика «у друга не запускается»: точные пути в лог сессии
-            if self._logger:
+            # диагностика «у друга не запускается»: точные пути и реальный
+            # stderr - и в лог сессии, и в текст ошибки для UI (F3 2026-11-15).
+            sink = ""
+            try:
                 from core.launcher import _read_stderr_sink
-                sink = _read_stderr_sink(self.root_dir)
+                sink = _read_stderr_sink(self.root_dir)[:400]
+            except Exception:
+                pass
+            if self._logger:
                 if sink:
                     self._logger.progress(profile_name,
                                           f"winws2 output: {sink[:600]}")
@@ -199,8 +204,10 @@ class Zapret2Tester:
                     f"ABORT: spawn failed | exe={self.bin_dir / 'winws2.exe'} "
                     f"exists={self.bin_dir.joinpath('winws2.exe').exists()} | "
                     f"preset={preset} exists={preset.exists()}")
+            detail = f" | вывод winws2: {sink}" if sink else ""
             raise _TestAbort(ProfileTestResult(profile_name=profile_name, results=[
-                TestResult(profile_name, "process", "ERROR", error="winws2 not found or spawn failed"),
+                TestResult(profile_name, "process", "ERROR",
+                           error=f"winws2 not found or spawn failed{detail}"),
             ]))
 
         _logged_progress(7, f"[{profile_name}] ждём готовность WinDivert (1.5s)...")
@@ -210,9 +217,13 @@ class Zapret2Tester:
 
         if not self._any_winws2_running():
             self._ensure_winws2_dead()
-            if self._logger:
+            sink = ""
+            try:
                 from core.launcher import _read_stderr_sink
-                sink = _read_stderr_sink(self.root_dir)
+                sink = _read_stderr_sink(self.root_dir)[:400]
+            except Exception:
+                pass
+            if self._logger:
                 if sink:
                     self._logger.progress(profile_name,
                                           f"winws2 output: {sink[:600]}")
@@ -220,8 +231,10 @@ class Zapret2Tester:
                     profile_name,
                     "ABORT: winws2 died immediately after spawn "
                     "(WinDivert conflict / AV / driver refused)")
+            detail = f" | вывод winws2: {sink}" if sink else ""
             raise _TestAbort(ProfileTestResult(profile_name=profile_name, results=[
-                TestResult(profile_name, "process", "ERROR", error="winws2 did not start"),
+                TestResult(profile_name, "process", "ERROR",
+                           error=f"winws2 did not start{detail}"),
             ]))
 
         import socket as _socket
@@ -560,15 +573,21 @@ class Zapret2Tester:
                 if self.shutdown_event.is_set():
                     break
                 progress_cb(int(i * 90 / total), f"Блоб «{key}» ({i + 1}/{total})...")
-                if not self._run_profile(profile_name, fake_blob=key)                         or not self._any_winws2_running():
-                    out.append({"blob": key, "ok": 0, "total": len(self.BLOB_PROBE_HOSTS), "rate": -1.0})
-                    continue
-                time.sleep(timeouts.SETTLE_BLOB)
-                res = self._run_domain_tests(self.BLOB_PROBE_HOSTS, concurrency=6,
-                                             http_only=False, result_cb=None)
-                ok = sum(1 for r in res if r.status == "OK")
-                out.append({"blob": key, "ok": ok, "total": len(res),
-                            "rate": round(ok / len(res) * 100, 1) if res else 0.0})
+                try:
+                    if not self._run_profile(profile_name, fake_blob=key)                         or not self._any_winws2_running():
+                        out.append({"blob": key, "ok": 0, "total": len(self.BLOB_PROBE_HOSTS), "rate": -1.0})
+                        continue
+                    time.sleep(timeouts.SETTLE_BLOB)
+                    res = self._run_domain_tests(self.BLOB_PROBE_HOSTS, concurrency=6,
+                                                 http_only=False, result_cb=None)
+                    ok = sum(1 for r in res if r.status == "OK")
+                    out.append({"blob": key, "ok": ok, "total": len(res),
+                                "rate": round(ok / len(res) * 100, 1) if res else 0.0})
+                finally:
+                    # Между блобами обязательно гасим наш winws2: иначе второй
+                    # экземпляр ловит dup-mutex и батарея следующего блоба идёт
+                    # под первым движком (F2 2026-11-15).
+                    self._ensure_winws2_dead()
             progress_cb(95, "Восстановление защиты...")
         finally:
             self._ensure_winws2_dead()

@@ -136,6 +136,9 @@ def main() -> int:
         return 1
     repo_exe = REPO_ROOT / "bin" / "winws2.exe"
     repo_engine = ""
+    if not repo_exe.exists():
+        print("Ошибка: нет bin/winws2.exe - нечем сверить версию движка в архивах")
+        return 1
     if repo_exe.exists():
         try:
             r = subprocess.run([str(repo_exe), "--version"], capture_output=True,
@@ -147,6 +150,10 @@ def main() -> int:
             repo_engine = m_eng.group(1) if m_eng else ""
         except (OSError, subprocess.SubprocessError):
             repo_engine = ""
+    if not repo_engine:
+        print("Ошибка: не удалось определить версию bin/winws2.exe - "
+              "fail-closed (не подписываем без сверки движка)")
+        return 1
     zips_dir = Path(args.zips_dir).resolve()
     out_dir = Path(args.out_dir).resolve()
     artifacts: dict[str, dict] = {}

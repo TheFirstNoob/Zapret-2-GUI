@@ -71,7 +71,13 @@ def save_config(ctx: AppContext, data: dict) -> dict:
                 return {"status": "error", "message": "Неизвестный GameFilter"}
             new_cfg.game_filter_mode = mode
         if "discord_voice" in data:
-            new_cfg.discord_voice = bool(data["discord_voice"])
+            val = bool(data["discord_voice"])
+            new_cfg.discord_voice = val
+            # Частичный payload {discord_voice:false} без mode раньше оставлял
+            # mode="fake", а launcher приоритетно читает mode → голос
+            # оставался включён (F-12 2026-11-15).
+            if "discord_voice_mode" not in data:
+                new_cfg.discord_voice_mode = "fake" if val else "off"
         if "discord_voice_mode" in data:
             mode = str(data["discord_voice_mode"]).lower()
             if mode not in ("off", "fake", "udplen"):

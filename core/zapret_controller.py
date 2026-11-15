@@ -5,7 +5,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from core.launcher import build_args_from_preset, launch_winws2, validate_args
+from core.launcher import (build_args_from_preset, launch_winws2,
+                          prepare_engine_environment, validate_args)
 
 
 
@@ -73,7 +74,15 @@ class ZapretController:
         )
 
         # Валидация ДО остановки текущего запуска: провал проверки не должен
-        # оставить пользователя без обхода.
+        # оставить пользователя без обхода. Но preflight --intercept=0 сам
+        # поднимает WinDivert: на машине с битой/чужой службой драйвера он
+        # падал до того, как launch успевал починить драйвер. Готовим
+        # окружение (fix_stale_windivert_services + SeLoadDriverPrivilege)
+        # ДО проверки, иначе кнопка «Запустить» воспроизводит ошибку установки.
+        try:
+            prepare_engine_environment(self.root_dir)
+        except Exception:
+            pass
         ok, err = validate_args(exe_path, args, cwd=self.root_dir)
         if not ok:
             return False, err

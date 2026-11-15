@@ -64,6 +64,7 @@ const DiagnosticsPage = {
       if (note) note.hidden = false;
       this.render(report);
     } catch (e) {
+      Activity.fail('Проверка системы: ' + String(e.message || e));
       $('diagLoading').hidden = true;
       $('diagResults').hidden = false;
       $('diagSummary').innerHTML = '';

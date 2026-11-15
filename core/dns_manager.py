@@ -512,23 +512,40 @@ def current_status() -> dict:
     return _status_from_data(data)
 
 
-def active_profile(cfg, status: dict) -> str:
-    current: set[str] = set()
-    for value in (status.get("servers") or []):
+def _family_sets(values) -> tuple[set[str], set[str]]:
+    v4: set[str] = set()
+    v6: set[str] = set()
+    for value in values or []:
         if not value:
             continue
         try:
-            current.add(str(ipaddress.ip_address(value)))
+            ip = ipaddress.ip_address(str(value))
         except ValueError:
-            return "custom"
-    if not current:
+            continue
+        (v4 if ip.version == 4 else v6).add(str(ip))
+    return v4, v6
+
+
+def active_profile(cfg, status: dict) -> str:
+    current4, current6 = _family_sets(status.get("servers") or [])
+    # status может отдавать v4/v6 раздельно; профиль сравниваем ПО СЕМЕЙСТВАМ,
+    # иначе любой DHCPv6/RDNSS-адрес навсегда делает профиль «custom»
+    # (recheck F3 2026-11-15).
+    if status.get("v4") or status.get("v6"):
+        current4 = set(status.get("v4") or [])
+        current6 = set(status.get("v6") or [])
+    if not current4 and not current6:
         return "system"
     for name in ("main", "reserve"):
         try:
-            servers = {str(ipaddress.ip_address(x)) for x in profile_servers(cfg, name)}
+            p4, p6 = _family_sets(profile_servers(cfg, name))
         except DnsError:
             continue
-        if servers == current:
+        if not p4 and not p6:
+            continue
+        ok4 = (current4 == p4) if p4 else True
+        ok6 = (current6 == p6) if p6 else True
+        if ok4 and ok6:
             return name
     return "custom"
 

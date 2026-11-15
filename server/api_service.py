@@ -8,7 +8,8 @@ from __future__ import annotations
 from typing import Optional
 
 from core.config import DEFAULT_PROFILE
-from core.launcher import build_args_from_preset, validate_args
+from core.launcher import (build_args_from_preset, prepare_engine_environment,
+                           validate_args)
 from core.service_manager import (SERVICE_NAME, install as svc_install,
                                   is_installed as svc_installed,
                                   path_status as svc_path_status,
@@ -75,6 +76,23 @@ def prepare_service_args(data: dict) -> tuple[Optional[list[str]], str]:
                                   autohostlist=autohostlist,
                                   ipset_catchall=ipset_catchall,
                                   discord_alt=bool(data.get("discord_alt", cfg.discord_alt)))
+    # Антивирус часто удаляет WinDivert64.sys, а на машине может остаться
+    # битая служба драйвера от другого обхода. Проверяем файлы и готовим
+    # окружение ДО preflight, иначе установка падает с «windivert: error
+    # opening filter: the system cannot find the path specified» без лечения.
+    missing = [name for name in ("winws2.exe", "cygwin1.dll", "WinDivert.dll", "WinDivert64.sys")
+               if not (exe.parent / name).is_file()]
+    if missing:
+        return None, (f"В папке {exe.parent} нет {missing[0]}. Антивирус мог "
+                      "удалить файл драйвера, либо архив распакован неполностью. "
+                      "Распакуйте portable-архив заново в отдельную папку "
+                      "(например C:\\Zapret2GUI), добавьте её в исключения "
+                      "антивируса и повторите установку. Full EXE восстановит "
+                      "файлы при следующем запуске, если антивирус их не удаляет.")
+    try:
+        prepare_engine_environment(root)
+    except Exception as e:  # noqa: BLE001
+        ui_debug(f"service install: engine env prep failed: {e!r}")
     ok, err = validate_args(exe, args, cwd=root)
     if not ok:
         return None, err
@@ -118,8 +136,9 @@ def service_install(ctx: AppContext, data: dict) -> dict:
         # вне controller, и тот не знал профиль
         try:
             profile = str(data.get("profile") or "").strip()
-            if profile:
-                get_controller().current_strategy = profile
+            if not profile:
+                profile = str(get_config_manager().load().last_profile or DEFAULT_PROFILE)
+            get_controller().current_strategy = profile
         except Exception:
             pass
     return {"status": "ok" if ok else "error", "message": msg}
@@ -178,7 +197,10 @@ def service_start(ctx: AppContext, data: dict | None = None) -> dict:
         return _svc_fail("запуск", e)
     if ok:
         try:
-            get_controller().current_strategy = get_config_manager().load().last_profile
+            cfg = get_config_manager().load()
+            profile = str((data or {}).get("profile")
+                          or getattr(cfg, "last_profile", "") or DEFAULT_PROFILE)
+            get_controller().current_strategy = profile
         except Exception:
             pass
     return {"status": "ok" if ok else "error", "message": msg}
