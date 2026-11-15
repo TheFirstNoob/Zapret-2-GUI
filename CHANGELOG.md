@@ -2,7 +2,42 @@
 
 > Полный список изменений. Сравнение коммитов:
 > https://github.com/TheFirstNoob/Zapret-2-GUI/compare/Pre-Release-0.10...Pre-Release-0.11
-> Релиз: https://github.com/TheFirstNoob/Zapret-2-GUI/releases/tag/Pre-Release-0.11
+> 0.11.1: https://github.com/TheFirstNoob/Zapret-2-GUI/compare/Pre-Release-0.11...Pre-Release-0.11.1
+> Релиз: https://github.com/TheFirstNoob/Zapret-2-GUI/releases/tag/Pre-Release-0.11.1
+
+## Pre-Release 0.11.1 (2026-11-15) — исправления службы и восстановления
+
+### Исправлено
+
+- **Внутренний `start(None)`** (восстановление защиты после тестера,
+  «Выгрузить драйвер», updater после обновления, session-recovery, миграция
+  0.10) больше не отвергает свой `logs/service_run.conf`: многострочный conf
+  читается построчно, а не парсером одной командной строки. В 0.11 это
+  ломало восстановление службы и оставляло обход снятым.
+- **Установка/запуск на машине с неисправным WinDivert**: перед preflight
+  программа ремонтирует/убирает старую битую службу драйвера, включает
+  SeLoadDriverPrivilege и проверяет файлы `winws2/cygwin1/WinDivert.dll/
+  WinDivert64.sys`. Ошибка `--intercept=0` с windivert-маркером теперь
+  классифицируется как ошибка среды (как в 0.10), а не как ошибка Lua;
+  реальные ошибки Lua и аргументов остаются fail-closed. Это устраняет
+  регрессию 0.11 `windivert: error opening filter: the system cannot find the
+  path specified` при установке службы.
+- **Кнопка «Запустить» без службы** готовит драйвер до той же проверки.
+- **«Выгрузить драйвер»/repair** больше не рапортует `resolved=true`, если
+  служба не поднялась; добавлен `restart_failed`.
+- **Portable-обновление**: ошибка повторного запуска обхода не глотается
+  (UI показывает предупреждение); backup не падает на mtime < 1980;
+  импорт настроек не теряет `list-games.txt` и `list-include-all.txt`.
+- **Тестер**: «Перебор блобов» при запущенном Zapret 1 больше не оставляет
+  занятым глобальный operation-lock; между блобами гасится старый winws2;
+  `engine_broken` показывает реальный stderr движка (включая WinDivert/AV).
+- **Диагностика/данные/UI**: чек «Пресет» не краснеет из-за драйвера; CDN не
+  создаёт молча конфликт include/exclude; DNS-профиль сравнивает v4/v6 по
+  семействам; sign-гейт fail-closed без версии движка; `check_arg_file` не
+  считает SKIP успехом; security-заголовки index; аккуратные тосты установки
+  службы; lite `service-install.bat` проверяет `sc create/start`.
+- **Тесты**: 329 passed, security 47; live-матрица службы
+  (stop/start/restart/repair/remove/install) и DNS apply/reset — OK.
 
 ## Pre-Release 0.11 (2026-11-14) — опубликован
 

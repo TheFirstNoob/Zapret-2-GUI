@@ -6,7 +6,9 @@
 
 GUI-обёртка для **Zapret 2** (winws2 / lua-desync) - обход фильтрации трафика у провайдера (DPI/ТСПУ) на Windows, без VPN.
 
-**Текущая версия: Pre-Release 0.11** (движок winws2 1.0.7). Сборки - в разделе [Releases](https://github.com/TheFirstNoob/Zapret-2-GUI/releases).
+**Текущая версия: Pre-Release 0.11.1** (движок winws2 1.0.7). Сборки - в разделе [Releases](https://github.com/TheFirstNoob/Zapret-2-GUI/releases).
+
+0.11.1 — исправления службы (установка/восстановление после тестера, «Выгрузить драйвер», обновление), WinDivert-preflight и несколько найденных при полном recheck дефектов.
 
 **Что нового в 0.11:** движок 1.0.7 и корректные `midsld`-маркеры, DNS-профили на Главной, единый блок «обход + служба + DNS», настоящая QUIC/H3-проверка, запуск без WebView2 Runtime, понятная диагностика списков и portable-обновление рантайма. Подробности - [CHANGELOG.md](CHANGELOG.md).
 

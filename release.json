@@ -1,24 +1,24 @@
 {
   "schema": 1,
-  "version": "0.11",
-  "tag": "Pre-Release-0.11",
-  "generated": "2026-11-14T13:07:38Z",
+  "version": "0.11.1",
+  "tag": "Pre-Release-0.11.1",
+  "generated": "2026-11-15T20:18:22Z",
   "artifacts": {
     "exe": {
       "file": "Zapret2GUI.zip",
-      "size": 21513599,
-      "sha256": "dae51087dc692f74ffd7eeb5acfbc822aa75f05733253ca2d052a51aedc2d3f0",
-      "exe_sha256": "eb7571e71991ed2ee8b891e7bae545609495161cfac3d60983f054b0f184dcb8"
+      "size": 21515342,
+      "sha256": "6937326f38a76e0016d3790643a7e1fa30c72ecd0fdaf9f5efc3869c4cd077fe",
+      "exe_sha256": "de083456afefeaf155360a3f36dc26392aac40333c36193f9ea3a98a1b716894"
     },
     "portable": {
       "file": "Zapret2GUI-portable.zip",
-      "size": 18616620,
-      "sha256": "459529f18459e4bab5a7eb044eb1384c5198d50129e3bb2d3fae4ea1f7fb63a7"
+      "size": 18620808,
+      "sha256": "0a2ecebf26dadd14441b217a21a419be4a013faaca1dd3c57c9ccf0263479238"
     },
     "lite": {
       "file": "Zapret2GUI-lite.zip",
-      "size": 1795494,
-      "sha256": "6bd659e79a3618657e55fb2713c1abbc06c09a0bff3c5eef6d683b59b60c3a41"
+      "size": 1795611,
+      "sha256": "39bb34a4759c6155b2712deaaee3b9283d2b37477c9c715781814953c63c14b5"
     }
   }
 }
