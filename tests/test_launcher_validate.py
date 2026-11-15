@@ -60,3 +60,13 @@ def test_validate_args_can_skip_lua_preflight(monkeypatch, tmp_path):
     ok, err = launcher.validate_args(exe, ["--wf-tcp-out", "80"], check_lua=False)
     assert ok and err == ""
     assert called == []
+
+
+def test_real_lua_error_still_fails_closed(monkeypatch, tmp_path):
+    res = _R(1, "", "lua error: unexpected symbol near '='")
+    monkeypatch.setattr(launcher.subprocess, "run", lambda *a, **k: res)
+    exe = tmp_path / "winws2.exe"
+    exe.write_text("", encoding="utf-8")
+    ok, err = launcher.validate_lua(exe, ["--lua-init=@lua/x.lua"])
+    assert not ok
+    assert "rc=1" in err or "lua error" in err.lower()
