@@ -156,6 +156,19 @@ def _net_snapshot(pids: list[int], *, include_dns: bool = False) -> Optional[dic
             "dns": _as_list(data.get("dns"))}
 
 
+def _normalize_process_spec(spec: str) -> str:
+    """Имя процесса для матча: без завершающего .exe.
+
+    Get-Process.ProcessName не содержит расширения, поэтому ввод
+    `Rob run.exe` раньше не матчился (искали '*Rob run.exe*'). Пробелы,
+    дефисы, точки и регистр сохраняем: PowerShell -like регистронезависим.
+    """
+    spec = (spec or "").strip()
+    if spec.lower().endswith(".exe"):
+        spec = spec[:-4].rstrip()
+    return spec
+
+
 def _rescan_script(pids: list[int], spec: str) -> Optional[str]:
     """Один вызов: PID по маске процесса + UDP-порты (T19).
 
@@ -166,6 +179,7 @@ def _rescan_script(pids: list[int], spec: str) -> Optional[str]:
     if spec.isdigit():
         found_expr = f"@({int(spec)})"
     else:
+        spec = _normalize_process_spec(spec)
         if not re.fullmatch(r"[\w .\-]+", spec, flags=re.UNICODE):
             return None
         safe = spec.replace("'", "''")
@@ -669,10 +683,11 @@ class ProcessProbe:
         return True, "Анализ запущен"
 
     def _find_pids(self, spec: str) -> list[int]:
-        """spec: имя-маска ('WardogsClient') или числовой PID."""
+        """spec: имя-маска ('WardogsClient'/'Rob run.exe') или числовой PID."""
         spec = (spec or "").strip()
         if spec.isdigit():
             return [int(spec)]
+        spec = _normalize_process_spec(spec)
         # Из POST поле попадает в PowerShell-скрипт от имени администратора:
         # валидация + экранирование кавычек (H4, инъекция от админа)
         if not re.fullmatch(r"[\w .\-]+", spec, flags=re.UNICODE):

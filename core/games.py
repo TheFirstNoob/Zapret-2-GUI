@@ -148,7 +148,7 @@ def default_games() -> dict:
         "id": "rob-run",
         "name": "ROB RUN",
         "enabled": True,
-        "process": "RobRun.exe",
+        "process": "Rob run.exe",
         "domains": [
             {"domain": "rob-run.kefir.games", "on": True, "warn": False,
              "tag": "Игра и сервисы",
