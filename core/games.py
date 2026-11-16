@@ -150,10 +150,14 @@ def default_games() -> dict:
         "enabled": True,
         "process": "start_protected_game.exe",
         "domains": [
-            {"domain": "kefir.games", "on": True, "warn": False,
+            {"domain": "rob-run.kefir.games", "on": True, "warn": False,
              "tag": "Игра и сервисы",
-             "note": "Kefir Games: бэкенд, CDN, аналитика, сессии; "
-                     "покрывает *.kefir.games"},
+             "note": "ROB RUN: бэкенд, CDN, аналитика, сессии "
+                     "(*.rob-run.kefir.games)"},
+            {"domain": "sentry.i.kefir.games", "on": True, "warn": True,
+             "tag": "Аналитика Kefir",
+             "note": "Sentry-аналитика Kefir; в живом логе один из "
+                     "SYN-блокированных эндпоинтов - домен может не помочь"},
             {"domain": "api.epicgames.dev", "on": True, "warn": True,
              "tag": "Easy Anti-Cheat / Epic",
              "note": "Epic Online Services и EAC; общий домен Epic, "
@@ -170,8 +174,8 @@ def default_games() -> dict:
         # Аналитика на 146.185.249.151/85.234.65.171 SYN-блокируется -
         # доменным обходом это не лечится, нужен WARP/другой маршрут.
         "udp": [{
-            "ports": "443,36000-37000,50000-52000",
-            "cidrs": ["193.57.88.0/24", "13.50.41.35/32",
+            "ports": "443,36007,36501,36608,51619",
+            "cidrs": ["193.57.88.9/32", "13.50.41.35/32",
                       "34.34.177.122/32", "37.128.167.93/32",
                       "78.37.100.206/32"],
             "on": True,

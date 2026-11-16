@@ -11,7 +11,7 @@ def test_rob_run_builtin_valid_and_has_domains():
     assert g["enabled"] is True
     assert g["process"] == "start_protected_game.exe"
     domains = {d["domain"] for d in g["domains"]}
-    assert "kefir.games" in domains
+    assert "rob-run.kefir.games" in domains
     assert "api.epicgames.dev" in domains
     ok, err = games.validate_games(games.default_games())
     assert ok, err
@@ -21,7 +21,7 @@ def test_rob_run_udp_rule_is_active():
     g = _rob_run()
     rules = [r for r in g["udp"] if r.get("on")]
     assert rules
-    assert rules[0]["ports"].startswith("443,36")
-    assert "193.57.88.0/24" in rules[0]["cidrs"]
+    assert rules[0]["ports"] == "443,36007,36501,36608,51619"
+    assert "193.57.88.9/32" in rules[0]["cidrs"]
     enabled = games.enabled_udp_rules(games.default_games())
     assert any(r["id"] == "rob-run" for r in enabled)
