@@ -21,7 +21,11 @@ def test_rob_run_udp_rule_is_active():
     g = _rob_run()
     rules = [r for r in g["udp"] if r.get("on")]
     assert rules
-    assert rules[0]["ports"] == "443,36007,36501,36608,51619"
+    assert rules[0]["ports"] == "36007,36501,36608,51619"
     assert "193.57.88.9/32" in rules[0]["cidrs"]
+    # 443 намеренно не дублируем: он уже покрыт основными пресетами,
+    # а 78.37.100.206:443 из лога не выглядит выделенным игровым сервером.
+    assert "443" not in rules[0]["ports"].split(",")
+    assert "78.37.100.206/32" not in rules[0]["cidrs"]
     enabled = games.enabled_udp_rules(games.default_games())
     assert any(r["id"] == "rob-run" for r in enabled)
