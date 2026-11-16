@@ -145,6 +145,44 @@ def default_games() -> dict:
         # (Epic обычно UDP 5222, 5795-5847) -> проверка, что сессия стартует.
         "udp": [],
     }, {
+        "id": "rob-run",
+        "name": "ROB RUN",
+        "enabled": True,
+        "process": "start_protected_game.exe",
+        "domains": [
+            {"domain": "kefir.games", "on": True, "warn": False,
+             "tag": "Игра и сервисы",
+             "note": "Kefir Games: бэкенд, CDN, аналитика, сессии; "
+                     "покрывает *.kefir.games"},
+            {"domain": "api.epicgames.dev", "on": True, "warn": True,
+             "tag": "Easy Anti-Cheat / Epic",
+             "note": "Epic Online Services и EAC; общий домен Epic, "
+                     "не только для ROB RUN"},
+            {"domain": "eac-cdn.com", "on": True, "warn": True,
+             "tag": "Easy Anti-Cheat",
+             "note": "загрузка модулей Easy Anti-Cheat"},
+            {"domain": "easyanticheat.net", "on": True, "warn": True,
+             "tag": "Easy Anti-Cheat",
+             "note": "сервисы Easy Anti-Cheat"},
+        ],
+        # Живой «Анализ приложения» 2026-11-16 (чужой лог):
+        # серверы G-Core/Edgecenter, UDP-порты серверов 36xxx/50xxx + 443.
+        # Аналитика на 146.185.249.151/85.234.65.171 SYN-блокируется -
+        # доменным обходом это не лечится, нужен WARP/другой маршрут.
+        "udp": [{
+            "ports": "443,36000-37000,50000-52000",
+            "cidrs": ["193.57.88.0/24", "13.50.41.35/32",
+                      "34.34.177.122/32", "37.128.167.93/32",
+                      "78.37.100.206/32"],
+            "on": True,
+            "repeats": DEFAULT_REPEATS,
+            "cutoff": DEFAULT_CUTOFF,
+            "tag": "Сетевой бой (эксперимент)",
+            "note": "fake UDP на старте коннекта; CIDR из живого лога "
+                    "2026-11-16 (G-Core/Edgecenter). IP серверов могут "
+                    "меняться - при смене добавить через «Анализ приложения»",
+        }],
+    }, {
         "id": "warp",
         "name": "WARP (стабилизация)",
         "enabled": False,  # эксперимент: включать, только если WARP рвёт
