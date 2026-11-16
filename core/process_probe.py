@@ -216,6 +216,26 @@ def _rescan_snapshot(pids: list[int], spec: str) -> Optional[dict]:
     return {"pids": found, "ports": ports}
 
 
+def _describe_pids(pids: list[int]) -> list[dict]:
+    """Реальные image/PID по уже найденным PID (для отчёта, а не ввод юзера).
+
+    Get-Process.ProcessName не содержит '.exe', а пользователь мог ввести имя
+    игры/маску - поэтому заголовок отчёта раньше показывал ввод, а не
+    фактически захваченный файл. В лог и отчёт пишем PID + полный image name.
+    """
+    out: list[dict] = []
+    for pid in list(dict.fromkeys(int(p) for p in pids if p)):
+        path = ""
+        try:
+            from core.proc import process_image_path
+            path = process_image_path(pid) or ""
+        except Exception:
+            path = ""
+        image = Path(path).name if path else "?"
+        out.append({"pid": pid, "image": image, "path": path})
+    return out
+
+
 def list_processes() -> list[dict]:
     """Процессы с активными сетевыми соединениями: [{name, pid}].
 
@@ -641,7 +661,7 @@ class ProcessProbe:
             self._thread = threading.Thread(
                 target=self._run, args=(process, duration, wait_sec), daemon=True)
             self._stop_flag.clear()
-            self._state = {"process": process, "elapsed": 0,
+            self._state = {"process": process, "resolved": [], "elapsed": 0,
                            "duration": duration, "tcp": {}, "udp": {},
                            "history": {}, "udp_capture": None, "dns": {},
                            "verdict": "", "error": "", "phase": "старт"}
@@ -697,6 +717,11 @@ class ProcessProbe:
                 self._state.update({"error": f"Процесс '{spec}' не найден",
                                     "phase": "завершено"})
             return
+        resolved = _describe_pids(pids)
+        _applog("probe", f"resolved spec={spec!r}: " + ", ".join(
+            f"{r['pid']}={r['image']}" for r in resolved))
+        with self._lock:
+            self._state.update({"resolved": resolved})
         etl = Path(utils.get_temp_dir()) / "zapret2_probe.etl"
         txt = Path(utils.get_temp_dir()) / "zapret2_probe.txt"
         handle: Optional[dict] = None
@@ -730,9 +755,14 @@ class ProcessProbe:
                     # сбое разбора - прежний путь _find_pids + _udp_ports.
                     rescan = _rescan_snapshot(pids, spec)
                     if rescan is not None:
+                        new_pids = False
                         for pid in rescan["pids"]:
                             if pid not in pids:
                                 pids.append(pid)
+                                new_pids = True
+                        if new_pids:
+                            with self._lock:
+                                self._state.update({"resolved": _describe_pids(pids)})
                         if handle is None:
                             handle = _run_pktmon(pids, etl, txt,
                                                  ports=rescan["ports"])
@@ -744,9 +774,14 @@ class ProcessProbe:
                                                      "-p", str(p)])
                                     handle["ports"].append(p)
                     else:
+                        new_pids = False
                         for pid in self._find_pids(spec):
                             if pid not in pids:
                                 pids.append(pid)
+                                new_pids = True
+                        if new_pids:
+                            with self._lock:
+                                self._state.update({"resolved": _describe_pids(pids)})
                         if handle is None:
                             handle = _run_pktmon(pids, etl, txt)
                         else:
@@ -834,11 +869,22 @@ class ProcessProbe:
 
     def report_text(self) -> str:
         s = self.get_status()
+        resolved = s.get("resolved") or []
+        head = str(s.get('process') or '?')
+        if resolved:
+            head += " [" + ", ".join(
+                str(r.get('image') or '?') for r in resolved) + "]"
         lines = [
-            f"=== Анализ процесса: {s.get('process', '?')} ===",
+            f"=== Анализ процесса: {head} ===",
             f"Фаза: {s.get('phase', '?')}  (прошло {s.get('elapsed', 0)} сек)",
-            f"IPv6: {'ДА' if s.get('ipv6') else 'нет'}",
         ]
+        if resolved:
+            lines.append("Захваченные процессы:")
+            for r in resolved:
+                path = r.get("path") or ""
+                lines.append(f"  PID {r.get('pid')} — {r.get('image') or '?'}"
+                             + (f" ({path})" if path else ""))
+        lines.append(f"IPv6: {'ДА' if s.get('ipv6') else 'нет'}")
         if s.get("pids_count"):
             lines.append(f"Процессов под наблюдением: {s['pids_count']} "
                          "(PID и UDP-порты обновляются каждые 10 с)")

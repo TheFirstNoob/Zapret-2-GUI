@@ -9,7 +9,7 @@ def _rob_run():
 def test_rob_run_builtin_valid_and_has_domains():
     g = _rob_run()
     assert g["enabled"] is True
-    assert g["process"] == "start_protected_game.exe"
+    assert g["process"] == "RobRun.exe"
     domains = {d["domain"] for d in g["domains"]}
     assert "rob-run.kefir.games" in domains
     assert "api.epicgames.dev" in domains
