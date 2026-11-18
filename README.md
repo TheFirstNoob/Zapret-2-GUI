@@ -58,6 +58,10 @@ GUI-обёртка для **Zapret 2** (winws2 / lua-desync) - обход фил
 > portable или EXE. Ручные hosts в Lite закрывают лишь base-хосты, но не voice
 > и не динамические `c-*`.
 >
+> **Для Lite и пользователей Zapret 1:** отдельный standalone
+> [`DiscordCloudflareFix-standalone.zip`](Windows%20build/DiscordCloudflareFix-standalone.zip) — распакуйте,
+> запустите `DiscordCloudflareFix.cmd`, в UAC «Да», в меню выберите `1`.
+>
 > **Это временный костыльный вариант, не VPN.** Он покрывает Discord и часть
 > Cloudflare-auth/captcha-доменов, но не лечит DPI и не даёт гарантии на
 > будущее. Для auto-режима создаётся **задача Планировщика Windows**
