@@ -98,3 +98,73 @@
 138.199.37.231 www.weatherapi.com
 138.199.37.231 api.weatherapi.com
 176.9.63.49 api.openweathermap.org
+# --- AI geo-unblock (optional; source: pumPCin/AntiZapret .service/hosts 2026-11-15) ---
+# Домены AI-сервисов в РФ не заблокированы - эти записи меняют ТОЛЬКО геолокацию
+# (обход регионального запрета сервиса). Трафик идёт через сторонний прокси-VPS
+# (ExpressHost/Senko Digital), не через официальные CDN. Применяйте осознанно.
+# OpenAI / ChatGPT
+217.60.179.6 chatgpt.com
+217.60.179.6 www.chatgpt.com
+217.60.179.6 ab.chatgpt.com
+217.60.179.6 auth.openai.com
+217.60.179.6 auth0.openai.com
+217.60.179.6 platform.openai.com
+217.60.179.6 developers.openai.com
+217.60.179.6 api.openai.com
+217.60.179.6 cdn.oaistatic.com
+217.60.179.6 cdn.platform.openai.com
+217.60.179.6 files.oaiusercontent.com
+217.60.179.6 tcr9i.chat.openai.com
+217.60.179.6 webrtc.chatgpt.com
+217.60.179.6 android.chat.openai.com
+217.60.179.6 ios.chat.openai.com
+217.60.179.6 operator.chatgpt.com
+217.60.179.6 sora.chatgpt.com
+217.60.179.6 videos.openai.com
+217.60.179.6 sdmntprukwest.oaiusercontent.com
+217.60.179.6 sdmntpritalynorth.oaiusercontent.com
+217.60.179.6 sdmntprpolandcentral.oaiusercontent.com
+217.60.179.6 sdmntprnortheu.oaiusercontent.com
+# Anthropic / Claude
+217.60.179.6 claude.ai
+217.60.179.6 a.claude.ai
+217.60.179.6 console.anthropic.com
+217.60.179.6 api.anthropic.com
+217.60.179.6 platform.claude.com
+# xAI / Grok
+217.60.179.6 grok.com
+217.60.179.6 accounts.x.ai
+217.60.179.6 assets.grok.com
+# Microsoft Copilot
+217.60.179.6 copilot.microsoft.com
+217.60.179.6 sydney.bing.com
+217.60.179.6 edgeservices.bing.com
+# GitHub Copilot
+217.60.179.6 api.individual.githubcopilot.com
+217.60.179.6 proxy.individual.githubcopilot.com
+# JetBrains AI / ElevenLabs
+217.60.179.6 api.jetbrains.ai
+217.60.179.6 datalore.jetbrains.com
+217.60.179.6 elevenlabs.io
+217.60.179.6 api.us.elevenlabs.io
+217.60.179.6 api.elevenlabs.io
+217.60.179.6 elevenreader.io
+217.60.179.6 help.elevenlabs.io
+# Google Gemini / AI Studio / Labs
+48.102.233.174 gemini.google.com
+48.102.233.174 geminiweb-pa.clients6.google.com
+48.102.233.174 aistudio.google.com
+48.102.233.174 generativelanguage.googleapis.com
+48.102.233.174 aitestkitchen.withgoogle.com
+48.102.233.174 aisandbox-pa.googleapis.com
+48.102.233.174 webchannel-alkalimakersuite-pa.clients6.google.com
+48.102.233.174 alkalimakersuite-pa.clients6.google.com
+48.102.233.174 assistant-s3-pa.googleapis.com
+48.102.233.174 proactivebackend-pa.googleapis.com
+48.102.233.174 robinfrontend-pa.googleapis.com
+48.102.233.174 labs.google
+48.102.233.174 notebooklm.google.com
+48.102.233.174 jules.google.com
+48.102.233.174 stitch.withgoogle.com
+48.102.233.174 flow.google.com
+48.102.233.174 notebook.google.com

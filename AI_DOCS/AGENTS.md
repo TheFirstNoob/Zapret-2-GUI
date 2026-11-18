@@ -30,7 +30,7 @@
   stock-lua lib/antidpi/auto обновлены, `zapret-custom.lua` сохранён).
   T37/T43/T44 dry-run зелёные; служба в зеркале перезапущена. 0.10 шипится с
   v1.0.5 (без QUIC-dissect фиксов 1.0.5.2+); 0.11-черновик 27.10 = 1.0.6.
-- **Тесты:** `tests/` (pytest, 329 passed на 2026-11-15) + батарея:
+- **Тесты:** `tests/` (pytest, 338 passed на 2026-11-18) + батарея:
   `compileall`, `tools/api_smoke.py`, `tools/security` (47),
   `tools/args_golden.py compare`, `tools/check_arg_file.py`,
   `tools/js_bundle_check.py`, `tools/status_contract.py`.
@@ -74,7 +74,7 @@
   `--intercept=0` блокировал install/start до починки WinDivert (инцидент
   0.11). Исправлены tester operation-lock/blob-teardown, repair resolved,
   update restart error, импорт settings, backup mtime<1980, диагностика,
-  CDN/DNS-края, release-гейты, UX/security-заголовки. 329 tests + live
+  CDN/DNS-края, release-гейты, UX/security-заголовки. 338 tests + live
   stop/start/repair/remove/install и DNS apply/reset — зелёные. 0.11.1
   собран из `69869b5` и опубликован: 8 pretty-ассетов, подпись
   `50DCECF29451`, `check_for_updates()` видит 0.11.1. Итог —
