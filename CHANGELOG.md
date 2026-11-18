@@ -5,6 +5,30 @@
 > 0.11.1: https://github.com/TheFirstNoob/Zapret-2-GUI/compare/Pre-Release-0.11...Pre-Release-0.11.1
 > Релиз: https://github.com/TheFirstNoob/Zapret-2-GUI/releases/tag/Pre-Release-0.11.1
 
+## Pre-Release 0.12 (2026-11-18) — Discord/Cloudflare fix
+
+### Главное
+
+- **Мастер Discord/Cloudflare**: кнопка/уведомление на Главной и карточка в «Диагностике» — проверка hosts, случайный health-checked IP из пула, hosts + NRPT + локальный scoped-DNS, включение/отключение/смена IP.
+- **Auto-режим**: задача Планировщика Windows `Zapret2GUI DiscordFix` с триггером Boot, SYSTEM, запускает тот же python/exe с `--discord-fix-helper`; GUI можно закрыть, helper переживает перезагрузку. Путь задаётся в задаче, а не в ImagePath службы.
+- DNS отвечает только для Discord/Cloudflare/auth-зон; системный DNS не меняется. Candidate IP выбирается на сессию (не на каждый запрос) и проверяется TLS перед применением.
+- В пул входят Cloudflare-auth/captcha домены: `cloudflare.com`, `cloudflareaccess.com`, `challenges.cloudflare.com`, `auth0.com`, `epicgames.dev`, `fandom.com`.
+- Данные: `lists/discord-candidates.json` (252 IP), состояние и backup hosts в `logs/discord_fix_*`.
+- Ограничение: это временный обход, не VPN. При блокировке пула — WARP/другой маршрут.
+- Lite (engine-only) не содержит Python/helper и этот fix не поддерживает; только portable/EXE. В Lite base-hosts без dynamic/voice.
+
+### Исправлено
+
+- Ложная «DNS-подмена» в диагностике: активный hosts-пин Discord больше не выдаётся за подмену DNS; чек показывает предупреждение и не советует менять DNS.
+- README: добавлен раздел `[Warning] Discord после 18.11.2026` с объяснением и ограничениями.
+
+### Тесты
+
+- 354 passed; live-enable/rotate/disable с реальными hosts/NRPT/DNS: Discord API 200, challenges 200, auth0 200, Cloudflare 301, rotate 200; отключение убирает hosts-блок и NRPT, hosts восстанавливаются.
+- Task Scheduler: install/query/start/remove и реальный `--discord-fix-helper` под SYSTEM: task RUNNING, порт 53 слушает helper, DNS-зоны резолвятся в candidate; повторный enable после disable — OK.
+- При старте helper/GUI — один TLS health-check сохранённого IP; при провале выбирается новый.
+- Исправлен atexit-баг: Python-процесс больше не снимает NRPT, если helper работает как задача (`mode=task`); путь задачи сохраняется в state и переустанавливается при переносе приложения.
+
 ## Pre-Release 0.11.1 (2026-11-15) — исправления службы и восстановления
 
 ### Исправлено

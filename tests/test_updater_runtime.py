@@ -639,14 +639,14 @@ def test_worker_wires_runtime_update(tmp_path: Path, monkeypatch) -> None:
     portable = tmp_path / "portable"
     app = make_app(portable, version="Pre-Release 0.11", required_rev="rev-old")
     make_runtime(portable, "rev-old")
-    zp = build_portable_zip(tmp_path, version="Pre-Release 0.12",
+    zp = build_portable_zip(tmp_path, version="Pre-Release 0.13",
                             runtime_rev="rev-new")
 
     sk, pk = uv.keygen()
-    tag = "Pre-Release-0.12"
+    tag = "Pre-Release-0.13"
     raw = json.dumps({
         "schema": up.MANIFEST_SCHEMA,
-        "version": "0.12",
+        "version": "0.13",
         "tag": tag,
         "artifacts": {"portable": {"file": "p.zip", "sha256": "b" * 64}},
     }).encode()
@@ -666,7 +666,7 @@ def test_worker_wires_runtime_update(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(STATE, "updater_state", dict(STATE.updater_state))
 
     api_update.run_update_worker("portable", tag,
-                                 {"tag": tag, "latest": "0.12"})
+                                 {"tag": tag, "latest": "0.13"})
     state = dict(STATE.updater_state)
     assert state["error"] is None, state["error"]
     res = state["result"] or {}
@@ -697,13 +697,13 @@ def test_worker_plain_restart_when_runtime_up_to_date(tmp_path: Path,
     app = make_app(portable, version="Pre-Release 0.11",
                    required_rev="rev-same")
     make_runtime(portable, "rev-same")
-    zp = build_portable_zip(tmp_path, version="Pre-Release 0.12",
+    zp = build_portable_zip(tmp_path, version="Pre-Release 0.13",
                             runtime_rev="rev-same")
 
     sk, pk = uv.keygen()
-    tag = "Pre-Release-0.12"
+    tag = "Pre-Release-0.13"
     raw = json.dumps({
-        "schema": up.MANIFEST_SCHEMA, "version": "0.12", "tag": tag,
+        "schema": up.MANIFEST_SCHEMA, "version": "0.13", "tag": tag,
         "artifacts": {"portable": {"file": "p.zip", "sha256": "b" * 64}},
     }).encode()
     monkeypatch.setattr(uv, "PUBKEY", pk)
@@ -718,7 +718,7 @@ def test_worker_plain_restart_when_runtime_up_to_date(tmp_path: Path,
     monkeypatch.setattr(api_update, "get_root_dir", lambda: app)
     monkeypatch.setattr(STATE, "updater_state", dict(STATE.updater_state))
 
-    api_update.run_update_worker("portable", tag, {"tag": tag, "latest": "0.12"})
+    api_update.run_update_worker("portable", tag, {"tag": tag, "latest": "0.13"})
     state = dict(STATE.updater_state)
     assert state["error"] is None, state["error"]
     res = state["result"] or {}

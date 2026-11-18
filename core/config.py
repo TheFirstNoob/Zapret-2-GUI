@@ -36,7 +36,7 @@ class AppConfig:
 
 DEFAULT_PROFILE = "default"
 
-VERSION = "Pre-Release 0.11.1"
+VERSION = "Pre-Release 0.12"
 
 # Допустимые значения enum-полей (совпадают с server/api_config.py).
 GAME_FILTER_MODES = ("off", "tcp", "udp", "both")

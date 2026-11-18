@@ -691,4 +691,8 @@ def main_gui() -> None:
 
 
 if __name__ == "__main__":
-    main_gui()
+    if "--discord-fix-helper" in sys.argv[1:]:
+        from core.discord_fix import run_helper
+        run_helper()
+    else:
+        main_gui()

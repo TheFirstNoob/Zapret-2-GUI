@@ -8,7 +8,12 @@ const DiagnosticsPage = {
       this._bound = true;
       $('diagRunBtn').addEventListener('click', () => this.run());
       $('diagCopyBtn').addEventListener('click', () => this.copyReport());
+      $('discordFixScanBtn').addEventListener('click', () => this.discordFixScan());
+      $('discordFixEnableBtn').addEventListener('click', () => this.discordFixEnable());
+      $('discordFixRotateBtn').addEventListener('click', () => this.discordFixRotate());
+      $('discordFixDisableBtn').addEventListener('click', () => this.discordFixDisable());
     }
+    this.discordFixLoad();
   },
 
   async run() {
@@ -124,6 +129,103 @@ const DiagnosticsPage = {
       try { document.execCommand('copy'); showToast('Отчёт скопирован', 'ok'); }
       catch (e2) { showToast('Не удалось скопировать', 'warn'); }
       document.body.removeChild(ta);
+    }
+  },
+  async discordFixLoad() {
+    try {
+      const r = await apiGet('/discord-fix/status');
+      if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
+      const active = !!r.enabled;
+      $('discordFixEnableBtn').hidden = active;
+      $('discordFixDisableBtn').hidden = !active;
+      $('discordFixRotateBtn').hidden = !active;
+      const dnsState = r.mode === 'task'
+        ? 'автозапуск: ' + (r.task_state || '?')
+        : (r.dns_running ? 'DNS работает (GUI)' : 'DNS не запущен');
+      $('discordFixStatus').textContent = active
+        ? 'Включён: IP ' + (r.selected_ip || '?') + ' · ' + dnsState + ' · hosts ' + (r.hosts_block ? 'OK' : 'нет')
+        : 'Выключен. Включение изменит hosts и создаст задачу автозапуска с локальным DNS для Discord/Cloudflare-зон.';
+    } catch (e) {
+      $('discordFixStatus').textContent = 'Не удалось прочитать состояние: ' + String(e.message || e);
+    }
+  },
+
+  _discordFixBusy(on) {
+    for (const id of ['discordFixScanBtn', 'discordFixEnableBtn', 'discordFixRotateBtn', 'discordFixDisableBtn']) {
+      const el = $(id);
+      if (el) el.disabled = !!on;
+    }
+  },
+
+  async discordFixScan() {
+    this._discordFixBusy(true);
+    try {
+      const r = await apiGet('/discord-fix/scan');
+      if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
+      const box = $('discordFixScanResult');
+      const lines = (r.entries || []).slice(0, 12).map(e => e.host + ' -> ' + e.ip);
+      box.hidden = false;
+      box.textContent = 'Найдено записей Discord/CF в hosts: ' + (r.count || 0) + (lines.length ? '\n' + lines.join('\n') : '') + ((r.count || 0) > lines.length ? '\n…' : '');
+      showToast('hosts: найдено ' + (r.count || 0) + ' записей', 'ok');
+    } catch (e) {
+      showToast('Проверка hosts: ' + String(e.message || e), 'error');
+    } finally {
+      this._discordFixBusy(false);
+      this.discordFixLoad();
+    }
+  },
+
+  async discordFixEnable() {
+    const ok = await Confirm.ask({
+      title: 'Включить временный обход Discord/Cloudflare?',
+      text: 'Будут изменены system hosts, добавлены NRPT-правила и создана задача автозапуска при старте Windows для локального DNS на 127.0.0.1:53. GUI можно закрыть. Это временный обход, не VPN. При блокировке пула IP понадобится WARP/другой маршрут.',
+      ok: 'Включить',
+    });
+    if (!ok) return;
+    this._discordFixBusy(true);
+    try {
+      const r = await apiPost('/discord-fix/enable', {});
+      if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
+      showToast(r.message || 'Обход включён', 'ok');
+    } catch (e) {
+      showToast('Не удалось включить: ' + String(e.message || e), 'error');
+    } finally {
+      this._discordFixBusy(false);
+      this.discordFixLoad();
+    }
+  },
+
+  async discordFixRotate() {
+    const ok = await Confirm.ask({
+      title: 'Сменить рабочий IP?',
+      text: 'Будет выбран другой случайный рабочий IP из пула. Discord переподключится к новому адресу.',
+      ok: 'Сменить',
+    });
+    if (!ok) return;
+    this._discordFixBusy(true);
+    try {
+      const r = await apiPost('/discord-fix/rotate', {});
+      if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
+      showToast(r.message || 'IP сменён', 'ok');
+    } catch (e) {
+      showToast('Не удалось сменить IP: ' + String(e.message || e), 'error');
+    } finally {
+      this._discordFixBusy(false);
+      this.discordFixLoad();
+    }
+  },
+
+  async discordFixDisable() {
+    this._discordFixBusy(true);
+    try {
+      const r = await apiPost('/discord-fix/disable', {});
+      if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
+      showToast(r.message || 'Обход выключен', 'ok');
+    } catch (e) {
+      showToast('Не удалось выключить: ' + String(e.message || e), 'error');
+    } finally {
+      this._discordFixBusy(false);
+      this.discordFixLoad();
     }
   },
 };

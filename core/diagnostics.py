@@ -23,6 +23,8 @@ from core.tester import QUIC_QUIRK_DOMAINS
 from core.utils import (known_desktop_dir, short_path, windivert_image_dead,
                         windivert_image_path, windivert_service_state)
 
+_HOSTS_PATH = Path(r"C:\Windows\System32\drivers\etc\hosts")
+
 # Хост аплоада: 403 от Google Storage = соединение живо.
 DISCORD_UPLOAD_HOST = "discord-attachments-uploads-prd.storage.googleapis.com"
 
@@ -630,6 +632,35 @@ def _check_dns_health() -> Check:
     return Check("dns_health", "DNS (обычный и защищённый)", status, detail)
 
 
+def _hosts_pin_for(host: str) -> Optional[str]:
+    """Активная запись hosts для домена (если есть) - для отличия пина от
+    реальной DNS-подмены.
+
+    После 18.11.2026 пользователи ставят Discord-хосты в hosts; старый чек
+    сравнивал getaddrinfo (читает hosts) с DoH и кричал «DNS подмена, смените
+    DNS», хотя менять DNS бесполезно. Возвращаем IP, если домен реально
+    присутствует в hosts (не в комментарии).
+    """
+    target = host.strip().lower().rstrip(".")
+    if not target:
+        return None
+    try:
+        lines = _HOSTS_PATH.read_text(encoding="utf-8-sig", errors="replace").splitlines()
+    except OSError:
+        return None
+    for line in lines:
+        s = line.strip()
+        if not s or s.startswith("#"):
+            continue
+        parts = s.split()
+        if len(parts) < 2:
+            continue
+        names = [n.lower().rstrip(".") for n in parts[1:]]
+        if target in names:
+            return parts[0]
+    return None
+
+
 def _check_dns_poison() -> Check:
     """Подмена DNS: системный резолвер vs чистый DoH для «заблокированных»
     доменов. Домены выбраны за Cloudflare (anycast - IP одинаковы глобально,
@@ -638,6 +669,7 @@ def _check_dns_poison() -> Check:
     """
     domains = ("rutracker.org", "discord.com")
     poisoned: list[str] = []
+    pinned: list[str] = []
     checked = 0
     for h in domains:
         try:
@@ -661,15 +693,26 @@ def _check_dns_poison() -> Check:
         if not sys_ips:
             poisoned.append(f"{h}: системный DNS не отвечает, а чистый резолвит")
         elif not (set(sys_ips) & set(doh_ips)):
-            poisoned.append(f"{h}: системный DNS даёт чужие IP ({', '.join(sys_ips[:2])})")
+            pin = _hosts_pin_for(h)
+            if pin:
+                pinned.append(f"{h}: hosts -> {pin}")
+            else:
+                poisoned.append(f"{h}: системный DNS даёт чужие IP ({', '.join(sys_ips[:2])})")
     if checked == 0:
         return Check("dns_poison", "DNS подмена", "skip",
                      "не удалось проверить (защищённый DNS недоступен)")
     if poisoned:
+        extra = ("; hosts-пин: " + "; ".join(pinned)) if pinned else ""
         return Check("dns_poison", "DNS подмена", "fail",
                      "; ".join(poisoned) + " - смените DNS на 8.8.8.8 или 1.1.1.1, "
-                     "обход без этого работать не будет",
+                     "обход без этого работать не будет" + extra,
                      tech=f"system vs DoH mismatch ({checked} domains)")
+    if pinned:
+        return Check("dns_poison", "DNS подмена", "warn",
+                     "; ".join(pinned) + " - это не DNS-подмена, а запись hosts "
+                     "(пин/старый воркер). DNS менять не нужно; старую запись можно "
+                     "удалить мастером Discord-обхода.",
+                     tech=f"hosts pin detected ({checked} domains)")
     return Check("dns_poison", "DNS подмена", "ok",
                  "системный DNS совпадает с чистым резолвером",
                  tech=f"system == DoH for {checked} domains")

@@ -24,6 +24,19 @@ const MainPage = {
     if (!this._configLoaded && !this._configBusy) this.loadConfig();
     if (typeof DnsPanel !== 'undefined') DnsPanel.onShow();
     if (Status.last) this.renderStatus(Status.last);
+    this.refreshDiscordFixNotice();
+  },
+
+  async refreshDiscordFixNotice() {
+    try {
+      const r = await apiGet('/discord-fix/status');
+      const el = $('discordFixNotice');
+      if (!el) return;
+      el.hidden = !(r.status === 'ok' && !r.enabled);
+    } catch (e) {
+      const el = $('discordFixNotice');
+      if (el) el.hidden = true;
+    }
   },
 
   bind() {
@@ -43,6 +56,19 @@ const MainPage = {
     $('btnSvcRemove').addEventListener('click', () => this.svcRemove());
     $('updateBannerClose').addEventListener('click', () => { $('updateBanner').hidden = true; });
     $('updateNowBtn').addEventListener('click', () => App._onUpdateBtn());
+    $('discordFixNoticeEnableBtn').addEventListener('click', async () => {
+      if (typeof DiagnosticsPage !== 'undefined' && DiagnosticsPage.discordFixEnable) {
+        await DiagnosticsPage.discordFixEnable();
+        this.refreshDiscordFixNotice();
+      }
+    });
+    $('discordFixNoticeMoreBtn').addEventListener('click', () => {
+      location.hash = 'diagnostics';
+      setTimeout(() => {
+        const card = $('discordFixPanel');
+        if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 200);
+    });
 
     ['toggleGameFilter', 'toggleAutoHostlist', 'toggleIpFilter',
       'toggleDiscordVoice', 'toggleDiscordAlt', 'toggleWinws2Debug', 'fakeBlobSelect'].forEach(id => {

@@ -14,9 +14,9 @@ from core.zapret_controller import ZapretController
 from core.tester import Zapret2Tester
 from server.app_state import (STATE, get_root_dir, probe_debug as _probe_debug)
 from server import (api_blobs, api_cdn, api_config, api_contested,
-                    api_control, api_diag, api_dns, api_games, api_info,
-                    api_lists, api_probe, api_reports, api_service,
-                    api_tester, api_update, session_recovery)
+                    api_control, api_diag, api_discord_fix, api_dns,
+                    api_games, api_info, api_lists, api_probe, api_reports,
+                    api_service, api_tester, api_update, session_recovery)
 
 
 CONTENT_TYPES = {
@@ -99,6 +99,8 @@ _GET_ROUTES: dict[str, tuple] = {
     "/api/process-probe/status": (api_probe.probe_status, ("@ctx",)),
     "/api/games": (api_games.games_get, ("@ctx",)),
     "/api/dns/status": (api_dns.dns_status, ("@ctx",)),
+    "/api/discord-fix/status": (api_discord_fix.discord_fix_status, ("@ctx",)),
+    "/api/discord-fix/scan": (api_discord_fix.discord_fix_scan, ("@ctx",)),
 }
 
 _POST_ROUTES: dict[str, tuple] = {
@@ -121,6 +123,9 @@ _POST_ROUTES: dict[str, tuple] = {
     "/api/service/repair": (api_service.service_repair, ("@ctx",)),
     "/api/diagnose/action": (api_diag.diagnose_action, ("@ctx", "@data")),
     "/api/diagnose/status": (api_diag.diagnose_status, ("@ctx",)),
+    "/api/discord-fix/enable": (api_discord_fix.discord_fix_enable, ("@ctx", "@data")),
+    "/api/discord-fix/disable": (api_discord_fix.discord_fix_disable, ("@ctx",)),
+    "/api/discord-fix/rotate": (api_discord_fix.discord_fix_rotate, ("@ctx",)),
     "/api/export-report": (api_reports.export_report, ("@ctx", "@data")),
     "/api/asn-scan": (api_tester.asn_scan, ("@ctx", "@data")),
     "/api/blob-probe": (api_blobs.blob_probe, ("@ctx", "@data")),
@@ -152,6 +157,11 @@ def init(root_dir: Path, token: str = "") -> None:
     STATE.config_manager = ConfigManager(root_dir)
     STATE.controller = ZapretController(root_dir, config_manager=STATE.config_manager)
     STATE.tester = Zapret2Tester(root_dir)
+    try:
+        from core.discord_fix import ensure_started
+        ensure_started(Path(root_dir))
+    except Exception:
+        pass
     api_lists.normalize_user_lists()
     # crash-recovery тест-сессии (logs/test_session_state.json):
     # незавершённый прогон восстановит recovery и защиту (демон-поток)
