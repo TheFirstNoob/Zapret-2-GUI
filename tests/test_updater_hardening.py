@@ -100,6 +100,18 @@ def test_release_manifest_download_has_small_limit(tmp_path: Path,
 
 # ── бэкап: backups/ занят файлом - не роняем апдейт ────────────────────
 
+def test_changed_windivert_files_compares_hashes(tmp_path: Path) -> None:
+    root = tmp_path / "app"
+    (root / "windivert").mkdir(parents=True)
+    same = b"same-binary"
+    (root / "windivert" / "WinDivert.dll").write_bytes(same)
+    zp = _simple_zip(tmp_path / "upd.zip", {
+        "windivert/WinDivert.dll": same,
+        "windivert/WinDivert64.sys": b"new-driver",
+    })
+    assert up.changed_windivert_files(zp, root) == ["windivert/WinDivert64.sys"]
+
+
 def test_apply_skips_identical_files(tmp_path: Path) -> None:
     """Неизменившиеся файлы не трогаем: WinDivert.dll может быть залочен."""
     root = tmp_path / "app"

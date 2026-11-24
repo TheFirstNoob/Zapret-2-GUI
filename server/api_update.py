@@ -34,11 +34,11 @@ def _mk(dir_path: Path) -> Path:
 def run_update_worker(kind: str, tag: str, info: dict) -> None:
     """Worker обновления: скачать → бэкап → применить (portable) или
     подготовить self-update (exe) → проверить службу (аргументы устарели?)."""
-    from core.updater import (apply_portable, fetch_release_manifest,
-                              fetch_update, find_runtime_dir,
-                              prepare_app_restart_bat, prepare_exe_update,
-                              runtime_status, service_args_stale,
-                              validate_release)
+    from core.updater import (apply_portable, changed_windivert_files,
+                              fetch_release_manifest, fetch_update,
+                              find_runtime_dir, prepare_app_restart_bat,
+                              prepare_exe_update, runtime_status,
+                              service_args_stale, validate_release)
     from core.update_verify import verify as verify_signature
     from core.config import ConfigManager
     from core.launcher import build_args_from_preset
@@ -160,6 +160,19 @@ def run_update_worker(kind: str, tag: str, info: dict) -> None:
             # подняться и при исключении в apply.
             applied = None
             try:
+                # WinDivert.dll/sys заменяем только если они реально
+                # изменились; перед заменой выгружаем драйвер, иначе копия
+                # упадёт на занятом файле. После update служба/controller
+                # поднимаются в finally и загрузят драйвер снова.
+                if changed_windivert_files(zip_path, root_dir):
+                    prog(65, "Выгрузка WinDivert…")
+                    from core.utils import windivert_emergency_unload
+                    actions = windivert_emergency_unload()
+                    for act in actions:
+                        ui_debug(f"update: windivert {act}")
+                    bad = [a for a in actions if "занят" in a or "нужна перезагрузка" in a]
+                    if bad:
+                        raise RuntimeError("не удалось выгрузить WinDivert: " + "; ".join(bad))
                 applied = apply_portable(
                     zip_path, root_dir,
                     progress_cb=lambda m: prog(80, str(m)),

@@ -721,6 +721,41 @@ def import_settings_zip(zip_data: bytes, root_dir: Path) -> tuple[int, int]:
     return imported, skipped
 
 
+def changed_windivert_files(zip_path: Path, root_dir: Path) -> list[str]:
+    """Вернуть windivert/-файлы, которые реально отличаются от установки.
+
+    Нужен апдейтеру, чтобы не выгружать драйвер зря, если WinDivert.dll/sys
+    не менялись, и наоборот - выгрузить его перед заменой изменённого
+    драйверного файла. Читает только windivert/.
+    """
+    root = Path(root_dir)
+    changed: list[str] = []
+    with zipfile.ZipFile(zip_path) as zf:
+        names = zf.namelist()
+        prefix = "app/" if any(n.startswith("app/") for n in names) else ""
+        for info in zf.infolist():
+            if info.is_dir():
+                continue
+            name = info.filename
+            if prefix:
+                if not name.startswith(prefix):
+                    continue
+                rel = name[len(prefix):]
+            else:
+                rel = name
+            if not rel.startswith("windivert/"):
+                continue
+            target = root / rel
+            try:
+                if (not target.is_file()
+                        or _sha256(target) != hashlib.sha256(
+                            zf.read(info)).hexdigest()):
+                    changed.append(rel)
+            except OSError:
+                changed.append(rel)
+    return changed
+
+
 def apply_portable(zip_path: Path, root_dir: Path,
                    progress_cb=None,
                    runtime_dir: Optional[Path] = None,
