@@ -13,8 +13,12 @@ const DiagnosticsPage = {
       $('discordFixEnableBtn').addEventListener('click', () => this.discordFixEnable('full'));
       $('discordFixRotateBtn').addEventListener('click', () => this.discordFixRotate());
       $('discordFixDisableBtn').addEventListener('click', () => this.discordFixDisable());
+      $('youtubeFixEnableBtn').addEventListener('click', () => this.youtubeFixEnable());
+      $('youtubeFixRotateBtn').addEventListener('click', () => this.youtubeFixRotate());
+      $('youtubeFixDisableBtn').addEventListener('click', () => this.youtubeFixDisable());
     }
     this.discordFixLoad();
+    this.youtubeFixLoad();
   },
 
   async run() {
@@ -201,6 +205,77 @@ const DiagnosticsPage = {
     } finally {
       this._discordFixBusy(false);
       this.discordFixLoad();
+    }
+  },
+
+  async youtubeFixLoad() {
+    try {
+      const r = await apiGet('/youtube-fix/status');
+      if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
+      const active = !!r.enabled;
+      $('youtubeFixEnableBtn').hidden = active;
+      $('youtubeFixRotateBtn').hidden = !active;
+      $('youtubeFixDisableBtn').hidden = !active;
+      $('youtubeFixStatus').textContent = active
+        ? 'Тест включён: edge ' + (r.selected_ip || '?') + ' · NRPT ' + (r.nrpt_rules || 0) + ' · зона ' + (r.zone || '.googlevideo.com')
+        : 'Выключен. Включение поднимет локальный DNS на 127.0.0.1:53 и NRPT-зону .googlevideo.com.';
+    } catch (e) {
+      $('youtubeFixStatus').textContent = 'Не удалось прочитать состояние: ' + String(e.message || e);
+    }
+  },
+
+  _youtubeFixBusy(on) {
+    for (const id of ['youtubeFixEnableBtn', 'youtubeFixRotateBtn', 'youtubeFixDisableBtn']) {
+      const el = $(id);
+      if (el) el.disabled = !!on;
+    }
+  },
+
+  async youtubeFixEnable() {
+    const ok = await Confirm.ask({
+      title: 'Включить тестовый YouTube GGC worker?',
+      text: 'Будет поднят локальный DNS на 127.0.0.1:53 и добавлена NRPT-зона .googlevideo.com. Все A-запросы *.googlevideo.com пойдут на выбранный Google edge. Задачи/автозапуска нет; при выходе из программы режим снимается. Chrome/Edge Secure DNS должен быть выключен. Это тест, не VPN.',
+      ok: 'Включить',
+    });
+    if (!ok) return;
+    this._youtubeFixBusy(true);
+    try {
+      const r = await apiPost('/youtube-fix/enable', {});
+      if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
+      showToast(r.message || 'Тест включён', 'ok');
+    } catch (e) {
+      showToast('Не удалось включить: ' + String(e.message || e), 'error');
+    } finally {
+      this._youtubeFixBusy(false);
+      this.youtubeFixLoad();
+    }
+  },
+
+  async youtubeFixRotate() {
+    this._youtubeFixBusy(true);
+    try {
+      const r = await apiPost('/youtube-fix/rotate', {});
+      if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
+      showToast(r.message || 'Edge сменён', 'ok');
+    } catch (e) {
+      showToast('Не удалось сменить edge: ' + String(e.message || e), 'error');
+    } finally {
+      this._youtubeFixBusy(false);
+      this.youtubeFixLoad();
+    }
+  },
+
+  async youtubeFixDisable() {
+    this._youtubeFixBusy(true);
+    try {
+      const r = await apiPost('/youtube-fix/disable', {});
+      if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
+      showToast(r.message || 'Тест выключен', 'ok');
+    } catch (e) {
+      showToast('Не удалось выключить: ' + String(e.message || e), 'error');
+    } finally {
+      this._youtubeFixBusy(false);
+      this.youtubeFixLoad();
     }
   },
 
