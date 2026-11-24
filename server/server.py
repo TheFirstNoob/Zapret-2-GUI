@@ -16,8 +16,7 @@ from server.app_state import (STATE, get_root_dir, probe_debug as _probe_debug)
 from server import (api_blobs, api_cdn, api_config, api_contested,
                     api_control, api_diag, api_discord_fix, api_dns,
                     api_games, api_info, api_lists, api_probe, api_reports,
-                    api_service, api_tester, api_update, api_youtube_fix,
-                    session_recovery)
+                    api_service, api_tester, api_update, session_recovery)
 
 
 CONTENT_TYPES = {
@@ -102,7 +101,6 @@ _GET_ROUTES: dict[str, tuple] = {
     "/api/dns/status": (api_dns.dns_status, ("@ctx",)),
     "/api/discord-fix/status": (api_discord_fix.discord_fix_status, ("@ctx",)),
     "/api/discord-fix/scan": (api_discord_fix.discord_fix_scan, ("@ctx",)),
-    "/api/youtube-fix/status": (api_youtube_fix.youtube_fix_status, ("@ctx",)),
 }
 
 _POST_ROUTES: dict[str, tuple] = {
@@ -128,9 +126,6 @@ _POST_ROUTES: dict[str, tuple] = {
     "/api/discord-fix/enable": (api_discord_fix.discord_fix_enable, ("@ctx", "@data")),
     "/api/discord-fix/disable": (api_discord_fix.discord_fix_disable, ("@ctx",)),
     "/api/discord-fix/rotate": (api_discord_fix.discord_fix_rotate, ("@ctx",)),
-    "/api/youtube-fix/enable": (api_youtube_fix.youtube_fix_enable, ("@ctx", "@data")),
-    "/api/youtube-fix/rotate": (api_youtube_fix.youtube_fix_rotate, ("@ctx",)),
-    "/api/youtube-fix/disable": (api_youtube_fix.youtube_fix_disable, ("@ctx",)),
     "/api/export-report": (api_reports.export_report, ("@ctx", "@data")),
     "/api/asn-scan": (api_tester.asn_scan, ("@ctx", "@data")),
     "/api/blob-probe": (api_blobs.blob_probe, ("@ctx", "@data")),
@@ -165,11 +160,6 @@ def init(root_dir: Path, token: str = "") -> None:
     try:
         from core.discord_fix import ensure_started
         ensure_started(Path(root_dir))
-    except Exception:
-        pass
-    try:
-        from core.youtube_fix import ensure_started as ensure_youtube
-        ensure_youtube(Path(root_dir))
     except Exception:
         pass
     api_lists.normalize_user_lists()

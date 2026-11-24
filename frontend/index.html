@@ -567,23 +567,6 @@
             <div class="diag-idle-note" id="discordFixScanResult" hidden></div>
           </div>
 
-          <div class="panel" id="youtubeFixPanel">
-            <div class="card-head">
-              <div class="head-icon">▶</div>
-              <div class="head-text">
-                <div class="head-title">YouTube GGC (тест)</div>
-                <div class="head-desc">Системный DNS для <code>.googlevideo.com</code>: уводит медиа с недоступного GGC/эджа. Только тестовый режим, без автозапуска.</div>
-              </div>
-              <div class="head-right">
-                <button class="btn btn-primary" id="youtubeFixEnableBtn">Включить тест</button>
-                <button class="btn" id="youtubeFixRotateBtn" hidden>Сменить edge</button>
-                <button class="btn btn-warn" id="youtubeFixDisableBtn" hidden>Отключить</button>
-              </div>
-            </div>
-            <div class="diag-idle-note" id="youtubeFixStatus">Проверяю состояние…</div>
-            <div class="diag-idle-note">Нужны права администратора и свободный порт 53. Chrome/Edge с Secure DNS могут обойти NRPT — для теста отключите Secure DNS. Firefox: DNSOverHTTPS.ExcludedDomains. Если edge не подходит — WARP/другой маршрут.</div>
-          </div>
-
           <div class="panel diag-tips">
             <div class="diag-tips-title">Если что-то не работает</div>
             <div class="diag-tip"><b>YouTube открывается, а видео не идёт</b><span>смените DNS-провайдера (DoH) в настройках браузера: Quad9 → Cloudflare → выключить</span></div>
