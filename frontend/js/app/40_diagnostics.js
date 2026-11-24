@@ -9,7 +9,8 @@ const DiagnosticsPage = {
       $('diagRunBtn').addEventListener('click', () => this.run());
       $('diagCopyBtn').addEventListener('click', () => this.copyReport());
       $('discordFixScanBtn').addEventListener('click', () => this.discordFixScan());
-      $('discordFixEnableBtn').addEventListener('click', () => this.discordFixEnable());
+      $('discordFixEnableHostsBtn').addEventListener('click', () => this.discordFixEnable('hosts'));
+      $('discordFixEnableBtn').addEventListener('click', () => this.discordFixEnable('full'));
       $('discordFixRotateBtn').addEventListener('click', () => this.discordFixRotate());
       $('discordFixDisableBtn').addEventListener('click', () => this.discordFixDisable());
     }
@@ -137,21 +138,25 @@ const DiagnosticsPage = {
       if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
       const active = !!r.enabled;
       $('discordFixEnableBtn').hidden = active;
+      $('discordFixEnableHostsBtn').hidden = active;
       $('discordFixDisableBtn').hidden = !active;
       $('discordFixRotateBtn').hidden = !active;
-      const dnsState = r.mode === 'task'
-        ? 'автозапуск: ' + (r.task_state || '?')
-        : (r.dns_running ? 'DNS работает (GUI)' : 'DNS не запущен');
+      const dnsState = r.mode === 'hosts'
+        ? 'hosts-only (без задачи/DNS)'
+        : (r.mode === 'task'
+          ? 'автозапуск: ' + (r.task_state || '?')
+          : (r.dns_running ? 'DNS работает (GUI)' : 'DNS не запущен'));
+      const mapped = Object.keys(r.mapped_hosts || {}).length;
       $('discordFixStatus').textContent = active
-        ? 'Включён: IP ' + (r.selected_ip || '?') + ' · ' + dnsState + ' · hosts ' + (r.hosts_block ? 'OK' : 'нет')
-        : 'Выключен. Включение изменит hosts и создаст задачу автозапуска с локальным DNS для Discord/Cloudflare-зон.';
+        ? 'Включён: ' + dnsState + ' · IP ' + (r.selected_ip || '?') + ' · hosts ' + (r.hosts_block ? 'OK' : 'нет') + (r.mode === 'hosts' ? ' · исправлено доменов: ' + mapped : '')
+        : 'Выключен. «Лёгкий» правит только hosts для статических доменов; полный добавляет локальный DNS/задачу для динамических хостов (голос/стрим).';
     } catch (e) {
       $('discordFixStatus').textContent = 'Не удалось прочитать состояние: ' + String(e.message || e);
     }
   },
 
   _discordFixBusy(on) {
-    for (const id of ['discordFixScanBtn', 'discordFixEnableBtn', 'discordFixRotateBtn', 'discordFixDisableBtn']) {
+    for (const id of ['discordFixScanBtn', 'discordFixEnableBtn', 'discordFixEnableHostsBtn', 'discordFixRotateBtn', 'discordFixDisableBtn']) {
       const el = $(id);
       if (el) el.disabled = !!on;
     }
@@ -175,16 +180,19 @@ const DiagnosticsPage = {
     }
   },
 
-  async discordFixEnable() {
+  async discordFixEnable(mode = 'full') {
+    const light = mode === 'hosts';
     const ok = await Confirm.ask({
-      title: 'Включить временный обход Discord/Cloudflare?',
-      text: 'Будут изменены system hosts, добавлены NRPT-правила и создана задача автозапуска при старте Windows для локального DNS на 127.0.0.1:53. GUI можно закрыть. Это временный обход, не VPN. При блокировке пула IP понадобится WARP/другой маршрут.',
+      title: light ? 'Включить лёгкий hosts-обход?' : 'Включить полный обход Discord/Cloudflare?',
+      text: light
+        ? 'Программа проверит статические домены и пропишет в hosts только те, где текущий адрес не работает. Задача автозапуска и локальный DNS не создаются. Динамические c-*.discord.media (голос/стрим) этот режим не покрывает.'
+        : 'Будут изменены system hosts, добавлены NRPT-правила и создана задача автозапуска при старте Windows для локального DNS на 127.0.0.1:53. GUI можно закрыть. Это временный обход, не VPN. При блокировке пула IP понадобится WARP/другой маршрут.',
       ok: 'Включить',
     });
     if (!ok) return;
     this._discordFixBusy(true);
     try {
-      const r = await apiPost('/discord-fix/enable', {});
+      const r = await apiPost('/discord-fix/enable', { mode: light ? 'hosts' : 'full' });
       if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
       showToast(r.message || 'Обход включён', 'ok');
     } catch (e) {

@@ -58,7 +58,7 @@ const MainPage = {
     $('updateNowBtn').addEventListener('click', () => App._onUpdateBtn());
     $('discordFixNoticeEnableBtn').addEventListener('click', async () => {
       if (typeof DiagnosticsPage !== 'undefined' && DiagnosticsPage.discordFixEnable) {
-        await DiagnosticsPage.discordFixEnable();
+        await DiagnosticsPage.discordFixEnable('hosts');
         this.refreshDiscordFixNotice();
       }
     });

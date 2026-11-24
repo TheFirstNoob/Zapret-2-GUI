@@ -114,7 +114,7 @@
             <div id="discordFixNotice" class="notice notice-warn" hidden>
               <span><b>Discord/Cloudflare не работает после 18.11.2026?</b> Временный обход уже встроен — можно включить здесь.</span>
               <span class="row-actions">
-                <button class="btn btn-sm btn-warn" id="discordFixNoticeEnableBtn">Включить обход</button>
+                <button class="btn btn-sm btn-warn" id="discordFixNoticeEnableBtn">Включить лёгкий hosts-обход</button>
                 <button class="btn btn-sm" id="discordFixNoticeMoreBtn">Подробнее</button>
               </span>
             </div>
@@ -552,11 +552,12 @@
               <div class="head-icon">🛡️</div>
               <div class="head-text">
                 <div class="head-title">Discord / Cloudflare после 18.11.2026</div>
-                <div class="head-desc">Временный обход блокировки Cloudflare-эджей: hosts + scoped DNS + случайный рабочий IP. WARP не нужен.</div>
+                <div class="head-desc">Два режима: «Лёгкий» правит hosts для статических доменов; «Полный» добавляет scoped DNS для динамических хостов (голос/стрим).</div>
               </div>
               <div class="head-right">
                 <button class="btn" id="discordFixScanBtn">Проверить hosts</button>
-                <button class="btn btn-primary" id="discordFixEnableBtn">Включить обход</button>
+                <button class="btn" id="discordFixEnableHostsBtn">Лёгкий (hosts)</button>
+                <button class="btn btn-primary" id="discordFixEnableBtn">Включить полный обход</button>
                 <button class="btn" id="discordFixRotateBtn" hidden>Сменить IP</button>
                 <button class="btn btn-warn" id="discordFixDisableBtn" hidden>Отключить</button>
               </div>

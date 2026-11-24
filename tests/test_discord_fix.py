@@ -51,6 +51,31 @@ def test_enable_writes_managed_block_and_is_reversible(tmp_path, monkeypatch):
     assert "127.0.0.1 example.com" in txt
 
 
+def test_hosts_mode_maps_only_dead_static_hosts_and_restores(tmp_path, monkeypatch):
+    hosts = _setup(tmp_path, monkeypatch)
+    monkeypatch.setattr(discord_fix, "_probe", lambda ip, timeout=2.0: True)
+    monkeypatch.setattr(discord_fix, "_probe_host", lambda ip, host, timeout=2.0: True)
+    monkeypatch.setattr(discord_fix, "_direct_works",
+                        lambda host, timeout=2.0: host not in ("discord.com", "media.discordapp.net"))
+    out = discord_fix.enable_static(tmp_path)
+    assert out["enabled"] is True
+    assert out["mode"] == "hosts"
+    txt = hosts.read_text(encoding="utf-8")
+    assert discord_fix.BLOCK_BEGIN in txt
+    assert "discord.com" in out["mapped_hosts"]
+    assert "media.discordapp.net" in out["mapped_hosts"]
+    assert "162.159.128.233 discord.com" not in txt
+    assert "discord.gg" not in out["mapped_hosts"]
+    assert "127.0.0.1 example.com" in txt
+
+    off = discord_fix.disable(tmp_path)
+    assert off["enabled"] is False
+    txt = hosts.read_text(encoding="utf-8")
+    assert discord_fix.BLOCK_BEGIN not in txt
+    assert "162.159.128.233 discord.com" in txt
+    assert "127.0.0.1 example.com" in txt
+
+
 def test_enable_requires_admin(tmp_path, monkeypatch):
     _setup(tmp_path, monkeypatch)
     monkeypatch.setattr(discord_fix, "is_admin", lambda: False)

@@ -33,7 +33,12 @@ def discord_fix_scan(ctx: AppContext) -> dict:
 @operation_guard("discord-fix")
 def discord_fix_enable(ctx: AppContext, data: dict) -> dict:
     try:
-        ip = str((data or {}).get("ip") or "").strip() or None
+        payload = data or {}
+        mode = str(payload.get("mode") or "").strip().lower()
+        if mode == "hosts":
+            return {"status": "ok", "message": "Лёгкий hosts-обход включён",
+                    **discord_fix.enable_static(_root(ctx))}
+        ip = str(payload.get("ip") or "").strip() or None
         return {"status": "ok", "message": "Discord/Cloudflare обход включён",
                 **discord_fix.enable(_root(ctx), ip=ip)}
     except Exception as e:  # noqa: BLE001

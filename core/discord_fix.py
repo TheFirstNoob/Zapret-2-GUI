@@ -63,6 +63,18 @@ APEX_HOSTS = [
     "fandom.com", "www.fandom.com",
 ]
 
+# Статический hosts-режим: только точные имена, которые не меняются.
+# Динамические c-*.discord.media сюда не входят (hosts не умеет wildcard).
+STATIC_HOSTS = [
+    "discord.com", "www.discord.com", "gateway.discord.gg",
+    "cdn.discordapp.com", "discordapp.com", "discordapp.net",
+    "discord.media", "media.discordapp.net",
+    "images-ext-1.discordapp.net", "images-ext-2.discordapp.net",
+    "updates.discord.com", "discord.gg",
+    "cloudflare.com", "challenges.cloudflare.com", "auth0.com",
+    "api.epicgames.dev", "fandom.com",
+]
+
 # NRPT: любые subdomains этих зон -> локальный DNS
 NRPT_ZONES = [
     ".discord", ".discord.com", ".discord.gg", ".discord.media",
@@ -173,6 +185,35 @@ def _probe(ip: str, timeout: float = 2.0) -> bool:
         return False
 
 
+def _probe_host(ip: str, host: str, timeout: float = 2.0) -> bool:
+    """Проверить candidate именно с SNI нужного домена (валидный сертификат)."""
+    try:
+        ctx = ssl.create_default_context()
+        s = socket.create_connection((ip, 443), timeout=timeout)
+        s.settimeout(timeout)
+        with ctx.wrap_socket(s, server_hostname=host) as ss:
+            return bool(ss.getpeercert())
+    except Exception:
+        return False
+
+
+def _direct_works(host: str, timeout: float = 2.0) -> bool:
+    """Работает ли домен через текущий DNS/hosts без candidate."""
+    try:
+        infos = socket.getaddrinfo(host, 443, socket.AF_INET, socket.SOCK_STREAM)
+    except OSError:
+        return False
+    seen = set()
+    for info in infos:
+        ip = str(info[4][0])
+        if ip in seen:
+            continue
+        seen.add(ip)
+        if _probe_host(ip, host, timeout):
+            return True
+    return False
+
+
 def choose_candidate(root: Path) -> str:
     pool = load_pool(root)
     rnd = random.SystemRandom()
@@ -182,6 +223,81 @@ def choose_candidate(root: Path) -> str:
         if _probe(ip):
             return ip
     raise DiscordFixError("ни один candidate IP не прошёл TLS-проверку")
+
+
+def _select_static_mapping(root: Path) -> tuple[dict[str, str], dict[str, bool], list[str]]:
+    """Для каждого статического домена: direct -> candidate только если direct мёртв."""
+    direct = {host: _direct_works(host) for host in STATIC_HOSTS}
+    needed = [host for host in STATIC_HOSTS if not direct[host]]
+    mapping: dict[str, str] = {}
+    if not needed:
+        return mapping, direct, needed
+    pool = list(load_pool(root))
+    random.SystemRandom().shuffle(pool)
+    best: dict[str, str] = {}
+    for ip in pool[:20]:
+        if not _probe(ip):
+            continue
+        current = {host: ip for host in needed if _probe_host(ip, host)}
+        if len(current) > len(best):
+            best = current
+        if len(best) == len(needed):
+            break
+    return best, direct, needed
+
+
+def _write_hosts_static(mapping: dict[str, str]) -> list[str]:
+    """Заменить только записи для mapping, сохранив остальной hosts.
+
+    Возвращает удалённые строки, чтобы disable мог их восстановить.
+    """
+    lines = _read_hosts()
+    out: list[str] = []
+    removed: list[str] = []
+    skip = False
+    for line in lines:
+        s = line.strip()
+        if s == BLOCK_BEGIN:
+            skip = True
+            continue
+        if s == BLOCK_END:
+            skip = False
+            continue
+        if skip:
+            continue
+        parts = s.split()
+        if (s and not s.startswith("#") and len(parts) >= 2
+                and any(h.lower() in mapping for h in parts[1:])):
+            removed.append(line)
+            continue
+        out.append(line)
+    while out and not out[-1].strip():
+        out.pop()
+    out += ["", BLOCK_BEGIN, "# static hosts fallback; disable via Zapret2GUI"]
+    for host, ip in mapping.items():
+        out.append(f"{ip} {host}")
+    out.append(BLOCK_END)
+    try:
+        tmp = HOSTS_PATH.with_suffix(".z2tmp")
+        tmp.write_text("\n".join(out).rstrip() + "\n", encoding="utf-8")
+        tmp.replace(HOSTS_PATH)
+    except OSError as e:
+        raise DiscordFixError(f"не удалось записать hosts: {e}") from e
+    return removed
+
+
+def _restore_hosts_removed(removed: list[str]) -> None:
+    if not removed:
+        return
+    lines = _read_hosts()
+    existing = set(lines)
+    add = [line for line in removed if line not in existing]
+    if not add:
+        return
+    try:
+        HOSTS_PATH.write_text("\n".join(lines + add).rstrip() + "\n", encoding="utf-8")
+    except OSError as e:
+        raise DiscordFixError(f"не удалось восстановить hosts: {e}") from e
 
 
 def _read_hosts() -> list[str]:
@@ -511,6 +627,9 @@ def ensure_started(root: Path) -> None:
     st = _read_state(root)
     if not st.get("enabled"):
         return
+    if st.get("mode") == "hosts":
+        # Лёгкий режим: DNS-сервера/задачи нет, hosts уже записан.
+        return
     if not _in_helper():
         svc = _task_module()
         if svc is not None:
@@ -619,6 +738,9 @@ def status(root: Path) -> dict:
         hosts_ok = BLOCK_BEGIN in txt and BLOCK_END in txt
     except OSError:
         pass
+    mode = str(st.get("mode") or "")
+    if not mode:
+        mode = "task" if task_installed else ("gui" if running else "off")
     return {
         "enabled": enabled,
         "dns_running": running,
@@ -630,8 +752,12 @@ def status(root: Path) -> dict:
         "task_installed": task_installed,
         "task_state": task_state,
         "task_root": str(st.get("task_root") or ""),
-        "mode": ("task" if task_installed else ("gui" if running else "off")),
-        "warning": "Временный обход Cloudflare/Discord; при блокировке пула нужен WARP.",
+        "mode": mode,
+        "mapped_hosts": dict(st.get("mapped_hosts") or {}),
+        "skipped_hosts": list(st.get("skipped_hosts") or []),
+        "warning": ("Лёгкий hosts-обход: статические домены; динамический голос/стрим не покрыт."
+                    if mode == "hosts" else
+                    "Временный обход Cloudflare/Discord; при блокировке пула нужен WARP."),
     }
 
 
@@ -668,9 +794,62 @@ def _try_task_enable(root: Path) -> bool:
         return False
 
 
+def enable_static(root: Path) -> dict:
+    """Лёгкий hosts-only режим: без задачи, NRPT и локального DNS."""
+    if not is_admin():
+        raise DiscordFixError("нужны права администратора")
+    if _read_state(root).get("enabled"):
+        raise DiscordFixError("сначала отключите текущий режим обхода")
+    # Лёгкий режим не должен сосуществовать с локальным DNS/задачей
+    # от старого полного режима: убираем их, иначе они снова перепишут hosts.
+    _stop_server()
+    try:
+        _nrpt_remove()
+    except DiscordFixError:
+        pass
+    svc = _task_module()
+    if svc is not None:
+        try:
+            if svc.installed():
+                svc.stop()
+                svc.remove()
+        except Exception as e:  # noqa: BLE001
+            applog("discord_fix", f"hosts-mode old task cleanup: {e!r}")
+    mapping, direct, needed = _select_static_mapping(root)
+    if not needed:
+        raise DiscordFixError("статические домены доступны напрямую — hosts-обход не нужен")
+    if not mapping:
+        raise DiscordFixError("candidate не прошёл проверку ни для одного проблемного домена")
+    try:
+        _backup_path(root).write_text("\n".join(_read_hosts()) + "\n", encoding="utf-8")
+    except OSError as e:
+        raise DiscordFixError(f"не удалось сохранить backup hosts: {e}") from e
+    removed = _write_hosts_static(mapping)
+    selected = next(iter(mapping.values()))
+    st = {
+        "enabled": True,
+        "mode": "hosts",
+        "selected_ip": selected,
+        "mapped_hosts": mapping,
+        "skipped_hosts": [h for h in needed if h not in mapping],
+        "static_direct": direct,
+        "removed_hosts_lines": removed,
+        "created": _now(),
+        "updated": _now(),
+        "pool_size": len(load_pool(root)),
+        "hosts_backup": str(_backup_path(root)),
+    }
+    _write_state(root, st)
+    _flush_dns()
+    applog("discord_fix", f"enabled hosts-only ip={selected} mapped={len(mapping)}")
+    return status(root)
+
+
 def enable(root: Path, ip: Optional[str] = None) -> dict:
     if not is_admin():
         raise DiscordFixError("нужны права администратора")
+    if _read_state(root).get("enabled"):
+        raise DiscordFixError("сначала отключите текущий режим обхода")
     selected = ip or choose_candidate(root)
     if not _probe(selected):
         raise DiscordFixError(f"candidate {selected} не прошёл TLS-проверку")
@@ -721,6 +900,7 @@ def enable(root: Path, ip: Optional[str] = None) -> dict:
 
 
 def disable(root: Path) -> dict:
+    st = _read_state(root)
     svc = _task_module()
     if svc is not None:
         try:
@@ -750,6 +930,8 @@ def disable(root: Path) -> dict:
         HOSTS_PATH.write_text("\n".join(out).rstrip() + "\n", encoding="utf-8")
     except OSError as e:
         raise DiscordFixError(f"не удалось очистить hosts: {e}") from e
+    if st.get("mode") == "hosts":
+        _restore_hosts_removed(list(st.get("removed_hosts_lines") or []))
     try:
         _state_path(root).unlink(missing_ok=True)
     except OSError:
@@ -763,6 +945,9 @@ def rotate(root: Path) -> dict:
     st = _read_state(root)
     if not st.get("enabled"):
         raise DiscordFixError("обход не включён")
+    if st.get("mode") == "hosts":
+        disable(root)
+        return enable_static(root)
     selected = choose_candidate(root)
     old = st.get("selected_ip")
     svc = _task_module()
