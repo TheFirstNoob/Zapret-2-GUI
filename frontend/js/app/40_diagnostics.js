@@ -147,8 +147,9 @@ const DiagnosticsPage = {
           ? 'автозапуск: ' + (r.task_state || '?')
           : (r.dns_running ? 'DNS работает (GUI)' : 'DNS не запущен'));
       const mapped = Object.keys(r.mapped_hosts || {}).length;
+      const skipped = (r.skipped_hosts || []).length;
       $('discordFixStatus').textContent = active
-        ? 'Включён: ' + dnsState + ' · IP ' + (r.selected_ip || '?') + ' · hosts ' + (r.hosts_block ? 'OK' : 'нет') + (r.mode === 'hosts' ? ' · исправлено доменов: ' + mapped : '')
+        ? 'Включён: ' + dnsState + ' · IP ' + (r.selected_ip || '?') + ' · hosts ' + (r.hosts_block ? 'OK' : 'нет') + (r.mode === 'hosts' ? ' · исправлено доменов: ' + mapped + (skipped ? ' · не удалось: ' + skipped : '') : '')
         : 'Выключен. «Лёгкий» правит только hosts для статических доменов; полный добавляет локальный DNS/задачу для динамических хостов (голос/стрим).';
     } catch (e) {
       $('discordFixStatus').textContent = 'Не удалось прочитать состояние: ' + String(e.message || e);

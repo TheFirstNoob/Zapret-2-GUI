@@ -28,6 +28,7 @@ import struct
 import subprocess
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -225,20 +226,27 @@ def choose_candidate(root: Path) -> str:
     raise DiscordFixError("ни один candidate IP не прошёл TLS-проверку")
 
 
+STATIC_CANDIDATE_LIMIT = 8
+
+
 def _select_static_mapping(root: Path) -> tuple[dict[str, str], dict[str, bool], list[str]]:
     """Для каждого статического домена: direct -> candidate только если direct мёртв."""
-    direct = {host: _direct_works(host) for host in STATIC_HOSTS}
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        direct_list = list(pool.map(_direct_works, STATIC_HOSTS))
+    direct = dict(zip(STATIC_HOSTS, direct_list))
     needed = [host for host in STATIC_HOSTS if not direct[host]]
     mapping: dict[str, str] = {}
     if not needed:
         return mapping, direct, needed
-    pool = list(load_pool(root))
-    random.SystemRandom().shuffle(pool)
+    pool_ips = list(load_pool(root))
+    random.SystemRandom().shuffle(pool_ips)
     best: dict[str, str] = {}
-    for ip in pool[:20]:
+    for ip in pool_ips[:STATIC_CANDIDATE_LIMIT]:
         if not _probe(ip):
             continue
-        current = {host: ip for host in needed if _probe_host(ip, host)}
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            checks = list(pool.map(lambda h: (h, _probe_host(ip, h)), needed))
+        current = {host: ip for host, ok in checks if ok}
         if len(current) > len(best):
             best = current
         if len(best) == len(needed):
