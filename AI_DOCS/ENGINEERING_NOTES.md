@@ -88,9 +88,10 @@
 
 - Основной запуск и служба: `winws2 @"logs/run.conf"` /
   `@"logs/service_run.conf"` (длинные пути, cmd-лимит не мешает).
-- Внутри conf/argv каждый токен — `--opt=value`; **никогда не начинать
-  токен с `@`** (Cygwin раскроет как вложенный response-file). Исключение —
-  осознанный `@conf` всего запуска.
+- В conf/argv обязательные значения могут идти отдельным токеном; опциональные
+  требуют `--opt=value`. Для путей с пробелами/`@` используем attached form.
+  **Никогда не начинать токен с `@`** (Cygwin раскроет как вложенный
+  response-file). Исключение — осознанный `@conf` всего запуска.
 - `--hostlist`, `--ipset`, `--hostlist-exclude`, `--ipset-exclude` — обычные
   пути; `--lua-init=@path` — `@` только в значении.
 - `--hostlist-auto=<path>` — автолист (без `@`); `--autohostlist=@...` —
@@ -102,7 +103,8 @@
 - `--wf-tcp-out` / `--wf-udp-out` — окно перехвата. `--filter-tcp` /
   `--filter-udp` + `--filter-l7` выбирают поток внутри окна.
 - `--out-range=-dN` — data-пакеты до N; `-d10` — типовой для игр/voice.
-- `--debug=@file` — дорогой, но рабочий; `--debug=1` ломает захват.
+- `--debug=@file` и `--debug=1` — рабочие режимы. Debug дорогой; для службы
+  лучше файл. `--debug=1` не «ломает захват».
 - `--wf-tcp-empty` не нужен: SYN+ACK/FIN/RST ловятся автоматически; нужен
   только для чистых ACK/window-экспериментов.
 - `--wf-udp-in=443` + hostlist-auto — только эксперимент для входящего QUIC,
@@ -110,7 +112,10 @@
 
 ### `--payload`
 
-Без payload lua-desync не знает, что искать:
+C-side `--payload` по умолчанию = `all` (upstream manual). Но Lua-функции
+(`fake` и др.) без `:payload=` по умолчанию матчат только known-payload.
+Для unknown UDP/игр поэтому **нужен `:payload=all` в конкретной lua-desync**;
+это не глобальное требование для всех потоков.
 
 | Поток | payload |
 |---|---|
@@ -119,9 +124,6 @@
 | QUIC | `quic_initial` |
 | Discord voice discovery | `discord_ip_discovery` |
 | unknown UDP / игры | `:payload=all` |
-
-Lua `fake` по умолчанию трогает только known-payload. Для игрового
-unknown-UDP **обязателен `:payload=all`**, иначе правило холостое.
 
 ### Повторы, fake и split
 
@@ -134,11 +136,10 @@ unknown-UDP **обязателен `:payload=all`**, иначе правило �
 - `fake` обычно использует `tcp_ts=-1000`: сервер отбрасывает фейк по PAWS,
   DPI видит его раньше настоящего hello.
 - `tcp_ts` на `multisplit` запрещён: сплит-части умирают по PAWS.
-- `pos` в Lua — **zero-based**: `pos=1` = разрыв после первого байта.
-- **`multisplit:pos=1` — no-op:** движок вычищает единственную позицию
-  («no valid split positions»), реальный split требует ≥2 позиций. Первый
-  реальный split — `pos=1,midsld` (c7aecde, 2026-11-01); в релизе 0.10 все
-  TLS-блоки были фактически fake-only. Проверять маркеры при A/B.
+- `pos` в CLI — **zero-based**; движок конвертирует его в 1-based Lua-index
+  (+1). `delete_pos_1` удаляет только offset 0, поэтому одиночный `pos=1`
+  **валиден** и делает split. Текущие пресеты используют `pos=1,midsld`
+  осознанно — это не обход no-op и не требует смены аргументов.
 - `seqovl`/`seqovl_pattern` заполняют окно; `seqovl_pattern` берёт N байт
   от начала блоба, короткий блоб повторяется. Слишком большой блоб (>MSS)
   даёт лишний сегмент и падение доли фейков.
@@ -146,8 +147,9 @@ unknown-UDP **обязателен `:payload=all`**, иначе правило �
   встроено в `default-alt` для Discord.
 - `ip_id=zero`, `tcp_md5`, `rndsni`, `oob`, `repeater` — кандидаты;
   на проверенной сети повторяемость и объём важнее экзотики.
-- Имя блоба **не начинать с цифры** (`2gis_tls` молча не отправляется;
-  `g2_tls` работает).
+- Имя блоба должно быть Lua identifier: `[A-Za-z_][A-Za-z0-9_]*`.
+  Цифровое имя (`2gis_tls`) — не silent skip, а стартовый reject
+  `bad identifier '2gis_tls'` и exit 1. Алиасы в launcher остаются нужны.
 - Блоб должен быть валидным ClientHello с SNI; JA3/шифры/GREASE на обход
   почти не влияют. SNI-first — желательное правило для других сетей; на
   проверенной сети не критично.
@@ -265,7 +267,9 @@ unknown-UDP **обязателен `:payload=all`**, иначе правило �
   могут искажать binPath; обязательна verify/rollback.
 - `Start=4` и `DeleteFlag=1` у службы WinDivert — норма (драйвер грузится
   напрямую). Реален только мёртвый ImagePath; лечить repair, не удалением.
-- Если winws2 убит, первый `sc start` может дать 1053 — повторять.
+- Если winws2 убит, первый `sc start` иногда возвращает 1053/временный
+  RUNNING. Это не доказательство причины/успеха: дождаться полного
+  завершения и проверить startup/debug-лог.
 - Остановка/удаление: сначала остановить обход, затем ждать выхода winws2,
   затем delete с ретраями (marked-for-deletion/1072).
 - `winws2` искать/убивать по своему пути, не по имени: `ZapretController`
@@ -329,9 +333,10 @@ Historical; перед новым выводом проверять текущи
   лог в клиенте), старые `voice_flap_*` — в git-истории; pktmon при
   замерах может сам добавлять дропы, поэтому короткие окна/статические
   фильтры.
-- **Game UDP**: рабочий рецепт Wardogs — fake `quic_google` ×10 + drop,
-  `payload=all`, cutoff 4; блок обычно только на старте коннекта. WARP
-  подтверждал UDP-блок. Valorant/Fortnite UDP-правила ещё не подобраны.
+- **Game UDP**: рабочий рецепт Wardogs — fake `quic_google` ×10
+  (аддитивная инъекция; оригинал проходит, если нет последующего
+  split/disorder/DROP), `payload=all`, cutoff 4; блок обычно только на
+  старте коннекта. WARP подтверждал UDP-блок.
   Диагностика: GUI «Анализ приложения» или старый `game_probe`; UDP-серверы
   видны только через захват (pktmon/`pydivert_sniff.py`).
 - **ipset catchall**: чинит stateful-DPI (AWS/Akamai/CF/Oracle), но ломает

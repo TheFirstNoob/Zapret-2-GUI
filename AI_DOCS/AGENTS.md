@@ -102,9 +102,10 @@
   «Путь установки» — warn, не fail.
 - `--lua-init` — только `--lua-init=@path` (токен с `=`). Отдельный аргумент
   с путём ломает разбор winws2.
-- Имя блоба не начинать с цифры (`2gis_tls` молча не шлётся).
-- `--payload` обязателен: `tls_client_hello`, `http_req`, `quic_initial`,
-  `discord_ip_discovery`; для unknown UDP — `:payload=all`.
+- Имя блоба должно быть Lua identifier; цифровое имя (`2gis_tls`) даёт стартовый reject `bad identifier`, а не silent skip.
+- C-side `--payload` по умолчанию `all`; Lua-функции (`fake` и др.) без
+  `:payload=` матчат только known-payload. Для unknown UDP/игр поэтому нужен
+  `:payload=all` в конкретной lua-desync; это не глобальное требование.
 - `tcp_ts` — только на fake. На multisplit запрещён (PAWS).
 - `nodrop` не ставить на SNI-блоки; Discord-блоки уже в drop-режиме.
 
@@ -171,8 +172,9 @@
   медиа — POST `serverAbrStreamingUrl`; старые per-format пробы не показательны.
 - **Тестер не оценивает видео:** youtube-хосты исключены из `network_rate`,
   `videoplayback`/SABR не проверяются; «зелёный тестер» ≠ видео работает.
-- **`multisplit:pos=1` — no-op** в движке 1.0.5: реальный split требует ≥2
-  позиций (`pos=1,midsld`, c7aecde/HEAD); учитывать при A/B.
+- `pos` в CLI zero-based; движок конвертирует в 1-based Lua-index. Одиночный
+  `pos=1` валиден и делает split; правило «нужно ≥2» неверно для 1.0.5/1.0.7.
+  Текущие пресеты `pos=1,midsld` не менять только из-за старой формулировки.
 
 ### Обновления
 - Ed25519, PUBKEY в `core/update_verify.py`, отпечаток

@@ -13,15 +13,17 @@ Voice/Media/TLS, Google TLS, General TCP, QUIC Google/General). Это не
 
 ## 1. Ключевые правила движка
 
-- `--payload` обязателен: без него fake/multisplit не знает, что искать.
-  TLS — `tls_client_hello`, HTTP — `http_req`, QUIC — `quic_initial`,
-  Discord voice — `discord_ip_discovery`; unknown UDP — `:payload=all`.
+- C-side `--payload` по умолчанию `all`; Lua-функции без `:payload=`
+  матчат только known-payload. TLS — `tls_client_hello`, HTTP — `http_req`,
+  QUIC — `quic_initial`, Discord voice — `discord_ip_discovery`;
+  unknown UDP — `:payload=all` в конкретной lua-desync.
 - `repeats`: Discord — 8 (запас), YouTube — 6, General TCP — 8, QUIC — без
   повторов. Не увеличивать «на всякий случай».
 - `nodrop` на SNI-блоках ломает цель: оригинал идёт за фейком, DPI видит оба.
   Discord-блоки — в drop-режиме.
 - `tcp_ts` — только на fake; на multisplit запрещён (PAWS).
-- Debug `--debug=@log` — дорого; `--debug=1` ломает захват.
+- Debug `--debug=@log`/`--debug=1` — рабочие режимы; дорого, для службы
+  лучше файл. `--debug=1` не ломает захват.
 - Имя блоба не начинать с цифры; `--lua-init` — только `--lua-init=@path`.
 
 ## 2. Zapret 1

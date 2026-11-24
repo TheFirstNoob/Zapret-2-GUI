@@ -11,15 +11,17 @@
   только whitelist-SNI). fake/split такой маршрут НЕ лечат — это route-class,
   как SYN-блок. Видео живо только по QUIC/h3; не советовать «отключить QUIC».
   Детали — `YOUTUBE_VIDEO_STALL_2026-11.md`.
-- **`--payload` обязателен:** без него lua-desync не знает, что искать.
-  TLS — `tls_client_hello`, HTTP — `http_req`, QUIC — `quic_initial`,
-  Discord voice — `discord_ip_discovery`; unknown UDP — `:payload=all`.
+- **C-side `--payload` по умолчанию `all`**, но Lua-функции без `:payload=`
+  матчат только known-payload. TLS — `tls_client_hello`, HTTP — `http_req`,
+  QUIC — `quic_initial`, Discord voice — `discord_ip_discovery`;
+  unknown UDP — `:payload=all` в конкретной lua-desync.
 - **`repeats`:** Discord 8, YouTube 6, General TCP 8, QUIC без повторов.
   Не увеличивать «на всякий случай».
 - **`nodrop` на SNI-блоках ломает цель:** оригинал идёт за фейком, DPI
   видит оба. Discord-блоки — в drop-режиме.
 - **`tcp_ts` — только на fake;** на multisplit запрещён (PAWS).
-- **Debug:** `--debug=@log` — дорого; `--debug=1` ломает захват.
+- **Debug:** `--debug=@log`/`--debug=1` — рабочие режимы; дорого, для
+  службы лучше файл. `--debug=1` не ломает захват.
 
 ## default.txt
 
