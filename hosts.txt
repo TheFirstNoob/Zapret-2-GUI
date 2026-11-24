@@ -1,5 +1,5 @@
 # =============================================================
-# hosts: обновлён 2026-10-10
+# hosts: обновлён 2026-11-24
 # Источник: Latest hosts.txt (обновлённый) + GitHub fix (zapret2)
 # =============================================================
 # localhost name resolution is handled within DNS itself.
@@ -93,6 +93,12 @@
 149.154.167.220 zws4.web.telegram.org
 162.159.128.233 discord.com
 162.159.128.233 updates.discord.com
+# --- Discord media CDN (official Cloudflare edges; source: Flowseal hosts/PR) ---
+# Known-good 162.159 edges only. Worker fallback stays in the app, not here.
+162.159.138.232 media.discordapp.net
+162.159.137.232 images-ext-1.discordapp.net
+162.159.128.233 images-ext-2.discordapp.net
+162.159.135.232 cdn.discordapp.com
 
 # --- Weather APIs (пины 2026-10-11: у сервисов DNS-пулы с мёртвыми IP; 138.199.37.231 и 176.9.63.49 проверены живыми) ---
 138.199.37.231 www.weatherapi.com

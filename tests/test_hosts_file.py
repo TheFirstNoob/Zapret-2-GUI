@@ -30,6 +30,14 @@ def test_hosts_file_is_valid_and_unique():
     assert "grok.com" in entries
 
 
+def test_hosts_discord_media_pins_are_official_cloudflare():
+    entries = _entries()
+    assert entries["media.discordapp.net"].startswith("162.159.")
+    assert entries["images-ext-1.discordapp.net"].startswith("162.159.")
+    assert entries["images-ext-2.discordapp.net"].startswith("162.159.")
+    assert entries["cdn.discordapp.com"].startswith("162.159.")
+
+
 def test_hosts_ai_entries_use_expected_proxy_ips():
     entries = _entries()
     assert entries["chatgpt.com"].startswith("217.60.179.6")
