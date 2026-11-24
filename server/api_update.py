@@ -199,6 +199,7 @@ def run_update_worker(kind: str, tag: str, info: dict) -> None:
                         result["restart_error"] = str(e)
                         ui_debug(f"update: start controller exception: {e}")
             result.update(applied=applied["updated"],
+                          skipped_identical=applied.get("skipped_identical", 0),
                           skipped_user=applied["skipped_user"],
                           backup=applied["backup"])
             # Аддитивные поля для UI/диагностики: что произошло с python/.

@@ -740,7 +740,9 @@ def apply_portable(zip_path: Path, root_dir: Path,
          подготовленного runtime (смешанную установку не оставляем).
 
     Юзер-файлы (конфиг, *-user.txt, юзерские пресеты, логи) не трогаются.
-    Возвращает {updated, skipped_user, skipped_nonapp, backup,
+    Одинаковые файлы не перезаписываются: это важно для загруженного
+    WinDivert.dll/WinDivert64.sys и вообще уменьшает окно отказа.
+    Возвращает {updated, skipped_identical, skipped_user, skipped_nonapp, backup,
     runtime_staged, runtime_files, runtime_skipped, runtime_rev}."""
     root_dir = Path(root_dir)
 
@@ -765,6 +767,7 @@ def apply_portable(zip_path: Path, root_dir: Path,
     cb("Резервная копия настроек создана")
 
     updated = 0
+    skipped_identical = 0
     skipped_user = 0
     skipped_nonapp = 0
     runtime_files = 0
@@ -923,6 +926,17 @@ def apply_portable(zip_path: Path, root_dir: Path,
                             raise RuntimeError(
                                 f"небезопасный путь в архиве: {rel}")
                         target.parent.mkdir(parents=True, exist_ok=True)
+                        # Не трогаем уже идентичный файл: WinDivert.dll/sys
+                        # могут держаться загруженным драйвером, а обновление
+                        # не должно падать из-за неизменившегося файла.
+                        try:
+                            if (target.is_file()
+                                    and _sha256(target) == _sha256(tmp_dir / rel)):
+                                skipped_identical += 1
+                                cb(f"без изменений: {rel}")
+                                continue
+                        except OSError:
+                            pass
                         if target.exists():
                             bak = rollback_dir / rel
                             bak.parent.mkdir(parents=True, exist_ok=True)
@@ -967,7 +981,8 @@ def apply_portable(zip_path: Path, root_dir: Path,
         # запуск иначе увидит «подготовленный» рантайм неизвестного качества.
         if not success and staged_cleanup is not None:
             shutil.rmtree(staged_cleanup, ignore_errors=True)
-    return {"updated": updated, "skipped_user": skipped_user,
+    return {"updated": updated, "skipped_identical": skipped_identical,
+            "skipped_user": skipped_user,
             "skipped_nonapp": skipped_nonapp,
             "backup": str(backup) if backup else None,
             "runtime_staged": str(staged_runtime) if staged_runtime else None,

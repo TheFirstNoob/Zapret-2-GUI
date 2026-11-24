@@ -100,6 +100,22 @@ def test_release_manifest_download_has_small_limit(tmp_path: Path,
 
 # ── бэкап: backups/ занят файлом - не роняем апдейт ────────────────────
 
+def test_apply_skips_identical_files(tmp_path: Path) -> None:
+    """Неизменившиеся файлы не трогаем: WinDivert.dll может быть залочен."""
+    root = tmp_path / "app"
+    (root / "windivert").mkdir(parents=True)
+    same = b"same-binary"
+    (root / "windivert" / "WinDivert.dll").write_bytes(same)
+    zp = _simple_zip(tmp_path / "upd.zip", {
+        "windivert/WinDivert.dll": same,
+        "core/x.py": b"print(1)",
+    })
+    res = up.apply_portable(zp, root)
+    assert res["skipped_identical"] == 1
+    assert res["updated"] == 1
+    assert (root / "windivert" / "WinDivert.dll").read_bytes() == same
+
+
 def test_backup_dir_is_file_does_not_abort_update(tmp_path: Path) -> None:
     root = tmp_path / "app"
     root.mkdir()
