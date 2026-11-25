@@ -13,8 +13,11 @@ const DiagnosticsPage = {
       $('discordFixEnableBtn').addEventListener('click', () => this.discordFixEnable('full'));
       $('discordFixRotateBtn').addEventListener('click', () => this.discordFixRotate());
       $('discordFixDisableBtn').addEventListener('click', () => this.discordFixDisable());
+      $('ydStartBtn').addEventListener('click', () => this.youtubeDeliveryStart());
+      $('ydCancelBtn').addEventListener('click', () => this.youtubeDeliveryCancel());
     }
     this.discordFixLoad();
+    this.youtubeDeliveryLoad();
   },
 
   async run() {
@@ -132,6 +135,111 @@ const DiagnosticsPage = {
       document.body.removeChild(ta);
     }
   },
+  // ── Проверка доставки YouTube ───────────────────────────
+  _ydTimer: null,
+
+  _ydBusy(on) {
+    const start = $('ydStartBtn');
+    const cancel = $('ydCancelBtn');
+    if (start) start.disabled = !!on;
+    if (start) start.textContent = on ? 'Проверяю…' : 'Сравнить воспроизведение';
+    if (cancel) cancel.hidden = !on;
+    App.setTestActive(!!on);
+  },
+
+  _ydRender(job) {
+    const status = $('ydStatus');
+    if (!job || job.state === 'idle') {
+      status.textContent = 'Проверка не запускалась.';
+      return;
+    }
+    if (job.state === 'starting' || job.state === 'running') {
+      status.textContent = 'Идёт проверка: ' + (job.phase || '…');
+      return;
+    }
+    if (job.state === 'error') {
+      status.textContent = 'Ошибка: ' + (job.error || 'неизвестно');
+      return;
+    }
+    if (job.state === 'cancelled') {
+      status.textContent = 'Проверка отменена.';
+      return;
+    }
+    const ref = job.reference || null;
+    const prob = job.problem || null;
+    const cmp = job.comparison || null;
+    const rows = [];
+    for (const [label, run] of [['Рабочий', ref], ['Проблемный', prob]]) {
+      if (!run) continue;
+      const m = run.metrics || {};
+      rows.push('<tr><td>' + label + '</td><td>' + (m.startup_ms == null ? '—' : Math.round(m.startup_ms) + ' мс') +
+        '</td><td>' + Math.round((m.advancement || 0) * 100) + '%</td><td>' + (m.stalls || 0) +
+        '</td><td>' + (m.buffer_ahead_min_s == null ? '—' : m.buffer_ahead_min_s + ' с') +
+        '</td><td>' + (m.resolution_max || '—') + '</td><td>' + ((run.verdict || {}).label || '—') + '</td></tr>');
+    }
+    $('ydTableBody').innerHTML = rows.join('');
+    const cmpEl = $('ydCompare');
+    cmpEl.className = 'yd-compare yd-' + ((cmp || {}).code || 'incomplete');
+    cmpEl.textContent = (cmp || {}).label ? (cmp.label + ': ' + (cmp.text || '')) : '';
+    $('ydResults').hidden = false;
+    status.textContent = 'Готово. Трафик: ' +
+      Math.round(((ref && ref.metrics ? ref.metrics.traffic_mb : 0) + (prob && prob.metrics ? prob.metrics.traffic_mb : 0)) * 10) / 10 + ' МБ.';
+  },
+
+  async youtubeDeliveryLoad() {
+    try {
+      const r = await apiGet('/youtube-delivery/status');
+      const active = r.state === 'starting' || r.state === 'running';
+      this._ydBusy(active);
+      this._ydRender(r);
+      if (active && !this._ydTimer) {
+        this._ydTimer = setInterval(() => this.youtubeDeliveryLoad(), 1500);
+      }
+      if (!active && this._ydTimer) {
+        clearInterval(this._ydTimer);
+        this._ydTimer = null;
+      }
+    } catch (e) {
+      $('ydStatus').textContent = 'Не удалось прочитать состояние: ' + String(e.message || e);
+    }
+  },
+
+  async youtubeDeliveryStart() {
+    if (App.testActive) {
+      showToast('Идёт другая проверка - дождитесь завершения', 'warn');
+      return;
+    }
+    const reference = ($('ydReferenceUrl').value || '').trim();
+    const problem = ($('ydProblemUrl').value || '').trim();
+    if (!reference || !problem) {
+      showToast('Укажите обе ссылки', 'warn');
+      return;
+    }
+    $('ydResults').hidden = true;
+    this._ydBusy(true);
+    try {
+      const r = await apiPost('/youtube-delivery/start', {
+        reference_url: reference, problem_url: problem,
+      });
+      if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
+      showToast('Проверка запущена', 'ok');
+    } catch (e) {
+      showToast('Не удалось запустить: ' + String(e.message || e), 'error');
+      this._ydBusy(false);
+    }
+    this.youtubeDeliveryLoad();
+  },
+
+  async youtubeDeliveryCancel() {
+    try {
+      await apiPost('/youtube-delivery/cancel', {});
+      showToast('Отмена запрошена', 'warn');
+    } catch (e) {
+      showToast('Не удалось отменить: ' + String(e.message || e), 'error');
+    }
+    this.youtubeDeliveryLoad();
+  },
+
   async discordFixLoad() {
     try {
       const r = await apiGet('/discord-fix/status');

@@ -958,6 +958,20 @@ label.opt-line:has(input:disabled):hover { background: var(--field); }
   padding: 4px 10px; border-radius: 6px;
 }
 .diag-idle-note { font-size: 12px; color: var(--faint); max-width: 480px; }
+/* ── Проверка доставки YouTube ───────────────────────────── */
+.yd-form { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; }
+.yd-label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--faint); }
+.yd-input { padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg2); color: var(--text); font: inherit; font-size: 13px; }
+.yd-input:focus { outline: none; border-color: var(--accent); }
+.yd-actions { display: flex; gap: 8px; margin-top: 2px; }
+.yd-compare { margin: 10px 0 6px; font-size: 13px; font-weight: 600; }
+.yd-compare.yd-difference { color: var(--warn); }
+.yd-compare.yd-both_stable { color: var(--ok); }
+.yd-compare.yd-both_impaired { color: var(--warn); }
+.yd-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.yd-table th, .yd-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.yd-table th { color: var(--faint); font-weight: 500; }
+
 /* отдельный блок с частыми сценариями (не мешается в тексте проверки) */
 .diag-tips { display: flex; flex-direction: column; gap: 8px; margin-top: var(--gap); }
 .diag-tips-title {

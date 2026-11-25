@@ -567,6 +567,37 @@
             <div class="diag-idle-note" id="discordFixScanResult" hidden></div>
           </div>
 
+          <div class="panel" id="ydPanel">
+            <div class="card-head">
+              <div class="head-icon">▶</div>
+              <div class="head-text">
+                <div class="head-title">Проверка доставки YouTube</div>
+                <div class="head-desc">Сравнивает воспроизведение двух роликов в отдельном окне браузера без вашего профиля. Это диагностика, а не обход и не ускорение.</div>
+              </div>
+            </div>
+            <div class="yd-form">
+              <label class="yd-label">Ролик, который обычно работает
+                <input class="yd-input" id="ydReferenceUrl" type="text" spellcheck="false" placeholder="https://www.youtube.com/watch?v=…">
+              </label>
+              <label class="yd-label">Ролик, с которым возникают проблемы
+                <input class="yd-input" id="ydProblemUrl" type="text" spellcheck="false" placeholder="https://www.youtube.com/watch?v=…">
+              </label>
+              <div class="yd-actions">
+                <button class="btn btn-primary" id="ydStartBtn">Сравнить воспроизведение</button>
+                <button class="btn btn-warn" id="ydCancelBtn" hidden>Отменить</button>
+              </div>
+            </div>
+            <div class="diag-idle-note" id="ydStatus">Проверка не запускалась.</div>
+            <div class="diag-idle-note">Откроется отдельное окно браузера без входа в аккаунт: не сворачивайте его. Один ролик — до 30 с наблюдения и ~5 МБ трафика. Результат показывает только факт деградации, но не её причину.</div>
+            <div id="ydResults" hidden>
+              <div class="yd-compare" id="ydCompare"></div>
+              <table class="yd-table" id="ydTable">
+                <thead><tr><th>Ролик</th><th>Старт</th><th>Продвижение</th><th>Паузы</th><th>Буфер мин.</th><th>Кадр</th><th>Вердикт</th></tr></thead>
+                <tbody id="ydTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+
           <div class="panel diag-tips">
             <div class="diag-tips-title">Если что-то не работает</div>
             <div class="diag-tip"><b>YouTube открывается, а видео не идёт</b><span>смените DNS-провайдера (DoH) в настройках браузера: Quad9 → Cloudflare → выключить</span></div>
