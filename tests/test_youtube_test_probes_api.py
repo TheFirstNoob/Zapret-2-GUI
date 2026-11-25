@@ -37,6 +37,10 @@ def test_quic_start_and_close(monkeypatch, tmp_path) -> None:
                         lambda vid, prof, **kw: {"pid": 1, "port": 1,
                                                  "url": "u", "hosts": kw.get("hosts", []),
                                                  "profile": str(prof)})
+    monkeypatch.setattr(quic_api.youtube_probe, "sample_session",
+                        lambda port, seconds=12.0: {"protocols": {"h3": 3},
+                                                    "remote_ips": ["1.2.3.4"],
+                                                    "media_bytes": 1000, "error": ""})
     monkeypatch.setattr(quic_api.youtube_probe, "close_quic_session", lambda prof: None)
     out = quic_api.youtube_quic_start(_Ctx(), {"url": "https://youtu.be/-Td4It4H_Uc"})
     assert out["status"] == "ok"
@@ -48,4 +52,6 @@ def test_quic_start_and_close(monkeypatch, tmp_path) -> None:
     st = quic_api.youtube_quic_status(_Ctx())
     assert st["state"] == "done"
     assert st["result"]["hosts"]
+    assert st["result"]["media_check"]["protocols"]["h3"] == 3
+    assert st["result"]["h3_share"] == 1.0
     assert quic_api.youtube_quic_close(_Ctx())["status"] == "ok"

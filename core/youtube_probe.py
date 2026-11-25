@@ -371,6 +371,8 @@ class RunResult:
     verdict: dict
     error: str = ""
     samples: list[dict] = field(default_factory=list)
+    protocols: dict = field(default_factory=dict)
+    remote_ips: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict:
         return {
@@ -380,6 +382,8 @@ class RunResult:
             "metrics": self.metrics.as_dict(),
             "verdict": self.verdict,
             "error": self.error,
+            "protocols": dict(self.protocols),
+            "remote_ips": list(self.remote_ips),
         }
 
 
@@ -400,7 +404,8 @@ def _run_pass(browser: str, url: str, *, window_s: float, quality: str,
     cdp: Optional[CDP] = None
     out: dict = {"media_hosts": [], "samples": [], "byte_events": [],
                  "request_errors": {}, "error": "",
-                 "player": {}, "media_bytes": 0, "discovered": []}
+                 "player": {}, "media_bytes": 0, "discovered": [],
+                 "protocols": {}, "remote_ips": []}
     try:
         proc, port = _launch(browser, profile, force_hosts)
         cdp = CDP(_devtools_ws(port))
@@ -443,10 +448,16 @@ def _run_pass(browser: str, url: str, *, window_s: float, quality: str,
                                                    or params.get("dataLength") or 0)
                 elif method == "Network.responseReceived":
                     if params.get("requestId") in media_ids:
-                        status = (params.get("response") or {}).get("status") or 0
+                        resp = params.get("response") or {}
+                        status = resp.get("status") or 0
                         if status >= 400:
                             out["request_errors"][f"HTTP {status}"] = (
                                 out["request_errors"].get(f"HTTP {status}", 0) + 1)
+                        proto = str(resp.get("protocol") or "?")
+                        out["protocols"][proto] = out["protocols"].get(proto, 0) + 1
+                        remote = resp.get("remoteIPAddress") or ""
+                        if remote and remote not in out["remote_ips"]:
+                            out["remote_ips"].append(remote)
                 elif method == "Network.loadingFailed":
                     if params.get("requestId") in media_ids:
                         err = str(params.get("errorText") or "")
@@ -539,6 +550,59 @@ def open_quic_session(video_id: str, profile_dir: Path, *, hosts: list[str],
             "url": url, "hosts": list(hosts), "profile": str(profile)}
 
 
+def sample_session(port: int, seconds: float = 12.0) -> dict:
+    """Снять с уже открытого окна протоколы и адреса медиа (для проверки QUIC)."""
+    out: dict = {"protocols": {}, "remote_ips": [], "media_bytes": 0,
+                 "media_requests": 0, "error": ""}
+    cdp = None
+    try:
+        cdp = CDP(_devtools_ws(port, wait_s=10.0))
+        targets = cdp.wait(cdp.send("Target.getTargets"),
+                           time.monotonic() + 10).get("targetInfos") or []
+        page = None
+        for t in targets:
+            if t.get("type") == "page" and "youtube.com/watch" in (t.get("url") or ""):
+                page = t
+                break
+        if not page:
+            raise RuntimeError("окно с роликом не найдено")
+        sid = cdp.wait(cdp.send("Target.attachToTarget",
+                                {"targetId": page["targetId"], "flatten": True}),
+                       time.monotonic() + 10)["sessionId"]
+        cdp.wait(cdp.send("Network.enable", {}, sid), time.monotonic() + 10)
+        media_ids: set[str] = set()
+        deadline = time.monotonic() + max(3.0, seconds)
+        while time.monotonic() < deadline:
+            cdp.pump(min(deadline, time.monotonic() + 0.3))
+            for msg in cdp.drain():
+                method = msg.get("method")
+                params = msg.get("params") or {}
+                rid = params.get("requestId")
+                if method == "Network.requestWillBeSent":
+                    url = (params.get("request") or {}).get("url") or ""
+                    if _media_host(url).endswith(MEDIA_SUFFIX):
+                        media_ids.add(rid)
+                elif method == "Network.responseReceived":
+                    if rid in media_ids:
+                        resp = params.get("response") or {}
+                        proto = str(resp.get("protocol") or "?")
+                        out["protocols"][proto] = out["protocols"].get(proto, 0) + 1
+                        remote = resp.get("remoteIPAddress") or ""
+                        if remote and remote not in out["remote_ips"]:
+                            out["remote_ips"].append(remote)
+                elif method == "Network.dataReceived":
+                    if rid in media_ids:
+                        out["media_bytes"] += int(params.get("encodedDataLength")
+                                                  or params.get("dataLength") or 0)
+        out["media_requests"] = len(media_ids)
+    except Exception as e:  # noqa: BLE001
+        out["error"] = f"{type(e).__name__}: {e}"
+    finally:
+        if cdp is not None:
+            cdp.close()
+    return out
+
+
 def close_quic_session(profile_dir: Path) -> None:
     """Закрыть сессию: погасить процессы нашего профиля и удалить профиль."""
     profile = Path(profile_dir)
@@ -588,4 +652,6 @@ def probe_video(video_id: str, *, label: str = "", window_s: float = yd.DEFAULT_
                          content_unavailable=content_unavailable)
     return RunResult(label=label or video_id, video_id=video_id, url=url,
                      metrics=metrics, verdict=verdict,
-                     error=str(data.get("error") or ""), samples=samples)
+                     error=str(data.get("error") or ""), samples=samples,
+                     protocols=dict(data.get("protocols") or {}),
+                     remote_ips=list(data.get("remote_ips") or []))

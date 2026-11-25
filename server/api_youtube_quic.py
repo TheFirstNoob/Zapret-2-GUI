@@ -53,6 +53,13 @@ def youtube_quic_start(ctx: AppContext, data: dict) -> dict:
             _set(state="running", phase="запуск браузера")
             res = youtube_probe.open_quic_session(
                 video_id, _profile(root), hosts=hosts, progress=_p)
+            _set(phase="проверка протокола медиа")
+            check = youtube_probe.sample_session(int(res.get("port") or 0), seconds=12.0)
+            protos = check.get("protocols") or {}
+            h3 = int(protos.get("h3", 0))
+            total = sum(int(v) for v in protos.values())
+            res = {**res, "media_check": check,
+                   "h3_share": round(h3 / total, 2) if total else 0.0}
             _set(state="done", phase="браузер открыт", result={**res, "video_id": video_id},
                  finished=time.time())
         except Exception as e:  # noqa: BLE001
