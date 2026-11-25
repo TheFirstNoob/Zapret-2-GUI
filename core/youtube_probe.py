@@ -494,6 +494,57 @@ def _run_pass(browser: str, url: str, *, window_s: float, quality: str,
     return out
 
 
+def discover_media_hosts(video_id: str, *, browser: str = "", seconds: float = 12.0,
+                        progress: Optional[Callable[[str], None]] = None) -> list[str]:
+    """Короткий прогон: узнать реальные медиа-хосты сессии (для force-QUIC)."""
+    browser = browser or find_browser()
+    if progress:
+        progress("поиск медиа-хостов")
+    data = _run_pass(browser, yd.canonical_watch_url(video_id),
+                     window_s=seconds, quality="", max_bytes=0,
+                     force_hosts=[], discover_s=seconds, progress=progress)
+    return list(data.get("media_hosts") or [])
+
+
+def open_quic_session(video_id: str, profile_dir: Path, *, hosts: list[str],
+                      browser: str = "",
+                      progress: Optional[Callable[[str], None]] = None) -> dict:
+    """Открыть ролик в отдельном Edge/Chrome с принудительным QUIC.
+
+    Окно остаётся открытым для просмотра; профиль постоянный (в logs/), чтобы
+    Alt-Svc/настройки переживали запуск. Возвращает {pid, port, url, hosts}.
+    """
+    browser = browser or find_browser()
+    profile = Path(profile_dir)
+    profile.mkdir(parents=True, exist_ok=True)
+    if progress:
+        progress("запуск браузера")
+    proc, port = _launch(browser, profile, hosts[:8])
+    try:
+        _devtools_ws(port, wait_s=30.0)
+    except Exception:
+        try:
+            proc.terminate()
+        except Exception:  # noqa: BLE001
+            pass
+        raise
+    url = yd.canonical_watch_url(video_id)
+    try:
+        import urllib.request as _ur
+        _ur.urlopen(f"http://127.0.0.1:{port}/json/new?{url}".replace(" ", "%20"),
+                    timeout=10, data=b"")
+    except Exception:
+        pass
+    return {"pid": int(getattr(proc, "pid", 0) or 0), "port": port,
+            "url": url, "hosts": list(hosts), "profile": str(profile)}
+
+
+def close_quic_session(profile_dir: Path) -> None:
+    """Закрыть сессию: погасить процессы нашего профиля и удалить профиль."""
+    profile = Path(profile_dir)
+    _kill_tree(None, profile)
+
+
 def probe_video(video_id: str, *, label: str = "", window_s: float = yd.DEFAULT_WINDOW_S,
                 quality: str = "480", max_bytes: int = 12_000_000,
                 browser: str = "", progress: Optional[Callable[[str], None]] = None) -> RunResult:

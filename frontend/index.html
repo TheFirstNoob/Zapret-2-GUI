@@ -598,6 +598,54 @@
             </div>
           </div>
 
+          <div class="panel" id="ynPanel">
+            <div class="card-head">
+              <div class="head-icon">◇</div>
+              <div class="head-text">
+                <div class="head-title">Кэши YouTube (тест)</div>
+                <div class="head-desc">Проверяет узлы rr1–rr8 одного пула кэшей: DNS, TCP 443, TLS, HTTP/80. Показывает, сломан ли весь пул или отдельные узлы, и где возможен hosts-пин.</div>
+              </div>
+              <div class="head-right">
+                <button class="btn btn-primary" id="ynScanBtn">Проверить узлы</button>
+              </div>
+            </div>
+            <div class="yd-form">
+              <label class="yd-label">Ссылка на проблемный ролик или узел из F12 (rr…googlevideo.com / sn-…)
+                <input class="yd-input" id="ynTarget" type="text" spellcheck="false" placeholder="https://rr2---sn-xxxx.googlevideo.com/videoplayback?…">
+              </label>
+            </div>
+            <div class="diag-idle-note" id="ynStatus">Проверка не запускалась.</div>
+            <div id="ynResults" hidden>
+              <table class="yd-table">
+                <thead><tr><th>#</th><th>IP</th><th>TCP 443</th><th>TLS</th><th>HTTP/80</th></tr></thead>
+                <tbody id="ynTableBody"></tbody>
+              </table>
+              <div class="diag-idle-note" id="ynNote"></div>
+              <pre class="yd-hosts" id="ynHosts" hidden></pre>
+            </div>
+          </div>
+
+          <div class="panel" id="yqPanel">
+            <div class="card-head">
+              <div class="head-icon">⏩</div>
+              <div class="head-text">
+                <div class="head-title">Edge + принудительный QUIC (тест)</div>
+                <div class="head-desc">Открывает ролик в отдельном окне браузера, заставляя медиа идти по HTTP/3. Обходит случай, когда TCP-путь до узлов кэша режется. Профиль хранится в logs, окно закрывается кнопкой.</div>
+              </div>
+              <div class="head-right">
+                <button class="btn btn-primary" id="yqStartBtn">Открыть с QUIC</button>
+                <button class="btn btn-warn" id="yqCloseBtn">Закрыть окно</button>
+              </div>
+            </div>
+            <div class="yd-form">
+              <label class="yd-label">Ссылка на проблемный ролик
+                <input class="yd-input" id="yqUrl" type="text" spellcheck="false" placeholder="https://www.youtube.com/watch?v=…">
+              </label>
+            </div>
+            <div class="diag-idle-note" id="yqStatus">Не запускалось.</div>
+            <div class="diag-idle-note">Это тестовый пробник: сначала ищутся медиа-хосты (10–15 с), затем откроется отдельное окно. Без вашего профиля и входа в аккаунт.</div>
+          </div>
+
           <div class="panel diag-tips">
             <div class="diag-tips-title">Если что-то не работает</div>
             <div class="diag-tip"><b>YouTube открывается, а видео не идёт</b><span>смените DNS-провайдера (DoH) в настройках браузера: Quad9 → Cloudflare → выключить</span></div>

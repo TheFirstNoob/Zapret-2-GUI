@@ -15,9 +15,102 @@ const DiagnosticsPage = {
       $('discordFixDisableBtn').addEventListener('click', () => this.discordFixDisable());
       $('ydStartBtn').addEventListener('click', () => this.youtubeDeliveryStart());
       $('ydCancelBtn').addEventListener('click', () => this.youtubeDeliveryCancel());
+      $('ynScanBtn').addEventListener('click', () => this.youtubeNodesScan());
+      $('yqStartBtn').addEventListener('click', () => this.youtubeQuicStart());
+      $('yqCloseBtn').addEventListener('click', () => this.youtubeQuicClose());
     }
     this.discordFixLoad();
     this.youtubeDeliveryLoad();
+    this.youtubeQuicLoad();
+  },
+
+  // ── Тест: узлы кэшей пула ────────────────────────────────
+  async youtubeNodesScan() {
+    const target = ($('ynTarget').value || '').trim();
+    if (!target) { showToast('Вставьте ссылку или имя пула', 'warn'); return; }
+    $('ynScanBtn').disabled = true;
+    $('ynScanBtn').textContent = 'Проверяю…';
+    $('ynStatus').textContent = 'Проверяю узлы пула (до ~10 с)…';
+    try {
+      const r = await apiPost('/youtube-nodes/scan', { target });
+      if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
+      const res = r.result || {};
+      const rows = (res.nodes || []).map(n =>
+        '<tr><td>' + n.index + '</td><td>' + (n.ip || '—') +
+        '</td><td>' + (n.tcp ? 'OK' : '—') +
+        '</td><td>' + (n.tls ? 'OK' : '—') +
+        '</td><td>' + (n.http80 ? 'OK' : '—') + '</td></tr>');
+      $('ynTableBody').innerHTML = rows.join('');
+      $('ynNote').textContent = 'Пул ' + (res.pool || '?') + ': ' + (res.note || '') +
+        ' (живых по TLS: ' + (res.alive || 0) + ' из ' + ((res.nodes || []).length) + ')';
+      const lines = res.hosts_suggest || [];
+      $('ynHosts').hidden = !lines.length;
+      $('ynHosts').textContent = lines.length ? lines.join('\n') : '';
+      $('ynResults').hidden = false;
+      $('ynStatus').textContent = lines.length
+        ? 'Есть живые узлы. Строки hosts — ниже (применять вручную, тест).'
+        : 'TLS-живых узлов нет: hosts-пин не поможет, нужен другой маршрут/QUIC.';
+    } catch (e) {
+      $('ynStatus').textContent = 'Ошибка: ' + String(e.message || e);
+    } finally {
+      $('ynScanBtn').disabled = false;
+      $('ynScanBtn').textContent = 'Проверить узлы';
+    }
+  },
+
+  // ── Тест: Edge + принудительный QUIC ─────────────────────
+  _yqTimer: null,
+
+  async youtubeQuicLoad() {
+    try {
+      const r = await apiGet('/youtube-quic/status');
+      const active = r.state === 'starting' || r.state === 'running';
+      $('yqStartBtn').disabled = active;
+      if (r.state === 'done') {
+        $('yqStatus').textContent = 'Окно открыто: ' + (r.result && r.result.url ? r.result.url : '') +
+          ' · порт ' + (r.result && r.result.port ? r.result.port : '?');
+      } else if (r.state === 'error') {
+        $('yqStatus').textContent = 'Ошибка: ' + (r.error || 'неизвестно');
+      } else if (active) {
+        $('yqStatus').textContent = 'Идёт: ' + (r.phase || '…');
+      }
+      if (active && !this._yqTimer) {
+        this._yqTimer = setInterval(() => this.youtubeQuicLoad(), 1500);
+      }
+      if (!active && this._yqTimer) {
+        clearInterval(this._yqTimer);
+        this._yqTimer = null;
+      }
+    } catch (e) {
+      $('yqStatus').textContent = 'Не удалось прочитать состояние: ' + String(e.message || e);
+    }
+  },
+
+  async youtubeQuicStart() {
+    const url = ($('yqUrl').value || '').trim();
+    if (!url) { showToast('Укажите ссылку на ролик', 'warn'); return; }
+    $('yqStartBtn').disabled = true;
+    $('yqStatus').textContent = 'Запускаю…';
+    try {
+      const r = await apiPost('/youtube-quic/start', { url });
+      if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
+      showToast('Ищу медиа-хосты и открываю окно', 'ok');
+    } catch (e) {
+      showToast('Не удалось запустить: ' + String(e.message || e), 'error');
+      $('yqStartBtn').disabled = false;
+    }
+    this.youtubeQuicLoad();
+  },
+
+  async youtubeQuicClose() {
+    try {
+      const r = await apiPost('/youtube-quic/close', {});
+      if (r.status !== 'ok') throw new Error(r.message || 'ошибка');
+      showToast(r.message || 'Окно закрыто', 'ok');
+    } catch (e) {
+      showToast('Не удалось закрыть: ' + String(e.message || e), 'error');
+    }
+    this.youtubeQuicLoad();
   },
 
   async run() {
