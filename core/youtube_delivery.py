@@ -215,8 +215,12 @@ def compute_metrics(samples: list[dict], *, window_s: float,
 
 
 def verdict(m: RunMetrics, *, ads_or_consent: bool = False,
-            player_error: str = "", content_unavailable: str = "") -> dict:
+            player_error: str = "", content_unavailable: str = "",
+            interrupted: str = "") -> dict:
     """Вердикт по наблюдаемым данным. Причина (DPI/маршрут/бэкенд) не выводится."""
+    if interrupted:
+        return {"code": "inconclusive", "label": "Замер прерван",
+                "text": interrupted, "confidence": "low"}
     if content_unavailable:
         return {"code": "content_unavailable", "label": "Ролик недоступен",
                 "text": content_unavailable, "confidence": "high"}

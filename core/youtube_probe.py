@@ -430,7 +430,13 @@ def _run_pass(browser: str, url: str, *, window_s: float, quality: str,
         last_bytes = 0
         started = False
         while time.monotonic() < deadline:
-            cdp.pump(min(deadline, time.monotonic() + 0.4))
+            try:
+                cdp.pump(min(deadline, time.monotonic() + 0.4))
+            except Exception as e:  # noqa: BLE001
+                # окно/браузер закрыли во время прогона — это не "0 байт",
+                # а прерванный замер; иначе получим ложный вердикт.
+                out["error"] = f"прогон прерван (браузер закрыт?): {type(e).__name__}"
+                break
             events = cdp.drain()
             for msg in events:
                 method = msg.get("method")
@@ -649,7 +655,8 @@ def probe_video(video_id: str, *, label: str = "", window_s: float = yd.DEFAULT_
         content_unavailable = str(player.get("error"))[:300]
     verdict = yd.verdict(metrics,
                          player_error=str(player.get("play_error") or ""),
-                         content_unavailable=content_unavailable)
+                         content_unavailable=content_unavailable,
+                         interrupted=str(data.get("error") or ""))
     return RunResult(label=label or video_id, video_id=video_id, url=url,
                      metrics=metrics, verdict=verdict,
                      error=str(data.get("error") or ""), samples=samples,

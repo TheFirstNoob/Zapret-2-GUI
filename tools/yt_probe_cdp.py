@@ -484,7 +484,11 @@ def probe(url: str, seconds: float, browser: str, profile: str,
         end = start + seconds + extra_seconds
         next_sample = start + 1.0
         while time.monotonic() < end:
-            cdp.pump(min(end, time.monotonic() + 0.4))
+            try:
+                cdp.pump(min(end, time.monotonic() + 0.4))
+            except Exception as e:  # noqa: BLE001
+                run.error = f"прогон прерван (браузер закрыт?): {type(e).__name__}"
+                break
             harvest(run, cdp.drain())
             if max_bytes and run.media_bytes >= max_bytes:
                 break
