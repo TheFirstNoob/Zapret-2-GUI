@@ -214,6 +214,26 @@ C-side `--payload` по умолчанию = `all` (upstream manual). Но Lua-�
   выделенный профиль. Для googlevideo проверять фактические фильтры профиля.
 - Не копировать zapret1-флаги в winws2 вслепую.
 
+### 2.11 Эксперименты 2026-11-26 (GGC: TCP мёртв, QUIC жив)
+
+- На проверенной сети TCP 443 до googlevideo (локальный GGC и зарубежные edge)
+  не оживает ни от fake+multisplit, ни от выделенного профиля, ни от маппинга
+  на зарубежный edge: TLS-хендшейк таймаутит, медиа-байт 0.
+- **Ключевой замер:** один и тот же узел (178.66.83.78) мёртв по TCP/TLS, но
+  отдаёт медиа по HTTP/3 (protocols={"h3":4}, remote_ip тот же, 1.2 МБ/15 с).
+  То есть это блокировка транспорта TCP, а не сломанный узел кэша.
+- QUIC fake бюджет: baseline (без repeats) ≈ 5.25 МБ/25 с, repeats=4 ≈ 5.29 МБ/25 с
+  (без разницы), repeats=8 хуже (3.77 МБ, старт 671 мс).
+- **`--lua-desync=udplen:increment=4` после fake на QUIC Initial ломает
+  воспроизведение полностью (0 байт): udplen меняет реальный пакет, а не копию.
+  Не переносить zapret1-рецепт `fake,udplen` в winws2 без проверки.**
+- Синтаксис winws2, принятый движком 1.0.7 (старт без ошибок):
+  `--lua-desync=wssize:wsize=1:scale=10`;
+  `tls_client_hello_clone:blob=session_tls:fallback=google_tls` +
+  `fake:blob=session_tls:tls_mod=rnd,dupsid` + `multisplit:pos=1,midsld`.
+- Вывод для этого класса сетей: рабочий путь — QUIC/h3; TCP-стратегии
+  бессмысленны, пока транспорт режется.
+
 ## 3. Пресеты
 
 11 release:
