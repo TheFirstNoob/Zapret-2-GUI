@@ -511,16 +511,22 @@ def _run_pass(browser: str, url: str, *, window_s: float, quality: str,
     return out
 
 
-def discover_media_hosts(video_id: str, *, browser: str = "", seconds: float = 12.0,
+def discover_media_hosts(video_id: str, *, browser: str = "", seconds: float = 20.0,
                         progress: Optional[Callable[[str], None]] = None) -> list[str]:
     """Короткий прогон: узнать реальные медиа-хосты сессии (для force-QUIC)."""
     browser = browser or find_browser()
-    if progress:
-        progress("поиск медиа-хостов")
-    data = _run_pass(browser, yd.canonical_watch_url(video_id),
-                     window_s=seconds, quality="", max_bytes=0,
-                     force_hosts=[], discover_s=seconds, progress=progress)
-    return list(data.get("media_hosts") or [])
+    url = yd.canonical_watch_url(video_id)
+    for attempt in (1, 2):
+        if progress:
+            progress("поиск медиа-хостов" + (" (повтор)" if attempt > 1 else ""))
+        data = _run_pass(browser, url, window_s=seconds, quality="", max_bytes=0,
+                         force_hosts=[], discover_s=seconds, progress=progress)
+        hosts = list(data.get("media_hosts") or [])
+        if hosts:
+            return hosts
+        if data.get("error"):
+            break
+    return []
 
 
 def open_quic_session(video_id: str, profile_dir: Path, *, hosts: list[str],
@@ -547,9 +553,12 @@ def open_quic_session(video_id: str, profile_dir: Path, *, hosts: list[str],
         raise
     url = yd.canonical_watch_url(video_id)
     try:
+        import urllib.parse as _up
         import urllib.request as _ur
-        _ur.urlopen(f"http://127.0.0.1:{port}/json/new?{url}".replace(" ", "%20"),
-                    timeout=10, data=b"")
+        target = _up.quote(url, safe="")
+        req = _ur.Request(f"http://127.0.0.1:{port}/json/new?{target}", method="PUT")
+        with _ur.urlopen(req, timeout=10):
+            pass
     except Exception:
         pass
     return {"pid": int(getattr(proc, "pid", 0) or 0), "port": port,
