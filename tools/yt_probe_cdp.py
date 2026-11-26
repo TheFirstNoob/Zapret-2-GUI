@@ -530,6 +530,37 @@ def probe(url: str, seconds: float, browser: str, profile: str,
     return run
 
 
+def _median(values: list) -> Any:
+    vals = [v for v in values if isinstance(v, (int, float))]
+    if not vals:
+        return None
+    vals.sort()
+    return vals[len(vals) // 2]
+
+
+def _median_summary(runs: list[dict]) -> dict:
+    """Сводка по нескольким прогонам: медианы ключевых метрик + разброс."""
+    if not runs:
+        return {"error": "нет прогонов", "runs": []}
+    base = dict(runs[0])
+    base["runs"] = runs
+    for key in ("media_bytes", "goodput_mbps", "first_media_byte_ms",
+                "stalls", "buffer_min_s", "traffic_mb"):
+        vals = [r.get(key) for r in runs]
+        med = _median(vals)
+        if med is not None:
+            base[key] = round(med, 3) if isinstance(med, float) else med
+    bytes_vals = [r.get("media_bytes") or 0 for r in runs]
+    if bytes_vals:
+        base["media_bytes_min"] = min(bytes_vals)
+        base["media_bytes_max"] = max(bytes_vals)
+    res = [r.get("max_resolution") for r in runs if r.get("max_resolution") not in (None, "-")]
+    if res:
+        base["max_resolution"] = max(res, key=lambda s: int(str(s).rstrip("p") or 0))
+    base["samples"] = runs[0].get("samples", [])
+    return base
+
+
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description="YouTube media delivery probe (CDP)")
     ap.add_argument("urls", nargs="+")
@@ -538,6 +569,8 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--browser", default="")
     ap.add_argument("--json", default="")
     ap.add_argument("--keep-profile", action="store_true")
+    ap.add_argument("--repeat", type=int, default=1,
+                    help="сколько раз повторить замер (медиана вместо одного прогона)")
     ap.add_argument("--attach-port", type=int, default=0,
                     help="attach to an already running browser (debug build/test)")
     ap.add_argument("--max-mb", type=float, default=12.0,
@@ -548,24 +581,31 @@ def main(argv: list[str]) -> int:
 
     browser = find_browser(args.browser)
     results = []
+    seconds = min(60.0, max(5.0, args.seconds))
+    quality = "" if args.quality.lower() == "max" else args.quality
+    repeats = max(1, min(5, int(args.repeat or 1)))
     for url in args.urls:
-        profile = tempfile.mkdtemp(prefix="yt-probe-")
-        try:
-            seconds = min(60.0, max(5.0, args.seconds))
-            quality = "" if args.quality.lower() == "max" else args.quality
-            run = probe(url, seconds, browser, profile,
-                        attach_port=args.attach_port,
-                        max_bytes=int(args.max_mb * 1e6) if args.max_mb else 0,
-                        quality=quality)
-            run.requested_quality = args.quality
-            data = run.as_dict()
-            results.append(data)
-            print(f"\n=== {url}")
-            print(json.dumps({k: v for k, v in data.items() if k != "samples"},
-                             ensure_ascii=False, indent=2))
-        finally:
-            if not args.keep_profile:
-                shutil.rmtree(profile, ignore_errors=True)
+        runs = []
+        for _ in range(repeats):
+            profile = tempfile.mkdtemp(prefix="yt-probe-")
+            try:
+                run = probe(url, seconds, browser, profile,
+                            attach_port=args.attach_port,
+                            max_bytes=int(args.max_mb * 1e6) if args.max_mb else 0,
+                            quality=quality)
+                run.requested_quality = args.quality
+                runs.append(run.as_dict())
+            finally:
+                if not args.keep_profile:
+                    shutil.rmtree(profile, ignore_errors=True)
+        data = _median_summary(runs)
+        results.append(data)
+        print(f"\n=== {url}  (прогонов: {len(runs)})")
+        print(json.dumps({k: v for k, v in data.items() if k not in ("samples", "runs")},
+                         ensure_ascii=False, indent=2))
+        for i, r in enumerate(runs, 1):
+            print(f"  run {i}: bytes={r.get('media_bytes')} res={r.get('max_resolution')} "
+                  f"stalls={r.get('stalls')} start={r.get('first_media_byte_ms')}")
     if args.json:
         Path(args.json).write_text(json.dumps(results, ensure_ascii=False, indent=2),
                                    encoding="utf-8")
