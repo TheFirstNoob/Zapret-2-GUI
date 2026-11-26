@@ -16,6 +16,7 @@
 - Данные: `lists/discord-candidates.json` (252 IP), состояние и backup hosts в `logs/discord_fix_*`.
 - Ограничение: это временный обход, не VPN. При блокировке пула — WARP/другой маршрут.
 - Lite (engine-only) не содержит Python/helper и этот fix не поддерживает; только portable/EXE. В Lite base-hosts без dynamic/voice.
+- **Движок winws2 обновлён до 1.0.8** (win-bundle `caf11b2d`, `lua_compat_ver` 6): фиксы автолистов (обрез порта при redirect), пересчёт `ip_len/ip6_len` во фрагментах, ненулевая UDP-чексумма, предупреждение «профиль без фильтра → следующие недостижимы»; stock-lua обновлены, `zapret-custom.lua` сохранён, WinDivert не менялся. Dry-run 11/11, pytest 381, security 47, live-служба и медиа — зелёные.
 
 ### Исправлено
 
@@ -24,7 +25,7 @@
 
 ### Тесты
 
-- 354 passed; live-enable/rotate/disable с реальными hosts/NRPT/DNS: Discord API 200, challenges 200, auth0 200, Cloudflare 301, rotate 200; отключение убирает hosts-блок и NRPT, hosts восстанавливаются.
+- 381 passed (на 2026-11-26); live-enable/rotate/disable с реальными hosts/NRPT/DNS: Discord API 200, challenges 200, auth0 200, Cloudflare 301, rotate 200; отключение убирает hosts-блок и NRPT, hosts восстанавливаются.
 - Task Scheduler: install/query/start/remove и реальный `--discord-fix-helper` под SYSTEM: task RUNNING, порт 53 слушает helper, DNS-зоны резолвятся в candidate; повторный enable после disable — OK.
 - При старте helper/GUI — один TLS health-check сохранённого IP; при провале выбирается новый.
 - Исправлен atexit-баг: Python-процесс больше не снимает NRPT, если helper работает как задача (`mode=task`); путь задачи сохраняется в state и переустанавливается при переносе приложения.

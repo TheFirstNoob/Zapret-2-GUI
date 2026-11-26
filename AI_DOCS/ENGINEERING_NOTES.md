@@ -17,7 +17,7 @@
 
 | Что | Источник | Как использовать |
 |---|---|---|
-| Движок winws2 | `github.com/bol-van/zapret2`; win-bundle `github.com/bol-van/zapret-win-bundle` | `bin/winws2.exe` **1.0.7**; обновлять движок и stock-lua вместе, `zapret-custom.lua` сохранять |
+| Движок winws2 | `github.com/bol-van/zapret2`; win-bundle `github.com/bol-van/zapret-win-bundle` | `bin/winws2.exe` **1.0.8**; обновлять движок и stock-lua вместе, `zapret-custom.lua` сохранять |
 | WinDivert | `github.com/basil00/WinDivert` | `windivert/` + `bin/WinDivert*.dll/sys`; не чинить удалением при живом драйвере |
 | Lua | `lua/zapret-lib.lua`, `zapret-antidpi.lua`, `zapret-auto.lua` — vendor; `zapret-custom.lua` — наш | vendor не рефакторить; обновлять только синхронизацией с upstream tag |
 | IPset-база | V3nilla `github.com/V3nilla/IPSets-For-Bypass-in-Russia`; jsDelivr `https://cdn.jsdelivr.net/gh/V3nilla/IPSets-For-Bypass-in-Russia@main/` | наша база `lists/ipset-all.txt.gz` (26441 CIDR на 2026-10-24); **не вливать целиком**, только coverage-diff + CDN A/B; 2026-11-14: upstream 33336 CIDR, candidates 1123 CIDR/+1.12M адр., staged готов (27206 CIDR), A/B ещё не выполнен — см. `IPSETS_V3NILLA.md` |
@@ -25,6 +25,18 @@
 | CDN-батарея | `github.com/hyperion-cs/dpi-checkers` (Apache-2.0), `ru/tcp-16-20/suite.v2.json` sha256 `9c844313…f50e7e`; snapshot 2026-11-14 = upstream HEAD `bb38d7a` | `CDN_HOSTS` в `core/tester_defs.py` (36 хостов, порядок upstream) + производные `list-cdn-test.txt` (12), `list-cdn-fix.txt` (9); обновлять только осознанной сверкой списка хостов, не вливать в ipset |
 | ASN/DPI-пробы | `github.com/Runnin4ik/dpi-detector` (MIT; snapshot 2026-10-13: `tcp16.json` sha256 `546c14d6…`, `whitelist_sni.txt` sha256 `0f85b93e…`; upstream main на 2026-11-14 идентичен); `tcp16.json`/`whitelist_sni.txt` (upstream `domains.txt` не бандлим — рантаймом не читается, тест 4 «sweep SNI» = P2) | только диагностика; снимок обновлять `python tools/sync_dpi_detector.py --check/--apply` (jsDelivr → raw, sha256+дифф); атрибуция — `THIRD_PARTY_NOTICES.md` |
 | Теория ТСПУ | `github.com/DanielLavrushin/tspu-docs` | локальный клон; SNI/деградация/двухстадийность |
+
+> **Обновление движка 2026-11-26:** winws2 **1.0.8** (тег `93fbe9af81`,
+> win-bundle `caf11b2d`; `winws2.exe` 657 920 B, SHA256 `9118b6b6…bed6`).
+> WinDivert не менялся — наши `bin/WinDivert*` побайтно совпадают с бандлом.
+> stock-lua 1.0.8: `zapret-lib.lua`, `zapret-antidpi.lua`, `zapret-auto.lua`,
+> `zapret-obfs.lua` (pcap/tests без изменений); `lua_compat_ver` 6 — API
+> совместим. Проверено: dry-run 11/11 пресетов, `check_arg_file`,
+> pytest 381, api_smoke, security 47, живой запуск 1.0.8 (YouTube 204,
+> Discord 200), медиа-проба 4.9/3.6 МБ @480p. Полезное из changelog:
+> обрез порта в автолистах, `ip_len/ip6_len` при `frag_off`, ненулевая
+> UDP-чексумма, предупреждение «профиль без фильтра» (следующие профили
+> недостижимы).
 | Механики обхода | `github.com/DanielLavrushin/b4` | RST/FIN/ACK, TTL, SNI-first; не переносить 1-в-1 |
 | Референс Zapret 1 | `github.com/Flowseal/zapret-discord-youtube` | сравнение паттернов; чужие пресеты не вливать слепо |
 | Обновления | `VERSION` в корне + raw GitHub / jsDelivr; Ed25519 release.json | не ослаблять fail-closed; зеркало jsDelivr — fallback |
@@ -230,7 +242,7 @@ C-side `--payload` по умолчанию = `all` (upstream manual). Но Lua-�
 - **Разброс между идентичными прогонами большой:** один и тот же baseline дал
   5.26 МБ и 3.83 МБ за 25 с (goodput 1.68 vs 1.22 Мбит/с). Одиночный прогон
   ничего не доказывает; для A/B нужны 2–3 повтора и медиана.**
-- Синтаксис winws2, принятый движком 1.0.7 (старт без ошибок):
+- Синтаксис winws2, принятый движком 1.0.7/1.0.8 (старт без ошибок):
   `--lua-desync=wssize:wsize=1:scale=10`;
   `tls_client_hello_clone:blob=session_tls:fallback=google_tls` +
   `fake:blob=session_tls:tls_mod=rnd,dupsid` + `multisplit:pos=1,midsld`.

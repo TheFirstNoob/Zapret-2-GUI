@@ -1,10 +1,10 @@
 # AGENTS.md — текущая памятка (читать первой)
 
-> Обновлено 2026-11-15. Актуальная версия — **Pre-Release 0.11.1**
+> Обновлено 2026-11-26. Актуальная версия — **Pre-Release 0.11.1**
 > (опубликован, тег `Pre-Release-0.11.1` → `69869b5`). Предыдущий релиз —
 > 0.11 (тег `Pre-Release-0.11`), 0.10 (тег `3fd25f0`, immutable).
 > ВАЖНО: черновые архивы 0.11 от 27.10 устарели (движок 1.0.6, пресеты без
-> `midsld`) — релиз собирать из HEAD (1.0.7 + `pos=1,midsld`). Индекс —
+> `midsld`) — релиз собирать из HEAD (текущий движок 1.0.8 + `pos=1,midsld`). Индекс —
 > `AI_DOCS/README.md`.
 >
 > Здесь только текущие правила и факты. Закрытые/исторические документы
@@ -26,11 +26,13 @@
   `multisplit-pure`, `multisplit-seqovl`, `tcpmd5-fake`). Тестовые
   `exp-*`/`cand-*` удалены. Тестовый `presets/flaky.txt` в рабочем дереве
   отсутствует (не релиз, не возвращать).
-- **Движок:** `bin/winws2.exe` = zapret2 **v1.0.7** (обновлён 2026-11-06;
-  stock-lua lib/antidpi/auto обновлены, `zapret-custom.lua` сохранён).
-  T37/T43/T44 dry-run зелёные; служба в зеркале перезапущена. 0.10 шипится с
-  v1.0.5 (без QUIC-dissect фиксов 1.0.5.2+); 0.11-черновик 27.10 = 1.0.6.
-- **Тесты:** `tests/` (pytest, 338 passed на 2026-11-18) + батарея:
+- **Движок:** `bin/winws2.exe` = zapret2 **v1.0.8** (обновлён 2026-11-26;
+  win-bundle `caf11b2d`, `winws2.exe` 657 920 B, SHA256 `9118b6b6…bed6`,
+  `lua_compat_ver` 6; stock-lua lib/antidpi/auto/obfs обновлены,
+  `zapret-custom.lua` сохранён; WinDivert не менялся). Dry-run 11/11 пресетов,
+  `check_arg_file`, pytest 381, живой прогон службы и медиа-пробы — зелёные.
+  0.11/0.11.1 остаются на 1.0.7; 0.10 шипится с 1.0.5.
+- **Тесты:** `tests/` (pytest, 381 passed на 2026-11-26) + батарея:
   `compileall`, `tools/api_smoke.py`, `tools/security` (47),
   `tools/args_golden.py compare`, `tools/check_arg_file.py`,
   `tools/js_bundle_check.py`, `tools/status_contract.py`.
@@ -44,7 +46,7 @@
   WebView2 preflight + browser fallback, кэш/in-flight guard `resolve_ips`,
   path-фильтр ZapretController (temp/вторая копия не убивает чужой winws2).
 - **Открытые задачи:** live-приёмка 0.11 (публикация уже выполнена); live-прогон
-  тестера на 1.0.7 и живая смена DNS на разных адаптерах; проверка WebView2
+  тестера на 1.0.8 и живая смена DNS на разных адаптерах; проверка WebView2
   fallback на чистом Win10 без Runtime, browser fallback UX/токен в URL.
   0.11: пересобрать из HEAD и добавить видео-диагностику (P0 из
   `YOUTUBE_VIDEO_STALL_2026-11.md`); «фикс YouTube» не обещать.
@@ -221,7 +223,7 @@ main.py (UAC, pywebview/WebView2, single-instance)
 - `AI_DOCS/YOUTUBE_VIDEO_STALL_2026-11.md` — видео-спиннер 2026-11: GGC/TLS-CH,
   SABR-only, QUIC, что не переоткрывать и что делать в 0.11.
 - `AI_DOCS/TECH_AUDIT_2026-11-14.md` — итоги тех-аудита: исправленные баги,
-  бэклог P1/P2, оптимизации, применимость фич zapret2 1.0.6/1.0.7.
+  бэклог P1/P2, оптимизации, применимость фич zapret2 1.0.6–1.0.8.
 - `AI_DOCS/IPSETS_V3NILLA.md` — правила обновления ipset-базы (восстановлен
   из git-истории 2026-11-14), свежий coverage-diff и staged-база.
 - `AI_DOCS/UPSTREAM_SYNC_2026-11-14.md` — dpi-detector/dpi-checkers/Flowseal:
