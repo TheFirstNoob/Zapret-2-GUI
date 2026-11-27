@@ -107,12 +107,14 @@ def default_games() -> dict:
     }, {
         "id": "valorant",
         "name": "Valorant",
-        "enabled": True,
+        "enabled": False,
         "process": "VALORANT.exe",
         "domains": [
-            {"domain": "valorant.com", "on": True, "warn": False,
-             "tag": "Игра и лончер",
-             "note": "в реестре РКН - домену нужен обход"},
+            {"domain": "valorant.com", "on": True, "warn": True,
+             "tag": "Только при блокировке",
+             "note": "Если Riot/Vanguard работает без обхода, не включайте профиль. "
+                     "GameFilter включается отдельно: серверы с проверкой "
+                     "целостности UDP могут отклонять его подменные пакеты."},
             {"domain": "playvalorant.com", "on": True, "warn": False,
              "tag": "Лончер", "note": "клиент и обновления"},
             {"domain": "riotgames.com", "on": True, "warn": False,
@@ -120,8 +122,6 @@ def default_games() -> dict:
             {"domain": "riotcdn.net", "on": True, "warn": False,
              "tag": "CDN", "note": "файлы игры и патчи"},
         ],
-        # UDP-фикс пока не подобран (Riot использует UDP 5000-5500) - как с
-        # Wardogs: сначала проба через «Анализ приложения», потом правило.
         "udp": [],
     }, {
         "id": "fortnite",
